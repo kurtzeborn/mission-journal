@@ -1,0 +1,24 @@
+# Node
+node_modules/
+npm-debug.log*
+.env
+.env.local
+
+# Build output
+dist/
+build/
+out/
+
+# Azure Functions
+local.settings.json
+bin/
+obj/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
