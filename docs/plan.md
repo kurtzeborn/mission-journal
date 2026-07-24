@@ -81,6 +81,17 @@ An automatic journal/blog service for LDS missionaries. A missionary CCs a perso
 
 Both are simple and reliable. Decision pending.
 
+#### Sender validation (applies to both options)
+
+Missionaries send email from the Church-issued `@missionary.org` domain. The intake step **must discard any message whose validated sender is not `@missionary.org`** before writing to `raw/`. Specifically:
+
+- Check the **authenticated sender** — the `From:` header address after confirming SPF/DKIM/DMARC results (`Authentication-Results` header) show `pass`. Do not trust `From:` alone; spoofers set arbitrary `From:` values.
+- If the domain is not `missionary.org` (case-insensitive), drop the message silently. No bounce, no error to the sender — bouncing would leak that the address exists and invite probing.
+- Also drop if SPF/DKIM/DMARC did not pass, even if the `From:` domain looks right. This prevents spoofed `missionary.org` mail from being ingested.
+- Log rejections (sender, subject, timestamp, reason) to a `rejected/` blob or App Insights for audit, without storing the message body.
+
+This filter is the single most important spam and impersonation defense; the rest of the pipeline can trust that every message in `raw/` genuinely originated from a missionary account.
+
 #### Option A: Logic Apps + M365 shared mailbox *(recommended if we keep M365 in the mail path)*
 - One shared mailbox in the tenant, e.g. `journal@missionaryjournal.com` (shared mailboxes are free under 50 GB, no license required).
 - Per-missionary addresses via aliases or tokenized local-parts routed to the same shared mailbox (catch-all rule or explicit aliases).
