@@ -103,17 +103,42 @@ Design principles:
 
 #### Extracting and de-duplicating forwards
 
-Because anyone on a missionary's ACL can forward historical email, the intake code has to extract the "true" original message and check whether we already have it:
+Because anyone on a missionary's ACL can forward historical email, the intake code has to extract the "true" original message and check whether we already have it — while being tolerant of the small variations email trips through (quoted-reply prefixes, stripped signatures, MIME re-encoding, missing attachments, minor date/time-zone drift).
 
-1. **Prefer `message/rfc822` attachments.** Outlook, Apple Mail, and Gmail's "forward as attachment" all embed the original as an rfc822 MIME part with all headers intact. Use these when present.
-2. **Fall back to inline forwards.** Parse blocks starting with `---------- Forwarded message ---------` (Gmail), `Begin forwarded message:` (Apple Mail), or `-----Original Message-----` (Outlook). Extract original `From`, `Date`, `Subject`, and body text. Attachments in inline forwards are attached to the outer message rather than the inline block; associate them with the extracted original.
+**Extract the original:**
 
-De-duplication key, in priority order:
+1. **Prefer `message/rfc822` attachments.** Outlook, Apple Mail, and Gmail's "forward as attachment" all embed the original as an rfc822 MIME part with headers intact.
+2. **Fall back to inline forwards.** Parse blocks starting with `---------- Forwarded message ---------` (Gmail), `Begin forwarded message:` (Apple Mail), or `-----Original Message-----` (Outlook). Extract original `From`, `Date`, `Subject`, and body text.
+3. **Associate outer-message attachments with the extracted original** in the inline case (webmail forwards typically re-attach photos to the outer message rather than embedding them in the inline block).
 
-1. **Original `Message-ID` header** — extracted from the `.eml` attachment when available. RFC 5322 requires global uniqueness; this is the ideal key.
-2. **Content fingerprint** — SHA-256 of the normalized tuple `(original From, original Date truncated to the minute, original Subject, first 512 bytes of plaintext body)`. Used only when `Message-ID` is missing.
+**Match key priority:**
 
-The dedupe index is a single Azure Table `deduplication` with `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`, and a small value pointing at the existing `raw/` path. Lookup is milliseconds; cost is negligible.
+1. **Exact match on original `Message-ID` header** — extracted from the embedded `.eml` when available. A hit here is a certain match; stop and treat as duplicate.
+2. **Fuzzy match** — when no `Message-ID` is available (inline forwards, some hosts strip it), score candidate posts against the incoming message and declare a match at total score ≥ **0.90**.
+
+**Fuzzy scoring — stage 1 (bucket, cheap):** query `deduplication` filtered to same `missionary-slug`, same `originalFromLower`, and `originalDateDay` within ±1 day of the incoming message's day. Typically returns 0–2 candidates.
+
+**Fuzzy scoring — stage 2 (score each candidate):** five weighted features, each producing a value in `[0, 1]`; total score is the weighted sum.
+
+| Feature | Similarity function | Weight |
+|---|---|---|
+| `originalFrom` (lowercased) | Exact match: 1.0, else 0.0 | 0.15 |
+| `originalDate` closeness | Linear falloff: 0h diff = 1.0, ≥36h diff = 0.0 | 0.10 |
+| `subjectNormalized` | Jaro–Winkler over both subjects, after stripping `Re:` / `Fwd:` prefixes and collapsing whitespace | 0.15 |
+| `bodySimHash` | 64-bit SimHash over normalized body character 5-grams (quoted lines and signature blocks stripped); score = `1 - hammingDistance / 64` | 0.40 |
+| `attachmentFingerprints` | Jaccard similarity over sets of per-attachment SHA-256 hashes | 0.20 |
+
+**Adaptive weights.** If either side has zero attachments, the attachment feature is dropped and its 0.20 weight is redistributed proportionally to the remaining four features so the maximum achievable score is still 1.0. Same treatment for any pathological message missing a subject.
+
+**Threshold:** total score ≥ **0.90** → duplicate. Below 0.90 → treat as new post.
+
+Rationale for the weights:
+
+- Body dominates (0.40) because it's the highest-signal, hardest-to-fake feature. A SimHash Hamming distance of ~6 bits corresponds to roughly 91% body similarity, which is where the threshold engages.
+- Attachments contribute strongly (0.20) when present — same photos are a very confident duplication signal.
+- Subject and sender each carry moderate weight; date is a weaker confirmation because forwarding can rewrite it and users cross time zones.
+
+**Threshold tuning.** The 0.90 threshold and per-feature weights are the starting point. Because raw MIME is archived and the dedup table is updated on every ingest, we can rescore historical data at any time to tune weights and threshold without asking users to resubmit.
 
 **On dedup hit:** don't create a new post. Update the existing post's `alsoSubmittedBy` array with the forwarder's email and timestamp. Send a courtesy acknowledgment reply (see [Notification preferences](#notification-preferences)) unless suppressed for that user.
 
@@ -180,7 +205,7 @@ config/
 
 Plus two Azure Tables in the same storage account:
 
-- **`deduplication`** — `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`. Value: `postId`, `sourceRawPath`, `firstSeen`.
+- **`deduplication`** — `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`. Additional bucketing / scoring columns: `originalFromLower`, `originalDateDay` (`YYYY-MM-DD`), `originalDateFull` (ISO-8601), `subjectNormalized`, `bodySimHash` (64-bit hex), `attachmentHashes` (semicolon-joined SHA-256s), plus `postId`, `sourceRawPath`, `firstSeen`. See [fuzzy scoring](#extracting-and-de-duplicating-forwards).
 - **`preferences`** — `PartitionKey = "user"`, `RowKey = lowercased email`. Value: per-user notification flags (see [Notification preferences](#notification-preferences)).
 
 ### Data model (posts.json entry)
@@ -261,6 +286,75 @@ Optional per-missionary setting: **"require approval"**. If enabled, posts land 
 - The zip is self-contained: open `index.html` in any browser and it works, search included.
 - Site remains available in read-only mode indefinitely, or the missionary can request deletion.
 
+### Journal Publish
+
+*Last feature to be built, after everything else is stable.*
+
+Assemble a physical hardcover photo book from a missionary's journal — all posts, in chronological order, with the photos — and route the print order to a photo-book print-on-demand provider.
+
+**Provider evaluation** (verified July 2026):
+
+| Provider | Public API? | Photo book product? | Referral / affiliate | Verdict |
+|---|---|---|---|---|
+| **Shutterfly** | No. `developers.shutterfly.com` returns HTTP 410 (Gone). The Commerce API is invitation-only for strategic retail partners; not open to individual developers. | Yes (top-of-market for photo books) | Yes, via Rakuten Advertising — link-based referrals only (~5% commission, 15-day cookie). Requires application/approval. | Only viable path is affiliate-link + manual upload. No automation possible. |
+| **Blurb** | Historically public; increasingly gated over the years. Supports PDF-to-hardcover-photobook flows. | Yes | Yes, via Impact.com (~5% commission). | Solid #2 option if Lulu doesn't fit. |
+| **Lulu** | **Yes, fully public and documented** at [developers.lulu.com](https://developers.lulu.com). No upfront fee, no minimum. RESTful, OpenID Connect, sandbox environment for testing. Hardcover photo books supported (3,000+ product configurations). | Yes — hardcover and softcover photo books in many trim sizes | No affiliate program needed — you buy at wholesale, mark up if you want. | **Recommended default.** |
+| **Amazon KDP** | Print API not public for individual accounts; trade-book focus, not photo books. | No (not a photo-book product) | Amazon Associates for retail links only. | Not a fit. |
+
+**Recommended approach: Lulu Print API as the primary path, with a Shutterfly affiliate-link fallback for users who specifically want Shutterfly.**
+
+#### Primary path — Lulu Print API
+
+1. Owner clicks "Publish this journal as a book" in the admin UI.
+2. A book-assembly Function builds a print-ready PDF from the missionary's posts:
+   - Cover page (title, missionary name, mission dates, headline photo).
+   - Table of contents by date.
+   - One "chapter" per post: subject as heading, formatted body, embedded high-res photos, footer with original date.
+   - Colophon.
+3. Function calls Lulu's Print API with a `pod_package_id` for a hardcover photobook trim (e.g. 8"×10" hardcover, premium color: `0800X1000FCPRECW060UW444GXX`), passing signed URLs (short-lived SAS tokens on Blob Storage) for the interior + cover PDFs.
+4. Owner reviews Lulu's returned quote (price + shipping options), enters shipping details, confirms.
+5. Lulu prints and ships. Webhook updates order status in the missionary's admin view.
+
+**Pricing model on our side:**
+- Simplest: pass through Lulu's wholesale pricing at cost — the service adds no fee.
+- Alternative: add a small service fee ($5–$10) to cover PDF assembly / storage.
+- Alternative: embed a Lulu checkout where the owner pays Lulu directly; we never touch the money.
+
+**Referral revenue:** does *not* apply on the Lulu path — there's no affiliate flow because we (or the owner) are the direct print buyer. Referral income appears only via the Shutterfly-fallback path below.
+
+#### Fallback path — Shutterfly affiliate export
+
+For owners who specifically want a Shutterfly book (Shutterfly's photo-book editor is very good and the brand is the one most families recognize):
+
+1. Function generates a zip: high-res photos organized by post + a `book-order.txt` outlining recommended page order and captions.
+2. Presents the owner a deep link to Shutterfly's photo-book builder with our **Rakuten Advertising affiliate ID appended** — e.g. `https://www.shutterfly.com/photo-books/?cid=<affiliate-sid>&subid=<missionary-slug>`.
+3. Owner uploads photos and completes the order in Shutterfly's own builder. If purchase completes within the 15-day cookie window, Rakuten credits us.
+4. The `subid=missionary-slug` parameter lets us attribute conversions to specific missionaries in the Rakuten dashboard (subject to Rakuten's per-subid granularity).
+
+**Referral setup requirements:**
+
+- Apply and get approved for Shutterfly's Rakuten Advertising program. Application is straightforward for content sites but not guaranteed for a private-audience service; we should apply once the site is live and has real content to link to.
+- Store `RAKUTEN_SITE_ID` in Key Vault; keep the export function templated so we can swap providers or update SIDs without code changes.
+- Track click-through analytics ("Owner clicked Export to Shutterfly") independently in App Insights for correlation with Rakuten's attribution data.
+
+#### Implementation notes
+
+- The book-assembly service should be its own Function — or a Durable Function orchestration for the multi-step Lulu flow (quote → confirm → submit → status polling).
+- Reuse the *same rendered content* the reader UI uses. Regeneration is idempotent; if new posts arrive after publish, the owner can regenerate.
+- Cover design and layout: start with a single "classic" template. Expand to multiple templates only if there's demand.
+- Use Lulu's **sandbox environment** for CI/CD and any test orders. Real production submits only from the deployed environment behind an owner-only confirmation.
+
+#### Data-model additions
+
+- `books/{missionary-slug}/{book-id}/` blob path stores generated interior/cover PDFs and a `manifest.json` recording which posts + photos were included and which provider + order ID was used.
+- Per-book records in the missionary's profile for order history: `bookOrders: [{ id, provider, orderId, orderedAt, status, trackingUrl }]`.
+
+#### Open questions for this feature
+
+- Pass-through pricing, or add a small service fee?
+- Allow readers (not just owner/admin) to order copies for themselves? (Grandparents will want copies too.)
+- Fixed trim size / template initially, or configurable?
+
 ---
 
 ## Azure resource plan
@@ -281,43 +375,57 @@ Optional per-missionary setting: **"require approval"**. If enabled, posts land 
 
 ## Build plan (proposed phases)
 
+Reordered to validate the highest-risk piece (email pipeline) first, with intentionally rudimentary UIs at each stage to confirm the plumbing works end-to-end before we invest in polish. See [docs/email-options.md](email-options.md) for the vendor / pricing comparison behind the email decisions in Phase 0.
+
 ### Phase 0 — Foundation
-- Register `missionaryjournal.com` (or chosen domain).
+- Register `missionaryjournal.org` (or chosen domain).
 - Create Azure subscription resource group.
-- Set up SWA Standard with GitHub Actions deploy, custom domain, MS + Google auth providers.
-- Storage account with `raw/` and `rendered/` containers; immutability policy on `raw/`.
-- Key Vault + managed identity from Functions.
+- Storage account: containers `raw/` (immutability policy on), `rendered/`, `rejected/`. Tables `deduplication` and `preferences`.
+- Key Vault + managed identity for Functions (SendGrid API key, Lulu OAuth secret, HMAC secret for signed unsubscribe tokens, Rakuten SID when applicable).
+- Choose and provision the email provider (SendGrid or M365 shared mailbox). Set up DNS: MX record on the ingest subdomain, DKIM CNAMEs on the sending subdomain, DMARC policy on the apex.
 
-### Phase 1 — Manual ingest to render pipeline
-- Skip email entirely first. Provide a "drop an .eml file in raw/{slug}/…" workflow.
-- Build the render function: parses `.eml`, extracts text + HTML + attachments, produces `posts.json`, resizes photos, strips EXIF, generates search index.
-- Build the reader UI: list posts, view post, photo album, client-side search. Path-based routing.
-- Ship a demo journal you populate by hand.
+### Phase 1 — Inbound email pipeline (receive → classify → save)
+- Function endpoint that receives inbound mail (SendGrid Inbound Parse webhook, or Logic App poll from M365 shared mailbox).
+- Classifier: `direct` / `forward_verified` / `forward_headers` / `forward_inline` / `rejected`. DKIM re-verification for `forward_verified`; forwarder-vs-ACL check for all `forward_*` classes.
+- Original-message extractor: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators).
+- Write raw MIME + attachments to `raw/{slug}/{yyyy}/{mm}/{msgId}/`; log rejections to `rejected/`.
+- ACL for this phase is a **hand-edited JSON blob** — no auth UI yet. Manually add test accounts.
+- **Verification UI:** single unauthenticated page at `/admin/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Just enough to see the pipeline is working.
 
-### Phase 2 — Auth & ACL
-- Wire up Google + MS providers in SWA.
-- Implement `acl.json` gate: SWA route rules + API-level checks.
-- Owner admin view: manage invitees, delete post, hide post, edit title.
+### Phase 2 — De-duplication and outbound send
+- Dedupe: exact `Message-ID` lookup first, then fuzzy scoring (SimHash + weighted features per [fuzzy scoring](#extracting-and-de-duplicating-forwards)). Populate `deduplication` on every accepted message.
+- Dedupe-hit path: update existing post's `alsoSubmittedBy`; send courtesy ack email via the outbound provider; respect `preferences.dedupeAckEmails`.
+- Signed-token unsubscribe endpoint for the `dedupeAckEmails` toggle.
+- **Verification:** hand-craft duplicate forwards from a test mailbox, watch the dedup table populate and the courtesy email arrive. Click the unsubscribe link, verify the flag flips, resend a duplicate, confirm silence.
 
-### Phase 3 — Email intake
-- Decide Option A vs B.
-- Build the intake path end to end (email arrives → classify → dedupe → raw blob → queue → render).
-- Message classifier: distinguish `direct` from `forward_verified` / `forward_headers` / `forward_inline` / `rejected`. Includes DKIM re-verification for `forward_verified` and forwarder-vs-ACL check for all `forward_*` classes.
-- Original-message extractor: prefer `message/rfc822` attachments; fall back to inline block parsing across the three common forward formats (Gmail, Apple Mail, Outlook).
-- Deduplication: `deduplication` table lookup keyed on original `Message-ID` (preferred) or content hash. On hit, append forwarder to existing post's `alsoSubmittedBy` and send the dedupe-ack reply (respecting user preference).
-- Notification preferences: `preferences` table + signed-token unsubscribe endpoint for `dedupeAckEmails`.
-- Address provisioning: onboarding creates missionary slug + tokenized email + initial ACL.
-- Bounce/reject: any inbound mail whose `To`/`Cc` doesn't map to a known missionary token is dropped.
+### Phase 3 — Render pipeline
+- Queue-triggered render Function: parse raw `.eml` → text + HTML body → resize photos to WebP + strip EXIF → produce/update `rendered/{slug}/posts.json`, `search-index.json`, `photos/*`.
+- Idempotent: rerunning against the same `raw/` yields the same rendered output. This is what lets us reprocess history when features change.
+- **Verification:** extend the admin page to list rendered posts alongside a thumbnail strip; confirm posts sort by `originalDate`.
 
-### Phase 4 — Polish
-- Photo album view.
-- Search UI refinement (highlights, snippets).
-- Post editing / hiding.
+### Phase 4 — Reader UI (unauthenticated demo)
+- Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch client-side search.
+- No auth yet — one hand-picked missionary slug set to `public: true` for smoke testing.
+
+### Phase 5 — Auth & ACL
+- SWA Standard with Google + Microsoft providers.
+- Load `acl.json` from `config/{slug}/` and enforce via SWA route rules + API-level checks.
+- Owner admin view: manage invitees, delete/hide posts, edit post title, rotate ingest-address token.
+- Turn off the `public: true` bit from Phase 4.
+
+### Phase 6 — Polish
+- Photo album view (aggregated across all posts for a missionary).
+- Search UI refinement (highlights, snippets, filters).
 - Owner-managed profile (display name, header image).
+- Optional per-missionary "require approval" moderation flag.
 
-### Phase 5 — Offline archive export
-- "Download my journal" builder Function.
-- Packaged reader HTML that reads local JSON.
+### Phase 7 — Offline archive export
+- "Download my journal" Function bundles `index.html` + `posts.json` + `search-index.json` + `photos/` + (optionally) `raw/` into a self-contained zip.
+- Packaged reader HTML reads local JSON — search still works.
+
+### Phase 8 — Journal Publish
+- Assemble a hardcover photo book from a missionary's posts + photos and route the print order to a print-on-demand provider (default: Lulu). Optional Shutterfly-affiliate export path for users who prefer that brand.
+- Full design in [Journal Publish](#journal-publish).
 
 ---
 
