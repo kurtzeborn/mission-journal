@@ -116,27 +116,35 @@ Because anyone on a missionary's ACL can forward historical email, the intake co
 1. **Exact match on original `Message-ID` header** — extracted from the embedded `.eml` when available. A hit here is a certain match; stop and treat as duplicate.
 2. **Fuzzy match** — when no `Message-ID` is available (inline forwards, some hosts strip it), score candidate posts against the incoming message and declare a match at total score ≥ **0.90**.
 
-**Fuzzy scoring — stage 1 (bucket, cheap):** query `deduplication` filtered to same `missionary-slug`, same `originalFromLower`, and `originalDateDay` within ±1 day of the incoming message's day. Typically returns 0–2 candidates.
+**Fuzzy match — hard gates (must-match, not scored):** candidates only advance to scoring if **both** of these match the incoming message exactly:
 
-**Fuzzy scoring — stage 2 (score each candidate):** five weighted features, each producing a value in `[0, 1]`; total score is the weighted sum.
+- `originalFromLower` — exact string equality (both sides lowercased). Sender is a hard identity signal; two messages from different missionary accounts are never duplicates of each other.
+- `originalDateDay` — exact `YYYY-MM-DD` equality on the day derived from the original `Date:` header. Missionaries send weekly, so same-day-different-sender or different-day-same-sender virtually never represents a duplicate in practice.
+
+The bucket query is therefore a direct equality lookup: `PartitionKey = missionary-slug AND originalFromLower = <incoming> AND originalDateDay = <incoming>`. Typically returns 0–2 candidates.
+
+Messages that don't satisfy both gates are treated as new posts — no scoring performed.
+
+**Fuzzy match — scoring stage (only for candidates that pass the gates):** three weighted features, each producing a value in `[0, 1]`; total score is the weighted sum. Weights sum to 1.0.
 
 | Feature | Similarity function | Weight |
 |---|---|---|
-| `originalFrom` (lowercased) | Exact match: 1.0, else 0.0 | 0.15 |
-| `originalDate` closeness | Linear falloff: 0h diff = 1.0, ≥36h diff = 0.0 | 0.10 |
-| `subjectNormalized` | Jaro–Winkler over both subjects, after stripping `Re:` / `Fwd:` prefixes and collapsing whitespace | 0.15 |
-| `bodySimHash` | 64-bit SimHash over normalized body character 5-grams (quoted lines and signature blocks stripped); score = `1 - hammingDistance / 64` | 0.40 |
-| `attachmentFingerprints` | Jaccard similarity over sets of per-attachment SHA-256 hashes | 0.20 |
+| `subjectNormalized` | Jaro–Winkler over both subjects, after stripping `Re:` / `Fwd:` prefixes and collapsing whitespace | 0.20 |
+| `bodySimHash` | 64-bit SimHash over normalized body character 5-grams (quoted lines and signature blocks stripped); score = `1 - hammingDistance / 64` | 0.55 |
+| `attachmentFingerprints` | Jaccard similarity over sets of per-attachment SHA-256 hashes | 0.25 |
 
-**Adaptive weights.** If either side has zero attachments, the attachment feature is dropped and its 0.20 weight is redistributed proportionally to the remaining four features so the maximum achievable score is still 1.0. Same treatment for any pathological message missing a subject.
+**Adaptive weights.** If either side has zero attachments, the attachment feature is dropped and its 0.25 weight is redistributed proportionally to the remaining two features so the maximum achievable score is still 1.0. Same treatment for any pathological message missing a subject.
 
 **Threshold:** total score ≥ **0.90** → duplicate. Below 0.90 → treat as new post.
 
-Rationale for the weights:
+Rationale for the design:
 
-- Body dominates (0.40) because it's the highest-signal, hardest-to-fake feature. A SimHash Hamming distance of ~6 bits corresponds to roughly 91% body similarity, which is where the threshold engages.
-- Attachments contribute strongly (0.20) when present — same photos are a very confident duplication signal.
-- Subject and sender each carry moderate weight; date is a weaker confirmation because forwarding can rewrite it and users cross time zones.
+- **Sender and date as hard gates** eliminate an entire class of false positives (e.g. two unrelated Week-14 emails on the same day from different missionaries) and make the bucket query a trivial direct lookup instead of a range scan.
+- **Body dominates the score (0.55)** because it's the highest-signal, hardest-to-fake feature. A SimHash Hamming distance of ~6 bits corresponds to roughly 91% body similarity, which is where the threshold engages.
+- **Attachments contribute strongly (0.25)** when present — same photos are a very confident duplication signal.
+- **Subject (0.20)** provides useful additional confirmation but is intentionally weighted lower than body because email clients rewrite subjects (`Fwd:` prefixes, truncation, quoting) more freely than they rewrite body content.
+
+**Trade-off:** The day-level date gate assumes the original `Date:` header lands on the same calendar day for every copy of a given message. This holds virtually always for forward-as-attachment (`message/rfc822` preserves the original date byte-for-byte) but *could* fail for an inline forward if the forwarder's mail client re-emits the date in a different time zone that shifts the calendar day. In practice this is rare, and the archived raw MIME means we can hand-merge any missed dupes later without data loss.
 
 **Threshold tuning.** The 0.90 threshold and per-feature weights are the starting point. Because raw MIME is archived and the dedup table is updated on every ingest, we can rescore historical data at any time to tune weights and threshold without asking users to resubmit.
 
