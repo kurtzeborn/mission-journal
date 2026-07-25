@@ -97,7 +97,7 @@ Design principles:
 
 - **Never trust the `From:` header alone.** Always require SPF/DKIM/DMARC pass on the outer envelope (for `direct`) or on the forwarder (for a `forward`).
 - **The forwarder must be on the same ACL that grants them read access to the destination missionary's blog.** There is no separate "allowed forwarders" list — access implies forwarding rights.
-- **Determine the target missionary from the `To:` / `Cc:` address token** (e.g. `elder-smith-a7f3@ingest.missionaryjournal.org`), then check the forwarder's authenticated email against that missionary's ACL.
+- **Determine the target missionary from the `To:` / `Cc:` address token** (e.g. `elder.smith-a7f3@ingest.missionaryjournal.org`), then check the forwarder's authenticated email against that missionary's ACL.
 - **Reject silently.** No bounce or error to the sender — bouncing leaks which addresses exist and invites probing.
 - **Log every rejection** to App Insights (sender, subject, reason, timestamp — no message body). Rejected messages are not archived to blob storage.
 
@@ -169,24 +169,26 @@ Rationale for the design:
 
 **Path-based**: `missionaryjournal.org/{missionary-slug}`.
 - One TLS certificate, one origin, no CORS quirks for the future offline packager.
-- **Slug is derived deterministically from the missionary's `@missionary.org` email local-part** — lowercased, with `.` and `_` replaced by `-`, non-`[a-z0-9-]` characters stripped, and runs of `-` collapsed. Examples:
-  - `elder.smith@missionary.org` → `elder-smith`
-  - `sister_johnson2@missionary.org` → `sister-johnson2`
-  - `elder.jose.maria.garcia@missionary.org` → `elder-jose-maria-garcia`
+- **Slug is the raw local-part of the missionary's `@missionary.org` email**, lowercased. **No other transformation** — dots, underscores, and hyphens are kept verbatim. Examples:
+  - `elder.smith@missionary.org` → `elder.smith`
+  - `sister_johnson2@missionary.org` → `sister_johnson2`
+  - `elder.jose.maria.garcia@missionary.org` → `elder.jose.maria.garcia`
+- **Why no character rewrites?** Collapsing `.` / `_` / `-` into a single form would allow two distinct Church-issued addresses (`elder.smith` and `elder-smith`) to map to the same slug, breaking the very uniqueness guarantee we're inheriting. Passing the local-part through verbatim keeps `slug` in 1:1 correspondence with the `@missionary.org` address. URL-safety is not a concern — `.`, `_`, and `-` are all unreserved characters per RFC 3986, so `missionaryjournal.org/elder.smith` is a perfectly valid URL path.
 - **Why derive it rather than have the missionary pick one?**
   - **Uniqueness is inherited from the Church's own email allocation** — they already deconflict `elder.smith` vs `elder.smith2` at the address level. No collision check needed on our side, no reservation flow at onboarding.
-  - **No embedded year** to go stale mid-mission or look dated in the post-mission archive. (Previous `elder-smith-2026` scheme would have felt odd for a 2027–2029 missionary.)
+  - **No embedded year** to go stale mid-mission or look dated in the post-mission archive.
   - **Deterministic**: the intake code can compute the slug from the authenticated sender address alone — no lookup, no onboarding form field, no persistence of a slug-to-email map.
 - If a missionary really wants a different-looking URL (say a nickname), we can add an optional friendly-alias redirect later without giving up the deterministic derivation as the source of truth.
 
 ### Ingest address scheme *(review)*
 
-Distinct from the slug. The slug is the public URL segment (deterministic from the missionary's `@missionary.org` email); the ingest address is what the missionary CCs on their weekly email and is what the intake code parses to determine the target journal.
+Distinct from the slug. The slug is the public URL segment (the raw lowercased local-part of the missionary's `@missionary.org` email); the ingest address is what the missionary CCs on their weekly email and is what the intake code parses to determine the target journal.
 
-Proposed: **tokenized** — `{slug}-{4-char-token}@ingest.missionaryjournal.org` (e.g. `elder-smith-a7f3@ingest.missionaryjournal.org`).
+Proposed: **tokenized** — `{slug}-{4-char-token}@ingest.missionaryjournal.org` (e.g. `elder.smith-a7f3@ingest.missionaryjournal.org`).
 - Random 4-char suffix prevents strangers from guessing addresses and spamming a missionary's journal.
 - Friendly enough to remember once written down.
 - Missionary can rotate the token via the admin UI if the address leaks; the slug (and therefore the URL and identity) stays stable.
+- **Parser rule:** strip the domain, then match `-[a-f0-9]{4}$` on the local-part to extract the token; the remainder is the slug. Anchoring on the trailing 4-hex-char pattern avoids ambiguity from hyphens that may appear inside the slug itself.
 
 Alternative: friendly-only (`{slug}@ingest.…`), simpler but more spam-prone.
 
@@ -241,7 +243,7 @@ Plus two Azure Tables in the same storage account:
   "photos": [
     { "id": "p_9a2c", "width": 4032, "height": 3024, "caption": null }
   ],
-  "sourceRawPath": "raw/elder-smith/{msgId}/message.eml",
+  "sourceRawPath": "raw/elder.smith/{msgId}/message.eml",
   "alsoSubmittedBy": [
     { "email": "mom@example.com", "receivedAt": "2026-08-01T15:00:00Z" }
   ]
@@ -446,7 +448,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 ## Open questions to confirm
 
 1. **Email intake:** Option A (Logic Apps + M365) or Option B (SendGrid Inbound Parse)?
-2. **Ingest address:** tokenized (`{slug}-{4char}@ingest.…`) confirmed, or friendly-only (`{slug}@ingest.…`)?
+2. **Ingest address:** tokenized (`{slug}-{4char}@ingest.…`, e.g. `elder.smith-a7f3@…`) confirmed, or friendly-only (`{slug}@ingest.…`)?
 3. **Moderation:** default hands-off, opt-in approval — OK?
 4. **Post-mission:** read-only archive stays live indefinitely, plus downloadable offline zip — OK?
 5. **Domain:** `missionaryjournal.org` (currently used throughout the plan) confirmed, or something else? Alternatives: `missionjournal.app`, `elderjournal.com`, etc.
