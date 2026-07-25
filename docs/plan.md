@@ -125,24 +125,22 @@ The bucket query is therefore a direct equality lookup: `PartitionKey = missiona
 
 Messages that don't satisfy both gates are treated as new posts — no scoring performed.
 
-**Fuzzy match — scoring stage (only for candidates that pass the gates):** three weighted features, each producing a value in `[0, 1]`; total score is the weighted sum. Weights sum to 1.0.
+**Fuzzy match — scoring stage (only for candidates that pass the gates):** two normalized text features compared with the **same** algorithm — **Jaro–Winkler** — and combined as a weighted sum. Weights sum to 1.0.
 
-| Feature | Similarity function | Weight |
+| Feature | Normalization | Weight |
 |---|---|---|
-| `subjectNormalized` | Jaro–Winkler over both subjects, after stripping `Re:` / `Fwd:` prefixes and collapsing whitespace | 0.20 |
-| `bodySimHash` | 64-bit SimHash over normalized body character 5-grams (quoted lines and signature blocks stripped); score = `1 - hammingDistance / 64` | 0.55 |
-| `attachmentFingerprints` | Jaccard similarity over sets of per-attachment SHA-256 hashes | 0.25 |
-
-**Adaptive weights.** If either side has zero attachments, the attachment feature is dropped and its 0.25 weight is redistributed proportionally to the remaining two features so the maximum achievable score is still 1.0. Same treatment for any pathological message missing a subject.
+| `subjectNormalized` | Iteratively strip leading `Re:` / `Fw:` / `Fwd:` tokens **and** any `[…]` bracketed prefix (e.g. `[EXTERNAL]`, `[SPAM]`, `[External Sender]`) until neither pattern matches; collapse internal whitespace; lowercase. Compare the full normalized string. | 0.35 |
+| `bodyHead200` | Strip quoted-reply lines (`^>`), strip signature blocks (from `-- \n` or the first `Sent from my …` line onward), collapse whitespace, lowercase, then take the **first 200 characters**. | 0.65 |
 
 **Threshold:** total score ≥ **0.90** → duplicate. Below 0.90 → treat as new post.
 
 Rationale for the design:
 
 - **Sender and date as hard gates** eliminate an entire class of false positives (e.g. two unrelated Week-14 emails on the same day from different missionaries) and make the bucket query a trivial direct lookup instead of a range scan.
-- **Body dominates the score (0.55)** because it's the highest-signal, hardest-to-fake feature. A SimHash Hamming distance of ~6 bits corresponds to roughly 91% body similarity, which is where the threshold engages.
-- **Attachments contribute strongly (0.25)** when present — same photos are a very confident duplication signal.
-- **Subject (0.20)** provides useful additional confirmation but is intentionally weighted lower than body because email clients rewrite subjects (`Fwd:` prefixes, truncation, quoting) more freely than they rewrite body content.
+- **One algorithm (Jaro–Winkler) for both features.** Mixing SimHash + Jaro–Winkler + Jaccard was three different tuning knobs solving essentially the same "how similar are these two strings" question. On strings ≤200 chars Jaro–Winkler is fast, produces well-calibrated scores in `[0, 1]`, and tolerates the small edits email clients introduce (extra whitespace, punctuation, minor re-wording) without any tokenization decisions.
+- **Body weighted higher (0.65) than subject (0.35)** because subjects are short, aggressively rewritten by clients, and often literally identical across a mission (`Week 14`, `Update`); the body opening is much harder to match by coincidence between two unrelated messages that already share sender and date.
+- **Attachments dropped from scoring.** Attachment content is high-noise as a dedup signal: recurring assets (mission logo, repeated photos across weekly emails) inflate similarity, and forwarding clients routinely re-encode, rename, strip inline images, or fail to re-attach originals — so its true signal-to-noise for detecting *the same message* is worse than expected. Sender + date gates plus a body-head comparison catch the target case ("someone re-forwarded a message we already have") reliably.
+- **First 200 chars, not full body.** For deciding whether two forwards represent the same original the opening is more than enough — greetings and the first sentence or two are highly discriminating. Full-body hashing was expensive to compute, expensive to store, and easily thrown off by mid-body quoted-reply interleaving.
 
 **Trade-off:** The day-level date gate assumes the original `Date:` header lands on the same calendar day for every copy of a given message. This holds virtually always for forward-as-attachment (`message/rfc822` preserves the original date byte-for-byte) but *could* fail for an inline forward if the forwarder's mail client re-emits the date in a different time zone that shifts the calendar day. In practice this is rare, and the archived raw MIME means we can hand-merge any missed dupes later without data loss.
 
@@ -213,7 +211,7 @@ config/
 
 Plus two Azure Tables in the same storage account:
 
-- **`deduplication`** — `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`. Additional bucketing / scoring columns: `originalFromLower`, `originalDateDay` (`YYYY-MM-DD`), `originalDateFull` (ISO-8601), `subjectNormalized`, `bodySimHash` (64-bit hex), `attachmentHashes` (semicolon-joined SHA-256s), plus `postId`, `sourceRawPath`, `firstSeen`. See [fuzzy scoring](#extracting-and-de-duplicating-forwards).
+- **`deduplication`** — `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`. Bucketing (hard-gate) columns: `originalFromLower`, `originalDateDay` (`YYYY-MM-DD`). Scoring columns: `subjectNormalized`, `bodyHead200`. Audit columns: `originalDateFull` (ISO-8601), `postId`, `sourceRawPath`, `firstSeen`. See [fuzzy scoring](#extracting-and-de-duplicating-forwards).
 - **`preferences`** — `PartitionKey = "user"`, `RowKey = lowercased email`. Value: per-user notification flags (see [Notification preferences](#notification-preferences)).
 
 ### Data model (posts.json entry)
@@ -401,7 +399,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - **Verification UI:** single unauthenticated page at `/admin/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Just enough to see the pipeline is working.
 
 ### Phase 2 — De-duplication and outbound send
-- Dedupe: exact `Message-ID` lookup first, then fuzzy scoring (SimHash + weighted features per [fuzzy scoring](#extracting-and-de-duplicating-forwards)). Populate `deduplication` on every accepted message.
+- Dedupe: exact `Message-ID` lookup first, then sender+date hard-gated Jaro–Winkler scoring over `subjectNormalized` + `bodyHead200` per [fuzzy scoring](#extracting-and-de-duplicating-forwards). Populate `deduplication` on every accepted message.
 - Dedupe-hit path: update existing post's `alsoSubmittedBy`; send courtesy ack email via the outbound provider; respect `preferences.dedupeAckEmails`.
 - Signed-token unsubscribe endpoint for the `dedupeAckEmails` toggle.
 - **Verification:** hand-craft duplicate forwards from a test mailbox, watch the dedup table populate and the courtesy email arrive. Click the unsubscribe link, verify the flag flips, resend a duplicate, confirm silence.
