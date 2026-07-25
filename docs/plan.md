@@ -121,7 +121,7 @@ Because anyone on a missionary's ACL can forward historical email, the intake co
 - `originalFromLower` — exact string equality (both sides lowercased). Sender is a hard identity signal; two messages from different missionary accounts are never duplicates of each other.
 - `originalDateDay` — exact `YYYY-MM-DD` equality on the day derived from the original `Date:` header. Missionaries send weekly, so same-day-different-sender or different-day-same-sender virtually never represents a duplicate in practice.
 
-The bucket query is therefore a direct equality lookup: `PartitionKey = missionary-slug AND originalFromLower = <incoming> AND originalDateDay = <incoming>`. Typically returns 0–2 candidates.
+The bucket query is therefore an in-memory scan of the missionary's already-loaded `posts.json`: filter posts whose `originalFrom` matches (case-insensitively) and whose `originalDate` day matches. Typically returns 0–2 candidates.
 
 Messages that don't satisfy both gates are treated as new posts — no scoring performed.
 
@@ -144,7 +144,19 @@ Rationale for the design:
 
 **Trade-off:** The day-level date gate assumes the original `Date:` header lands on the same calendar day for every copy of a given message. This holds virtually always for forward-as-attachment (`message/rfc822` preserves the original date byte-for-byte) but *could* fail for an inline forward if the forwarder's mail client re-emits the date in a different time zone that shifts the calendar day. In practice this is rare, and the archived raw MIME means we can hand-merge any missed dupes later without data loss.
 
-**Threshold tuning.** The 0.90 threshold and per-feature weights are the starting point. Because raw MIME is archived and the dedup table is updated on every ingest, we can rescore historical data at any time to tune weights and threshold without asking users to resubmit.
+**Threshold tuning.** The 0.90 threshold and per-feature weights are the starting point. Because raw MIME is archived, we can rescore historical data at any time to tune weights and threshold without asking users to resubmit.
+
+**Storage of truth.** Dedup does not use a separate Azure Table. `rendered/{slug}/posts.json` already contains every field the check needs (`originalMessageId`, `originalFrom`, `originalDate`, `subject`, `bodyText`), so ingest just loads that blob and scans it in memory. `subjectNormalized` and `bodyHead200` are computed on the fly against the 0–2 candidates that pass the sender+date gate — cheap enough that precomputing and storing them buys nothing.
+
+**Concurrency.** A parent bulk-forwarding several weeks of missionary emails in quick succession is an entirely normal usage pattern, so ingests for a single slug can arrive in bursts. Handled with **optimistic concurrency on `posts.json`**:
+
+1. Ingest loads `posts.json` and records its ETag.
+2. Runs the dedup check against the loaded posts.
+3. If duplicate: send the courtesy ack, done. Nothing written to `raw/` or `rendered/`.
+4. If new: append the post skeleton in memory, `PUT` back to blob with `If-Match: <etag>`, then write `raw/{slug}/{msgId}/`, then enqueue render.
+5. On `412 Precondition Failed` (a sibling ingest committed between our load and our write), restart at step 1. On the retry the newly-committed sibling post is now visible, so if it *was* a duplicate of ours we'll correctly ack instead of appending.
+
+`raw/` is only written after the ETag write succeeds, so a lost race never leaves an orphaned raw folder to clean up. At weekly-per-missionary cadence — even with occasional 5–10-message bulk-forward bursts — collisions are infrequent and each retry is cheap (one JSON fetch + one hash compare). If contention ever becomes measurable we can move to a blob lease for stricter serialization, but the optimistic path is expected to hold for a long time.
 
 **On dedup hit:** don't create a new post. Send a courtesy acknowledgment reply (see [Notification preferences](#notification-preferences)) unless suppressed for that user. We deliberately do not track who else has forwarded a given message — the courtesy reply is the only outward signal, addressed to the current forwarder alone. A `who-forwarded-what` history would be data we collect but never use.
 
@@ -215,10 +227,11 @@ config/
     acl.json                           Email allowlist + roles
 ```
 
-Plus two Azure Tables in the same storage account:
+Plus one Azure Table in the same storage account:
 
-- **`deduplication`** — `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`. Bucketing (hard-gate) columns: `originalFromLower`, `originalDateDay` (`YYYY-MM-DD`). Scoring columns: `subjectNormalized`, `bodyHead200`. Audit columns: `originalDateFull` (ISO-8601), `postId`, `sourceRawPath`, `firstSeen`. See [fuzzy scoring](#extracting-and-de-duplicating-forwards).
 - **`users`** — `PartitionKey = "user"`, `RowKey = lowercased email address`. Identity columns: `displayName`, `authProvider` (`google` | `microsoft`), `firstSeenAt`, `lastSignInAt`. Preference columns: `dedupeAckEmails` (bool, default `true`); additional per-user preferences are just additional columns as they arrive.
+
+No separate deduplication table — `rendered/{slug}/posts.json` is the dedup source of truth (see [Extracting and de-duplicating forwards](#extracting-and-de-duplicating-forwards) for the scan + concurrency model).
 
 ### Data model (posts.json entry)
 
@@ -385,7 +398,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 ### Phase 0 — Foundation
 - Register `missionaryjournal.org` (or chosen domain).
 - Create Azure subscription resource group.
-- Storage account: containers `raw/` (soft-delete + versioning on), `rendered/`, `config/`. Tables `deduplication` and `users`.
+- Storage account: containers `raw/` (soft-delete + versioning on), `rendered/`, `config/`. Azure Table `users`.
 - Key Vault + managed identity for Functions (SendGrid API key, Lulu OAuth secret).
 - App Insights instance (for rejection logging and general telemetry).
 - Choose and provision the email provider (SendGrid or M365 shared mailbox). Set up DNS: MX record on the ingest subdomain, DKIM CNAMEs on the sending subdomain, DMARC policy on the apex.
@@ -394,20 +407,22 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Function endpoint that receives inbound mail (SendGrid Inbound Parse webhook, or Logic App poll from M365 shared mailbox).
 - Classifier: `direct` / `forward` / `rejected` per the [message classification](#message-classification-applies-to-both-options) table. DKIM re-verification against the `missionary.org` public key for `forward` messages with an embedded `.eml`; forwarder-vs-ACL check for all `forward` messages. Provenance captured in the `extractionSource` metadata field.
 - Original-message extractor: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators).
-- Write raw MIME + attachments to `raw/{slug}/{msgId}/`; log rejections to App Insights only (sender, subject, reason, timestamp — no body).
+- Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/`. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
+- No dedup yet — every accepted message becomes a post. Any duplicates produced during bulk-forward testing get cleaned up when Phase 2 lands.
 - ACL for this phase is a **hand-edited JSON blob** — no auth UI yet. Manually add test accounts.
 - **Verification UI:** single unauthenticated page at `/admin/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Just enough to see the pipeline is working.
 
 ### Phase 2 — De-duplication and outbound send
-- Dedupe: exact `Message-ID` lookup first, then sender+date hard-gated Jaro–Winkler scoring over `subjectNormalized` + `bodyHead200` per [fuzzy scoring](#extracting-and-de-duplicating-forwards). Populate `deduplication` on every accepted message.
+- Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then sender+date hard-gated Jaro–Winkler scoring over normalized subject + first 200 chars of body per [fuzzy scoring](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts.
+- Ingest becomes conditional: on match-miss, append the post skeleton to `posts.json` with `If-Match` and write raw/; on match-hit, don't touch either and send a courtesy ack instead.
 - Dedupe-hit path: send courtesy ack email via the outbound provider; respect `dedupeAckEmails` on the recipient's `users` row.
 - Settings page fragment at `/{slug}/settings` with the `dedupeAckEmails` toggle (auth via SWA identity, no separate token layer). Toggle persists to the current user's `users` row. Unsubscribe links in ack emails deep-link here.
-- **Verification:** hand-craft duplicate forwards from a test mailbox, watch the dedup table populate and the courtesy email arrive. Click the unsubscribe link, sign in if not already, flip the toggle on the settings page, resend a duplicate, confirm silence.
+- **Verification:** hand-craft duplicate forwards from a test mailbox and confirm the raw folder count stays flat while the ack arrives. Bulk-forward five near-simultaneously to exercise the ETag-retry path. Click the unsubscribe link, sign in if not already, flip the toggle on the settings page, resend a duplicate, confirm silence.
 
 ### Phase 3 — Render pipeline
-- Queue-triggered render Function: parse raw `.eml` → text + HTML body → resize photos to WebP + strip EXIF → produce/update `rendered/{slug}/posts.json`, `search-index.json`, `photos/*`.
-- Idempotent: rerunning against the same `raw/` yields the same rendered output. This is what lets us reprocess history when features change.
-- **Verification:** extend the admin page to list rendered posts alongside a thumbnail strip; confirm posts sort by `originalDate`.
+- Queue-triggered render Function: parse raw `.eml` → resize photos to WebP + strip EXIF → write photos to `rendered/{slug}/photos/*` and fill in the target post's `photos` array in `posts.json` (ETag-guarded, same as ingest). Rebuild `search-index.json`.
+- Idempotent: rerunning against the same `raw/` yields the same rendered output. Post text and dedup fields are already in `posts.json` from Phase 1/2; render only fills in photo-related fields, so double-runs are safe.
+- **Verification:** extend the admin page to list rendered posts alongside a thumbnail strip; confirm posts sort by `originalDate` and that photo arrays fill in shortly after ingest.
 
 ### Phase 4 — Reader UI (unauthenticated demo)
 - Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch client-side search.
