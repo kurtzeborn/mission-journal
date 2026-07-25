@@ -81,16 +81,43 @@ An automatic journal/blog service for LDS missionaries. A missionary CCs a perso
 
 Both are simple and reliable. Decision pending.
 
-#### Sender validation (applies to both options)
+#### Message classification (applies to both options)
 
-Missionaries send email from the Church-issued `@missionary.org` domain. The intake step **must discard any message whose validated sender is not `@missionary.org`** before writing to `raw/`. Specifically:
+Inbound messages fall into one of these classes based on what the intake code can verify. Only classified-as-accepted messages are written to `raw/`; everything else is dropped silently.
 
-- Check the **authenticated sender** — the `From:` header address after confirming SPF/DKIM/DMARC results (`Authentication-Results` header) show `pass`. Do not trust `From:` alone; spoofers set arbitrary `From:` values.
-- If the domain is not `missionary.org` (case-insensitive), drop the message silently. No bounce, no error to the sender — bouncing would leak that the address exists and invite probing.
-- Also drop if SPF/DKIM/DMARC did not pass, even if the `From:` domain looks right. This prevents spoofed `missionary.org` mail from being ingested.
-- Log rejections (sender, subject, timestamp, reason) to a `rejected/` blob or App Insights for audit, without storing the message body.
+| Class | Detection | Publish? |
+|---|---|---|
+| `direct` | Authenticated sender is `@missionary.org` (SPF/DKIM/DMARC all pass per `Authentication-Results`) | Yes |
+| `forward_verified` | Contains a `message/rfc822` attachment (original `.eml`); original DKIM signature re-verifies against the `missionary.org` public key; forwarder is on the target missionary's ACL | Yes |
+| `forward_headers` | Original `.eml` attached with `@missionary.org` `From`, but DKIM re-verify fails (broken by an intermediate hop, key rotated, etc.); forwarder is on the target missionary's ACL | Yes |
+| `forward_inline` | Only inline body-text evidence of missionary origin (e.g. `---------- Forwarded message ---------` separator with `From: elder.smith@missionary.org`); forwarder is on the target missionary's ACL | Yes |
+| `rejected` | None of the above — no `@missionary.org` evidence, or forwarder is not on the target ACL, or authentication of the forwarder itself failed | No — drop silently, log to `rejected/` |
 
-This filter is the single most important spam and impersonation defense; the rest of the pipeline can trust that every message in `raw/` genuinely originated from a missionary account.
+Design principles:
+
+- **Never trust the `From:` header alone.** Always require SPF/DKIM/DMARC pass on the outer envelope (for `direct`) or on the forwarder (for any `forward_*` class).
+- **The forwarder must be on the same ACL that grants them read access to the destination missionary's blog.** There is no separate "allowed forwarders" list — access implies forwarding rights.
+- **Determine the target missionary from the `To:` / `Cc:` address token** (e.g. `elder-smith-a7f3@ingest.missionaryjournal.org`), then check the forwarder's authenticated email against that missionary's ACL.
+- **Reject silently.** No bounce or error to the sender — bouncing leaks which addresses exist and invites probing.
+- **Log every rejection** (sender, subject, timestamp, reason) to a `rejected/` blob or App Insights for audit, without storing the message body.
+
+#### Extracting and de-duplicating forwards
+
+Because anyone on a missionary's ACL can forward historical email, the intake code has to extract the "true" original message and check whether we already have it:
+
+1. **Prefer `message/rfc822` attachments.** Outlook, Apple Mail, and Gmail's "forward as attachment" all embed the original as an rfc822 MIME part with all headers intact. Use these when present.
+2. **Fall back to inline forwards.** Parse blocks starting with `---------- Forwarded message ---------` (Gmail), `Begin forwarded message:` (Apple Mail), or `-----Original Message-----` (Outlook). Extract original `From`, `Date`, `Subject`, and body text. Attachments in inline forwards are attached to the outer message rather than the inline block; associate them with the extracted original.
+
+De-duplication key, in priority order:
+
+1. **Original `Message-ID` header** — extracted from the `.eml` attachment when available. RFC 5322 requires global uniqueness; this is the ideal key.
+2. **Content fingerprint** — SHA-256 of the normalized tuple `(original From, original Date truncated to the minute, original Subject, first 512 bytes of plaintext body)`. Used only when `Message-ID` is missing.
+
+The dedupe index is a single Azure Table `deduplication` with `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`, and a small value pointing at the existing `raw/` path. Lookup is milliseconds; cost is negligible.
+
+**On dedup hit:** don't create a new post. Update the existing post's `alsoSubmittedBy` array with the forwarder's email and timestamp. Send a courtesy acknowledgment reply (see [Notification preferences](#notification-preferences)) unless suppressed for that user.
+
+**Post ordering:** posts are sorted by the **original `Date:` header**, not `receivedAt`. Forwards land in their correct historical position in the timeline. `receivedAt` is retained on each post for audit and for a "Recently added" ribbon in the reader UI.
 
 #### Option A: Logic Apps + M365 shared mailbox *(recommended if we keep M365 in the mail path)*
 - One shared mailbox in the tenant, e.g. `journal@missionaryjournal.com` (shared mailboxes are free under 50 GB, no license required).
@@ -151,19 +178,31 @@ config/
     acl.json                           Email allowlist + roles
 ```
 
+Plus two Azure Tables in the same storage account:
+
+- **`deduplication`** — `PartitionKey = missionary-slug`, `RowKey = originalMessageId or contentHash`. Value: `postId`, `sourceRawPath`, `firstSeen`.
+- **`preferences`** — `PartitionKey = "user"`, `RowKey = lowercased email`. Value: per-user notification flags (see [Notification preferences](#notification-preferences)).
+
 ### Data model (posts.json entry)
 
 ```jsonc
 {
-  "id": "2026-07-06-a7f3",
-  "receivedAt": "2026-07-06T18:04:22Z",
+  "id": "2020-07-06-a7f3",
+  "class": "forward_verified",              // direct | forward_verified | forward_headers | forward_inline
+  "originalDate": "2020-07-06T18:04:22Z",   // from the original message; drives sort order
+  "receivedAt": "2026-07-25T12:14:00Z",     // when this ingestion actually happened
   "subject": "Week 34 - miracles in Manaus",
   "bodyHtml": "<p>…</p>",
   "bodyText": "…",
+  "originalMessageId": "<CAB=…@mail.missionary.org>",  // dedupe key when available
+  "originalFrom": "elder.smith@missionary.org",
   "photos": [
     { "id": "p_9a2c", "width": 4032, "height": 3024, "caption": null }
   ],
-  "sourceRawPath": "raw/elder-smith-2026/2026/07/{msgId}/message.eml"
+  "sourceRawPath": "raw/elder-smith-2026/2020/07/{msgId}/message.eml",
+  "alsoSubmittedBy": [
+    { "email": "mom@example.com", "receivedAt": "2026-08-01T15:00:00Z" }
+  ]
 }
 ```
 
@@ -192,6 +231,19 @@ config/
   - `reader` — invited viewer. Read-only.
 - **Invitations:** owner/admin enters an email address; that address is added to `acl.json`. First time the invitee signs in with that email via Google or MS, they get access.
 - SWA route rules enforce that `/{missionary-slug}/*` requires an authenticated user whose email is in that slug's ACL. API calls check the same ACL server-side.
+- **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to that missionary's ingest address; no separate forwarding allowlist exists.
+
+### Notification preferences
+
+Per-user (not per-missionary) preferences for outbound emails the service generates. Stored in the `preferences` Azure Table keyed by the user's authenticated email.
+
+Initial preferences:
+
+- **`dedupeAckEmails`** — bool, default `true`. Sends a short "we already have this one — thanks!" reply when a forwarded email is de-duplicated against an existing post. Every such reply contains an unsubscribe-style link ("Don't tell me again when you forward duplicates") that hits a Function endpoint to flip this preference off for the user.
+
+Unsubscribe-style links use a signed short-lived token (HMAC of `{email, preference, expiry}` with a secret from Key Vault, valid ~30 days) so the target Function can authenticate the click without requiring the user to sign in. On click, the endpoint flips the flag and shows a small confirmation page ("OK, we'll stop sending those. Click here if you change your mind.").
+
+Doubles as an end-to-end smoke test for the send-and-receive email pipeline: the ack reply exercises SendGrid send from `no-reply@mail.missionaryjournal.org`, and the click exercises the Function API.
 
 ### Moderation / quarantine *(review)*
 
@@ -249,9 +301,13 @@ Optional per-missionary setting: **"require approval"**. If enabled, posts land 
 
 ### Phase 3 — Email intake
 - Decide Option A vs B.
-- Build the intake path end to end (email arrives → raw blob → queue → render).
+- Build the intake path end to end (email arrives → classify → dedupe → raw blob → queue → render).
+- Message classifier: distinguish `direct` from `forward_verified` / `forward_headers` / `forward_inline` / `rejected`. Includes DKIM re-verification for `forward_verified` and forwarder-vs-ACL check for all `forward_*` classes.
+- Original-message extractor: prefer `message/rfc822` attachments; fall back to inline block parsing across the three common forward formats (Gmail, Apple Mail, Outlook).
+- Deduplication: `deduplication` table lookup keyed on original `Message-ID` (preferred) or content hash. On hit, append forwarder to existing post's `alsoSubmittedBy` and send the dedupe-ack reply (respecting user preference).
+- Notification preferences: `preferences` table + signed-token unsubscribe endpoint for `dedupeAckEmails`.
 - Address provisioning: onboarding creates missionary slug + tokenized email + initial ACL.
-- Bounce/reject: any inbound mail whose `To`/`Cc` doesn't map to a known missionary token is dropped (or a Logic App bounce reply, TBD).
+- Bounce/reject: any inbound mail whose `To`/`Cc` doesn't map to a known missionary token is dropped.
 
 ### Phase 4 — Polish
 - Photo album view.
