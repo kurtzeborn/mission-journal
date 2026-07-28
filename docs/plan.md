@@ -121,9 +121,22 @@ Design principles:
 
 - **Never trust the `From:` header alone.** Always require SPF/DKIM/DMARC pass on the outer envelope (for `direct`) or on the forwarder (for a `forward`).
 - **The forwarder must be on the same ACL that grants them read access to the destination missionary's letters site.** There is no separate "allowed forwarders" list — access implies forwarding rights.
-- **Determine the target missionary from the `To:` / `Cc:` address local-part** (e.g. `elder.smith@ingest.pdayletters.com` → slug `elder.smith`), then check the forwarder's authenticated email against that missionary's ACL.
+- **Determine the target missionary from the envelope recipient (SMTP `RCPT TO`), not the visible `To:` / `Cc:` headers** — see [Envelope recipient parsing](#envelope-recipient-parsing) below. BCC-only ingest is the dominant pattern (missionaries don't want the ingest address exposed to their family list), and BCC recipients are absent from delivered headers by design. Envelope-based routing works for `To:`, `Cc:`, and `Bcc:` uniformly.
 - **Reject silently.** No bounce or error to the sender — bouncing leaks which addresses exist and invites probing.
 - **Log every rejection** to App Insights (sender, subject, reason, timestamp — no message body). Rejected messages are not archived to blob storage.
+
+#### Envelope recipient parsing
+
+BCC is the dominant ingest pattern: a missionary types their family list in `To:` (occasionally friends in `Cc:`) and drops the ingest address in `Bcc:` so their family never sees, replies to, or forwards it around. BCC recipients are removed from the delivered message's `To:` and `Cc:` headers by design — header-based routing would miss BCC-only ingest on every message. The envelope, however, is preserved by every provider:
+
+- **Option B (SendGrid Inbound Parse):** the webhook payload includes a top-level `envelope` field: `{"to": ["elder.smith@ingest.pdayletters.com"], "from": "elder.smith@gmail.com"}`. Use `envelope.to[0]` as the routing target.
+- **Option A (M365 shared mailbox):** two viable extractions.
+  1. **Per-missionary aliases on the shared mailbox** — add `{slug}@ingest.pdayletters.com` (and its three siblings) as an alias on the shared mailbox at onboarding. On fetch, Graph's `internetMessageHeaders` includes a `Delivered-To:` (or Exchange's `X-MS-Exchange-Recipient-Address`) naming the alias the message hit.
+  2. **Catch-all + `Received:` chain parse** — the last hop of the `Received:` chain includes a `for <address>` clause naming the envelope recipient. Reliable and doesn't require alias management at onboarding.
+
+**Multiple envelope recipients** (e.g. a family BCCs both companion elders' ingest addresses on the same email) — process each independently: run the full pipeline once per matched slug. Any envelope recipient whose domain isn't on the accepted list is ignored (log-only, no error).
+
+**Envelope cannot be spoofed by the sender's client** — it's set by their outgoing SMTP server, not by their message composition. So header-vs-envelope mismatch is normal for BCC, but a stranger can't lie about the envelope to route a publish attempt at someone else's slug — and even if they could, the [message classifier](#message-classification-applies-to-both-options)'s ACL/DKIM check still gates publication.
 
 #### Extracting and de-duplicating forwards
 
@@ -218,7 +231,7 @@ Rationale for the design:
 
 ### Ingest address scheme
 
-The ingest address is `{slug}@ingest.{accepted-domain}` where `{accepted-domain}` is any of the four ingest domains listed in [Domains](#domains) (e.g. `elder.smith@ingest.pdayletters.com`, `elder.smith@ingest.pday.email`). The intake code parses the target letters site by stripping the domain from the `To:` / `Cc:` address; the resulting local-part **is** the slug, regardless of which accepted domain was used. Any recipient whose domain isn't on the accepted list is rejected as if the mailbox didn't exist.
+The ingest address is `{slug}@ingest.{accepted-domain}` where `{accepted-domain}` is any of the four ingest domains listed in [Domains](#domains) (e.g. `elder.smith@ingest.pdayletters.com`, `elder.smith@ingest.pday.email`). The intake code parses the target letters site by extracting the local-part of the **envelope recipient** (SMTP `RCPT TO`) — see [Envelope recipient parsing](#envelope-recipient-parsing); the local-part **is** the slug regardless of which accepted domain was used and regardless of whether the address appeared in `To:`, `Cc:`, or `Bcc:`. Any envelope recipient whose domain isn't on the accepted list is rejected as if the mailbox didn't exist.
 
 **Why no random token?** Earlier drafts proposed `{slug}-{4-char-token}@…` to make the address unguessable and spam-resistant. The [message classifier](#message-classification-applies-to-both-options) already rejects anything that isn't either a `direct` from the authenticated missionary or a `forward` from an ACL member — a stranger who guesses the address gets nothing published and no reply, only a logged-and-dropped rejection. Obscurity adds no meaningful defense on top of that, and it costs an ugly address, a token field in `profile.json`, extra parser logic, and an admin rotation UI. Rate-limiting a would-be flood attacker is better handled at the intake edge (SendGrid spam filtering, or Exchange Online Protection under Option A) than by an obscure local-part.
 
