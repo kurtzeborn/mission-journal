@@ -305,7 +305,7 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 - **Model:** per-missionary allowlist keyed on the authenticated user's email address.
 - **Roles per missionary's letters site:**
   - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit/hide/delete any post (including editing the subject or body — for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
-  - `reader` — invited viewer. Read-only.
+  - `reader` — invited viewer. Read-only for site content; can also download the offline archive and order a printed book for themselves (see [Post-mission archive](#post-mission-archive) and [Journal Publish](#journal-publish)).
 - **Invitations:** an owner enters an email address and a role; that address is added to `acl.json`. First time the invitee signs in with that email via Google or MS, they get access.
 - SWA route rules enforce that `/{missionary-slug}/*` requires an authenticated user whose email is in that slug's ACL. API calls check the same ACL server-side.
 - **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to that missionary's ingest address; no separate forwarding allowlist exists.
@@ -330,13 +330,22 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 ### Post-mission archive
 
-- One-click "Download my letters" (owner only) produces a zip:
+**Nothing about the site changes when a missionary comes home.** No "read-only mode" flip, no state transition, no admin action. The letters simply stop arriving. Owners retain full edit/hide/delete rights on individual posts; anyone on the ACL can still forward historical emails that surface later (an aunt finds an old email in her inbox two years post-mission and forwards it — it lands normally). Nothing on our side needs to happen.
+
+**Anyone on the ACL** can, at any time (during or after the mission):
+
+- **Download the offline archive** — one-click "Download my letters" produces a self-contained zip:
   - `index.html` — the same reader UI, but pointed at local files
   - `posts.json`, `search-index.json`
   - `photos/` — all `large.webp` + `thumb.webp`
   - `raw/` — optional toggle to include the preserved archive too
-- The zip is self-contained: open `index.html` in any browser and it works, search included.
-- Site remains available in read-only mode indefinitely, or the missionary can request deletion.
+  - Open `index.html` in any browser and it works, search included. Grandparents get their own copy without going through the owner.
+
+- **Order a printed book** — see [Journal Publish](#journal-publish). Any ACL member can order a copy for themselves.
+
+**Owner-only actions:**
+
+- **Permanent deletion.** An owner can request permanent deletion of the site and all archived content (raw, rendered, config, and per-missionary preferences). Guarded by an explicit typed confirmation to defend against misclicks.
 
 ### Journal Publish
 
@@ -357,7 +366,7 @@ Assemble a physical hardcover photo book from a missionary's journal — all pos
 
 #### Primary path — Lulu Print API
 
-1. Owner clicks "Publish this journal as a book" in the admin UI.
+1. Any ACL member clicks "Publish this journal as a book" in the reader UI.
 2. A book-assembly Function builds a print-ready PDF from the missionary's posts:
    - Cover page (title, missionary name, mission dates, headline photo).
    - Table of contents by date.
@@ -396,7 +405,6 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 #### Open questions for this feature
 
 - Pass-through pricing, or add a small service fee?
-- Allow readers (not just owner/admin) to order copies for themselves? (Grandparents will want copies too.)
 - Fixed trim size / template initially, or configurable?
 
 ---
@@ -479,5 +487,3 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 ## Open questions to confirm
 
 1. **Email intake:** Option A (Logic Apps + M365) or Option B (SendGrid Inbound Parse)?
-2. **Moderation:** default hands-off, opt-in approval — OK?
-3. **Post-mission:** read-only archive stays live indefinitely, plus downloadable offline zip — OK?
