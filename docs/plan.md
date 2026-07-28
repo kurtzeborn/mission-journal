@@ -1,16 +1,16 @@
-# Missionary Journal — Design Plan
+# P-Day Letters — Design Plan
 
 ## Vision
 
-An automatic journal/blog service for LDS missionaries. A missionary CCs a personal ingest address on their weekly email home. The service captures the message and any attached photos, publishes them as a blog entry on the missionary's personal journal, and makes everything searchable. Access is controlled per-missionary. When the mission ends, the missionary can download a fully self-contained, offline-searchable archive of everything.
+An automatic weekly-letters archive for LDS missionaries. A missionary CCs a personal ingest address on their weekly email home. The service captures the message and any attached photos, publishes them as a post on the missionary's personal letters site, and makes everything searchable. Access is controlled per-missionary. When the mission ends, the missionary can download a fully self-contained, offline-searchable archive of everything.
 
 ## Goals
 
-- **Zero-effort authoring** for the missionary. If they can CC an address, they have a journal.
+- **Zero-effort authoring** for the missionary. If they can CC an address, they have a letters site.
 - **Preserve everything, exactly as received.** Raw MIME + original attachments are archived and never overwritten so future features can reprocess history.
 - **Cheap and simple.** Small monthly Azure spend, minimal moving parts, no self-hosted mail.
 - **Private by default.** Each missionary maintains their own allowlist.
-- **Offline-capable archive.** After the mission, download a packaged, self-contained journal that works from a folder or USB drive.
+- **Offline-capable archive.** After the mission, download a packaged, self-contained letters archive that works from a folder or USB drive.
 
 ## Non-goals
 
@@ -77,6 +77,30 @@ An automatic journal/blog service for LDS missionaries. A missionary CCs a perso
 
 ## Design decisions
 
+### Domains
+
+Four registered domains, one canonical:
+
+| Domain | Role |
+|---|---|
+| **`pdayletters.com`** | **Canonical.** All web UI, auth, and outbound-email links point here. |
+| `pdayemail.com` | 301 → `pdayletters.com` at the SWA edge, all paths preserved. |
+| `pday.email` | 301 → `pdayletters.com` at the SWA edge, all paths preserved. |
+| `missionaryjournal.org` | 301 → `pdayletters.com` at the SWA edge, all paths preserved. |
+
+**Why one canonical web domain instead of serving all four?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no real user benefit given the redirect model already puts users on the canonical domain within one round-trip.
+
+**Email ingest is accepted on all four subdomains**, since ingest has no session and multi-domain acceptance costs nothing:
+
+- `{slug}@ingest.pdayletters.com`
+- `{slug}@ingest.pdayemail.com`
+- `{slug}@ingest.pday.email`
+- `{slug}@ingest.missionaryjournal.org`
+
+The intake function validates that the recipient domain is on an allowlist (`config/ingest-domains.json` — see [Storage layout](#storage-layout)) and then routes purely by slug; which domain was used is retained per-post as `ingestDomain` (see [Data model](#data-model-postsjson-entry)) so the courtesy ack email can reference the address the sender actually used.
+
+**Outbound mail always originates from the canonical domain:** `no-reply@mail.pdayletters.com`. SPF/DKIM/DMARC are set up on `pdayletters.com` only, which keeps sender-authentication configuration simple. The body of a courtesy ack can name the ingest address the family submitted to for continuity ("You submitted to `elder.smith@ingest.pday.email` — thanks!"); the visible From address is unchanged.
+
 ### Email ingestion (top two, pick one)
 
 Both are simple and reliable. Decision pending.
@@ -96,8 +120,8 @@ Provenance for `forward` messages is captured in an `extractionSource` metadata 
 Design principles:
 
 - **Never trust the `From:` header alone.** Always require SPF/DKIM/DMARC pass on the outer envelope (for `direct`) or on the forwarder (for a `forward`).
-- **The forwarder must be on the same ACL that grants them read access to the destination missionary's blog.** There is no separate "allowed forwarders" list — access implies forwarding rights.
-- **Determine the target missionary from the `To:` / `Cc:` address local-part** (e.g. `elder.smith@ingest.missionaryjournal.org` → slug `elder.smith`), then check the forwarder's authenticated email against that missionary's ACL.
+- **The forwarder must be on the same ACL that grants them read access to the destination missionary's letters site.** There is no separate "allowed forwarders" list — access implies forwarding rights.
+- **Determine the target missionary from the `To:` / `Cc:` address local-part** (e.g. `elder.smith@ingest.pdayletters.com` → slug `elder.smith`), then check the forwarder's authenticated email against that missionary's ACL.
 - **Reject silently.** No bounce or error to the sender — bouncing leaks which addresses exist and invites probing.
 - **Log every rejection** to App Insights (sender, subject, reason, timestamp — no message body). Rejected messages are not archived to blob storage.
 
@@ -163,15 +187,15 @@ Rationale for the design:
 **Post ordering:** posts are sorted by the **original `Date:` header**, not `receivedAt`. Forwards land in their correct historical position in the timeline. `receivedAt` is retained on each post for audit and for a "Recently added" ribbon in the reader UI.
 
 #### Option A: Logic Apps + M365 shared mailbox *(recommended if we keep M365 in the mail path)*
-- One shared mailbox in the tenant, e.g. `journal@missionaryjournal.com` (shared mailboxes are free under 50 GB, no license required).
-- Per-missionary addresses via aliases or tokenized local-parts routed to the same shared mailbox (catch-all rule or explicit aliases).
+- One shared mailbox in the tenant, e.g. `letters@pdayletters.com` (shared mailboxes are free under 50 GB, no license required).
+- All four ingest domains (see [Domains](#domains)) are added as accepted domains on the tenant; per-missionary addresses land in the same shared mailbox via aliases or catch-all rules on each `ingest.` subdomain.
 - Logic App trigger: **"When a new email arrives in a shared mailbox (V2)"**.
 - Actions: fetch raw MIME via HTTP to Graph → write `.eml` and attachments to blob `raw/{missionary}/{msgId}/` → enqueue a message for the render function.
 - Retains M365 spam filtering, transport rules, and archival in front of the pipeline.
 - Cost: pennies/month; Logic Apps Consumption pricing plus shared mailbox is free.
 
 #### Option B: SendGrid Inbound Parse
-- MX record on `missionaryjournal.com` points at SendGrid.
+- MX records on each accepted `ingest.` subdomain (see [Domains](#domains)) point at SendGrid; SendGrid Inbound Parse supports multiple hosts on a single account, all delivering to one webhook.
 - SendGrid POSTs parsed multipart form (headers, text, HTML, attachments) to one HTTPS Function endpoint.
 - Function writes raw payload to `raw/` blob and enqueues render.
 - No Exchange involvement. Free tier easily covers expected volume.
@@ -179,13 +203,13 @@ Rationale for the design:
 
 ### Missionary routing
 
-**Path-based**: `missionaryjournal.org/{missionary-slug}`.
+**Path-based on the canonical domain**: `pdayletters.com/{missionary-slug}` (see [Domains](#domains); the three non-canonical domains 301-redirect here so all paths continue to resolve).
 - One TLS certificate, one origin, no CORS quirks for the future offline packager.
 - **Slug is the raw local-part of the missionary's `@missionary.org` email**, lowercased. **No other transformation** — dots, underscores, and hyphens are kept verbatim. Examples:
   - `elder.smith@missionary.org` → `elder.smith`
   - `sister_johnson2@missionary.org` → `sister_johnson2`
   - `elder.jose.maria.garcia@missionary.org` → `elder.jose.maria.garcia`
-- **Why no character rewrites?** Collapsing `.` / `_` / `-` into a single form would allow two distinct Church-issued addresses (`elder.smith` and `elder-smith`) to map to the same slug, breaking the very uniqueness guarantee we're inheriting. Passing the local-part through verbatim keeps `slug` in 1:1 correspondence with the `@missionary.org` address. URL-safety is not a concern — `.`, `_`, and `-` are all unreserved characters per RFC 3986, so `missionaryjournal.org/elder.smith` is a perfectly valid URL path.
+- **Why no character rewrites?** Collapsing `.` / `_` / `-` into a single form would allow two distinct Church-issued addresses (`elder.smith` and `elder-smith`) to map to the same slug, breaking the very uniqueness guarantee we're inheriting. Passing the local-part through verbatim keeps `slug` in 1:1 correspondence with the `@missionary.org` address. URL-safety is not a concern — `.`, `_`, and `-` are all unreserved characters per RFC 3986, so `pdayletters.com/elder.smith` is a perfectly valid URL path.
 - **Why derive it rather than have the missionary pick one?**
   - **Uniqueness is inherited from the Church's own email allocation** — they already deconflict `elder.smith` vs `elder.smith2` at the address level. No collision check needed on our side, no reservation flow at onboarding.
   - **No embedded year** to go stale mid-mission or look dated in the post-mission archive.
@@ -194,7 +218,7 @@ Rationale for the design:
 
 ### Ingest address scheme
 
-The ingest address is simply `{slug}@ingest.missionaryjournal.org` — same value as the slug, just under the ingest subdomain (e.g. `elder.smith@ingest.missionaryjournal.org`). The intake code parses the target journal by stripping the domain from the `To:` / `Cc:` address; the resulting local-part **is** the slug.
+The ingest address is `{slug}@ingest.{accepted-domain}` where `{accepted-domain}` is any of the four ingest domains listed in [Domains](#domains) (e.g. `elder.smith@ingest.pdayletters.com`, `elder.smith@ingest.pday.email`). The intake code parses the target letters site by stripping the domain from the `To:` / `Cc:` address; the resulting local-part **is** the slug, regardless of which accepted domain was used. Any recipient whose domain isn't on the accepted list is rejected as if the mailbox didn't exist.
 
 **Why no random token?** Earlier drafts proposed `{slug}-{4-char-token}@…` to make the address unguessable and spam-resistant. The [message classifier](#message-classification-applies-to-both-options) already rejects anything that isn't either a `direct` from the authenticated missionary or a `forward` from an ACL member — a stranger who guesses the address gets nothing published and no reply, only a logged-and-dropped rejection. Obscurity adds no meaningful defense on top of that, and it costs an ugly address, a token field in `profile.json`, extra parser logic, and an admin rotation UI. Rate-limiting a would-be flood attacker is better handled at the intake edge (SendGrid spam filtering, or Exchange Online Protection under Option A) than by an obscure local-part.
 
@@ -222,6 +246,7 @@ rendered/                              Rewritable. Regenerated by render functio
         thumb.webp                     ~400px for album grid
 
 config/
+  ingest-domains.json                  Accepted ingest-domain allowlist
   {missionary-slug}/
     profile.json                       Display name, slug
     acl.json                           Email allowlist + roles
@@ -241,6 +266,7 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
   "extractionSource": "rfc822",             // direct | rfc822 | inline
   "originalDate": "2020-07-06T18:04:22Z",   // from the original message; drives sort order
   "receivedAt": "2026-07-25T12:14:00Z",     // when this ingestion actually happened
+  "ingestDomain": "pday.email",             // which accepted ingest domain received the message
   "subject": "Week 34 - miracles in Manaus",
   "bodyHtml": "<p>…</p>",
   "bodyText": "…",
@@ -269,7 +295,7 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 
 **Client-side, MiniSearch.**
 - Render function builds `search-index.json` per missionary on every update.
-- Web app loads it on first visit to that missionary's journal; searches run in-browser.
+- Web app loads it on first visit to that missionary's letters site; searches run in-browser.
 - Works on mobile browsers with no special handling. Total index size for a full 2-year mission is expected to be well under 1 MB.
 - Same index file is bundled into the offline archive package — search continues to work with zero backend.
 
@@ -277,7 +303,7 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 
 - **Auth:** Static Web Apps Standard with Microsoft and Google identity providers.
 - **Model:** per-missionary allowlist keyed on the authenticated user's email address.
-- **Roles per missionary journal:**
+- **Roles per missionary's letters site:**
   - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit/hide/delete any post (including editing the subject or body — for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
   - `reader` — invited viewer. Read-only.
 - **Invitations:** an owner enters an email address and a role; that address is added to `acl.json`. First time the invitee signs in with that email via Google or MS, they get access.
@@ -294,7 +320,7 @@ Initial preferences:
 
 Unsubscribe links point at the authenticated site settings page — `/{slug}/settings?pref=dedupeAckEmails` — where the recipient toggles the flag and it's persisted to their `users` row. Recipients are, by definition, ACL members already signed in via Google or Microsoft, so authentication is a single click at most. No signed tokens, no HMAC secret to manage, no expiry edge cases.
 
-Doubles as an end-to-end smoke test for the send-and-receive email pipeline: the ack reply exercises SendGrid send from `no-reply@mail.missionaryjournal.org`, and the settings toggle exercises the `users` table read/write path.
+Doubles as an end-to-end smoke test for the send-and-receive email pipeline: the ack reply exercises SendGrid send from `no-reply@mail.pdayletters.com` (the single canonical sender — see [Domains](#domains)), and the settings toggle exercises the `users` table read/write path.
 
 ### Moderation / quarantine
 
@@ -304,7 +330,7 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 ### Post-mission archive
 
-- One-click "Download my journal" (owner only) produces a zip:
+- One-click "Download my letters" (owner only) produces a zip:
   - `index.html` — the same reader UI, but pointed at local files
   - `posts.json`, `search-index.json`
   - `photos/` — all `large.webp` + `thumb.webp`
@@ -384,7 +410,7 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 | Logic App | Consumption | Email intake (if Option A) | <$1 |
 | Storage account | Standard LRS, Cool tier default | Raw archive + rendered artifacts | <$2 for years of data |
 | Key Vault | Standard | Graph/SendGrid secrets | ~$0.03 |
-| Custom domain + wildcard cert | Managed by SWA | `missionaryjournal.com` | $0 (cert is managed) |
+| Custom domains + certs | Managed by SWA | `pdayletters.com` (canonical) + 3 redirect entry points | $0 (certs are managed) |
 | M365 shared mailbox | Existing tenant | Inbound mail (Option A) | $0 |
 
 **Rough total: ~$10–15/month** at low volume.
@@ -396,12 +422,13 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 Reordered to validate the highest-risk piece (email pipeline) first, with intentionally rudimentary UIs at each stage to confirm the plumbing works end-to-end before we invest in polish. See [docs/email-options.md](email-options.md) for the vendor / pricing comparison behind the email decisions in Phase 0.
 
 ### Phase 0 — Foundation
-- Register `missionaryjournal.org` (or chosen domain).
+- Domains already registered: `pdayletters.com` (canonical), `pdayemail.com`, `pday.email`, `missionaryjournal.org`. Verify each in the SWA custom-domain UI; configure the three non-canonical domains as 301 redirects to the canonical.
+- Seed `config/ingest-domains.json` with the four accepted ingest domains.
 - Create Azure subscription resource group.
 - Storage account: containers `raw/` (soft-delete + versioning on), `rendered/`, `config/`. Azure Table `users`.
 - Key Vault + managed identity for Functions (SendGrid API key, Lulu OAuth secret).
 - App Insights instance (for rejection logging and general telemetry).
-- Choose and provision the email provider (SendGrid or M365 shared mailbox). Set up DNS: MX record on the ingest subdomain, DKIM CNAMEs on the sending subdomain, DMARC policy on the apex.
+- Choose and provision the email provider (SendGrid or M365 shared mailbox). Set up DNS on all four domains: MX records on each `ingest.` subdomain pointing at the provider; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender.
 
 ### Phase 1 — Inbound email pipeline (receive → classify → save)
 - Function endpoint that receives inbound mail (SendGrid Inbound Parse webhook, or Logic App poll from M365 shared mailbox).
@@ -440,7 +467,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Owner-managed profile (display name).
 
 ### Phase 7 — Offline archive export
-- "Download my journal" Function bundles `index.html` + `posts.json` + `search-index.json` + `photos/` + (optionally) `raw/` into a self-contained zip.
+- "Download my letters" Function bundles `index.html` + `posts.json` + `search-index.json` + `photos/` + (optionally) `raw/` into a self-contained zip.
 - Packaged reader HTML reads local JSON — search still works.
 
 ### Phase 8 — Journal Publish
@@ -454,4 +481,3 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 1. **Email intake:** Option A (Logic Apps + M365) or Option B (SendGrid Inbound Parse)?
 2. **Moderation:** default hands-off, opt-in approval — OK?
 3. **Post-mission:** read-only archive stays live indefinitely, plus downloadable offline zip — OK?
-4. **Domain:** `missionaryjournal.org` (currently used throughout the plan) confirmed, or something else? Alternatives: `missionjournal.app`, `elderjournal.com`, etc.
