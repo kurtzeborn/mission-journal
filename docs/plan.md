@@ -2,11 +2,11 @@
 
 ## Vision
 
-An automatic weekly-letters archive for LDS missionaries. A missionary CCs a personal ingest address on their weekly email home. The service captures the message and any attached photos, publishes them as a post on the missionary's personal letters site, and makes everything searchable. Access is controlled per-missionary. When the mission ends, the missionary can download a fully self-contained, offline-searchable archive of everything.
+An automatic weekly-letters archive for LDS missionaries. A missionary BCCs one shared address on their weekly email home — or a parent forwards it. The service captures the message and any attached photos, publishes them as a post on the missionary's personal letters site, and makes everything searchable. Access is controlled per-missionary. When the mission ends, the missionary can download a fully self-contained, offline-searchable archive of everything.
 
 ## Goals
 
-- **Zero-effort authoring** for the missionary. If they can CC an address, they have a letters site.
+- **Zero-effort authoring** for the missionary. If they can BCC one address — or if a parent can forward — they have a letters site.
 - **Preserve everything, exactly as received.** Raw MIME + original attachments are archived and never overwritten so future features can reprocess history.
 - **Cheap and simple.** Small monthly Azure spend, minimal moving parts, no self-hosted mail.
 - **Private by default.** Each missionary maintains their own allowlist.
@@ -24,53 +24,44 @@ An automatic weekly-letters archive for LDS missionaries. A missionary CCs a per
 ## High-level architecture
 
 ```
-        Missionary                       Family/Friends
-      writes email                            reads
-            │                                   │
-            ▼                                   ▼
-   ┌──────────────────┐                ┌──────────────────┐
-   │  Email provider  │                │  Static Web App  │◄── Google / MS auth
-   │  (M365 or        │                │  (Standard tier) │
-   │   SendGrid)      │                │  path routing:   │
-   └────────┬─────────┘                │  /{missionary}   │
-            │                          └────────┬─────────┘
-            ▼                                   │
-   ┌──────────────────┐                         │
-   │   Intake         │                         │
-   │  (Logic App or   │                         │
-   │  Function on     │                         │
-   │  webhook)        │                         │
-   └────────┬─────────┘                         │
-            │                                   │
-            ▼                                   │
-   ┌──────────────────┐                         │
-   │  Blob: raw/      │  ◀──── preserved ────   │
-   │  {missionary}/   │        raw MIME +       │
-   │  {msgId}.eml     │        original         │
-   │  + attachments   │        attachments      │
-   └────────┬─────────┘                         │
-            │                                   │
-            ▼                                   │
-   ┌──────────────────┐                         │
-   │  Render function │                         │
-   │  (queue-trig)    │                         │
-   └────────┬─────────┘                         │
-            │                                   │
-            ▼                                   │
-   ┌──────────────────┐                         │
-   │  Blob: rendered/ │                         │
-   │  posts.json      │◄────────────────────────┤
-   │  search.json     │                         │
-   │  photos/*.webp   │                         │
-   └──────────────────┘                         │
-                                                │
-                                          ┌─────▼─────┐
-                                          │ Functions │
-                                          │ API for   │
-                                          │ auth /    │
-                                          │ ACL /     │
-                                          │ admin     │
-                                          └───────────┘
+     Missionary ──BCC──┐         ┌── forwards ── Family/Friends
+    writes email       │         │                    reads
+                       ▼         ▼                      │
+            ┌──────────────────────────┐                ▼
+            │  SendGrid Inbound Parse  │      ┌──────────────────┐
+            │  MX on all 4 domains,    │      │  Static Web App  │◄─ Google / MS
+            │  single address: post@   │      │  (Standard tier) │      auth
+            └───────────┬──────────────┘      │  /{missionary}   │
+                        │ webhook             └────────┬─────────┘
+                        ▼                              │ x-ms-client-
+            ┌──────────────────────────┐               │  principal
+            │  Intake Function         │               ▼
+            │  dump raw + enqueue.     │   ┌──────────────────────────┐
+            │  No parsing. No logic.   │   │  Functions API           │
+            └───────────┬──────────────┘   │  /api/content/{slug}/…   │
+                        ▼                  │  /api/photo/{slug}/…     │
+            ┌──────────────────────────┐   │  admin · ACL · claim     │
+            │  Ingest Function         │   └───────────┬──────────────┘
+            │  classify · route by     │               │ ACL check,
+            │  sender · dedupe         │               │ then stream
+            └───────────┬──────────────┘               │
+                        ▼                              │
+            ┌──────────────────────────┐               │
+            │  Blob: raw/{slug}/       │               │
+            │  (or pending/{slug}/ if  │               │
+            │   the site is unclaimed) │               │
+            └───────────┬──────────────┘               │
+                        ▼                              │
+            ┌──────────────────────────┐               │
+            │  Render Function         │               │
+            │  sanitize HTML · WebP    │               │
+            └───────────┬──────────────┘               │
+                        ▼                              │
+            ┌──────────────────────────┐               │
+            │  Blob: rendered/{slug}/  │◄──────────────┘
+            │  posts.json              │
+            │  photos/*.webp           │   All containers PRIVATE.
+            └──────────────────────────┘   No direct browser reads.
 ```
 
 ---
@@ -90,53 +81,66 @@ Four registered domains, one canonical:
 
 **Why one canonical web domain instead of serving all four?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no real user benefit given the redirect model already puts users on the canonical domain within one round-trip.
 
-**Email ingest is accepted on all four subdomains**, since ingest has no session and multi-domain acceptance costs nothing:
+**One shared ingest address, accepted on all four domains.** There is no per-missionary ingest address — everyone everywhere is told to use the same one:
 
-- `{slug}@ingest.pdayletters.com`
-- `{slug}@ingest.pdayemail.com`
-- `{slug}@ingest.pday.email`
-- `{slug}@ingest.missionaryjournal.org`
+- **`post@pdayletters.com`** (canonical, the one in all instructions)
+- `post@pdayemail.com`
+- `post@pday.email`
+- `post@missionaryjournal.org`
 
-The intake function validates that the recipient domain is on an allowlist (`config/ingest-domains.json` — see [Storage layout](#storage-layout)) and then routes purely by slug; which domain was used is retained per-post as `ingestDomain` (see [Data model](#data-model-postsjson-entry)) so the courtesy ack email can reference the address the sender actually used.
+The target letters site is determined from **who wrote the letter**, not from which address received it — see [Sender-based routing](#sender-based-routing). The accepted-domain list is a Function app setting (`ACCEPTED_INGEST_DOMAINS`), not a config blob; it changes roughly never.
 
-**Outbound mail always originates from the canonical domain:** `no-reply@mail.pdayletters.com`. SPF/DKIM/DMARC are set up on `pdayletters.com` only, which keeps sender-authentication configuration simple. The body of a courtesy ack can name the ingest address the family submitted to for continuity ("You submitted to `elder.smith@ingest.pday.email` — thanks!"); the visible From address is unchanged.
+**Why one address instead of `{slug}@…`?** Three wins. (1) **Instructions get trivial** — "forward your missionary's email to `post@pdayletters.com`" works for every user of the service, with nothing to look up or personalize. (2) **It removes a whole class of security bug** — when the recipient address names the target site, the intake code must separately prove the sender is entitled to publish there, and getting that check wrong lets any missionary post to any other missionary's site. Deriving the target from the authenticated author makes the check structural rather than something we have to remember to write. (3) **No address provisioning at onboarding** — nothing to allocate, alias, or communicate when a new site is created.
 
-### Email ingestion (top two, pick one)
+**MX lives on the apex** of each domain, pointing at the inbound provider. This does not collide with outbound: sending happens from `no-reply@mail.pdayletters.com`, so bounce and delivery-event handling stay on the `mail.` subdomain and never touch the inbound parse path.
 
-Both are simple and reliable. Decision pending.
+**Trade-off accepted:** a single well-known address attracts more spam than four semi-obscure per-missionary addresses did. Mitigated by the classifier (silent drop for any sender we can't tie to a site or to a valid claim), by the inbound provider's spam scoring, and by the fact that rejected mail never reaches `rendered/` and ages out of the intake quarantine in 30 days.
 
-#### Message classification (applies to both options)
+**Outbound mail always originates from the canonical domain:** `no-reply@mail.pdayletters.com`. SPF/DKIM/DMARC are set up on `pdayletters.com` only, which keeps sender-authentication configuration simple.
+
+### Email ingestion
+
+#### Message classification
 
 Inbound messages fall into one of these classes based on what the intake code can verify. Only classified-as-accepted messages are written to `raw/`; everything else is dropped silently.
 
 | Class | Detection | Publish? |
 |---|---|---|
-| `direct` | Authenticated sender is `@missionary.org` (SPF/DKIM/DMARC all pass per `Authentication-Results`) | Yes |
-| `forward` | Forwarder is on the target missionary's ACL, and the original message can be extracted either from a `message/rfc822` attachment or from inline forwarded-text separators | Yes |
-| `rejected` | None of the above — no `@missionary.org` evidence, or forwarder is not on the target ACL, or authentication of the forwarder itself failed | No — drop silently, log to App Insights |
+| `direct` | `From:` is `@missionary.org` and SPF/DKIM/DMARC all pass per `Authentication-Results`. The `From:` local-part **is** the target slug. | Yes |
+| `forward` | The original message is recoverable (a `message/rfc822` attachment, or — **owners only** — inline forwarded text), its `From:` resolves to a known slug, and the forwarder is on that slug's ACL with a passing DMARC result of their own | Yes |
+| `rejected` | None of the above — no recoverable `@missionary.org` author, or the forwarder isn't on the resolved slug's ACL, or authentication of the forwarder itself failed | No — drop silently, log to App Insights |
 
 Provenance for `forward` messages is captured in an `extractionSource` metadata field for audit/debug: `rfc822` (embedded `.eml` was present) or `inline` (parsed from forwarded-text separators). The originating client (Gmail / Outlook / Apple Mail) and DKIM re-verify pass/fail are logged to App Insights at ingest time but not stored on the post — both can be re-derived from the preserved raw MIME if a specific extractor ever turns out to be buggy and we need to requery history.
 
 Design principles:
 
 - **Never trust the `From:` header alone.** Always require SPF/DKIM/DMARC pass on the outer envelope (for `direct`) or on the forwarder (for a `forward`).
+- **The target site is derived from the letter's author, never from the recipient address** — see [Sender-based routing](#sender-based-routing). Every message goes to the same `post@` address, so there is no attacker-supplied "which site" input to validate.
 - **The forwarder must be on the same ACL that grants them read access to the destination missionary's letters site.** There is no separate "allowed forwarders" list — access implies forwarding rights.
-- **Determine the target missionary from the envelope recipient (SMTP `RCPT TO`), not the visible `To:` / `Cc:` headers** — see [Envelope recipient parsing](#envelope-recipient-parsing) below. BCC-only ingest is the dominant pattern (missionaries don't want the ingest address exposed to their family list), and BCC recipients are absent from delivered headers by design. Envelope-based routing works for `To:`, `Cc:`, and `Bcc:` uniformly.
-- **Reject silently.** No bounce or error to the sender — bouncing leaks which addresses exist and invites probing.
+- **Inline-forward extraction is restricted to the `owner` role.** Text between forward separators is entirely forwarder-controlled and carries no cryptographic evidence of authorship — a `reader` could otherwise fabricate a letter, attribute it to the missionary, and backdate it anywhere in the timeline. Owners can already edit and delete any post, so allowing them inline forwards grants no privilege they don't have. `reader`-submitted forwards must carry a `message/rfc822` attachment ("forward as attachment"), whose DKIM signature can be re-verified against `missionary.org`.
+- **Reject silently.** No bounce or error to the sender — bouncing leaks which addresses exist and invites probing. The two deliberate exceptions are the claim and acknowledgment emails described in [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning) and [Notification preferences](#notification-preferences), both of which only go to senders we've already tied to a site.
 - **Log every rejection** to App Insights (sender, subject, reason, timestamp — no message body). Rejected messages are not archived to blob storage.
 
-#### Envelope recipient parsing
+#### Sender-based routing
 
-BCC is the dominant ingest pattern: a missionary types their family list in `To:` (occasionally friends in `Cc:`) and drops the ingest address in `Bcc:` so their family never sees, replies to, or forwards it around. BCC recipients are removed from the delivered message's `To:` and `Cc:` headers by design — header-based routing would miss BCC-only ingest on every message. The envelope, however, is preserved by every provider:
+Every message arrives at the same `post@` address, so the recipient carries no routing information. The target slug is resolved from **the author of the letter**:
 
-- **Option B (SendGrid Inbound Parse):** the webhook payload includes a top-level `envelope` field: `{"to": ["elder.smith@ingest.pdayletters.com"], "from": "elder.smith@gmail.com"}`. Use `envelope.to[0]` as the routing target.
-- **Option A (M365 shared mailbox):** two viable extractions.
-  1. **Per-missionary aliases on the shared mailbox** — add `{slug}@ingest.pdayletters.com` (and its three siblings) as an alias on the shared mailbox at onboarding. On fetch, Graph's `internetMessageHeaders` includes a `Delivered-To:` (or Exchange's `X-MS-Exchange-Recipient-Address`) naming the alias the message hit.
-  2. **Catch-all + `Received:` chain parse** — the last hop of the `Received:` chain includes a `for <address>` clause naming the envelope recipient. Reliable and doesn't require alias management at onboarding.
+| Case | Slug source |
+|---|---|
+| `direct` — missionary sent or BCC'd it themselves | Local-part of the outer `From:`, which DMARC has already authenticated |
+| `forward` — someone forwarded a missionary's letter | Local-part of the **extracted original's** `From:` |
 
-**Multiple envelope recipients** (e.g. a family BCCs both companion elders' ingest addresses on the same email) — process each independently: run the full pipeline once per matched slug. Any envelope recipient whose domain isn't on the accepted list is ignored (log-only, no error).
+In both cases the author's address must be `@missionary.org` (or an owner-registered alternate — see below), and the local-part is used verbatim as the slug per [Missionary routing](#missionary-routing).
 
-**Envelope cannot be spoofed by the sender's client** — it's set by their outgoing SMTP server, not by their message composition. So header-vs-envelope mismatch is normal for BCC, but a stranger can't lie about the envelope to route a publish attempt at someone else's slug — and even if they could, the [message classifier](#message-classification-applies-to-both-options)'s ACL/DKIM check still gates publication.
+**Why this is safer than routing on the recipient.** When the recipient address names the target site, the intake code has to separately prove the sender may publish there — and if that check is missing or wrong, any authenticated missionary can publish to any other missionary's site. Deriving the target from the authenticated author collapses those two steps into one: there is no independent "target" value for an attacker to supply, so there is no mismatch to exploit.
+
+**Forwards resolve to the author, not the forwarder.** A parent with two children serving, or an aunt on several families' ACLs, submits through the same address for all of them and the letters sort themselves out. It also fails safe in the interesting direction: if someone on Elder Smith's ACL forwards a letter written by Elder Jones, it routes to `elder.jones` and is rejected there for lack of ACL membership — rather than being mis-filed into Smith's site.
+
+**BCC works unchanged.** Because routing never reads `To:` or `Cc:`, it makes no difference whether the address was on the `To:`, `Cc:`, or `Bcc:` line. This matters because BCC is the dominant pattern — missionaries put family in `To:` and the ingest address in `Bcc:` so relatives never see it, reply to it, or pass it around.
+
+**Unresolvable messages.** If no `@missionary.org` author can be recovered — spam, a `reader` sending an inline forward, a mangled forward, a letter written from an unregistered personal address — the message is rejected silently and logged. Nothing is archived.
+
+**Alternate sender addresses (deferred to Phase 6).** Some missionaries write from a personal account rather than `@missionary.org`, leaving routing nothing to key on. An owner-managed `alternateSenders` array in `profile.json` maps additional addresses onto the slug. Deferred because it requires the owner admin UI to exist first, and because `@missionary.org` covers the overwhelming majority.
 
 #### Extracting and de-duplicating forwards
 
@@ -151,43 +155,33 @@ Because anyone on a missionary's ACL can forward historical email, the intake co
 **Match key priority:**
 
 1. **Exact match on original `Message-ID` header** — extracted from the embedded `.eml` when available. A hit here is a certain match; stop and treat as duplicate.
-2. **Fuzzy match** — when no `Message-ID` is available (inline forwards, some hosts strip it), score candidate posts against the incoming message and declare a match at total score ≥ **0.90**.
+2. **Gated exact-text match** — when no `Message-ID` is available (inline forwards, some hosts strip it).
 
-**Fuzzy match — hard gates (must-match, not scored):** candidates only advance to scoring if **both** of these match the incoming message exactly:
+**Hard gates (must both match, exactly):**
 
 - `originalFromLower` — exact string equality (both sides lowercased). Sender is a hard identity signal; two messages from different missionary accounts are never duplicates of each other.
-- `originalDateDay` — exact `YYYY-MM-DD` equality on the day derived from the original `Date:` header. Missionaries send weekly, so same-day-different-sender or different-day-same-sender virtually never represents a duplicate in practice.
+- `originalDateDay` — exact `YYYY-MM-DD` equality on the calendar day of the original `Date:` header, **evaluated in the offset carried by that header itself**, not converted to UTC. Missionaries write from wildly different time zones and the header's own offset is the one value every copy of a given message preserves.
 
-The bucket query is therefore an in-memory scan of the missionary's already-loaded `posts.json`: filter posts whose `originalFrom` matches (case-insensitively) and whose `originalDate` day matches. Typically returns 0–2 candidates.
+The bucket query is an in-memory scan of the missionary's already-loaded `posts.json`: filter posts whose `originalFrom` matches (case-insensitively) and whose `originalDate` day matches. Typically returns **0–2 candidates**.
 
-Messages that don't satisfy both gates are treated as new posts — no scoring performed.
+**Decision (only for candidates that pass both gates):** it's a duplicate if **either** normalized field matches exactly.
 
-**Fuzzy match — scoring stage (only for candidates that pass the gates):** two normalized text features compared with the **same** algorithm — **Jaro–Winkler** — and combined as a weighted sum. Weights sum to 1.0.
+| Field | Normalization |
+|---|---|
+| `subjectNormalized` | Iteratively strip leading `Re:` / `Fw:` / `Fwd:` tokens **and** any `[…]` bracketed prefix (e.g. `[EXTERNAL]`, `[SPAM]`) until neither pattern matches; collapse internal whitespace; lowercase. |
+| `bodyHead100` | Strip quoted-reply lines (`^>`), strip signature blocks (from `-- \n` or the first `Sent from my …` line onward), collapse whitespace, lowercase, take the **first 100 characters**. |
 
-| Feature | Normalization | Weight |
-|---|---|---|
-| `subjectNormalized` | Iteratively strip leading `Re:` / `Fw:` / `Fwd:` tokens **and** any `[…]` bracketed prefix (e.g. `[EXTERNAL]`, `[SPAM]`, `[External Sender]`) until neither pattern matches; collapse internal whitespace; lowercase. Compare the full normalized string. | 0.35 |
-| `bodyHead200` | Strip quoted-reply lines (`^>`), strip signature blocks (from `-- \n` or the first `Sent from my …` line onward), collapse whitespace, lowercase, then take the **first 200 characters**. | 0.65 |
+No similarity scoring, no weights, no threshold.
 
-**Threshold:** total score ≥ **0.90** → duplicate. Below 0.90 → treat as new post.
+**Why exact match rather than fuzzy scoring.** An earlier draft ran weighted Jaro–Winkler over normalized subject and body with a tuned 0.90 cutoff. That machinery was solving a problem the hard gates had already eliminated. Missionaries write **once a week**; after requiring an exact sender match *and* an exact calendar-day match, the candidate set is almost always empty, and when it isn't, the two messages are either byte-similar re-forwards of one letter (both normalized fields match trivially) or genuinely different messages sent the same day — a second letter with more photos, say — where subject and opening line differ obviously. There was no realistic middle ground for a similarity score to adjudicate, so the weights and threshold were three tuning knobs with nothing to tune against. Exact matching is a fraction of the code, has no calibration surface, and fails in the safe direction: a missed duplicate is a visible extra post an owner can delete in one click, whereas a false positive silently swallows a real letter.
 
-Rationale for the design:
+**Upgrade path.** Raw MIME is archived permanently, so if real-world data ever shows duplicates slipping through, we can reintroduce scoring and re-run it across all history without asking anyone to resubmit.
 
-- **Sender and date as hard gates** eliminate an entire class of false positives (e.g. two unrelated Week-14 emails on the same day from different missionaries) and make the bucket query a trivial direct lookup instead of a range scan.
-- **One algorithm (Jaro–Winkler) for both features.** Mixing SimHash + Jaro–Winkler + Jaccard was three different tuning knobs solving essentially the same "how similar are these two strings" question. On strings ≤200 chars Jaro–Winkler is fast, produces well-calibrated scores in `[0, 1]`, and tolerates the small edits email clients introduce (extra whitespace, punctuation, minor re-wording) without any tokenization decisions.
-- **Body weighted higher (0.65) than subject (0.35)** because subjects are short, aggressively rewritten by clients, and often literally identical across a mission (`Week 14`, `Update`); the body opening is much harder to match by coincidence between two unrelated messages that already share sender and date.
-- **Attachments dropped from scoring.** Attachment content is high-noise as a dedup signal: recurring assets (mission logo, repeated photos across weekly emails) inflate similarity, and forwarding clients routinely re-encode, rename, strip inline images, or fail to re-attach originals — so its true signal-to-noise for detecting *the same message* is worse than expected. Sender + date gates plus a body-head comparison catch the target case ("someone re-forwarded a message we already have") reliably.
-- **First 200 chars, not full body.** For deciding whether two forwards represent the same original the opening is more than enough — greetings and the first sentence or two are highly discriminating. Full-body hashing was expensive to compute, expensive to store, and easily thrown off by mid-body quoted-reply interleaving.
-
-**Trade-off:** The day-level date gate assumes the original `Date:` header lands on the same calendar day for every copy of a given message. This holds virtually always for forward-as-attachment (`message/rfc822` preserves the original date byte-for-byte) but *could* fail for an inline forward if the forwarder's mail client re-emits the date in a different time zone that shifts the calendar day. In practice this is rare, and the archived raw MIME means we can hand-merge any missed dupes later without data loss.
-
-**Threshold tuning.** The 0.90 threshold and per-feature weights are the starting point. Because raw MIME is archived, we can rescore historical data at any time to tune weights and threshold without asking users to resubmit.
-
-**Storage of truth.** Dedup does not use a separate Azure Table. `rendered/{slug}/posts.json` already contains every field the check needs (`originalMessageId`, `originalFrom`, `originalDate`, `subject`, `bodyText`), so ingest just loads that blob and scans it in memory. `subjectNormalized` and `bodyHead200` are computed on the fly against the 0–2 candidates that pass the sender+date gate — cheap enough that precomputing and storing them buys nothing.
+**Storage of truth.** Dedup does not use a separate Azure Table. `rendered/{slug}/posts.json` already contains every field the check needs (`originalMessageId`, `originalFrom`, `originalDate`, `subject`, `bodyText`), so ingest just loads that blob and scans it in memory. `subjectNormalized` and `bodyHead100` are computed on the fly against the 0–2 candidates that pass the sender+date gate — cheap enough that precomputing and storing them buys nothing.
 
 **Concurrency.** A parent bulk-forwarding several weeks of missionary emails in quick succession is an entirely normal usage pattern, so ingests for a single slug can arrive in bursts. Handled with **optimistic concurrency on `posts.json`**:
 
-1. Ingest loads `posts.json` and records its ETag.
+1. Ingest loads `posts.json` and records its ETag. (On the very first message for a slug the blob doesn't exist yet — write with `If-None-Match: *` so two simultaneous first messages can't both create it.)
 2. Runs the dedup check against the loaded posts.
 3. If duplicate: send the courtesy ack, done. Nothing written to `raw/` or `rendered/`.
 4. If new: append the post skeleton in memory, `PUT` back to blob with `If-Match: <etag>`, then write `raw/{slug}/{msgId}/`, then enqueue render.
@@ -199,20 +193,30 @@ Rationale for the design:
 
 **Post ordering:** posts are sorted by the **original `Date:` header**, not `receivedAt`. Forwards land in their correct historical position in the timeline. `receivedAt` is retained on each post for audit and for a "Recently added" ribbon in the reader UI.
 
-#### Option A: Logic Apps + M365 shared mailbox *(recommended if we keep M365 in the mail path)*
-- One shared mailbox in the tenant, e.g. `letters@pdayletters.com` (shared mailboxes are free under 50 GB, no license required).
-- All four ingest domains (see [Domains](#domains)) are added as accepted domains on the tenant; per-missionary addresses land in the same shared mailbox via aliases or catch-all rules on each `ingest.` subdomain.
-- Logic App trigger: **"When a new email arrives in a shared mailbox (V2)"**.
-- Actions: fetch raw MIME via HTTP to Graph → write `.eml` and attachments to blob `raw/{missionary}/{msgId}/` → enqueue a message for the render function.
-- Retains M365 spam filtering, transport rules, and archival in front of the pipeline.
-- Cost: pennies/month; Logic Apps Consumption pricing plus shared mailbox is free.
+### Email ingestion — SendGrid Inbound Parse
 
-#### Option B: SendGrid Inbound Parse
-- MX records on each accepted `ingest.` subdomain (see [Domains](#domains)) point at SendGrid; SendGrid Inbound Parse supports multiple hosts on a single account, all delivering to one webhook.
-- SendGrid POSTs parsed multipart form (headers, text, HTML, attachments) to one HTTPS Function endpoint.
-- Function writes raw payload to `raw/` blob and enqueues render.
-- No Exchange involvement. Free tier easily covers expected volume.
-- Trade-off: SendGrid becomes the inbound provider; no M365 mail flow rules.
+**Decision: SendGrid Inbound Parse.** An earlier draft also considered Logic Apps polling an M365 shared mailbox. SendGrid wins on the plan's "minimal moving parts" goal by a wide margin — one webhook versus a Logic App plus Graph API auth plus tenant accepted-domain configuration plus alias management. See [docs/email-options.md](email-options.md) for the full vendor comparison.
+
+**Setup:** MX records on the apex of each of the four accepted domains point at SendGrid. Inbound Parse supports multiple hosts on a single account, all delivering to one webhook. SendGrid POSTs a parsed multipart form (headers, text, HTML, attachments, spam score) to a single HTTPS Function endpoint.
+
+#### The webhook must be almost too dumb to fail
+
+SendGrid Inbound Parse retries a failing webhook for a limited window and then **discards the message permanently**. There is no mailbox holding a copy. That directly threatens the "preserve everything, exactly as received" goal — an outage or an unhandled parser exception is unrecoverable data loss, and the sender gets no indication anything went wrong.
+
+So the webhook does exactly two things and nothing else:
+
+1. Write the raw POST body verbatim to `raw/_inbox/{ulid}.raw`.
+2. Enqueue `{ulid}` on the ingest queue.
+
+Then return `200`. No parsing, no classification, no slug resolution, no ACL lookup, no dedup, no `posts.json` read, no outbound email. All of that happens in a **separate queue-triggered ingest Function** where a failure is retried from durable storage and eventually dead-lettered for inspection rather than lost.
+
+This inverts the usual failure mode: the only way to lose a message is for Blob Storage itself to be unavailable, and the only code that can throw is a blob write. Everything with real logic in it — MIME parsing, forward extraction, DKIM re-verification, the classifier — runs against data we already hold.
+
+**Consequences worth noting:**
+
+- `raw/_inbox/` accumulates payloads for messages that are ultimately rejected. A lifecycle rule deletes `_inbox/` blobs after 30 days; accepted messages are copied into `raw/{slug}/{msgId}/` by the ingest Function and are unaffected.
+- Rejected mail therefore *is* briefly on disk, contrary to the earlier "never archived" phrasing. This is a deliberate trade: 30 days of quarantined spam in a private container is a much smaller cost than permanently losing a real letter to a parser bug.
+- Message size ceiling is SendGrid's 30 MB. Gmail caps outbound attachments at 25 MB, so Gmail senders hit their own limit first. A message rejected at the SMTP layer for size never reaches the webhook — the sender gets a normal bounce from their own provider, which is the correct behavior and requires nothing from us.
 
 ### Missionary routing
 
@@ -231,9 +235,11 @@ Rationale for the design:
 
 ### Ingest address scheme
 
-The ingest address is `{slug}@ingest.{accepted-domain}` where `{accepted-domain}` is any of the four ingest domains listed in [Domains](#domains) (e.g. `elder.smith@ingest.pdayletters.com`, `elder.smith@ingest.pday.email`). The intake code parses the target letters site by extracting the local-part of the **envelope recipient** (SMTP `RCPT TO`) — see [Envelope recipient parsing](#envelope-recipient-parsing); the local-part **is** the slug regardless of which accepted domain was used and regardless of whether the address appeared in `To:`, `Cc:`, or `Bcc:`. Any envelope recipient whose domain isn't on the accepted list is rejected as if the mailbox didn't exist.
+There is one ingest address, `post@pdayletters.com`, plus the same local-part on the three alternate domains (see [Domains](#domains)). It is identical for every user of the service and appears verbatim in all instructions. Nothing is allocated or communicated per missionary.
 
-**Why no random token?** Earlier drafts proposed `{slug}-{4-char-token}@…` to make the address unguessable and spam-resistant. The [message classifier](#message-classification-applies-to-both-options) already rejects anything that isn't either a `direct` from the authenticated missionary or a `forward` from an ACL member — a stranger who guesses the address gets nothing published and no reply, only a logged-and-dropped rejection. Obscurity adds no meaningful defense on top of that, and it costs an ugly address, a token field in `profile.json`, extra parser logic, and an admin rotation UI. Rate-limiting a would-be flood attacker is better handled at the intake edge (SendGrid spam filtering, or Exchange Online Protection under Option A) than by an obscure local-part.
+The target site is resolved from the letter's author via [Sender-based routing](#sender-based-routing), so the recipient address carries no routing information at all — it exists only to get the message to us.
+
+**Why this replaced per-missionary addresses.** Earlier drafts used `{slug}@ingest.{domain}` and, before that, `{slug}-{4-char-token}@…` for unguessability. Both are gone. The token went first: the classifier already rejects anything that isn't a verified `direct` or an ACL-member `forward`, so obscurity bought no defense while costing an ugly address, a `profile.json` field, extra parser logic, and a rotation UI. The per-missionary address went next for a stronger reason — encoding the target site in an attacker-supplied field means the code must separately prove the sender is entitled to publish there, and that check is exactly the kind of thing that gets forgotten. Deriving the target from the authenticated author removes the input rather than validating it.
 
 ### Storage layout
 
@@ -241,29 +247,44 @@ Single storage account, cool-tier by default (photos rarely re-read after postin
 
 ```
 raw/                                   Preserved archive. Write-once by
-  {missionary-slug}/                   convention; container-level
-    {msgId}/                           soft-delete + versioning enabled.
+  _inbox/                              convention; container-level
+    {ulid}.raw                         soft-delete + versioning enabled.
+                                       Verbatim webhook payloads awaiting
+                                       processing. 30-day lifecycle rule.
+  {missionary-slug}/
+    {msgId}/
       message.eml                      Full raw MIME
       attachments/
-        {original-filename}            Untouched originals (EXIF intact)
+        {nn}-{safe-name}               Originals, byte-for-byte (EXIF intact).
+                                       Path segment is sanitized; the true
+                                       filename lives in metadata.json.
       metadata.json                    ingested-at, extractionSource,
-                                       headers subset
+                                       original filenames, headers subset
+
+pending/                               Unclaimed sites. Raw only — never
+  {missionary-slug}/                   rendered. Purged at 14 days if
+    claim.json                         unclaimed. See Onboarding.
+    {msgId}/ …                         Same shape as raw/{slug}/
 
 rendered/                              Rewritable. Regenerated by render function.
-  {missionary-slug}/
+  {missionary-slug}/                   Sanitized HTML only — never raw email HTML.
     posts.json                         Array of published post objects
-    search-index.json                  MiniSearch prebuilt index
     photos/
-      {photo-id}/
+      {photo-id}/                      photo-id is a content hash — see below
         large.webp                     ~2400px longest edge (post + full-screen)
         thumb.webp                     ~400px for album grid
 
 config/
-  ingest-domains.json                  Accepted ingest-domain allowlist
   {missionary-slug}/
-    profile.json                       Display name, slug
+    profile.json                       Display name, alternateSenders
     acl.json                           Email allowlist + roles
 ```
+
+Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
+
+**Attachment filenames are never used as path segments.** Blob names are flat strings in which `/` creates virtual directories, so a crafted filename like `../rendered/elder.smith/posts.json` would escape the intended prefix and overwrite live data. Each attachment is stored as `{nn}-{safe-name}`, where `nn` is its MIME part index and `safe-name` is the original filename stripped of path separators, `..` sequences, control characters, and leading dots, then truncated. The unmodified original filename is recorded in `metadata.json`, so nothing is lost for display or export. The same sanitization is reapplied when building the offline zip — otherwise the identical bug reappears as zip-slip on the user's own machine.
+
+**Photo IDs are content hashes** — `p_{sha256(bytes)[:12]}`. This is what actually makes the render function idempotent: a re-run produces identical IDs and overwrites identical blobs instead of orphaning the previous set. It also dedupes repeated images for free (mission logos, a photo the missionary resends), which shrinks both storage and the offline export.
 
 Plus one Azure Table in the same storage account:
 
@@ -277,20 +298,51 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 {
   "id": "2020-07-06-a7f3",
   "extractionSource": "rfc822",             // direct | rfc822 | inline
-  "originalDate": "2020-07-06T18:04:22Z",   // from the original message; drives sort order
+  "originalDate": "2020-07-06T18:04:22-04:00", // original Date: header, offset preserved; drives sort order
   "receivedAt": "2026-07-25T12:14:00Z",     // when this ingestion actually happened
-  "ingestDomain": "pday.email",             // which accepted ingest domain received the message
   "subject": "Week 34 - miracles in Manaus",
-  "bodyHtml": "<p>…</p>",
+  "bodyHtml": "<p>…</p>",                    // SANITIZED at render time — never raw email HTML
   "bodyText": "…",
   "originalMessageId": "<CAB=…@mail.missionary.org>",  // dedupe key when available
   "originalFrom": "elder.smith@missionary.org",
   "photos": [
-    { "id": "p_9a2c", "width": 4032, "height": 3024 }
+    { "id": "p_9a2c3f81b447", "width": 4032, "height": 3024 }
   ],
   "sourceRawPath": "raw/elder.smith/{msgId}/message.eml"
 }
 ```
+
+The original `Date:` header keeps its offset rather than being normalized to UTC. Missionaries write from all over the world, and the local calendar day is both the value the dedup gate keys on and the one readers actually mean when they say "the letter from the 6th."
+
+`ingestDomain` was dropped. It existed so an acknowledgment email could name the address the sender used — but acks are composed at ingest time, when that value is already in hand, so nothing ever read it back. Same category as `alsoSubmittedBy`: data collected and never used. It's logged to App Insights instead, matching how client type and DKIM results are already handled.
+
+### Content sanitization
+
+Email HTML is untrusted input. Under the `forward` path it is, by construction, supplied by a third party. Rendering it unmodified in an authenticated page would be a stored-XSS vector — and because Static Web Apps authenticates API calls with a session cookie, script running on a letters page could add ACL members, edit posts, or pull down the whole archive. This is the single most important control in the system.
+
+- **Sanitize at render time, not display time.** The render Function runs an allowlist-based sanitizer (`sanitize-html` / DOMPurify) over the message HTML and writes only the sanitized result into `rendered/`. The reader UI never handles raw email HTML at all, so a bug in the reader can't reintroduce the vulnerability, and the offline export and the print-book PDF inherit the same sanitized content for free.
+- **Allowlist, never denylist.** Permit the small tag set letters actually use — headings, paragraphs, breaks, lists, emphasis, blockquote, links, images — and drop everything else. No `<script>`, `<style>`, `<iframe>`, `<object>`, `<form>`, no `on*` handlers, no `style` attributes, no `javascript:` / `data:` URLs.
+- **Rewrite `cid:` image references.** Most rich mail embeds photos as `<img src="cid:…">` pointing at MIME parts rather than attaching them separately. These must be rewritten to the corresponding rendered photo URL during sanitization or embedded images silently break — a common case in Outlook and Apple Mail, not an edge case.
+- **Strip remote images entirely.** Any `<img>` still pointing off-site after `cid:` rewriting is removed. These are overwhelmingly tracking pixels, and leaving them in would leak every reader's IP address and read time to whatever marketing system the missionary's email passed through. Legitimate photos are always attachments or `cid:` parts, so nothing of value is lost.
+- **Defense in depth:** serve a strict `Content-Security-Policy` (no `unsafe-inline`, no external script origins) so that a sanitizer bypass still has nowhere to execute.
+- **The unsanitized original is never destroyed.** It stays in `raw/`, so if the sanitizer is later found to be stripping something it shouldn't, history can be re-rendered.
+
+### Private content delivery
+
+"Private by default" is a headline goal, but Static Web Apps authentication does not extend to Azure Blob Storage. If `rendered/` were a public container, every letter and photo would be readable by URL regardless of any ACL. All private content therefore flows through the API:
+
+```
+/api/content/{slug}/posts.json
+/api/photo/{slug}/{photoId}/{size}.webp
+```
+
+All blob containers are private, with public access disabled at the account level. The Function reads the caller's identity from the `x-ms-client-principal` header that Static Web Apps injects into every API request, checks it against that slug's `acl.json`, and streams the blob.
+
+**Why this rather than SAS tokens.** Because SWA injects the authenticated principal, the Function performs no token validation of its own — base64-decode a header, read an email address, check a list. There is no SAS to mint, no expiry to track, no client-side refresh logic, no CORS configuration, and no bearer token that can be forwarded to someone off the ACL. At this volume the extra hop costs effectively nothing: a page view pulling ten ~300 KB WebP renditions moves ~3 MB through a Consumption Function, and responses carry `Cache-Control: private, max-age=3600` so repeat views are served from the browser cache.
+
+**Upgrade path, if it's ever needed.** If egress through Functions or added latency ever shows up in telemetry, swap to a **user-delegation SAS** scoped to `rendered/{slug}/` and minted once per session after the same ACL check. Bytes then come straight from Blob Storage. Deliberately not built now — it trades real complexity for performance nobody has asked for.
+
+**The offline export is unaffected.** It's an owner- or reader-initiated download of content they're already entitled to, packaged as plain files.
 
 ### Photo handling
 
@@ -306,11 +358,13 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 
 ### Search
 
-**Client-side, MiniSearch.**
-- Render function builds `search-index.json` per missionary on every update.
-- Web app loads it on first visit to that missionary's letters site; searches run in-browser.
-- Works on mobile browsers with no special handling. Total index size for a full 2-year mission is expected to be well under 1 MB.
-- Same index file is bundled into the offline archive package — search continues to work with zero backend.
+**Client-side MiniSearch, index built in the browser.** The reader fetches `posts.json` and calls `addAll(posts)` on load. There is no prebuilt index artifact.
+
+**Why no prebuilt `search-index.json`.** An earlier draft had the render function emit one. It was a net loss: a serialized MiniSearch index stores the inverted index *plus* the stored fields, so it's typically **larger than the source text it indexes** — and the reader still had to download `posts.json` separately to display anything. The site was shipping roughly twice the necessary bytes. Dropping it removes an artifact, a build step, a file to keep in the export bundle, and a whole class of staleness bug — including a live one, since the post-edit path in Phase 5 never rebuilt the index and would have left edited posts unsearchable by their new text.
+
+**Size in practice.** A full two-year mission is ~104 letters at roughly 500–1500 words each — about 1.5 MB of JSON, or **~250–350 KB compressed**, comparable to a single photo. Indexing that many documents takes milliseconds. In exchange, list rendering, post navigation, and search all become instant with no further round-trips, and the same code path works offline in the exported archive.
+
+**If first paint ever needs to be faster**, the fix is to split by payload role rather than reintroduce an index: emit an `index.json` of id, date, subject, snippet, and thumbnail id (~8 KB compressed) for immediate list rendering, and fetch `posts.json` in the background to enable search a moment later. Not built now — revisit if `posts.json` exceeds ~5 MB uncompressed or if measured first paint on cellular is poor.
 
 ### Access control
 
@@ -321,19 +375,60 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
   - `reader` — invited viewer. Read-only for site content; can also download the offline archive and order a printed book for themselves (see [Post-mission archive](#post-mission-archive) and [Journal Publish](#journal-publish)).
 - **Invitations:** an owner enters an email address and a role; that address is added to `acl.json`. First time the invitee signs in with that email via Google or MS, they get access.
 - SWA route rules enforce that `/{missionary-slug}/*` requires an authenticated user whose email is in that slug's ACL. API calls check the same ACL server-side.
-- **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to that missionary's ingest address; no separate forwarding allowlist exists.
+- **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to `post@pdayletters.com` and have them land on that missionary's site.
+- **Inline forwards are owner-only.** A forward whose original arrives as a `message/rfc822` attachment carries verifiable DKIM; an inline forward is just text the forwarder typed and could have edited or fabricated. Readers can forward, but only an owner's inline forward is accepted for publication — matching the fact that owners can already edit any post's body anyway, so the restriction grants them nothing new.
+
+### Onboarding and auto-provisioning
+
+There is no signup form. A site comes into existence because someone mailed us a letter.
+
+**The instruction is one sentence:** *forward your missionary's email to `post@pdayletters.com` and follow the instructions you get back.* That works whether the missionary sends it themselves or a parent forwards one they received, which matters — missionaries have very little P-day computer time, and asking them to complete a setup flow is exactly the friction this service exists to remove.
+
+#### States
+
+| State | Meaning |
+|---|---|
+| **pending** | Messages have arrived for a slug that has no site yet. Raw MIME is stored under `pending/{slug}/`. **Nothing is rendered and nothing is viewable.** |
+| **active** | Someone has claimed the site and become its first owner. Normal operation. |
+| *(purged)* | Unclaimed after 14 days. Everything is deleted. |
+
+#### Flow
+
+1. A message arrives at `post@pdayletters.com`. Sender-based routing resolves a slug from the letter's author, but no site exists for it.
+2. Create `pending/{slug}/` with a `claim.json` (slug, `createdAt`, `expiresAt` = +14 days, claim token, list of invitees already emailed) and store the raw message. **No rendering, no `posts.json`, no photos.**
+3. Send a **claim email** to the sender/forwarder: *"We received a letter from Elder Smith. Click here to set up his letters site."*
+4. **Always also notify `{slug}@missionary.org`** — the missionary is the ground truth for their own name, and this makes an unauthorized claim attempt visible to the one person guaranteed to care.
+5. Further messages for the same pending slug are **accumulated silently**. A parent can dump twenty old emails in one sitting without getting twenty claim emails. A claim email goes to at most one address per unique forwarder and at most three per pending site.
+6. **Claim:** the link opens `pdayletters.com/claim/{token}`, requires Google or Microsoft sign-in, and writes that identity into a new `config/{slug}/acl.json` as the first `owner`.
+7. On claim, everything accumulated is moved to `raw/{slug}/` and enqueued for render **in `originalDate` order, running dedup for the first time** — so a bulk dump of forwards comes out deduplicated and chronologically ordered in a single pass, with no interim half-built site for anyone to see.
+8. Day 7: one reminder to the addresses already emailed. Day 14: a timer-triggered Function purges `pending/{slug}/` entirely, including soft-deleted blob versions.
+
+#### Why it's built this way
+
+- **Nothing renders before a claim.** An unclaimed site has no rendered artifacts, no ACL, and no URL that resolves — so an unauthorized or spam-triggered pending site is inert, cheap, and self-cleaning. It also means expiry deletes one prefix rather than reconciling four.
+- **Dedup deferred to claim time.** Dedup's source of truth is `posts.json`, which doesn't exist yet during pending. Rather than inventing a parallel mechanism, pending simply accumulates raw and dedups once at promotion.
+- **A signed claim token is genuinely necessary here** — unlike unsubscribe links, where the recipient is already an ACL member. At claim time there is no ACL to check against, so the token *is* the authorization. Single-use, 14-day expiry, HMAC-signed with a Key Vault secret.
+- **The claim email should say so explicitly:** *"If you'd like a parent to manage this site, just forward this email to them."* That turns the missionary's most likely action — forwarding — into the setup step.
+- **Land-grab risk is bounded.** To provision a slug at all, someone must possess a genuine email from that `@missionary.org` address, which puts them inside the missionary's circle already. The always-on notice to `{slug}@missionary.org` surfaces any attempt, unclaimed sites evaporate in 14 days, and a missionary can re-establish ownership at any time via a DMARC-verified `direct` message.
 
 ### Notification preferences
 
 Per-user (not per-missionary) preferences for outbound emails the service generates. Stored as columns on the user's row in the `users` Azure Table — same row that holds identity metadata (display name, auth provider, first-seen timestamp) so all per-user state lives in one place. Additional preferences are just additional columns.
 
+A `users` row is **created by the ingest path**, not only by sign-in. The missionary at `elder.smith@missionary.org` receives acknowledgments and may never sign in with Google or Microsoft at all, but still needs somewhere to record that they'd rather not be emailed.
+
 Initial preferences:
 
-- **`dedupeAckEmails`** — bool, default `true`. Sends a short "we already have this one — thanks!" reply when a forwarded email is de-duplicated against an existing post. Every such reply contains an unsubscribe-style link ("Don't tell me again when you forward duplicates") that hits a Function endpoint to flip this preference off for the user.
+- **`postAckEmails`** — bool, default `true`. Sends a short *"Posted — thanks!"* reply on every successfully published letter. This is the only signal a sender gets that a BCC actually worked; without it, silence is indistinguishable between "published" and "dropped on the floor," which is a bad property for a system whose entire value proposition is that you can forget about it.
+- **`dedupeAckEmails`** — bool, default `true`. Sends a *"we already have this one — thanks!"* reply when a forwarded email is de-duplicated against an existing post.
 
-Unsubscribe links point at the authenticated site settings page — `/{slug}/settings?pref=dedupeAckEmails` — where the recipient toggles the flag and it's persisted to their `users` row. Recipients are, by definition, ACL members already signed in via Google or Microsoft, so authentication is a single click at most. No signed tokens, no HMAC secret to manage, no expiry edge cases.
+Every generated email carries a one-click opt-out for its own category ("Don't email me every time a letter posts"). The link is a **signed token** hitting a Function endpoint that flips the flag directly, with no sign-in required. An earlier draft pointed these at the authenticated settings page on the reasoning that all recipients are ACL members — that no longer holds, because acks now go to `@missionary.org` senders who typically have no Google or Microsoft identity and cannot sign in at all. The claim flow already requires an HMAC signing service, so this reuses it rather than adding one.
 
-Doubles as an end-to-end smoke test for the send-and-receive email pipeline: the ack reply exercises SendGrid send from `no-reply@mail.pdayletters.com` (the single canonical sender — see [Domains](#domains)), and the settings toggle exercises the `users` table read/write path.
+An authenticated settings page at `/{slug}/settings` still exists for ACL members who'd rather toggle preferences directly.
+
+**Mail-loop protection.** Now that the service replies to essentially every inbound message, a misconfigured autoresponder on the other end could ping-pong indefinitely. Three guards: outbound acks carry `Auto-Submitted: auto-replied` (RFC 3834); inbound messages carrying `Auto-Submitted` other than `no`, or `Precedence: bulk`/`list`/`junk`, are never acked; and no ack is ever sent to an address on one of our own ingest domains.
+
+Acks double as an end-to-end smoke test for the send-and-receive email pipeline: they exercise SendGrid send from `no-reply@mail.pdayletters.com` (the single canonical sender — see [Domains](#domains)), the token-signing service, and the `users` table read/write path.
 
 ### Moderation / quarantine
 
@@ -349,7 +444,7 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 - **Download the offline archive** — one-click "Download my letters" produces a self-contained zip:
   - `index.html` — the same reader UI, but pointed at local files
-  - `posts.json`, `search-index.json`
+  - `posts.json`
   - `photos/` — all `large.webp` + `thumb.webp`
   - `raw/` — optional toggle to include the preserved archive too
   - Open `index.html` in any browser and it works, search included. Grandparents get their own copy without going through the owner.
@@ -427,14 +522,15 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 | Resource | SKU | Purpose | Est. $/mo |
 |---|---|---|---|
 | Static Web Apps | Standard | Web UI + auth + managed Functions | ~$9 |
-| Azure Functions | Consumption (via SWA managed) | Render, admin API, invite API | ~$0 |
-| Logic App | Consumption | Email intake (if Option A) | <$1 |
-| Storage account | Standard LRS, Cool tier default | Raw archive + rendered artifacts | <$2 for years of data |
-| Key Vault | Standard | Graph/SendGrid secrets | ~$0.03 |
+| Azure Functions | Consumption (via SWA managed) | Intake, ingest, render, content delivery, admin API, pending purge timer | ~$0 |
+| Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users` table + `ingest`/`render` queues | <$3 for years of data |
+| SendGrid | Free tier | Inbound Parse + outbound ack/claim mail | $0 |
+| Key Vault | Standard | SendGrid API key, Lulu OAuth secret, HMAC token-signing key | ~$0.03 |
 | Custom domains + certs | Managed by SWA | `pdayletters.com` (canonical) + 3 redirect entry points | $0 (certs are managed) |
-| M365 shared mailbox | Existing tenant | Inbound mail (Option A) | $0 |
 
-**Rough total: ~$10–15/month** at low volume.
+**Rough total: ~$12–15/month** at low volume.
+
+**GRS rather than LRS on storage.** LRS keeps three copies in a single datacenter, which does not survive a regional loss — an awkward fit for a service whose central promise is that these letters are preserved permanently and are, for many families, the only surviving copy. The delta is roughly a dollar a month at this scale. If the cost ever matters, the right narrowing is GRS on `raw/` only (the irreplaceable data) with LRS on `rendered/`, which is fully reconstructible from `raw/`.
 
 ---
 
@@ -444,52 +540,62 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 
 ### Phase 0 — Foundation
 - Domains already registered: `pdayletters.com` (canonical), `pdayemail.com`, `pday.email`, `missionaryjournal.org`. Verify each in the SWA custom-domain UI; configure the three non-canonical domains as 301 redirects to the canonical.
-- Seed `config/ingest-domains.json` with the four accepted ingest domains.
+- Set the `ACCEPTED_INGEST_DOMAINS` Function app setting to the four accepted domains.
 - Create Azure subscription resource group.
-- Storage account: containers `raw/` (soft-delete + versioning on), `rendered/`, `config/`. Azure Table `users`.
-- Key Vault + managed identity for Functions (SendGrid API key, Lulu OAuth secret).
+- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `pending/`, `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Azure Table `users`. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days.
+- Key Vault + managed identity for Functions (SendGrid API key, HMAC token-signing key, Lulu OAuth secret).
 - App Insights instance (for rejection logging and general telemetry).
-- Choose and provision the email provider (SendGrid or M365 shared mailbox). Set up DNS on all four domains: MX records on each `ingest.` subdomain pointing at the provider; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender.
+- Provision SendGrid. DNS on all four domains: **MX on the apex** pointing at SendGrid Inbound Parse; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender, with sending subdomain `mail.pdayletters.com`.
+- **Verify the `missionary.org` authentication posture early** — send a real message from a missionary account and inspect `Authentication-Results` for SPF/DKIM/DMARC. The `direct` classification path depends on DMARC alignment; if it doesn't hold, the whole trust model needs revisiting before anything else is built.
 
 ### Phase 1 — Inbound email pipeline (receive → classify → save)
-- Function endpoint that receives inbound mail (SendGrid Inbound Parse webhook, or Logic App poll from M365 shared mailbox).
-- Classifier: `direct` / `forward` / `rejected` per the [message classification](#message-classification-applies-to-both-options) table. DKIM re-verification against the `missionary.org` public key for `forward` messages with an embedded `.eml`; forwarder-vs-ACL check for all `forward` messages. Provenance captured in the `extractionSource` metadata field.
-- Original-message extractor: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators).
-- Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/`. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
+- **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail.
+- Intake Function: SendGrid Inbound Parse webhook that writes the raw POST body to `raw/_inbox/{ulid}.raw`, enqueues the ULID, returns 200, and does nothing else.
+- Queue-triggered ingest Function:
+  - Classifier: `direct` / `forward` / `rejected` per the [message classification](#message-classification) table. DKIM re-verification against the `missionary.org` public key for `forward` messages with an embedded `.eml`.
+  - Slug resolution via [sender-based routing](#sender-based-routing); forwarder-vs-ACL check for `forward` messages; inline forwards accepted only from owners.
+  - Original-message extractor: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators).
+  - Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/` with sanitized path segments. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
 - No dedup yet — every accepted message becomes a post. Any duplicates produced during bulk-forward testing get cleaned up when Phase 2 lands.
 - ACL for this phase is a **hand-edited JSON blob** — no auth UI yet. Manually add test accounts.
-- **Verification UI:** single unauthenticated page at `/admin/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Just enough to see the pipeline is working.
+- **Verification UI:** a page at `/manage/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Two constraints, both non-negotiable even for a throwaway page: it is **behind SWA authentication and restricted to an operator allowlist** — sender addresses and subject lines of private family mail are exactly what this service is built to protect — and it must **not** live under `/admin/*`, because the Azure Functions host reserves the `admin` route prefix for its own management API. Functions registered there deploy without complaint and then 404 at runtime.
 
-### Phase 2 — De-duplication and outbound send
-- Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then sender+date hard-gated Jaro–Winkler scoring over normalized subject + first 200 chars of body per [fuzzy scoring](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts.
+### Phase 2 — De-duplication, onboarding, and outbound send
+- Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then the sender+day hard gate plus exact normalized subject **or** `bodyHead100` match per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts; `If-None-Match: *` on first write.
 - Ingest becomes conditional: on match-miss, append the post skeleton to `posts.json` with `If-Match` and write raw/; on match-hit, don't touch either and send a courtesy ack instead.
-- Dedupe-hit path: send courtesy ack email via the outbound provider; respect `dedupeAckEmails` on the recipient's `users` row.
-- Settings page fragment at `/{slug}/settings` with the `dedupeAckEmails` toggle (auth via SWA identity, no separate token layer). Toggle persists to the current user's `users` row. Unsubscribe links in ack emails deep-link here.
-- **Verification:** hand-craft duplicate forwards from a test mailbox and confirm the raw folder count stays flat while the ack arrives. Bulk-forward five near-simultaneously to exercise the ETag-retry path. Click the unsubscribe link, sign in if not already, flip the toggle on the settings page, resend a duplicate, confirm silence.
+- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`, claim email to the forwarder plus notice to `{slug}@missionary.org`, `/claim/{token}` endpoint that establishes the first owner and promotes accumulated raw, day-7 reminder, day-14 timer-triggered purge.
+- HMAC token-signing service (claim links + one-click opt-out links), key from Key Vault.
+- Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards.
+- Settings page fragment at `/{slug}/settings` with both toggles (auth via SWA identity). One-click token links flip flags without sign-in.
+- **Verification:** hand-craft duplicate forwards from a test mailbox and confirm the raw folder count stays flat while the ack arrives. Bulk-forward five near-simultaneously to exercise the ETag-retry path. Forward from an unknown address, confirm a pending site is created and nothing renders, then claim it and confirm all accumulated messages appear deduplicated and in date order. Let a second pending site expire and confirm it purges.
 
 ### Phase 3 — Render pipeline
-- Queue-triggered render Function: parse raw `.eml` → resize photos to WebP + strip EXIF → write photos to `rendered/{slug}/photos/*` and fill in the target post's `photos` array in `posts.json` (ETag-guarded, same as ingest). Rebuild `search-index.json`.
-- Idempotent: rerunning against the same `raw/` yields the same rendered output. Post text and dedup fields are already in `posts.json` from Phase 1/2; render only fills in photo-related fields, so double-runs are safe.
-- **Verification:** extend the admin page to list rendered posts alongside a thumbnail strip; confirm posts sort by `originalDate` and that photo arrays fill in shortly after ingest.
+- Queue-triggered render Function: parse raw `.eml` → **sanitize HTML** per [Content sanitization](#content-sanitization) (allowlist, `cid:` rewriting, remote-image stripping) → resize photos to WebP + strip EXIF → write photos to `rendered/{slug}/photos/{p_sha256[:12]}/*` and fill in the target post's `photos` array in `posts.json` (ETag-guarded, same as ingest).
+- HEIC decoding from the outset — iPhone missionaries make this the common case, not an edge case.
+- Guard against oversized messages: cap decoded attachment bytes per message and stream rather than buffer, so a 25 MB email doesn't exhaust a Consumption instance's memory or its execution timeout.
+- Idempotent: rerunning against the same `raw/` yields the same rendered output, guaranteed by content-hash photo IDs. Post text and dedup fields are already in `posts.json` from Phase 1/2; render only fills in photo-related fields and sanitized HTML, so double-runs are safe.
+- **Verification:** extend the operator page to list rendered posts alongside a thumbnail strip; confirm posts sort by `originalDate` and that photo arrays fill in shortly after ingest. Run the Phase 1 fixture corpus through and diff the rendered output.
 
-### Phase 4 — Reader UI (unauthenticated demo)
-- Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch client-side search.
-- No auth yet — one hand-picked missionary slug set to `public: true` for smoke testing.
+### Phase 4 — Reader UI
+- Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch index built client-side from `posts.json`.
+- Content is served through `/api/content/…` and `/api/photo/…` per [Private content delivery](#private-content-delivery) from the start.
+- **Smoke-tested against a synthetic slug** seeded with fabricated letters and stock photos, with real test accounts on its ACL. Deliberately *not* a `public: true` escape hatch on a real missionary's site — a temporary flag that exposes real family mail is precisely the kind of thing that survives to production, and building the UI against the authenticated path from day one means Phase 5 has nothing to retrofit.
 
 ### Phase 5 — Auth & ACL
 - SWA Standard with Google + Microsoft providers.
 - Load `acl.json` from `config/{slug}/` and enforce via SWA route rules + API-level checks.
-- Owner admin view: manage invitees, hide/delete posts, edit any post's subject or body (for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication).
-- Turn off the `public: true` bit from Phase 4.
+- Owner admin view: manage invitees, hide/delete posts, edit any post's subject or body (for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). Edited bodies pass through the same sanitizer as ingested ones.
 
 ### Phase 6 — Polish
 - Photo album view (aggregated across all posts for a missionary).
 - Search UI refinement (highlights, snippets, filters).
 - Owner-managed profile (display name).
+- `alternateSenders` in `profile.json` — owner-managed additional addresses that map to this slug, for missionaries permitted to write from a personal account.
+- Per-slug daily ingest cap with alerting, so a mail loop or a forwarding rule gone wrong can't quietly generate thousands of posts and a matching storage bill.
 
 ### Phase 7 — Offline archive export
-- "Download my letters" Function bundles `index.html` + `posts.json` + `search-index.json` + `photos/` + (optionally) `raw/` into a self-contained zip.
-- Packaged reader HTML reads local JSON — search still works.
+- "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` + (optionally) `raw/` into a self-contained zip. Attachment path segments are re-sanitized on the way in to avoid zip-slip on the user's machine.
+- Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
 
 ### Phase 8 — Journal Publish
 - Assemble a hardcover photo book from a missionary's posts + photos and place the print order via the Lulu Print API.
@@ -499,4 +605,6 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 
 ## Open questions to confirm
 
-1. **Email intake:** Option A (Logic Apps + M365) or Option B (SendGrid Inbound Parse)?
+1. **Permanent deletion vs. soft delete.** The owner-facing promise is that "delete everything" is permanent, but `raw/` has soft-delete and versioning enabled precisely so nothing is ever lost. These are in direct conflict. Options: honor deletion by also purging soft-deleted versions and blob snapshots (simple, matches the promise, forfeits the safety net); or restate the promise as "removed from the service, retained for N days, then permanently erased" (safer against misclicks, requires saying so in the UI). Leaning toward the latter with N = 30 and explicit wording at the confirmation prompt.
+2. **Journal Publish pricing:** pass through Lulu's wholesale cost, or add a small service fee?
+3. **Journal Publish trim size:** fixed template initially, or configurable?
