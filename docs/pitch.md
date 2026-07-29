@@ -22,7 +22,7 @@ No app. No login for the missionary. No setup form. Nothing new to remember on a
 
 ## How it works
 
-**A private site, just for your family.** You decide who's on the list — grandparents, aunts, the friend from home. They sign in with the Google or Microsoft account they already have. Nobody else can see a word of it, and nothing is ever public.
+**A private site, just for your family and friends.** You decide who's on the list — grandparents, aunts, the friend from home. They sign in with the Google or Microsoft account they already have. Nobody else can see a word of it, and nothing is ever public.
 
 **Search that actually works.** Type a city name or "baptism" or "Sister Alves" and find the letter in a second. Two years of letters, instantly searchable — something no email inbox has ever quite managed.
 
