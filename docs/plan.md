@@ -118,7 +118,7 @@ Design principles:
 - **The target site is derived from the letter's author, never from the recipient address** — see [Sender-based routing](#sender-based-routing). Every message goes to the same `post@` address, so there is no attacker-supplied "which site" input to validate.
 - **The forwarder must be on the same ACL that grants them read access to the destination missionary's letters site.** There is no separate "allowed forwarders" list — access implies forwarding rights.
 - **Inline-forward extraction is restricted to the `owner` role.** Text between forward separators is entirely forwarder-controlled and carries no cryptographic evidence of authorship — a `reader` could otherwise fabricate a letter, attribute it to the missionary, and backdate it anywhere in the timeline. Owners can already edit and delete any post, so allowing them inline forwards grants no privilege they don't have. `reader`-submitted forwards must carry a `message/rfc822` attachment ("forward as attachment"), whose DKIM signature can be re-verified against `missionary.org`.
-- **Reject silently.** No bounce or error to the sender — bouncing leaks which addresses exist and invites probing. The two deliberate exceptions are the claim and acknowledgment emails described in [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning) and [Notification preferences](#notification-preferences), both of which only go to senders we've already tied to a site.
+- **Reject silently — unless the sender has proven they hold real missionary mail.** No bounce or error by default, because bouncing leaks which addresses exist and invites probing. The exception is a message carrying a **DKIM-valid `message/rfc822` original from `@missionary.org`**: that sender demonstrably possesses a genuine missionary letter, so they're a real person in the circle rather than a prober, and silence would leave them believing their forward worked. They get a short reply explaining what to do — see [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning). Everything else is dropped without a word.
 - **Log every rejection** to App Insights (sender, subject, reason, timestamp — no message body). Rejected messages are not archived to blob storage.
 
 #### Sender-based routing
@@ -342,6 +342,8 @@ All blob containers are private, with public access disabled at the account leve
 
 **Upgrade path, if it's ever needed.** If egress through Functions or added latency ever shows up in telemetry, swap to a **user-delegation SAS** scoped to `rendered/{slug}/` and minted once per session after the same ACL check. Bytes then come straight from Blob Storage. Deliberately not built now — it trades real complexity for performance nobody has asked for.
 
+**Private content delivery is Functions-mediated, and Functions on Consumption scale to zero.** The first API call a reader makes after sign-in is `/api/content/{slug}/posts.json`, which pays a ~1–3 s Node cold start on a site nobody has visited for a while. Photos are unaffected — they can't be requested until `posts.json` has returned, by which point the app is warm. Static Web Apps authentication is handled by the SWA platform rather than by a managed Function, so signing in does *not* pre-warm anything; `posts.json` is the warm-up. Given a weekly visit cadence this is acceptable, and `Cache-Control: private, max-age=3600` keeps repeat views off the Function entirely. If it ever needs fixing: a 5-minute timer-triggered ping keeps one instance alive within the free grant, and beyond that SWA Standard supports a linked backend on Flex Consumption with always-ready instances.
+
 **The offline export is unaffected.** It's an owner- or reader-initiated download of content they're already entitled to, packaged as plain files.
 
 ### Photo handling
@@ -395,21 +397,31 @@ There is no signup form. A site comes into existence because someone mailed us a
 #### Flow
 
 1. A message arrives at `post@pdayletters.com`. Sender-based routing resolves a slug from the letter's author, but no site exists for it.
-2. Create `pending/{slug}/` with a `claim.json` (slug, `createdAt`, `expiresAt` = +14 days, claim token, list of invitees already emailed) and store the raw message. **No rendering, no `posts.json`, no photos.**
+2. Create `pending/{slug}/` with a `claim.json` (slug, `createdAt`, `expiresAt` = +14 days, a **hash** of the claim token, list of addresses already emailed) and store the raw message. **No rendering, no `posts.json`, no photos.** Only the hash is stored, so read access to the blob doesn't confer the ability to claim.
 3. Send a **claim email** to the sender/forwarder: *"We received a letter from Elder Smith. Click here to set up his letters site."*
-4. **Always also notify `{slug}@missionary.org`** — the missionary is the ground truth for their own name, and this makes an unauthorized claim attempt visible to the one person guaranteed to care.
-5. Further messages for the same pending slug are **accumulated silently**. A parent can dump twenty old emails in one sitting without getting twenty claim emails. A claim email goes to at most one address per unique forwarder and at most three per pending site.
-6. **Claim:** the link opens `pdayletters.com/claim/{token}`, requires Google or Microsoft sign-in, and writes that identity into a new `config/{slug}/acl.json` as the first `owner`.
-7. On claim, everything accumulated is moved to `raw/{slug}/` and enqueued for render **in `originalDate` order, running dedup for the first time** — so a bulk dump of forwards comes out deduplicated and chronologically ordered in a single pass, with no interim half-built site for anyone to see.
-8. Day 7: one reminder to the addresses already emailed. Day 14: a timer-triggered Function purges `pending/{slug}/` entirely, including soft-deleted blob versions.
+4. Further messages for the same pending slug are **accumulated silently**. A parent can dump twenty old emails in one sitting without getting twenty claim emails. A claim email goes to at most one address per unique forwarder and at most three per pending site.
+5. **Claim:** the link opens `pdayletters.com/claim/{token}`, requires Google or Microsoft sign-in, and writes that identity into a new `config/{slug}/acl.json` as the first `owner`.
+6. On claim, everything accumulated is moved to `raw/{slug}/` and enqueued for render **in `originalDate` order, running dedup for the first time** — so a bulk dump of forwards comes out deduplicated and chronologically ordered in a single pass, with no interim half-built site for anyone to see.
+7. Day 7: one reminder to the addresses already emailed. Day 14: a timer-triggered Function purges `pending/{slug}/` entirely, including soft-deleted blob versions.
+
+#### The missionary is never contacted unprompted
+
+A parent can build an entire letters site without their missionary ever knowing — and the printed book at the homecoming is a genuinely good reason to want that. So the service never emails `{slug}@missionary.org` on its own initiative. Claim emails, reminders, and acknowledgments go **only to the person who submitted the message**. Nothing is CC'd or BCC'd to the missionary.
+
+This is a deliberate trade. An earlier draft notified the missionary on every pending-site creation as a check against someone claiming a site they had no business claiming. Dropping that notice accepts the loophole in exchange for the surprise-gift scenario, and the loopholes are bounded elsewhere: provisioning at all requires possessing a genuine letter from that `@missionary.org` address, unclaimed sites evaporate in 14 days, and the missionary retains an unconditional right of return (below).
+
+#### Two cases the open provisioning model creates
+
+**Someone forwards a letter for a site that already exists, and they're not on its ACL.** Common and innocent — grandma sends one in before anyone has invited her. Silent rejection would leave her believing it worked. If her message carries a DKIM-valid `message/rfc822` original, she gets a short reply: *"A letters site already exists for this missionary. Ask whoever set it up to add you."* No owner names, no content, no confirmation of anything she couldn't already infer from holding the letter. Inline-only forwards from unknown senders still get silence.
+
+**The missionary wants their own site.** A DMARC-verified `direct` message from `{slug}@missionary.org` is the strongest identity claim the system can receive — nobody else can send from that address. So a `direct` message whose author isn't on the ACL of an existing active site **publishes the letter and mails that address a claim link** granting `owner`. The claim step is still required because `@missionary.org` accounts generally can't sign in with Google or Microsoft, so a sign-in identity has to be bound to the role. This gives every missionary an unconditional path to ownership of their own name without any proactive notification.
 
 #### Why it's built this way
 
 - **Nothing renders before a claim.** An unclaimed site has no rendered artifacts, no ACL, and no URL that resolves — so an unauthorized or spam-triggered pending site is inert, cheap, and self-cleaning. It also means expiry deletes one prefix rather than reconciling four.
 - **Dedup deferred to claim time.** Dedup's source of truth is `posts.json`, which doesn't exist yet during pending. Rather than inventing a parallel mechanism, pending simply accumulates raw and dedups once at promotion.
-- **A signed claim token is genuinely necessary here** — unlike unsubscribe links, where the recipient is already an ACL member. At claim time there is no ACL to check against, so the token *is* the authorization. Single-use, 14-day expiry, HMAC-signed with a Key Vault secret.
+- **A signed claim token is genuinely necessary here** — unlike unsubscribe links, where the recipient is already an ACL member. At claim time there is no ACL to check against, so the token *is* the authorization. Single-use, 14-day expiry, HMAC-signed with a Key Vault secret, stored only as a hash.
 - **The claim email should say so explicitly:** *"If you'd like a parent to manage this site, just forward this email to them."* That turns the missionary's most likely action — forwarding — into the setup step.
-- **Land-grab risk is bounded.** To provision a slug at all, someone must possess a genuine email from that `@missionary.org` address, which puts them inside the missionary's circle already. The always-on notice to `{slug}@missionary.org` surfaces any attempt, unclaimed sites evaporate in 14 days, and a missionary can re-establish ownership at any time via a DMARC-verified `direct` message.
 
 ### Notification preferences
 
@@ -563,7 +575,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 ### Phase 2 — De-duplication, onboarding, and outbound send
 - Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then the sender+day hard gate plus exact normalized subject **or** `bodyHead100` match per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts; `If-None-Match: *` on first write.
 - Ingest becomes conditional: on match-miss, append the post skeleton to `posts.json` with `If-Match` and write raw/; on match-hit, don't touch either and send a courtesy ack instead.
-- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`, claim email to the forwarder plus notice to `{slug}@missionary.org`, `/claim/{token}` endpoint that establishes the first owner and promotes accumulated raw, day-7 reminder, day-14 timer-triggered purge.
+- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`, claim email to the forwarder only, `/claim/{token}` endpoint that establishes the first owner and promotes accumulated raw, day-7 reminder, day-14 timer-triggered purge. Also the two open-provisioning cases: the "site already exists" reply for DKIM-verified non-ACL senders, and owner-grant on a `direct` message from an unrecognized `@missionary.org` author.
 - HMAC token-signing service (claim links + one-click opt-out links), key from Key Vault.
 - Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards.
 - Settings page fragment at `/{slug}/settings` with both toggles (auth via SWA identity). One-click token links flip flags without sign-in.
