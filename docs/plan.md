@@ -21,6 +21,15 @@ An automatic weekly-letters archive for LDS missionaries. A missionary BCCs one 
 
 ---
 
+## External constraints
+
+Facts about the world the design has to accommodate. These are not preferences — if one of them changes, several decisions downstream change with it.
+
+- **⚠️ Missionaries keep access to their `@missionary.org` address for only 60 days after returning home.** (Confirmed July 2026.) This is the most consequential constraint in the plan. Every mechanism that works by proving control of that address — `direct` publishing, DMARC-verified identity, and `claim@` ownership recovery — has a hard expiry 60 days past homecoming. The design's whole response is to **convert that temporary proof into durable ownership before the window closes**; see [Ownership and the 60-day window](#ownership-and-the-60-day-window). Anything proposed later in this document that leans on a live `@missionary.org` mailbox must be checked against this.
+- **`@missionary.org` DMARC alignment is assumed but not yet verified.** The `direct` classification path requires SPF/DKIM/DMARC to pass on mail from that domain. Phase 0 confirms this against a real message before anything is built on top of it.
+
+---
+
 ## High-level architecture
 
 ```
@@ -81,16 +90,22 @@ Four registered domains, one canonical:
 
 **Why one canonical web domain instead of serving all four?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no real user benefit given the redirect model already puts users on the canonical domain within one round-trip.
 
-**One shared ingest address, accepted on all four domains.** There is no per-missionary ingest address — everyone everywhere is told to use the same one:
+**Two shared addresses, accepted on all four domains.** There is no per-missionary ingest address — everyone everywhere is told to use the same two:
 
-- **`post@pdayletters.com`** (canonical, the one in all instructions)
-- `post@pdayemail.com`
-- `post@pday.email`
-- `post@missionaryjournal.org`
+| Address | Verb | Who may use it |
+|---|---|---|
+| **`post@pdayletters.com`** | "Publish this letter." | Anyone. The classifier decides what's accepted. |
+| **`claim@pdayletters.com`** | "I am this missionary; give me control of my site." | `@missionary.org` senders only, DMARC-verified. Everything else is ignored without reply. |
+
+Both exist on `pdayemail.com`, `pday.email`, and `missionaryjournal.org` as well; `pdayletters.com` is the canonical form used in all instructions.
 
 The target letters site is determined from **who wrote the letter**, not from which address received it — see [Sender-based routing](#sender-based-routing). The accepted-domain list is a Function app setting (`ACCEPTED_INGEST_DOMAINS`), not a config blob; it changes roughly never.
 
-**Why one address instead of `{slug}@…`?** Three wins. (1) **Instructions get trivial** — "forward your missionary's email to `post@pdayletters.com`" works for every user of the service, with nothing to look up or personalize. (2) **It removes a whole class of security bug** — when the recipient address names the target site, the intake code must separately prove the sender is entitled to publish there, and getting that check wrong lets any missionary post to any other missionary's site. Deriving the target from the authenticated author makes the check structural rather than something we have to remember to write. (3) **No address provisioning at onboarding** — nothing to allocate, alias, or communicate when a new site is created.
+**Why two addresses rather than one?** `post@` and `claim@` express different *intents*, and separating them is what lets the `post@` path stay completely silent for missionaries. If a single address had to serve both, the system would have to infer intent — typically "reply if this sender isn't on the ACL yet" — which would send an unsolicited email to exactly the missionary whose parent is building a surprise site. An explicit address makes the request unambiguous and makes replying safe, because sending to `claim@` *is* the consent to be replied to.
+
+This does not weaken sender-based routing. The recipient address selects a **verb**, never a **target**; the slug still comes entirely from the authenticated author, so there remains no attacker-supplied "which site" value.
+
+**Why one address per verb instead of `{slug}@…`?** Three wins. (1) **Instructions get trivial** — "forward your missionary's email to `post@pdayletters.com`" works for every user of the service, with nothing to look up or personalize. (2) **It removes a whole class of security bug** — when the recipient address names the target site, the intake code must separately prove the sender is entitled to publish there, and getting that check wrong lets any missionary post to any other missionary's site. Deriving the target from the authenticated author makes the check structural rather than something we have to remember to write. (3) **No address provisioning at onboarding** — nothing to allocate, alias, or communicate when a new site is created.
 
 **MX lives on the apex** of each domain, pointing at the inbound provider. This does not collide with outbound: sending happens from `no-reply@mail.pdayletters.com`, so bounce and delivery-event handling stay on the `mail.` subdomain and never touch the inbound parse path.
 
@@ -123,7 +138,7 @@ Design principles:
 
 #### Sender-based routing
 
-Every message arrives at the same `post@` address, so the recipient carries no routing information. The target slug is resolved from **the author of the letter**:
+Messages to `post@` carry no routing information in the recipient — the address names a verb, not a destination. The target slug is resolved from **the author of the letter**:
 
 | Case | Slug source |
 |---|---|
@@ -233,6 +248,8 @@ This inverts the usual failure mode: the only way to lose a message is for Blob 
   - **Deterministic**: the intake code can compute the slug from the authenticated sender address alone — no lookup, no onboarding form field, no persistence of a slug-to-email map.
 - If a missionary really wants a different-looking URL (say a nickname), we can add an optional friendly-alias redirect later without giving up the deterministic derivation as the source of truth.
 
+**The site root is public.** `pdayletters.com/` serves an unauthenticated landing page — what the service does, the `post@pdayletters.com` address, and *"Are you a missionary? Email `claim@pdayletters.com` from your `@missionary.org` address to claim your site."* Everything on it is generic; no slug, no name, no content. Without it there is no way to discover `claim@` at all, since every letters site is auth-gated and the `post@` path is deliberately silent.
+
 ### Ingest address scheme
 
 There is one ingest address, `post@pdayletters.com`, plus the same local-part on the three alternate domains (see [Domains](#domains)). It is identical for every user of the service and appears verbatim in all instructions. Nothing is allocated or communicated per missionary.
@@ -276,8 +293,10 @@ rendered/                              Rewritable. Regenerated by render functio
 
 config/
   {missionary-slug}/
-    profile.json                       Display name, alternateSenders
-    acl.json                           Email allowlist + roles
+    profile.json                       Display name, alternateSenders,
+                                       returnDate (optional)
+    acl.json                           Email allowlist + roles, incl.
+                                       verifiedMissionary flag
 ```
 
 Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
@@ -288,7 +307,7 @@ Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook t
 
 Plus one Azure Table in the same storage account:
 
-- **`users`** — `PartitionKey = "user"`, `RowKey = lowercased email address`. Identity columns: `displayName`, `authProvider` (`google` | `microsoft`), `firstSeenAt`, `lastSignInAt`. Preference columns: `dedupeAckEmails` (bool, default `true`); additional per-user preferences are just additional columns as they arrive.
+- **`users`** — `PartitionKey = "user"`, `RowKey = lowercased email address`. Identity columns: `displayName`, `authProvider` (`google` | `microsoft`), `firstSeenAt`, `lastSignInAt`. Preference columns: `postAckEmails` and `dedupeAckEmails` (bools — see [Notification preferences](#notification-preferences) for the per-sender-type defaults); additional per-user preferences are just additional columns as they arrive.
 
 No separate deduplication table — `rendered/{slug}/posts.json` is the dedup source of truth (see [Extracting and de-duplicating forwards](#extracting-and-de-duplicating-forwards) for the scan + concurrency model).
 
@@ -375,6 +394,8 @@ All blob containers are private, with public access disabled at the account leve
 - **Roles per missionary's letters site:**
   - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit/hide/delete any post (including editing the subject or body — for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
   - `reader` — invited viewer. Read-only for site content; can also download the offline archive and order a printed book for themselves (see [Post-mission archive](#post-mission-archive) and [Journal Publish](#journal-publish)).
+- **`verifiedMissionary` owners cannot be removed by others.** An owner entry created through the `claim@` flow (see [Ownership and the 60-day window](#ownership-and-the-60-day-window)) carries this flag and is removable only by that owner themselves. It's the tiebreaker that makes a genuine ownership dispute resolvable instead of a race.
+- **Owners on `missionary.org` are warned continuously.** Any owner identity on that domain stops working 60 days after the missionary returns home, so the admin UI shows a persistent banner until a non-`missionary.org` owner exists.
 - **Invitations:** an owner enters an email address and a role; that address is added to `acl.json`. First time the invitee signs in with that email via Google or MS, they get access.
 - SWA route rules enforce that `/{missionary-slug}/*` requires an authenticated user whose email is in that slug's ACL. API calls check the same ACL server-side.
 - **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to `post@pdayletters.com` and have them land on that missionary's site.
@@ -410,11 +431,36 @@ A parent can build an entire letters site without their missionary ever knowing 
 
 This is a deliberate trade. An earlier draft notified the missionary on every pending-site creation as a check against someone claiming a site they had no business claiming. Dropping that notice accepts the loophole in exchange for the surprise-gift scenario, and the loopholes are bounded elsewhere: provisioning at all requires possessing a genuine letter from that `@missionary.org` address, unclaimed sites evaporate in 14 days, and the missionary retains an unconditional right of return (below).
 
-#### Two cases the open provisioning model creates
+#### When a letter arrives for a site that already exists
 
-**Someone forwards a letter for a site that already exists, and they're not on its ACL.** Common and innocent — grandma sends one in before anyone has invited her. Silent rejection would leave her believing it worked. If her message carries a DKIM-valid `message/rfc822` original, she gets a short reply: *"A letters site already exists for this missionary. Ask whoever set it up to add you."* No owner names, no content, no confirmation of anything she couldn't already infer from holding the letter. Inline-only forwards from unknown senders still get silence.
+Common and innocent — grandma sends one in before anyone has invited her, or the missionary keeps BCC'ing `post@` on a site their parent set up. Two sub-cases:
 
-**The missionary wants their own site.** A DMARC-verified `direct` message from `{slug}@missionary.org` is the strongest identity claim the system can receive — nobody else can send from that address. So a `direct` message whose author isn't on the ACL of an existing active site **publishes the letter and mails that address a claim link** granting `owner`. The claim step is still required because `@missionary.org` accounts generally can't sign in with Google or Microsoft, so a sign-in identity has to be bound to the role. This gives every missionary an unconditional path to ownership of their own name without any proactive notification.
+**A `forward` from someone not on the ACL.** Silent rejection would leave the sender believing it worked. If the message carries a DKIM-valid `message/rfc822` original, they get a short reply: *"A letters site already exists for this missionary. Ask whoever set it up to add you — and if you **are** this missionary, email `claim@pdayletters.com` from your `@missionary.org` address to take ownership."* No owner names, no content, nothing they couldn't already infer from holding the letter. Inline-only forwards from unknown senders still get silence.
+
+**A `direct` message from a missionary who isn't on the ACL.** The letter **publishes normally and the missionary hears nothing at all.** This is the surprise-site case working as intended — a parent runs the site, the missionary just BCCs `post@` every week and is never distracted by it. Ownership is available whenever they want it, but only by asking: see below.
+
+### Ownership and the 60-day window
+
+A missionary can take ownership of their own site at any time by emailing **`claim@pdayletters.com`** from their `@missionary.org` address. Mail to `claim@` from any other domain, or failing DMARC, is **ignored without reply** — there is exactly one rule and no exceptions.
+
+The reply contains a signed, single-use claim link. Following it requires a Google or Microsoft sign-in, and that identity is added to `acl.json` as an **additional** `owner`.
+
+**Claiming never demotes anyone.** In the overwhelmingly common case the missionary simply wants access to their own letters while a parent continues to run the site, and evicting the parent would be hostile. Multiple owners are already supported, so the missionary joins the existing set.
+
+**Verified-missionary owners are protected.** The ACL entry created through a `claim@` link is flagged `verifiedMissionary: true` and **cannot be removed by any other owner** — only by that owner themselves. Without this, a genuine dispute degenerates into an owner-removal war that whoever clicks fastest wins. With it, a missionary can join a site claimed by someone with no business owning it, remove that person, and not be removed back.
+
+#### The 60-day cliff
+
+Per [External constraints](#external-constraints), `@missionary.org` access ends **60 days after a missionary returns home**. `claim@` therefore stops working entirely at that point, and so does `direct` publishing.
+
+This is exactly backwards from when disputes tend to surface — "I found out years later there's a site about me" is the case that matters most and the one the mechanism cannot serve. Four responses, none of which depend on the mailbox still being alive after the fact:
+
+1. **Bind a personal account, not the missionary one.** The claim link should be followed with a personal Google or Microsoft account. Ownership then survives indefinitely, because the ACL entry is keyed on an identity that doesn't expire. The `claim@` reply says this in as many words.
+2. **Warn loudly if they bind `@missionary.org` anyway.** If the `missionary.org` address is itself usable as a Microsoft sign-in, a missionary will naturally reach for it — and end up with an owner identity that dies with the mailbox. Any owner whose address is on `missionary.org` triggers a persistent, non-dismissible banner in the admin UI: *"This account stops working 60 days after you return home. Add a personal account as an owner now."* It stays until a non-`missionary.org` owner exists.
+3. **Nudge the existing owner, continuously.** The owner admin view carries a standing prompt — *"Is [missionary] set up on this site? They can only claim it while their `@missionary.org` address works."* This costs nothing, requires no detection of mission end, and resolves the non-adversarial 99% long before the window closes. If `returnDate` is set in `profile.json` (see below), the prompt escalates in the weeks either side of it; otherwise it escalates after ~4 weeks of no new letters. False positives are cheap — it's a banner, not an email.
+4. **A human dispute path is the only real backstop after 60 days.** Nothing automated can verify a returned missionary's identity once the address is gone. The archive itself is the evidence: every `direct` message in `raw/` carries a DMARC-verified `@missionary.org` origin, which proves authorship long after the mailbox is deactivated. Turning that into an actual process belongs with the terms-of-use work — tracked in the follow-up issue, and a prerequisite before the service is offered to anyone outside a known circle.
+
+**`returnDate` in `profile.json`.** An optional owner-set date, used for two things at once: scheduling the ownership nudges above, and filling in the mission dates on the printed book cover. Derived from the last post's date when absent.
 
 #### Why it's built this way
 
@@ -431,7 +477,7 @@ A `users` row is **created by the ingest path**, not only by sign-in. The missio
 
 Initial preferences:
 
-- **`postAckEmails`** — bool, default `true`. Sends a short *"Posted — thanks!"* reply on every successfully published letter. This is the only signal a sender gets that a BCC actually worked; without it, silence is indistinguishable between "published" and "dropped on the floor," which is a bad property for a system whose entire value proposition is that you can forget about it.
+- **`postAckEmails`** — bool. Sends a short *"Posted — thanks!"* reply on every successfully published letter. **Default `true` for everyone except `@missionary.org` senders, where it defaults to `false`.** The two groups have genuinely different needs: a forwarder is actively managing a site and needs to know their forward landed, whereas a missionary adding `post@` to their weekly email should never hear from us again. A weekly ack is 104 interruptions across a mission, each one consuming scarce P-day computer time, in service of a site somebody else is watching. And that's the real argument — **the missionary isn't monitoring the site; the owner is.** If letters stop arriving, a parent notices first. Missionaries who *want* confirmation can turn it on from the settings page or the `claim@` reply.
 - **`dedupeAckEmails`** — bool, default `true`. Sends a *"we already have this one — thanks!"* reply when a forwarded email is de-duplicated against an existing post.
 
 Every generated email carries a one-click opt-out for its own category ("Don't email me every time a letter posts"). The link is a **signed token** hitting a Function endpoint that flips the flag directly, with no sign-in required. An earlier draft pointed these at the authenticated settings page on the reasoning that all recipients are ACL members — that no longer holds, because acks now go to `@missionary.org` senders who typically have no Google or Microsoft identity and cannot sign in at all. The claim flow already requires an HMAC signing service, so this reuses it rather than adding one.
@@ -451,6 +497,8 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 ### Post-mission archive
 
 **Nothing about the site changes when a missionary comes home.** No "read-only mode" flip, no state transition, no admin action. The letters simply stop arriving. Owners retain full edit/hide/delete rights on individual posts; anyone on the ACL can still forward historical emails that surface later (an aunt finds an old email in her inbox two years post-mission and forwards it — it lands normally). Nothing on our side needs to happen.
+
+**The one thing that does expire is the missionary's ability to claim the site.** Their `@missionary.org` address stops working 60 days after they return, taking `claim@` with it — see [Ownership and the 60-day window](#ownership-and-the-60-day-window). Late-arriving *forwards* are unaffected, because routing reads the `@missionary.org` address out of the archived historical header rather than contacting a live mailbox; a letter forwarded in 2032 still resolves to the right slug.
 
 **Anyone on the ACL** can, at any time (during or after the mission):
 
@@ -575,7 +623,9 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 ### Phase 2 — De-duplication, onboarding, and outbound send
 - Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then the sender+day hard gate plus exact normalized subject **or** `bodyHead100` match per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts; `If-None-Match: *` on first write.
 - Ingest becomes conditional: on match-miss, append the post skeleton to `posts.json` with `If-Match` and write raw/; on match-hit, don't touch either and send a courtesy ack instead.
-- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`, claim email to the forwarder only, `/claim/{token}` endpoint that establishes the first owner and promotes accumulated raw, day-7 reminder, day-14 timer-triggered purge. Also the two open-provisioning cases: the "site already exists" reply for DKIM-verified non-ACL senders, and owner-grant on a `direct` message from an unrecognized `@missionary.org` author.
+- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`, claim email to the forwarder only, `/claim/{token}` endpoint that establishes the first owner and promotes accumulated raw, day-7 reminder, day-14 timer-triggered purge.
+- **`claim@` handler** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): accept only DMARC-passing `@missionary.org` senders, ignore everything else without reply, mail back a signed claim link that adds a `verifiedMissionary` owner. Reply copy must tell them to sign in with a **personal** Google/Microsoft account and explain the 60-day expiry.
+- The "a site already exists" reply for DKIM-verified non-ACL senders, including `claim@` instructions.
 - HMAC token-signing service (claim links + one-click opt-out links), key from Key Vault.
 - Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards.
 - Settings page fragment at `/{slug}/settings` with both toggles (auth via SWA identity). One-click token links flip flags without sign-in.
@@ -589,6 +639,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - **Verification:** extend the operator page to list rendered posts alongside a thumbnail strip; confirm posts sort by `originalDate` and that photo arrays fill in shortly after ingest. Run the Phase 1 fixture corpus through and diff the rendered output.
 
 ### Phase 4 — Reader UI
+- **Public landing page at `/`** — what the service is, the `post@pdayletters.com` address, and the `claim@pdayletters.com` instructions. Unauthenticated, entirely generic, no per-site information.
 - Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch index built client-side from `posts.json`.
 - Content is served through `/api/content/…` and `/api/photo/…` per [Private content delivery](#private-content-delivery) from the start.
 - **Smoke-tested against a synthetic slug** seeded with fabricated letters and stock photos, with real test accounts on its ACL. Deliberately *not* a `public: true` escape hatch on a real missionary's site — a temporary flag that exposes real family mail is precisely the kind of thing that survives to production, and building the UI against the authenticated path from day one means Phase 5 has nothing to retrofit.
@@ -597,11 +648,12 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - SWA Standard with Google + Microsoft providers.
 - Load `acl.json` from `config/{slug}/` and enforce via SWA route rules + API-level checks.
 - Owner admin view: manage invitees, hide/delete posts, edit any post's subject or body (for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). Edited bodies pass through the same sanitizer as ingested ones.
+- **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): enforce `verifiedMissionary` removal protection; persistent banner while any owner is on `missionary.org`; standing prompt to the existing owner to get the missionary claimed while their address still works.
 
 ### Phase 6 — Polish
 - Photo album view (aggregated across all posts for a missionary).
 - Search UI refinement (highlights, snippets, filters).
-- Owner-managed profile (display name).
+- Owner-managed profile (display name, optional `returnDate` — drives the ownership-window nudges and the book cover's mission dates).
 - `alternateSenders` in `profile.json` — owner-managed additional addresses that map to this slug, for missionaries permitted to write from a personal account.
 - Per-slug daily ingest cap with alerting, so a mail loop or a forwarding rule gone wrong can't quietly generate thousands of posts and a matching storage bill.
 
