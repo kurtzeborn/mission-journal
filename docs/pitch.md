@@ -16,7 +16,7 @@ These are some of the best things your missionary will ever write. They deserve 
 
 Add one address to the weekly email. That's the whole thing.
 
-Your missionary BCCs `post@pdayletters.com` on their letter home — or, if they'd rather not think about it at all, a parent just forwards it after it arrives. Either way, within a minute or two it becomes a post on a private letters site: the full letter, every photo, in order, permanently saved.
+Your missionary BCCs `post@pdayletters.com` on their letter home — or, if they'd rather not think about it at all, a parent just forwards it after it arrives. Either way, within a minute or two it becomes a post on a private letters site: the full letter, every photo, in order, all in one place.
 
 No app. No login for the missionary. No setup form. Nothing new to remember on a P-day, when computer time is already too short.
 
