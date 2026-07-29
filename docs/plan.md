@@ -26,7 +26,15 @@ An automatic weekly-letters archive for LDS missionaries. A missionary BCCs one 
 Facts about the world the design has to accommodate. These are not preferences — if one of them changes, several decisions downstream change with it.
 
 - **⚠️ Missionaries keep access to their `@missionary.org` address for only 60 days after returning home.** (Confirmed July 2026.) This is the most consequential constraint in the plan. Every mechanism that works by proving control of that address — `direct` publishing, DMARC-verified identity, and `claim@` ownership recovery — has a hard expiry 60 days past homecoming. The design's whole response is to **convert that temporary proof into durable ownership before the window closes**; see [Ownership and the 60-day window](#ownership-and-the-60-day-window). Anything proposed later in this document that leans on a live `@missionary.org` mailbox must be checked against this.
-- **`@missionary.org` DMARC alignment is assumed but not yet verified.** The `direct` classification path requires SPF/DKIM/DMARC to pass on mail from that domain. Phase 0 confirms this against a real message before anything is built on top of it.
+- **`@missionary.org` runs Google Workspace behind Proofpoint, with DMARC at `p=quarantine`.** Verified by DNS lookup, July 2026:
+  - **MX** → `aspmx.l.google.com` and friends. Inbound mail is Gmail, so missionary accounts are **Google identities, not Microsoft ones**.
+  - **SPF** → `v=spf1 include:%{ir}.%{v}.%{d}.spf.has.pphosted.com ~all`. Outbound is relayed through **Proofpoint**, not Google directly.
+  - **DMARC** → `v=DMARC1; p=quarantine; fo=1; rua=…@emaildefense.proofpoint.com`.
+
+  This largely **de-risks the `direct` path**: an enforcing `p=quarantine` policy can only be maintained if the domain's own outbound mail aligns, so `Authentication-Results` on a genuine missionary email should show a DMARC pass. Phase 0 still confirms against a real message — relaxed alignment and a Proofpoint relay leave enough room that it's worth seeing an actual header rather than inferring one.
+
+  It also surfaces a **new risk in the opposite direction**: Proofpoint filters *inbound* mail to `@missionary.org`, and the `claim@` flow depends entirely on our reply reaching the missionary. A brand-new sending domain with no reputation, sending automated mail into a heavily-filtered enterprise tenant, is a realistic candidate for quarantine. See [Ownership and the 60-day window](#ownership-and-the-60-day-window).
+- **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide, and an organization of this size and posture may well have done so. The design must not depend on the answer — and doesn't: the claim flow deliberately separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account simply binds a personal one. Worth testing in Phase 0 anyway, because it determines how the claim email should be worded.
 
 ---
 
@@ -361,7 +369,9 @@ All blob containers are private, with public access disabled at the account leve
 
 **Upgrade path, if it's ever needed.** If egress through Functions or added latency ever shows up in telemetry, swap to a **user-delegation SAS** scoped to `rendered/{slug}/` and minted once per session after the same ACL check. Bytes then come straight from Blob Storage. Deliberately not built now — it trades real complexity for performance nobody has asked for.
 
-**Private content delivery is Functions-mediated, and Functions on Consumption scale to zero.** The first API call a reader makes after sign-in is `/api/content/{slug}/posts.json`, which pays a ~1–3 s Node cold start on a site nobody has visited for a while. Photos are unaffected — they can't be requested until `posts.json` has returned, by which point the app is warm. Static Web Apps authentication is handled by the SWA platform rather than by a managed Function, so signing in does *not* pre-warm anything; `posts.json` is the warm-up. Given a weekly visit cadence this is acceptable, and `Cache-Control: private, max-age=3600` keeps repeat views off the Function entirely. If it ever needs fixing: a 5-minute timer-triggered ping keeps one instance alive within the free grant, and beyond that SWA Standard supports a linked backend on Flex Consumption with always-ready instances.
+**Private content delivery is Functions-mediated, and Functions on Consumption scale to zero.** The first API call a reader makes after sign-in is `/api/content/{slug}/posts.json`, which pays a ~1–3 s Node cold start on a site nobody has visited for a while. Photos are unaffected — they can't be requested until `posts.json` has returned, by which point the app is warm. Static Web Apps authentication is handled by the SWA platform rather than by a managed Function, so signing in does *not* pre-warm anything; `posts.json` is the warm-up. Given a weekly visit cadence this is acceptable, and `Cache-Control: private, max-age=3600` keeps repeat views off the Function entirely.
+
+**Standard tier does not, on its own, fix this.** Supporting Google auth forces Standard (custom identity providers aren't available on Free), but SWA *managed* functions still run on Consumption at any tier — Standard raises limits, it doesn't add always-ready instances. What Standard buys is the **escape hatch**: it permits a linked backend, so the API can be moved to a separately-deployed Function App on Flex Consumption with always-ready instances if telemetry ever justifies the extra resource and cost. Before that, the cheap fix is a 5-minute timer-triggered ping, which keeps one instance alive within the free grant.
 
 **The offline export is unaffected.** It's an owner- or reader-initiated download of content they're already entitled to, packaged as plain files.
 
@@ -389,7 +399,7 @@ All blob containers are private, with public access disabled at the account leve
 
 ### Access control
 
-- **Auth:** Static Web Apps Standard with Microsoft and Google identity providers.
+- **Auth:** Static Web Apps **Standard** with Google and Microsoft identity providers. **Google is required, not optional** — `@missionary.org` is Google Workspace, so the missionary population is Google-native, and personal Gmail is the most likely identity for the family members around them too. Google is a *custom* provider in SWA, which is available only on Standard; that tier was already the plan's baseline for other reasons, so this adds no cost.
 - **Model:** per-missionary allowlist keyed on the authenticated user's email address.
 - **Roles per missionary's letters site:**
   - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit/hide/delete any post (including editing the subject or body — for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
@@ -445,6 +455,8 @@ A missionary can take ownership of their own site at any time by emailing **`cla
 
 The reply contains a signed, single-use claim link. Following it requires a Google or Microsoft sign-in, and that identity is added to `acl.json` as an **additional** `owner`.
 
+**The sign-in identity is almost always a personal account, and that's the point.** `@missionary.org` is Google Workspace, and the tenant may block third-party OAuth entirely (see [External constraints](#external-constraints)) — so in practice a missionary claiming a site signs in with their personal Gmail or Microsoft account. This is exactly the outcome the 60-day window demands, and it arrives for free rather than by persuasion. It is also why the claim step exists at all: the mailbox proves *who you are*, the OAuth sign-in establishes *what identity holds the role*, and decoupling them means ownership never inherits the mailbox's expiry.
+
 **Claiming never demotes anyone.** In the overwhelmingly common case the missionary simply wants access to their own letters while a parent continues to run the site, and evicting the parent would be hostile. Multiple owners are already supported, so the missionary joins the existing set.
 
 **Verified-missionary owners are protected.** The ACL entry created through a `claim@` link is flagged `verifiedMissionary: true` and **cannot be removed by any other owner** — only by that owner themselves. Without this, a genuine dispute degenerates into an owner-removal war that whoever clicks fastest wins. With it, a missionary can join a site claimed by someone with no business owning it, remove that person, and not be removed back.
@@ -455,10 +467,12 @@ Per [External constraints](#external-constraints), `@missionary.org` access ends
 
 This is exactly backwards from when disputes tend to surface — "I found out years later there's a site about me" is the case that matters most and the one the mechanism cannot serve. Four responses, none of which depend on the mailbox still being alive after the fact:
 
-1. **Bind a personal account, not the missionary one.** The claim link should be followed with a personal Google or Microsoft account. Ownership then survives indefinitely, because the ACL entry is keyed on an identity that doesn't expire. The `claim@` reply says this in as many words.
-2. **Warn loudly if they bind `@missionary.org` anyway.** If the `missionary.org` address is itself usable as a Microsoft sign-in, a missionary will naturally reach for it — and end up with an owner identity that dies with the mailbox. Any owner whose address is on `missionary.org` triggers a persistent, non-dismissible banner in the admin UI: *"This account stops working 60 days after you return home. Add a personal account as an owner now."* It stays until a non-`missionary.org` owner exists.
+1. **Bind a personal account, not the missionary one.** The claim link should be followed with a personal Google or Microsoft account. Ownership then survives indefinitely, because the ACL entry is keyed on an identity that doesn't expire. The `claim@` reply says this in as many words — and if the Church tenant blocks third-party OAuth, it's the only option that works anyway.
+2. **Handle the `@missionary.org` owner case defensively, not as an expected path.** If the tenant *does* permit third-party OAuth, a missionary may reach for their Church Google account and end up with an owner identity that dies with the mailbox. Any owner on that domain triggers a persistent, non-dismissible banner in the admin UI: *"This account stops working 60 days after you return home. Add a personal account as an owner now."* It stays until a non-`missionary.org` owner exists. Cheap to implement, and it costs nothing if the case never occurs.
 3. **Nudge the existing owner, continuously.** The owner admin view carries a standing prompt — *"Is [missionary] set up on this site? They can only claim it while their `@missionary.org` address works."* This costs nothing, requires no detection of mission end, and resolves the non-adversarial 99% long before the window closes. If `returnDate` is set in `profile.json` (see below), the prompt escalates in the weeks either side of it; otherwise it escalates after ~4 weeks of no new letters. False positives are cheap — it's a banner, not an email.
 4. **A human dispute path is the only real backstop after 60 days.** Nothing automated can verify a returned missionary's identity once the address is gone. The archive itself is the evidence: every `direct` message in `raw/` carries a DMARC-verified `@missionary.org` origin, which proves authorship long after the mailbox is deactivated. Turning that into an actual process belongs with the terms-of-use work — tracked in the follow-up issue, and a prerequisite before the service is offered to anyone outside a known circle.
+
+**Deliverability is a single point of failure here.** `claim@` only works if our reply survives Proofpoint's inbound filtering on `missionary.org`. Warm the sending domain, keep the claim email short and link-light, ensure SPF/DKIM/DMARC are fully aligned on `mail.pdayletters.com` before Phase 2, and treat a silent non-delivery as a supported failure mode: if a missionary mails `claim@` twice with no result, there is currently nothing they can do. Worth confirming a real delivery to a live `@missionary.org` inbox during Phase 0 rather than discovering this in production.
 
 **`returnDate` in `profile.json`.** An optional owner-set date, used for two things at once: scheduling the ownership nudges above, and filling in the mission dates on the printed book cover. Derived from the last post's date when absent.
 
@@ -581,7 +595,7 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 
 | Resource | SKU | Purpose | Est. $/mo |
 |---|---|---|---|
-| Static Web Apps | Standard | Web UI + auth + managed Functions | ~$9 |
+| Static Web Apps | Standard | Web UI + auth + managed Functions. Standard is **required** — Google is a custom identity provider and isn't available on Free. | ~$9 |
 | Azure Functions | Consumption (via SWA managed) | Intake, ingest, render, content delivery, admin API, pending purge timer | ~$0 |
 | Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users` table + `ingest`/`render` queues | <$3 for years of data |
 | SendGrid | Free tier | Inbound Parse + outbound ack/claim mail | $0 |
@@ -606,7 +620,9 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Key Vault + managed identity for Functions (SendGrid API key, HMAC token-signing key, Lulu OAuth secret).
 - App Insights instance (for rejection logging and general telemetry).
 - Provision SendGrid. DNS on all four domains: **MX on the apex** pointing at SendGrid Inbound Parse; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender, with sending subdomain `mail.pdayletters.com`.
-- **Verify the `missionary.org` authentication posture early** — send a real message from a missionary account and inspect `Authentication-Results` for SPF/DKIM/DMARC. The `direct` classification path depends on DMARC alignment; if it doesn't hold, the whole trust model needs revisiting before anything else is built.
+- **Verify the `missionary.org` authentication posture early.** DNS is already confirmed (Google Workspace MX, Proofpoint SPF, DMARC `p=quarantine` — see [External constraints](#external-constraints)); what remains is to send a real message from a missionary account and inspect `Authentication-Results` for an actual DMARC pass. The `direct` classification path depends on it.
+- **Verify we can deliver *into* `missionary.org`.** Send a test message from `no-reply@mail.pdayletters.com` to a live missionary address and confirm it lands in the inbox rather than Proofpoint quarantine. The entire `claim@` mechanism is downstream of this working.
+- **Test whether an `@missionary.org` Google account can sign in to a third-party OAuth app.** Determines the wording of the claim email, not the architecture — the flow works either way.
 
 ### Phase 1 — Inbound email pipeline (receive → classify → save)
 - **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail.
