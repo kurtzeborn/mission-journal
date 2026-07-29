@@ -33,8 +33,27 @@ Facts about the world the design has to accommodate. These are not preferences �
 
   This largely **de-risks the `direct` path**: an enforcing `p=quarantine` policy can only be maintained if the domain's own outbound mail aligns, so `Authentication-Results` on a genuine missionary email should show a DMARC pass. Phase 0 still confirms against a real message — relaxed alignment and a Proofpoint relay leave enough room that it's worth seeing an actual header rather than inferring one.
 
-  It also surfaces a **secondary consideration**: Proofpoint filters *inbound* mail to `@missionary.org`. This is less of a concern than it first appears, because everything we send to a missionary is a **reply to a message they sent us** — but it does constrain *how* we send those replies. See [Ownership and the 60-day window](#ownership-and-the-60-day-window).
-- **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide, and an organization of this size and posture may well have done so. The design must not depend on the answer — and doesn't: the claim flow deliberately separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account simply binds a personal one. Worth testing in Phase 0 anyway, because it determines how the claim email should be worded.
+  It also clarifies **where filtering actually happens**. An earlier draft assumed Proofpoint screened inbound mail; the MX records say otherwise. Proofpoint appears only in SPF, so it is the **outbound relay** — inbound mail to a missionary lands at **Gmail**, and Gmail's filtering is what our replies must satisfy. That is good news twice over: Gmail weights prior correspondence with a sender heavily, and Gmail's behavior can be tested against any ordinary Gmail account without needing a Church one. (Caveat: a tenant can route inbound through a third-party scanner via Google-side rules that DNS won't reveal, so this is the likely picture rather than a certain one.)
+- **⚠️ We have no access to an `@missionary.org` account, and may not for a long time.** Every path that depends on one — `direct` classification, `claim@`, and the OAuth question above — must be **implemented blind and verified later**. This does not block the build, but it changes how the build has to be done: see [Building blind](#building-blind).
+- **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide, and an organization of this size and posture may well have done so. The design must not depend on the answer — and doesn't: the claim flow deliberately separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account simply binds a personal one. Worth testing eventually, because it determines how the claim email should be worded.
+
+### Building blind
+
+Three of the constraints above cannot be verified until someone with a real `@missionary.org` account is available to test with. The response is not to stall, but to build so that **being wrong is cheap and immediately visible**.
+
+**Make the missionary domain configuration, not a constant.** A `MISSIONARY_DOMAINS` Function app setting (default `missionary.org`) is what the classifier, slug derivation, and the `claim@` handler all check against. This single change converts "untestable" into "testable against a stand-in": point it at a domain we control — a test Google Workspace domain, or even a personal Gmail address during development — and the entire `direct` and `claim@` flow can be exercised end to end, including DMARC evaluation, slug derivation, claim-token issuance, sign-in binding, and the `verifiedMissionary` ACL write. It also costs nothing if the Church ever adds a second domain.
+
+**Most of the risk isn't logic — it's header format.** Our code never performs DMARC itself; SendGrid does, and the classifier reads the resulting `Authentication-Results` header. So the classification *logic* is fully testable offline against hand-crafted `.eml` fixtures. What we genuinely cannot know is the exact shape of that header for real `missionary.org` mail routed through Proofpoint. That is a parsing question with a narrow failure surface, not an architectural unknown.
+
+**Instrument for the first real message.** Because that first genuine missionary email is the actual test, it must produce a complete diagnostic rather than a silent drop:
+
+- Log the **full `Authentication-Results` header verbatim** to App Insights for every message whose `From:` domain is in `MISSIONARY_DOMAINS`, whether it classifies or not.
+- A message from a configured missionary domain that **fails** classification is logged at warning level with the parse failure and the raw header — never folded into the ordinary silent-rejection path, where it would be indistinguishable from spam.
+- `raw/_inbox/` already retains the verbatim payload for 30 days, so a message misclassified by a header-parsing bug can be reprocessed after a fix rather than lost.
+
+**Feature-flag `claim@`.** Keep the handler behind a setting so it can ship dark and be enabled once a real round-trip has been observed. Until then `claim@` accepts mail and does nothing, which is indistinguishable from the documented "ignored without reply" behavior and therefore leaks nothing.
+
+**Accept that the first real missionary is the pilot.** The first onboarding should be someone we can talk to directly, so a failure is a conversation rather than a support ticket from a stranger. Everything above exists to make that conversation short.
 
 ---
 
@@ -153,7 +172,7 @@ Messages to `post@` carry no routing information in the recipient — the addres
 | `direct` — missionary sent or BCC'd it themselves | Local-part of the outer `From:`, which DMARC has already authenticated |
 | `forward` — someone forwarded a missionary's letter | Local-part of the **extracted original's** `From:` |
 
-In both cases the author's address must be `@missionary.org` (or an owner-registered alternate — see below), and the local-part is used verbatim as the slug per [Missionary routing](#missionary-routing).
+In both cases the author's address must be in `MISSIONARY_DOMAINS` — a Function app setting defaulting to `missionary.org` (see [Building blind](#building-blind)) — or an owner-registered alternate, and the local-part is used verbatim as the slug per [Missionary routing](#missionary-routing).
 
 **Why this is safer than routing on the recipient.** When the recipient address names the target site, the intake code has to separately prove the sender may publish there — and if that check is missing or wrong, any authenticated missionary can publish to any other missionary's site. Deriving the target from the authenticated author collapses those two steps into one: there is no independent "target" value for an attacker to supply, so there is no mismatch to exploit.
 
@@ -482,7 +501,7 @@ This is exactly backwards from when disputes tend to surface — "I found out ye
 
 Bounces and stray replies then arrive at `claim@`/`post@` and flow through inbound parse, where the classifier drops them like any other unroutable mail. Purely-generated mail with no inbound message to answer — pending-site claim emails, day-7 reminders — keeps the `no-reply@mail.pdayletters.com` sender, since there is no correspondence signal to preserve.
 
-**The residual risk is the link, not the sender.** A short message containing a "click here to take ownership" URL from a young domain is the exact shape of a phishing email, and Proofpoint's URL defense will inspect it. Keep the claim email short, plain, and to a single link. Confirm a real delivery to a live `@missionary.org` inbox during Phase 0 — cheap to test, and the entire `claim@` mechanism is downstream of it.
+**The residual risk is the link, not the sender.** A short message containing a "click here to take ownership" URL from a young domain is the exact shape of a phishing email, and Gmail scores links from unestablished domains cautiously. Keep the claim email short, plain, and to a single link. Confirm a real delivery to a live `@missionary.org` inbox once an account is available — see [Building blind](#building-blind) for how this ships before that's possible.
 
 **`returnDate` in `profile.json`.** An optional owner-set date, used for two things at once: scheduling the ownership nudges above, and filling in the mission dates on the printed book cover. Derived from the last post's date when absent.
 
@@ -624,21 +643,23 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 
 ### Phase 0 — Foundation
 - Domains already registered: `pdayletters.com` (canonical), `pdayemail.com`, `pday.email`, `missionaryjournal.org`. Verify each in the SWA custom-domain UI; configure the three non-canonical domains as 301 redirects to the canonical.
-- Set the `ACCEPTED_INGEST_DOMAINS` Function app setting to the four accepted domains.
+- Set the `ACCEPTED_INGEST_DOMAINS` Function app setting to the four accepted domains, and `MISSIONARY_DOMAINS` to `missionary.org` — overridden to a controlled test domain in non-production, per [Building blind](#building-blind).
 - Create Azure subscription resource group.
 - Storage account (GRS): containers `raw/` (soft-delete + versioning on), `pending/`, `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Azure Table `users`. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days.
 - Key Vault + managed identity for Functions (SendGrid API key, HMAC token-signing key, Lulu OAuth secret).
 - App Insights instance (for rejection logging and general telemetry).
 - Provision SendGrid. DNS on all four domains: **MX on the apex** pointing at SendGrid Inbound Parse; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender, with sending subdomain `mail.pdayletters.com`.
-- **Verify the `missionary.org` authentication posture early.** DNS is already confirmed (Google Workspace MX, Proofpoint SPF, DMARC `p=quarantine` — see [External constraints](#external-constraints)); what remains is to send a real message from a missionary account and inspect `Authentication-Results` for an actual DMARC pass. The `direct` classification path depends on it.
-- **Confirm a reply reaches a live `@missionary.org` inbox.** Send a test message *from* a missionary account to `claim@`, reply to it per the threading rules in [Ownership and the 60-day window](#ownership-and-the-60-day-window), and check it lands in the inbox rather than Proofpoint quarantine or Gmail spam. Expected to pass — it's a solicited reply — but the whole `claim@` mechanism is downstream of it, so verify rather than assume.
-- **Test whether an `@missionary.org` Google account can sign in to a third-party OAuth app.** Determines the wording of the claim email, not the architecture — the flow works either way.
+- **Deferred verification — blocked on access to a real `@missionary.org` account.** These are not Phase 0 gates, because we cannot run them yet (see [Building blind](#building-blind)). They are the checklist to run the moment an account is available, and the build proceeds against a stand-in domain until then:
+  - Send a real message from a missionary account and inspect `Authentication-Results` for an actual DMARC pass, confirming the `direct` classifier's header parsing.
+  - Send a threaded reply per the rules in [Ownership and the 60-day window](#ownership-and-the-60-day-window) and confirm it lands in the inbox rather than spam. Expected to pass — it's a solicited reply into Gmail — and partially testable in the meantime against an ordinary Gmail account.
+  - Test whether an `@missionary.org` Google account can sign in to a third-party OAuth app. Determines the wording of the claim email, not the architecture.
 
 ### Phase 1 — Inbound email pipeline (receive → classify → save)
-- **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail.
+- **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail. Since no `@missionary.org` account is available, fixtures use a stand-in domain and hand-written `Authentication-Results` headers covering pass, fail, and absent cases.
 - Intake Function: SendGrid Inbound Parse webhook that writes the raw POST body to `raw/_inbox/{ulid}.raw`, enqueues the ULID, returns 200, and does nothing else.
 - Queue-triggered ingest Function:
-  - Classifier: `direct` / `forward` / `rejected` per the [message classification](#message-classification) table. DKIM re-verification against the `missionary.org` public key for `forward` messages with an embedded `.eml`.
+  - Classifier: `direct` / `forward` / `rejected` per the [message classification](#message-classification) table. DKIM re-verification against the sender domain's public key for `forward` messages with an embedded `.eml`.
+  - **Diagnostics for the unverifiable paths** per [Building blind](#building-blind): log the full `Authentication-Results` header verbatim for any message whose `From:` domain is in `MISSIONARY_DOMAINS`, and raise a warning — not a silent rejection — when such a message fails to classify.
   - Slug resolution via [sender-based routing](#sender-based-routing); forwarder-vs-ACL check for `forward` messages; inline forwards accepted only from owners.
   - Original-message extractor: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators).
   - Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/` with sanitized path segments. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
@@ -650,7 +671,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then the sender+day hard gate plus exact normalized subject **or** `bodyHead100` match per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts; `If-None-Match: *` on first write.
 - Ingest becomes conditional: on match-miss, append the post skeleton to `posts.json` with `If-Match` and write raw/; on match-hit, don't touch either and send a courtesy ack instead.
 - **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`, claim email to the forwarder only, `/claim/{token}` endpoint that establishes the first owner and promotes accumulated raw, day-7 reminder, day-14 timer-triggered purge.
-- **`claim@` handler** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): accept only DMARC-passing `@missionary.org` senders, ignore everything else without reply, mail back a signed claim link that adds a `verifiedMissionary` owner. Reply copy must tell them to sign in with a **personal** Google/Microsoft account and explain the 60-day expiry.
+- **`claim@` handler** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): accept only DMARC-passing senders in `MISSIONARY_DOMAINS`, ignore everything else without reply, mail back a signed claim link that adds a `verifiedMissionary` owner. Reply copy must tell them to sign in with a **personal** Google/Microsoft account and explain the 60-day expiry. **Ships behind a feature flag** and is exercised end-to-end against a stand-in domain — see [Building blind](#building-blind).
 - The "a site already exists" reply for DKIM-verified non-ACL senders, including `claim@` instructions.
 - HMAC token-signing service (claim links + one-click opt-out links), key from Key Vault.
 - Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards. Replies to inbound mail set `From:` to the address written to and carry `In-Reply-To`/`References` threading headers.
