@@ -34,7 +34,7 @@ No app. No login for the missionary. No setup form. Nothing new to remember on a
 
 **And a copy that's yours.** Download the entire archive as a single folder that opens in any browser, works with no internet, and searches just the same. Put it on a drive, hand it to your kids. Whatever happens to this service, your letters are still yours.
 
-## We're looking for testers
+## Testers needed
 
 P-Day Letters is an idea right now, and it needs real families and missionaries to try it before it's offered to anyone else.
 
@@ -42,4 +42,4 @@ Testing means: add one address to the weekly email, forward whatever old letters
 
 If you have a missionary out — or you know a family who does — get in touch.
 
-*Full design details can be found in [docs/plan.md](docs/plan.md).*
+*Full design details can be found in [plan.md](plan.md).*
