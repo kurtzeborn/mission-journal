@@ -41,3 +41,5 @@ P-Day Letters is an idea right now, and it needs real families and missionaries 
 Testing means: add one address to the weekly email, forward whatever old letters you've saved, and tell us what's confusing, broken, or missing. That's it. It's free, your letters stay private, and you can walk away with your full archive at any time.
 
 If you have a missionary out — or you know a family who does — get in touch.
+
+*Full design details can be found in [docs/plan.md](docs/plan.md).*
