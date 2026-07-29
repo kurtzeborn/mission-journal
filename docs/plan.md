@@ -33,7 +33,7 @@ Facts about the world the design has to accommodate. These are not preferences �
 
   This largely **de-risks the `direct` path**: an enforcing `p=quarantine` policy can only be maintained if the domain's own outbound mail aligns, so `Authentication-Results` on a genuine missionary email should show a DMARC pass. Phase 0 still confirms against a real message — relaxed alignment and a Proofpoint relay leave enough room that it's worth seeing an actual header rather than inferring one.
 
-  It also surfaces a **new risk in the opposite direction**: Proofpoint filters *inbound* mail to `@missionary.org`, and the `claim@` flow depends entirely on our reply reaching the missionary. A brand-new sending domain with no reputation, sending automated mail into a heavily-filtered enterprise tenant, is a realistic candidate for quarantine. See [Ownership and the 60-day window](#ownership-and-the-60-day-window).
+  It also surfaces a **secondary consideration**: Proofpoint filters *inbound* mail to `@missionary.org`. This is less of a concern than it first appears, because everything we send to a missionary is a **reply to a message they sent us** — but it does constrain *how* we send those replies. See [Ownership and the 60-day window](#ownership-and-the-60-day-window).
 - **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide, and an organization of this size and posture may well have done so. The design must not depend on the answer — and doesn't: the claim flow deliberately separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account simply binds a personal one. Worth testing in Phase 0 anyway, because it determines how the claim email should be worded.
 
 ---
@@ -119,7 +119,7 @@ This does not weaken sender-based routing. The recipient address selects a **ver
 
 **Trade-off accepted:** a single well-known address attracts more spam than four semi-obscure per-missionary addresses did. Mitigated by the classifier (silent drop for any sender we can't tie to a site or to a valid claim), by the inbound provider's spam scoring, and by the fact that rejected mail never reaches `rendered/` and ages out of the intake quarantine in 30 days.
 
-**Outbound mail always originates from the canonical domain:** `no-reply@mail.pdayletters.com`. SPF/DKIM/DMARC are set up on `pdayletters.com` only, which keeps sender-authentication configuration simple.
+**Outbound mail is DKIM-signed as `pdayletters.com`, with the envelope sender on `mail.pdayletters.com`.** SPF/DKIM/DMARC are configured on `pdayletters.com` only, which keeps sender-authentication configuration simple. The visible `From:` differs by message type: **replies to inbound mail are sent from the address the sender wrote to** (`post@` or `claim@`) to preserve the recipient's prior-correspondence signal, while self-originated mail (pending-site claim emails, reminders) comes from `no-reply@mail.pdayletters.com`. DMARC passes either way through DKIM alignment. See [Ownership and the 60-day window](#ownership-and-the-60-day-window) for why this matters.
 
 ### Email ingestion
 
@@ -472,7 +472,17 @@ This is exactly backwards from when disputes tend to surface — "I found out ye
 3. **Nudge the existing owner, continuously.** The owner admin view carries a standing prompt — *"Is [missionary] set up on this site? They can only claim it while their `@missionary.org` address works."* This costs nothing, requires no detection of mission end, and resolves the non-adversarial 99% long before the window closes. If `returnDate` is set in `profile.json` (see below), the prompt escalates in the weeks either side of it; otherwise it escalates after ~4 weeks of no new letters. False positives are cheap — it's a banner, not an email.
 4. **A human dispute path is the only real backstop after 60 days.** Nothing automated can verify a returned missionary's identity once the address is gone. The archive itself is the evidence: every `direct` message in `raw/` carries a DMARC-verified `@missionary.org` origin, which proves authorship long after the mailbox is deactivated. Turning that into an actual process belongs with the terms-of-use work — tracked in the follow-up issue, and a prerequisite before the service is offered to anyone outside a known circle.
 
-**Deliverability is a single point of failure here.** `claim@` only works if our reply survives Proofpoint's inbound filtering on `missionary.org`. Warm the sending domain, keep the claim email short and link-light, ensure SPF/DKIM/DMARC are fully aligned on `mail.pdayletters.com` before Phase 2, and treat a silent non-delivery as a supported failure mode: if a missionary mails `claim@` twice with no result, there is currently nothing they can do. Worth confirming a real delivery to a live `@missionary.org` inbox during Phase 0 rather than discovering this in production.
+**Deliverability is manageable, because every reply is solicited.** The `claim@` reply is not cold outbound — it answers a message the missionary just sent us. That matters more than domain reputation does: `missionary.org`'s MX is Google, and Gmail weights prior correspondence with a sender heavily as a positive signal. Missionaries email friends and family constantly and receive replies without incident, and this is the same shape.
+
+**But only if we reply from the address they actually wrote to.** The prior-correspondence signal keys on the sender address, so a reply arriving from `no-reply@mail.pdayletters.com` throws away the very thing that makes it solicited — the recipient has never corresponded with that address or that subdomain. Replies to inbound mail must therefore:
+
+- Set **`From:` to the address the sender wrote to** (`claim@pdayletters.com` or `post@pdayletters.com`), not the generic no-reply sender.
+- Set **`In-Reply-To:` and `References:`** to the inbound message's `Message-ID`, so it threads as a genuine reply rather than arriving as an unrelated message that merely quotes one.
+- Keep the **envelope sender (`Return-Path`) on `mail.pdayletters.com`** for bounce handling. DMARC still passes via DKIM alignment (`d=pdayletters.com` matching the `From:` domain), so nothing is given up — this is standard ESP practice, not a workaround.
+
+Bounces and stray replies then arrive at `claim@`/`post@` and flow through inbound parse, where the classifier drops them like any other unroutable mail. Purely-generated mail with no inbound message to answer — pending-site claim emails, day-7 reminders — keeps the `no-reply@mail.pdayletters.com` sender, since there is no correspondence signal to preserve.
+
+**The residual risk is the link, not the sender.** A short message containing a "click here to take ownership" URL from a young domain is the exact shape of a phishing email, and Proofpoint's URL defense will inspect it. Keep the claim email short, plain, and to a single link. Confirm a real delivery to a live `@missionary.org` inbox during Phase 0 — cheap to test, and the entire `claim@` mechanism is downstream of it.
 
 **`returnDate` in `profile.json`.** An optional owner-set date, used for two things at once: scheduling the ownership nudges above, and filling in the mission dates on the printed book cover. Derived from the last post's date when absent.
 
@@ -621,7 +631,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - App Insights instance (for rejection logging and general telemetry).
 - Provision SendGrid. DNS on all four domains: **MX on the apex** pointing at SendGrid Inbound Parse; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender, with sending subdomain `mail.pdayletters.com`.
 - **Verify the `missionary.org` authentication posture early.** DNS is already confirmed (Google Workspace MX, Proofpoint SPF, DMARC `p=quarantine` — see [External constraints](#external-constraints)); what remains is to send a real message from a missionary account and inspect `Authentication-Results` for an actual DMARC pass. The `direct` classification path depends on it.
-- **Verify we can deliver *into* `missionary.org`.** Send a test message from `no-reply@mail.pdayletters.com` to a live missionary address and confirm it lands in the inbox rather than Proofpoint quarantine. The entire `claim@` mechanism is downstream of this working.
+- **Confirm a reply reaches a live `@missionary.org` inbox.** Send a test message *from* a missionary account to `claim@`, reply to it per the threading rules in [Ownership and the 60-day window](#ownership-and-the-60-day-window), and check it lands in the inbox rather than Proofpoint quarantine or Gmail spam. Expected to pass — it's a solicited reply — but the whole `claim@` mechanism is downstream of it, so verify rather than assume.
 - **Test whether an `@missionary.org` Google account can sign in to a third-party OAuth app.** Determines the wording of the claim email, not the architecture — the flow works either way.
 
 ### Phase 1 — Inbound email pipeline (receive → classify → save)
@@ -643,7 +653,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - **`claim@` handler** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): accept only DMARC-passing `@missionary.org` senders, ignore everything else without reply, mail back a signed claim link that adds a `verifiedMissionary` owner. Reply copy must tell them to sign in with a **personal** Google/Microsoft account and explain the 60-day expiry.
 - The "a site already exists" reply for DKIM-verified non-ACL senders, including `claim@` instructions.
 - HMAC token-signing service (claim links + one-click opt-out links), key from Key Vault.
-- Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards.
+- Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards. Replies to inbound mail set `From:` to the address written to and carry `In-Reply-To`/`References` threading headers.
 - Settings page fragment at `/{slug}/settings` with both toggles (auth via SWA identity). One-click token links flip flags without sign-in.
 - **Verification:** hand-craft duplicate forwards from a test mailbox and confirm the raw folder count stays flat while the ack arrives. Bulk-forward five near-simultaneously to exercise the ETag-retry path. Forward from an unknown address, confirm a pending site is created and nothing renders, then claim it and confirm all accumulated messages appear deduplicated and in date order. Let a second pending site expire and confirm it purges.
 
