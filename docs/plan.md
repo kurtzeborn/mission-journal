@@ -328,7 +328,13 @@ config/
 
 Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
 
-**Attachment filenames are never used as path segments.** Blob names are flat strings in which `/` creates virtual directories, so a crafted filename like `../rendered/elder.smith/posts.json` would escape the intended prefix and overwrite live data. Each attachment is stored as `{nn}-{safe-name}`, where `nn` is its MIME part index and `safe-name` is the original filename stripped of path separators, `..` sequences, control characters, and leading dots, then truncated. The unmodified original filename is recorded in `metadata.json`, so nothing is lost for display or export. The same sanitization is reapplied when building the offline zip — otherwise the identical bug reappears as zip-slip on the user's own machine.
+**`raw/` is an internal asset and is never handed to anyone.** No API route serves it, and it is not in the offline export. Its whole purpose is *reprocessing* — re-rendering history when the sanitizer or the forward extractor improves, re-running `_inbox/` after a classifier fix, and standing as the DMARC-verified evidence of authorship behind an [ownership dispute](#the-60-day-cliff). Every one of those is something the service does *to* `raw/`, not something a user reads out of it.
+
+That restriction is what lets the rest of the design be simple. `rendered/` is the published surface, and everything with a rule attached — sanitization, hidden posts, an owner's retroactive anonymization — is enforced there. A downloadable `raw/` would silently reopen all three: it is unsanitized HTML, it contains posts an owner has hidden, and it still holds the name they removed. One copy of the letters is the audience-facing one; the other is machinery.
+
+**Two things that are not exceptions.** The [full-resolution photo download](#photo-handling) reads a raw *attachment* and re-emits it EXIF-stripped — a derivative of one photo, not the message. And an owner can [restore a post's original text](#restoring-the-original), which re-renders from `raw/` into `rendered/` — the content becomes visible, but through the sanitizer and the normal read path, and only by an act that discards their own edits.
+
+**Attachment filenames are never used as path segments.** Blob names are flat strings in which `/` creates virtual directories, so a crafted filename like `../rendered/elder.smith/posts.json` would escape the intended prefix and overwrite live data. Each attachment is stored as `{nn}-{safe-name}`, where `nn` is its MIME part index and `safe-name` is the original filename stripped of path separators, `..` sequences, control characters, and leading dots, then truncated. The unmodified original filename is recorded in `metadata.json`, so nothing is lost for display. It is re-sanitized again wherever it reaches a client — currently the `Content-Disposition` header on the full-resolution download — since a filename that was safe as a blob name is not automatically safe as a header value.
 
 **Photo IDs are content hashes** — `p_{sha256(bytes)[:12]}`. This is what actually makes the render function idempotent: a re-run produces identical IDs and overwrites identical blobs instead of orphaning the previous set. It also dedupes repeated images for free (mission logos, a photo the missionary resends), which shrinks both storage and the offline export.
 
@@ -411,7 +417,7 @@ All blob containers are private, with public access disabled at the account leve
   - `large.webp` (~2400px longest edge) — post-view display **and** full-screen viewing. Sized to cover 4K/5K desktop monitors and high-DPI tablets.
   - `thumb.webp` (~400px) — album grid.
 - **Album view:** aggregated grid across all posts for a missionary; each thumb links to the post it belongs to.
-- **Full-resolution downloads:** served on-demand by a small Function that reads the raw attachment, strips EXIF in-flight, and streams it back as JPEG. Downloads are rare enough that on-demand generation is cheaper than storing an EXIF-stripped copy of every photo.
+- **Full-resolution downloads:** served on-demand by a small Function that reads the raw attachment, strips EXIF in-flight, and streams it back as JPEG. Downloads are rare enough that on-demand generation is cheaper than storing an EXIF-stripped copy of every photo. This is the one place a client receives bytes derived from `raw/`, and it is a single photo re-emitted through a transform — not the message, its HTML, or its headers. It is subject to the same ACL check and hidden-post filter as `/api/photo/`.
 - Because raw is preserved, we can always reprocess (different sizes, HEIC → WebP, face detection later) without asking the missionary for anything.
 
 **Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip (Phase 7 — a 2-year mission's ~1000 photos), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint and by the photo-book PDF generator in Phase 8.
@@ -457,7 +463,7 @@ Several things this document already promises have no actor: deleting a site aft
 
 - **Delete any site**, through the same permanent-deletion path an owner uses (see [Post-mission archive](#post-mission-archive)) — one code path, one retention story. The confirmation additionally requires a **reason string**, recorded in the audit log, because it is the only part of the action that cannot be reconstructed from the data afterward.
 - **Inspect or purge a pending site** before its window lapses — the disposal route for a site that spam created, and the only way to look at one at all, since pending sites render nothing and have no ACL.
-- **Reprocess raw mail.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `raw/_inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). Both are already promised elsewhere in this document; the operator is the actor who delivers on them.
+- **Reprocess raw mail service-wide.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `raw/_inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). Both are already promised elsewhere in this document; the operator is the actor who delivers on them. Owners can re-render a single post on their own site — see [Restoring the original](#restoring-the-original) — but a sweep across every slug is not an owner-shaped action, and `_inbox/` belongs to no site at all.
 - **See service-wide message flow** — the `/manage/last-received` view from Phase 1 spans every slug, so it can never be an owner-facing page.
 
 #### What operators deliberately cannot do
@@ -732,11 +738,25 @@ Both capabilities are asserted in [Access control](#access-control) and in [Mode
 
 An owner can change a post's **subject** and **body** — copy-editing, fixing a typo, or retroactively removing a name, an address, or an identifying detail about someone else that the missionary wrote in a hurry and would not have written on reflection.
 
-- **Edits are made against the rendered post, never the raw message.** `rendered/{slug}/posts.json` is rewritable by definition; `raw/` is not. So every edit is reversible by re-rendering, and the archive continues to hold what the missionary actually wrote.
+- **Edits are made against the rendered post, never the raw message.** `rendered/{slug}/posts.json` is rewritable by definition; `raw/` is not. So every edit is undoable — see [Restoring the original](#restoring-the-original) — and the archive continues to hold what the missionary actually wrote.
 - **Edited HTML passes through the same sanitizer as ingested HTML.** An owner is a trusted user, but a *compromised* owner session pasting a `<script>` tag into a body would otherwise write stored XSS directly into the file every reader downloads. One sanitizer, one code path, no trusted-input exception.
 - **Edits are ETag-guarded**, like every other write to `posts.json` — see [Concurrency](#extracting-and-de-duplicating-forwards). Two owners editing different posts on the same Saturday morning is ordinary.
 - **No "edited" badge, but the edit is recorded.** `editedBy` and `editedAt` are written on the post — not to police owners, who are trusted, but so that *"why does this letter not match the one in my inbox?"* has an answer years later when nobody remembers. **Owner-visible only**, and never rendered to readers: the intended uses are typo fixes and anonymization, and flagging "this post was edited" to readers would advertise the anonymization it exists to perform — exactly backwards. Only the most recent edit is kept; a full revision history would be a second copy of every letter to store, filter, and delete, and `raw/` already holds the original.
 - **Dedup fields are not editable.** `originalFrom`, `originalDate`, `originalMessageId`, and `bodyHead100` are derived from the source message. If an edited subject changed the value dedup keys on, a later re-forward of that same letter would stop matching and quietly reappear as a second post.
+
+#### Restoring the original
+
+**This is the only way anyone gets at what the missionary originally wrote, and it is destructive.** An owner picks **Restore original** on a post; the render Function re-runs against `raw/{slug}/{msgId}/` and overwrites `subject`, `bodyHtml`, and the `photos` array with a fresh render.
+
+It is not a read of `raw/` — nobody is handed the `.eml`. It is a *rewrite of the rendered post from it*, so the text arrives through the sanitizer and the ordinary ACL-checked read path, exactly like a newly ingested letter. Everything in [Storage layout](#storage-layout) about raw email never leaving the service holds.
+
+- **Every edit on that post is discarded, including edits made by a different owner.** The confirmation says so plainly and names them: *"This replaces the post with the original letter. Sarah's edits from 12 March will be lost."* There is no per-field restore and no diff to review — both would need a revision history, which deliberately doesn't exist.
+- **`editedBy` and `editedAt` are cleared**, since the post once again matches what arrived.
+- **`hidden` survives.** Hiding is a moderation decision about the post, not a property of its text, and a restore that silently republished a hidden letter would turn an undo button into a disclosure.
+- **Idempotent, like every other render.** Content-hash photo IDs mean a restore rewrites the same blobs rather than orphaning the previous set, so restoring twice costs nothing and changes nothing the second time.
+- **Owner-only, and scoped to one post on a site they own.** The service-wide version — re-rendering history after a sanitizer or extractor fix — is an [operator](#service-operators) action.
+
+The alternative was a "view original" pane showing the untouched text side by side, which is friendlier and wrong: it is exactly the raw disclosure the storage rule forbids, it would hand a reader the name an owner had just removed, and it would present unsanitized HTML to a browser. Making the only route back a deliberate, destructive, owner-only overwrite keeps one published version of each letter and one archive nobody reads.
 
 #### Hiding
 
@@ -768,8 +788,8 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
   - `index.html` — the same reader UI, but pointed at local files
   - `posts.json` — the same ACL-filtered payload the reader receives, so hidden posts are absent unless the requester is an owner
   - `photos/` — all `large.webp` + `thumb.webp`
-  - `raw/` — optional toggle to include the preserved archive too
   - Open `index.html` in any browser and it works, search included. Grandparents get their own copy without going through the owner.
+  - **`raw/` is not included, at any role.** The export is a portable copy of the site, and the site is `rendered/`. See [Storage layout](#storage-layout) for why raw email never leaves the service.
 
 - **Order a printed book** — see [Journal Publish](#journal-publish). Any ACL member can order a copy for themselves.
 
@@ -922,6 +942,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - **Site switcher** in the header, rendered only for users with more than one membership; **signed-in root redirect** to the most recently updated site, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
 - **Session-expiry handling** per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): a `/login` chooser page offering both providers, a `401` response override redirecting deep links there with `post_login_redirect_uri=.referrer`, and a **Sign in** button on the public root pointing back at `/`. Verify that `.referrer` substitution survives the hop through `/login`.
 - Owner admin view per [Editing and hiding posts](#editing-and-hiding-posts): edit any post's subject or body with edited HTML passing through the ingest sanitizer, ETag-guarded like every other `posts.json` write, and dedup-derived fields left read-only. Each edit stamps `editedBy` / `editedAt`, surfaced in the admin view and **stripped from the reader payload**. **Hidden posts are stripped server-side** in `/api/content/` and `/api/photo/` for `reader` callers and returned flagged to `owner` callers, rendered dimmed with an **Unhide** action. Hidden posts still participate in dedup.
+- **Restore original** per [Restoring the original](#restoring-the-original): owner-only, one post at a time, re-runs render from `raw/` and overwrites the post. Confirmation names whose edits are being discarded; `editedBy` / `editedAt` clear and `hidden` is preserved. No "view original" pane — restoring is the only route back.
 - **Site deletion** per [Post-mission archive](#post-mission-archive): typed confirmation stating the 30-day erase in plain words, immediate removal from every read path, and a timer that hard-purges blobs and soft-deleted versions at day 30.
 - **Invitations** per [Invitations](#invitations): bulk paste-and-parse of addresses, one signed single-use invitation email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. No automated reminders to invitees, ever.
 - **`403` handling** per [Signed in, but not on the list](#signed-in-but-not-on-the-list): a page naming the rejected identity with a sign-out-and-switch-account action, distinct from the `401` re-authentication path.
@@ -936,7 +957,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Per-slug daily ingest cap with alerting, so a mail loop or a forwarding rule gone wrong can't quietly generate thousands of posts and a matching storage bill.
 
 ### Phase 7 — Offline archive export
-- "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` + (optionally) `raw/` into a self-contained zip, built from the **same ACL-filtered payload the reader UI receives**, so hidden posts are absent for readers without a second filtering rule to keep in sync. Attachment path segments are re-sanitized on the way in to avoid zip-slip on the user's machine.
+- "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` into a self-contained zip, built from the **same ACL-filtered payload the reader UI receives**, so hidden posts are absent for readers without a second filtering rule to keep in sync. **`raw/` is never bundled** — see [Storage layout](#storage-layout).
 - Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
 
 ### Phase 8 — New-letter notifications
