@@ -277,6 +277,8 @@ This inverts the usual failure mode: the only way to lose a message is for Blob 
 
 **The site root is public.** `pdayletters.com/` serves an unauthenticated landing page — what the service does, the `post@pdayletters.com` address, and *"Are you a missionary? Email `claim@pdayletters.com` from your `@missionary.org` address to claim your site."* Everything on it is generic; no slug, no name, no content. Without it there is no way to discover `claim@` at all, since every letters site is auth-gated and the `post@` path is deliberately silent.
 
+**Signed in, the root redirects instead.** A visitor with an authenticated session goes straight to the most recently updated site they belong to; from there the [site switcher](#switching-between-sites) reaches any others. A signed-in user with *no* memberships gets a short explanation rather than the marketing page: *"You're signed in as jane@example.com, but that address doesn't have access to any letters site yet. Ask whoever set it up to invite this address."* That message earns its place — the likeliest support question this service will ever get is someone invited at one address signing in with another, and it answers that question without a human involved.
+
 ### Ingest address scheme
 
 There is one ingest address, `post@pdayletters.com`, plus the same local-part on the three alternate domains (see [Domains](#domains)). It is identical for every user of the service and appears verbatim in all instructions. Nothing is allocated or communicated per missionary.
@@ -332,9 +334,12 @@ Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook t
 
 **Photo IDs are content hashes** — `p_{sha256(bytes)[:12]}`. This is what actually makes the render function idempotent: a re-run produces identical IDs and overwrites identical blobs instead of orphaning the previous set. It also dedupes repeated images for free (mission logos, a photo the missionary resends), which shrinks both storage and the offline export.
 
-Plus one Azure Table in the same storage account:
+Plus two Azure Tables in the same storage account:
 
 - **`users`** — `PartitionKey = "user"`, `RowKey = lowercased email address`. Identity columns: `displayName`, `authProvider` (`google` | `microsoft`), `firstSeenAt`, `lastSignInAt`. Preference columns: `postAckEmails` and `dedupeAckEmails` (bools — see [Notification preferences](#notification-preferences) for the per-sender-type defaults); additional per-user preferences are just additional columns as they arrive. State columns: `claimEmailSentAt` and `claimEmailCount`, driving the tapering re-invitation schedule for a missionary whose own letters created a pending site — kept here rather than in `claim.json` so the schedule survives a pending-site purge and recreation.
+- **`memberships`** — `PartitionKey = lowercased email address`, `RowKey = slug`. Columns: `role`, `missionaryDisplayName`, `addedAt`, `lastPostAt`. Answers *"which sites does this person belong to?"* in one partition query. Without it that question requires opening `config/{slug}/acl.json` for every missionary in the service, because ACLs are stored per-slug with no reverse index.
+
+**`memberships` is a derived index, never the authority.** `acl.json` remains the source of truth and is what the content API checks on every request. The table is dual-written on invite, revoke, and claim, and can be rebuilt by scanning `config/*/acl.json` if it ever drifts. That ordering matters: a bug in the index produces a missing or stale entry in a switcher menu, never a wrong access decision. `lastPostAt` is denormalized from render for ordering — a fan-out write bounded by the size of one ACL, which is a handful of family members.
 
 No separate deduplication table — `rendered/{slug}/posts.json` is the dedup source of truth (see [Extracting and de-duplicating forwards](#extracting-and-de-duplicating-forwards) for the scan + concurrency model).
 
@@ -429,6 +434,14 @@ All blob containers are private, with public access disabled at the account leve
 - SWA route rules enforce that `/{missionary-slug}/*` requires an authenticated user whose email is in that slug's ACL. API calls check the same ACL server-side.
 - **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to `post@pdayletters.com` and have them land on that missionary's site.
 - **Inline forwards are owner-only.** A forward whose original arrives as a `message/rfc822` attachment carries verifiable DKIM; an inline forward is just text the forwarder typed and could have edited or fabricated. Readers can forward, but only an owner's inline forward is accepted for publication — matching the fact that owners can already edit any post's body anyway, so the restriction grants them nothing new.
+
+#### Switching between sites
+
+A grandparent with two grandchildren out, or a friend of several missionaries, belongs to more than one ACL. **There is deliberately no dashboard page.** A portal you pass through on every visit is worse than the thing it indexes, and for the overwhelming majority — who have exactly one site — it would be pure friction between them and the letters.
+
+Instead the site header carries a **switcher, rendered only when the signed-in user has more than one membership**, listing the other missionaries by display name as direct links. One membership and nothing appears at all; the UI is exactly as it is today. Populated from a single `memberships` partition query (see [Storage layout](#storage-layout)).
+
+Together with the signed-in root redirect (see [Missionary routing](#missionary-routing)) this makes discovery complete without adding a page: land on any site you belong to, reach all the others from there. Before this, a reader who lost the URL had no way back in — every site is auth-gated, the root was generic regardless of session, and nothing in the product would tell you which sites you could even see.
 
 ### Onboarding and auto-provisioning
 
@@ -675,7 +688,7 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 |---|---|---|---|
 | Static Web Apps | Standard | Web UI + auth + managed Functions. Standard is **required** — Google is a custom identity provider and isn't available on Free. | ~$9 |
 | Azure Functions | Consumption (via SWA managed) | Intake, ingest, render, content delivery, admin API, pending purge timer | ~$0 |
-| Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users` table + `ingest`/`render` queues | <$3 for years of data |
+| Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users`/`memberships` tables + `ingest`/`render` queues | <$3 for years of data |
 | SendGrid | Free tier | Inbound Parse + outbound ack/claim mail | $0 |
 | Key Vault | Standard | SendGrid API key, Lulu OAuth secret, HMAC token-signing key | ~$0.03 |
 | Custom domains + certs | Managed by SWA | `pdayletters.com` (canonical) + 3 redirect entry points | $0 (certs are managed) |
@@ -694,7 +707,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Domains already registered: `pdayletters.com` (canonical), `pdayemail.com`, `pday.email`, `missionaryjournal.org`. Verify each in the SWA custom-domain UI; configure the three non-canonical domains as 301 redirects to the canonical.
 - Set the `ACCEPTED_INGEST_DOMAINS` Function app setting to the four accepted domains, and `MISSIONARY_DOMAINS` to `missionary.org` — overridden to a controlled test domain in non-production, per [Building blind](#building-blind).
 - Create Azure subscription resource group.
-- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `pending/`, `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Azure Table `users`. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days.
+- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `pending/`, `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Azure Tables `users` and `memberships`. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days.
 - Key Vault + managed identity for Functions (SendGrid API key, HMAC token-signing key, Lulu OAuth secret).
 - App Insights instance (for rejection logging and general telemetry).
 - Provision SendGrid. DNS on all four domains: **MX on the apex** pointing at SendGrid Inbound Parse; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender, with sending subdomain `mail.pdayletters.com`.
@@ -743,6 +756,8 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 ### Phase 5 — Auth & ACL
 - SWA Standard with Google + Microsoft providers.
 - Load `acl.json` from `config/{slug}/` and enforce via SWA route rules + API-level checks.
+- **`memberships` table** maintained alongside `acl.json` on every invite, revoke, and claim, plus a rebuild-from-`config/*` utility for drift recovery.
+- **Site switcher** in the header, rendered only for users with more than one membership; **signed-in root redirect** to the most recently updated site, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
 - Owner admin view: manage invitees, hide/delete posts, edit any post's subject or body (for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). Edited bodies pass through the same sanitizer as ingested ones.
 - **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): enforce `verifiedMissionary` removal protection; persistent banner while any owner is on `missionary.org`; standing prompt to the existing owner to get the missionary claimed while their address still works.
 
