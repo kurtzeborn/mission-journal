@@ -132,7 +132,7 @@ The target letters site is determined from **who wrote the letter**, not from wh
 
 This does not weaken sender-based routing. The recipient address selects a **verb**, never a **target**; the slug still comes entirely from the authenticated author, so there remains no attacker-supplied "which site" value.
 
-**Why one address per verb instead of `{slug}@…`?** Three wins. (1) **Instructions get trivial** — "forward your missionary's email to `post@pdayletters.com`" works for every user of the service, with nothing to look up or personalize. (2) **It removes a whole class of security bug** — when the recipient address names the target site, the intake code must separately prove the sender is entitled to publish there, and getting that check wrong lets any missionary post to any other missionary's site. Deriving the target from the authenticated author removes the input rather than validating it. (3) **No address provisioning at onboarding** — nothing to allocate, alias, or communicate when a new site is created.
+**Why one address per verb instead of `{slug}@…`?** Three wins. (1) **Instructions get trivial** — "forward your missionary's email to `post@pdayletters.com`" works for every user of the service, with nothing to look up or personalize. (2) **It removes a whole class of security bug**, because there is no attacker-supplied "which site" value left to validate — see [Sender-based routing](#sender-based-routing). (3) **No address provisioning at onboarding** — nothing to allocate, alias, or communicate when a new site is created.
 
 A variant with an unguessable suffix (`{slug}-{4-char-token}@…`) is rejected for a separate reason: the classifier already drops anything that isn't a verified `direct` or an ACL-member `forward`, so obscurity buys no defense while costing an ugly address, a `profile.json` field, extra parser logic, and a rotation UI.
 
@@ -140,7 +140,7 @@ A variant with an unguessable suffix (`{slug}-{4-char-token}@…`) is rejected f
 
 **Trade-off accepted:** a single well-known address attracts more spam than four semi-obscure per-missionary addresses did. Mitigated by the classifier (silent drop for any sender we can't tie to a site or to a valid claim), by the inbound provider's spam scoring, and by the fact that rejected mail never reaches `rendered/` and ages out of the intake quarantine in 30 days.
 
-**Outbound mail is DKIM-signed as `pdayletters.com`, with the envelope sender on `mail.pdayletters.com`.** SPF/DKIM/DMARC are configured on `pdayletters.com` only, which keeps sender-authentication configuration simple. The visible `From:` differs by message type: **replies to inbound mail are sent from the address the sender wrote to** (`post@` or `claim@`) to preserve the recipient's prior-correspondence signal, while self-originated mail (day-7 reminders, ownership nudges) comes from `no-reply@mail.pdayletters.com`. DMARC passes either way through DKIM alignment. See [Ownership and the 60-day window](#ownership-and-the-60-day-window) for why this matters.
+**Outbound mail is DKIM-signed as `pdayletters.com`, with the envelope sender on `mail.pdayletters.com`.** SPF/DKIM/DMARC are configured on `pdayletters.com` only, which keeps sender-authentication configuration simple. The visible `From:` differs by message type: **replies to inbound mail are sent from the address the sender wrote to** (`post@` or `claim@`) to preserve the recipient's prior-correspondence signal, while self-originated mail — day-7 reminders, ownership nudges, and [invitations](#invitations) — comes from `no-reply@mail.pdayletters.com`. DMARC passes either way through DKIM alignment. See [Ownership and the 60-day window](#ownership-and-the-60-day-window) for why this matters.
 
 ### Email ingestion
 
@@ -276,10 +276,6 @@ This inverts the usual failure mode: the only way to lose a message is for Blob 
   - **No embedded year** to go stale mid-mission or look dated in the post-mission archive.
   - **Deterministic**: the intake code can compute the slug from the authenticated sender address alone — no lookup, no onboarding form field, no persistence of a slug-to-email map.
 - If a missionary really wants a different-looking URL (say a nickname), we can add an optional friendly-alias redirect later without giving up the deterministic derivation as the source of truth.
-
-**The site root is public.** `pdayletters.com/` serves an unauthenticated landing page — what the service does, the `post@pdayletters.com` address, and *"Are you a missionary? Email `claim@pdayletters.com` from your `@missionary.org` address to claim your site."* Everything on it is generic; no slug, no name, no content. Without it there is no way to discover `claim@` at all, since every letters site is auth-gated and the `post@` path is deliberately silent.
-
-**Signed in, the root redirects instead.** A visitor with an authenticated session goes straight to the most recently updated site they belong to; from there the [site switcher](#switching-between-sites) reaches any others. A signed-in user with *no* memberships gets a short explanation rather than the marketing page: *"You're signed in as jane@example.com, but that address doesn't have access to any letters site yet. Ask whoever set it up to invite this address."* That message earns its place — the likeliest support question this service will ever get is someone invited at one address signing in with another, and it answers that question without a human involved.
 
 ### Storage layout
 
@@ -423,11 +419,21 @@ All blob containers are private, with public access disabled at the account leve
   - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit/hide/delete any post (including editing the subject or body — for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
   - `reader` — invited viewer. Read-only for site content; can also download the offline archive and order a printed book for themselves (see [Post-mission archive](#post-mission-archive) and [Journal Publish](#journal-publish)).
 - **`verifiedMissionary` owners cannot be removed by others.** An owner entry created through the `claim@` flow (see [Ownership and the 60-day window](#ownership-and-the-60-day-window)) carries this flag and is removable only by that owner themselves. It's the tiebreaker that makes a genuine ownership dispute resolvable instead of a race.
-- **Owners on `missionary.org` are warned continuously.** Any owner identity on that domain stops working 60 days after the missionary returns home, so the admin UI shows a persistent banner until a non-`missionary.org` owner exists.
+- **Owners on `missionary.org` are warned continuously.** Any owner identity on that domain stops working 60 days after the missionary returns home, so the admin UI shows a persistent banner until a non-`missionary.org` owner exists — see [The 60-day cliff](#the-60-day-cliff).
 - **Invitations:** an owner enters one or more email addresses and a role; each is added to `acl.json` **and sent an invitation email carrying a signed link**, and access binds to whatever identity accepts through that link. See [Invitations](#invitations).
 - SWA route rules enforce that `/{missionary-slug}/*` requires an authenticated user whose email is in that slug's ACL. API calls check the same ACL server-side.
 - **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to `post@pdayletters.com` and have them land on that missionary's site.
-- **Inline forwards are owner-only.** A forward whose original arrives as a `message/rfc822` attachment carries verifiable DKIM; an inline forward is just text the forwarder typed and could have edited or fabricated. Readers can forward, but only an owner's inline forward is accepted for publication — matching the fact that owners can already edit any post's body anyway, so the restriction grants them nothing new.
+- **Inline forwards are owner-only.** Readers can forward, but only with the original message attached, because inline forwarded text carries no proof of authorship — see [Message classification](#message-classification).
+
+### Signing in and getting around
+
+Access *policy* is above. This section is the reader-facing half: how someone who is entitled to a site actually arrives at it, and what they see when something goes wrong.
+
+#### The root page is the front door
+
+**Anonymous, it is public.** `pdayletters.com/` serves an unauthenticated landing page — what the service does, the `post@pdayletters.com` address, and *"Are you a missionary? Email `claim@pdayletters.com` from your `@missionary.org` address to claim your site."* Everything on it is generic; no slug, no name, no content. Without it there is no way to discover `claim@` at all, since every letters site is auth-gated and the `post@` path is deliberately silent.
+
+**Signed in, it redirects.** A visitor with an authenticated session goes straight to the most recently updated site they belong to; from there the [site switcher](#switching-between-sites) reaches any others. A signed-in user with *no* memberships gets a short explanation rather than the marketing page: *"You're signed in as jane@example.com, but that address doesn't have access to any letters site yet. Ask whoever set it up to invite this address."* That message earns its place — the likeliest support question this service will ever get is someone invited at one address signing in with another, and it answers that question without a human involved.
 
 #### Invitations
 
@@ -451,21 +457,13 @@ Binding on acceptance avoids that entirely: whatever identity signs in *through 
 
 **ACL entries carry an acceptance state** — `invited` (no identity bound yet) or `active` — surfaced in the owner's admin list, so *"Grandma says she still can't see it"* is answerable by looking: the owner sees the invitation was never accepted and resends, which issues a fresh token and invalidates the old one. **A resend is owner-initiated and manual**, which is what keeps "never repeated" true — the service never decides on its own to email an invitee a second time.
 
-#### Signed in, but not on the list
-
-A valid session on a site you don't belong to is a `403`, and it needs different handling from the expired-session `401` above: signing in again does not help, because the problem isn't *that* you're signed in but *which* account you're signed in as. It covers the mismatched-address case above, a revoked reader following an old bookmark, and someone opening a link that got forwarded around a ward.
-
-The page names the identity being rejected and what to do about it: *"You're signed in as `grandma.smith@gmail.com`, but that address doesn't have access to Elder Smith's letters. If you were invited at a different address, sign out and sign in with that one — or ask whoever invited you to add this address."* A **Sign out and try another account** button points at `/.auth/logout` with a redirect back to the same path.
-
-Naming the signed-in address is what makes the page useful — without it, "wrong account" and "not invited" look identical, and they have opposite remedies. The missionary's display name appearing here to an unauthorized visitor is a deliberate and very small disclosure: they already hold the slug, which is the missionary's own email local-part, so the name is not news.
-
 #### Switching between sites
 
 A grandparent with two grandchildren out, or a friend of several missionaries, belongs to more than one ACL. **There is deliberately no dashboard page.** A portal you pass through on every visit is worse than the thing it indexes, and for the overwhelming majority — who have exactly one site — it would be pure friction between them and the letters.
 
 Instead the site header carries a **switcher, rendered only when the signed-in user has more than one membership**, listing the other missionaries by display name as direct links. One membership and nothing appears at all; the UI is exactly as it is today. Populated from a single `memberships` partition query (see [Storage layout](#storage-layout)).
 
-Together with the signed-in root redirect (see [Missionary routing](#missionary-routing)) this makes discovery complete without adding a page: land on any site you belong to, reach all the others from there. Both pieces are necessary — every site is auth-gated and the root is generic to anonymous visitors, so a reader who loses the URL otherwise has no way back in.
+Together with the signed-in root redirect (above) this makes discovery complete without adding a page: land on any site you belong to, reach all the others from there. Both pieces are necessary — every site is auth-gated and the root is generic to anonymous visitors, so a reader who loses the URL otherwise has no way back in.
 
 #### Sessions expire, and re-authenticating must be invisible
 
@@ -479,6 +477,14 @@ So the answer is not a longer session, it's making the return trip cost one clic
 - **The root page.** `/` is anonymous-allowed, so an expired session simply sees the public landing page rather than being redirected — correct behavior, since it's also what a genuine stranger must see. It therefore needs a visible **Sign in** button, pointing at the chooser with `post_login_redirect_uri=/`. Sending them back to the *root* rather than to a site is deliberate: root already knows how to resolve a signed-in visitor to their most recent site, so the destination logic lives in exactly one place and can't drift.
 
 **Sign-in is a chooser page, not a direct provider link.** SWA sign-in routes are provider-specific (`/.auth/login/google`, `/.auth/login/aad`), and with two providers there is nothing sensible to guess — picking wrong strands a user on an account that isn't on any ACL. A small `/login` page presents both buttons and threads `post_login_redirect_uri` through to whichever they choose. **Verify during Phase 5** that SWA's `.referrer` substitution survives the hop through an intermediate page; if it doesn't, the 401 override can capture the original path itself and pass it explicitly.
+
+#### Signed in, but not on the list
+
+A valid session on a site you don't belong to is a `403`, and it needs different handling from the expired-session `401` above: signing in again does not help, because the problem isn't *that* you're signed in but *which* account you're signed in as. It covers the mismatched-address case from [Invitations](#invitations), a revoked reader following an old bookmark, and someone opening a link that got forwarded around a ward.
+
+The page names the identity being rejected and what to do about it: *"You're signed in as `grandma.smith@gmail.com`, but that address doesn't have access to Elder Smith's letters. If you were invited at a different address, sign out and sign in with that one — or ask whoever invited you to add this address."* A **Sign out and try another account** button points at `/.auth/logout` with a redirect back to the same path.
+
+Naming the signed-in address is what makes the page useful — without it, "wrong account" and "not invited" look identical, and they have opposite remedies. The missionary's display name appearing here to an unauthorized visitor is a deliberate and very small disclosure: they already hold the slug, which is the missionary's own email local-part, so the name is not news.
 
 ### Onboarding and auto-provisioning
 
@@ -618,7 +624,7 @@ Initial preferences:
 - **`postAckEmails`** — bool. Sends a short *"Posted — thanks!"* reply on every successfully published letter. **Default `true` for everyone except `@missionary.org` senders, where it defaults to `false`.** The two groups have genuinely different needs: a forwarder is actively managing a site and needs to know their forward landed, whereas a missionary adding `post@` to their weekly email should never hear from us again. A weekly ack is 104 interruptions across a mission, each one consuming scarce P-day computer time, in service of a site somebody else is watching. And that's the real argument — **the missionary isn't monitoring the site; the owner is.** If letters stop arriving, a parent notices first. Missionaries who *want* confirmation can turn it on from the settings page or the `claim@` reply.
 - **`dedupeAckEmails`** — bool, default `true`. Sends a *"we already have this one — thanks!"* reply when a forwarded email is de-duplicated against an existing post.
 
-**Neither ack fires for messages promoted out of a pending site.** Both are answering the question *"did my forward work?"*, and at promotion the claim redirect has just put the sender on the finished site with every letter visible on it. See step 6 of the [onboarding flow](#flow). This is a property of the promotion path rather than a per-user preference — there is nothing to opt into, because a batch ack at that moment is never the fastest way to learn the answer.
+**Neither ack fires for messages promoted out of a pending site**, and this is a property of the promotion path rather than a per-user preference — there is nothing to opt into. See step 6 of the [onboarding flow](#flow).
 
 Every generated email carries a one-click opt-out for its own category ("Don't email me every time a letter posts"). The link is a **signed token** hitting a Function endpoint that flips the flag directly, with no sign-in required. It cannot point at the authenticated settings page instead, because acks go to `@missionary.org` senders who typically have no Google or Microsoft identity and cannot sign in at all. The claim flow already requires an HMAC signing service, so this reuses it rather than adding one.
 
@@ -818,6 +824,6 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 
 ## Open questions to confirm
 
+Design-review follow-ups are tracked in [issue #1](https://github.com/kurtzeborn/mission-journal/issues/1) rather than duplicated here, and feature-specific questions stay with their own sections. The one open question that changes a decision already written into this document:
+
 1. **Permanent deletion vs. soft delete.** The owner-facing promise is that "delete everything" is permanent, but `raw/` has soft-delete and versioning enabled precisely so nothing is ever lost. These are in direct conflict. Options: honor deletion by also purging soft-deleted versions and blob snapshots (simple, matches the promise, forfeits the safety net); or restate the promise as "removed from the service, retained for N days, then permanently erased" (safer against misclicks, requires saying so in the UI). Leaning toward the latter with N = 30 and explicit wording at the confirmation prompt.
-2. **Journal Publish pricing:** pass through Lulu's wholesale cost, or add a small service fee?
-3. **Journal Publish trim size:** fixed template initially, or configurable?
