@@ -104,6 +104,14 @@ Three of the constraints above cannot be verified until someone with a real `@mi
 
 ## Design decisions
 
+### The service is in beta until the privacy policy ships
+
+Every surface carrying the product name — the public landing page, the site header, the footer of outbound email — carries a small **beta** mark beside it. Deliberately subtle: one word next to the name, not a banner, not an interstitial, nothing to dismiss.
+
+**It is a factual claim, not a disclaimer.** There is no terms of use, no privacy policy, no written takedown process, and — per [Building blind](#building-blind) — several paths that have never run against a real `@missionary.org` account. Someone about to hand over two years of their family's letters is entitled to know that going in, and one word says it more honestly than a paragraph nobody reads.
+
+**Publishing the privacy policy is what removes it.** A single checkable event rather than a judgment call about readiness — which also means the document gets written instead of perpetually deferred. See [Phase 10](#phase-10--terms-privacy-and-leaving-beta).
+
 ### Domains
 
 Four registered domains, one canonical:
@@ -221,7 +229,7 @@ No similarity scoring, no weights, no threshold.
 
 **Upgrade path.** Raw MIME is archived permanently, so if real-world data ever shows duplicates slipping through, we can reintroduce scoring and re-run it across all history without asking anyone to resubmit.
 
-**Storage of truth.** Dedup does not use a separate Azure Table. `rendered/{slug}/posts.json` already contains every field the check needs (`originalMessageId`, `originalFrom`, `originalDate`, `subject`, `bodyText`), so ingest just loads that blob and scans it in memory. `subjectNormalized` and `bodyHead100` are computed on the fly against the 0–2 candidates that pass the sender+date gate — cheap enough that precomputing and storing them buys nothing.
+**Storage of truth.** Dedup does not use a separate Azure Table. `rendered/{slug}/posts.json` already contains every field the check needs (`originalMessageId`, `originalFrom`, `originalDate`, `subject`, `bodyHead100`), so ingest just loads that blob and scans it in memory. `bodyHead100` is **stored** rather than computed, because the full plain-text body is no longer kept at all (see [Data model](#data-model-postsjson-entry)) and those hundred characters were the only thing dedup ever read out of it. `subjectNormalized` is still computed on the fly against the 0–2 candidates that pass the sender+date gate — a cheap transform of a field that is already present.
 
 **Concurrency.** A parent bulk-forwarding several weeks of missionary emails in quick succession is an entirely normal usage pattern, so ingests for a single slug can arrive in bursts. Handled with **optimistic concurrency on `posts.json`**:
 
@@ -326,7 +334,7 @@ Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook t
 
 Plus two Azure Tables in the same storage account:
 
-- **`users`** — `PartitionKey = "user"`, `RowKey = lowercased email address`. Identity columns: `displayName`, `authProvider` (`google` | `microsoft`), `firstSeenAt`, `lastSignInAt`. Preference columns: `postAckEmails` and `dedupeAckEmails` (bools — see [Notification preferences](#notification-preferences) for the per-sender-type defaults); additional per-user preferences are just additional columns as they arrive. State columns: `claimEmailSentAt` and `claimEmailCount`, driving the tapering re-invitation schedule for a missionary whose own letters created a pending site — kept here rather than in `claim.json` so the schedule survives a pending-site purge and recreation.
+- **`users`** — `PartitionKey = "user"`, `RowKey = lowercased email address`. Identity columns: `displayName`, `authProvider` (`google` | `microsoft`), `firstSeenAt`, `lastSignInAt`. Preference columns: `postAckEmails`, `dedupeAckEmails`, and `digestFrequency` (see [Notification preferences](#notification-preferences) and [New-letter notifications](#new-letter-notifications) for defaults, which differ by sender type); additional per-user preferences are just additional columns as they arrive. State columns: `claimEmailSentAt` and `claimEmailCount`, driving the tapering re-invitation schedule for a missionary whose own letters created a pending site — kept here rather than in `claim.json` so the schedule survives a pending-site purge and recreation.
 - **`memberships`** — `PartitionKey = lowercased email address`, `RowKey = slug`. Columns: `role`, `missionaryDisplayName`, `addedAt`, `lastPostAt`. Answers *"which sites does this person belong to?"* in one partition query. Without it that question requires opening `config/{slug}/acl.json` for every missionary in the service, because ACLs are stored per-slug with no reverse index.
 
 **`memberships` is a derived index, never the authority.** `acl.json` remains the source of truth and is what the content API checks on every request. The table is dual-written on invite, revoke, and claim, and can be rebuilt by scanning `config/*/acl.json` if it ever drifts. That ordering matters: a bug in the index produces a missing or stale entry in a switcher menu, never a wrong access decision. `lastPostAt` is denormalized from render for ordering — a fan-out write bounded by the size of one ACL, which is a handful of family members.
@@ -343,7 +351,8 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
   "receivedAt": "2026-07-25T12:14:00Z",     // when this ingestion actually happened
   "subject": "Week 34 - miracles in Manaus",
   "bodyHtml": "<p>…</p>",                    // SANITIZED at render time — never raw email HTML
-  "bodyText": "…",
+  "bodyHead100": "…",                        // first 100 normalized chars — dedup gate only
+  "hidden": false,                           // owner-only visibility — filtered server-side
   "originalMessageId": "<CAB=…@mail.missionary.org>",  // dedupe key when available
   "originalFrom": "elder.smith@missionary.org",
   "photos": [
@@ -356,6 +365,8 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 The original `Date:` header keeps its offset rather than being normalized to UTC. Missionaries write from all over the world, and the local calendar day is both the value the dedup gate keys on and the one readers actually mean when they say "the letter from the 6th."
 
 **No `ingestDomain` field.** An acknowledgment email could name the address the sender wrote to, but acks are composed at ingest time when that value is already in hand, so storing it on the post buys nothing. It's logged to App Insights instead, matching how client type and DKIM results are handled.
+
+**No full `bodyText` field either.** Carrying both `bodyHtml` and a plain-text twin put every letter in the reader payload twice, and nothing needed the second copy: [search](#search) can strip tags in the browser, dedup only ever read the first hundred characters, and the offline export and printed book both render from `bodyHtml`. So the plain-text body is dropped and `bodyHead100` — the one slice with a real consumer — is stored on its own. Roughly a 40% cut to `posts.json`, which is also the search index and the offline bundle.
 
 ### Content sanitization
 
@@ -385,7 +396,9 @@ All blob containers are private, with public access disabled at the account leve
 
 **Private content delivery is Functions-mediated, and Functions on Consumption scale to zero.** The first API call a reader makes after sign-in is `/api/content/{slug}/posts.json`, which pays a ~1–3 s Node cold start on a site nobody has visited for a while. Photos are unaffected — they can't be requested until `posts.json` has returned, by which point the app is warm. Static Web Apps authentication is handled by the SWA platform rather than by a managed Function, so signing in does *not* pre-warm anything; `posts.json` is the warm-up. Given a weekly visit cadence this is acceptable, and `Cache-Control: private, max-age=3600` keeps repeat views off the Function entirely.
 
-**Standard tier does not, on its own, fix this.** Supporting Google auth forces Standard (custom identity providers aren't available on Free), but SWA *managed* functions still run on Consumption at any tier — Standard raises limits, it doesn't add always-ready instances. What Standard buys is the **escape hatch**: it permits a linked backend, so the API can be moved to a separately-deployed Function App on Flex Consumption with always-ready instances if telemetry ever justifies the extra resource and cost. Before that, the cheap fix is a 5-minute timer-triggered ping, which keeps one instance alive within the free grant.
+**Standard tier does not, on its own, fix this.** Supporting Google auth forces Standard (custom identity providers aren't available on Free), but SWA *managed* functions still run on Consumption at any tier — Standard raises limits, it doesn't add always-ready instances. What Standard buys is the **escape hatch**: it permits a linked backend, so the API can be moved to a separately-deployed Function App on Flex Consumption with always-ready instances if telemetry ever justifies the extra resource and cost.
+
+**A keep-alive ping is rejected.** Firing a timer every five minutes to stop the platform doing the thing it is designed to do would burn something like 100,000 executions a month to save a second or two on a weekly visit — and worse, it would hide the cold start from telemetry rather than remove it, so the first honest signal that the API is too slow would be a user complaining instead of a metric moving. The one or two seconds on first load is accepted as the cost of a scale-to-zero backend. If it ever genuinely matters, the linked backend above is the real fix and should be bought on purpose.
 
 **The offline export is unaffected.** It's an owner- or reader-initiated download of content they're already entitled to, packaged as plain files.
 
@@ -407,7 +420,9 @@ All blob containers are private, with public access disabled at the account leve
 
 **Why no prebuilt `search-index.json`.** A serialized MiniSearch index stores the inverted index *plus* the stored fields, so it is typically **larger than the source text it indexes** — and the reader still needs `posts.json` to display anything, so emitting one would ship roughly twice the necessary bytes. Skipping it also avoids an artifact, a build step, a file to keep in the export bundle, and a class of staleness bug: the post-edit path in Phase 5 would have to rebuild the index or leave edited posts unsearchable by their new text.
 
-**Size in practice.** A full two-year mission is ~104 letters at roughly 500–1500 words each — about 1.5 MB of JSON, or **~250–350 KB compressed**, comparable to a single photo. Indexing that many documents takes milliseconds. In exchange, list rendering, post navigation, and search all become instant with no further round-trips, and the same code path works offline in the exported archive.
+**Search text is derived from `bodyHtml` in the browser.** Posts carry no plain-text body (see [Data model](#data-model-postsjson-entry)), so the reader strips tags from the sanitized HTML as it indexes. The HTML has already been reduced to a small allowlist by the render function, so this is a trivial transform rather than a parsing problem, and it costs a few milliseconds across a full mission. **Hidden posts are never indexed**, because they never reach the client at all — see [Editing and hiding posts](#editing-and-hiding-posts).
+
+**Size in practice.** A full two-year mission is ~104 letters at roughly 500–1500 words each — about 1 MB of JSON now that the duplicate plain-text body is gone, or **~150–250 KB compressed**, comparable to a single photo. Indexing that many documents takes milliseconds. In exchange, list rendering, post navigation, and search all become instant with no further round-trips, and the same code path works offline in the exported archive.
 
 **If first paint ever needs to be faster**, the fix is to split by payload role rather than reintroduce an index: emit an `index.json` of id, date, subject, snippet, and thumbnail id (~8 KB compressed) for immediate list rendering, and fetch `posts.json` in the background to enable search a moment later. Not built now — revisit if `posts.json` exceeds ~5 MB uncompressed or if measured first paint on cellular is poor.
 
@@ -416,7 +431,7 @@ All blob containers are private, with public access disabled at the account leve
 - **Auth:** Static Web Apps **Standard** with Google and Microsoft identity providers. **Google is required, not optional** — `@missionary.org` is Google Workspace, so the missionary population is Google-native, and personal Gmail is the most likely identity for the family members around them too. Google is a *custom* provider in SWA, which is available only on Standard; that tier was already the plan's baseline for other reasons, so this adds no cost.
 - **Model:** per-missionary allowlist keyed on the authenticated user's email address.
 - **Roles per missionary's letters site:**
-  - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit/hide/delete any post (including editing the subject or body — for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
+  - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit, hide, or delete any post — see [Editing and hiding posts](#editing-and-hiding-posts). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
   - `reader` — invited viewer. Read-only for site content; can also download the offline archive and order a printed book for themselves (see [Post-mission archive](#post-mission-archive) and [Journal Publish](#journal-publish)).
 - **A service-wide `operator` role exists outside this model** — not per-site, not stored in any ACL, and not grantable from the web UI. See [Service operators](#service-operators).
 - **`verifiedMissionary` owners cannot be removed by others.** An owner entry created through the `claim@` flow (see [Ownership and the 60-day window](#ownership-and-the-60-day-window)) carries this flag and is removable only by that owner themselves. It's the tiebreaker that makes a genuine ownership dispute resolvable instead of a race.
@@ -658,6 +673,7 @@ Initial preferences:
 
 - **`postAckEmails`** — bool. Sends a short *"Posted — thanks!"* reply on every successfully published letter. **Default `true` for everyone except `@missionary.org` senders, where it defaults to `false`.** The two groups have genuinely different needs: a forwarder is actively managing a site and needs to know their forward landed, whereas a missionary adding `post@` to their weekly email should never hear from us again. A weekly ack is 104 interruptions across a mission, each one consuming scarce P-day computer time, in service of a site somebody else is watching. And that's the real argument — **the missionary isn't monitoring the site; the owner is.** If letters stop arriving, a parent notices first. Missionaries who *want* confirmation can turn it on from the settings page or the `claim@` reply.
 - **`dedupeAckEmails`** — bool, default `true`. Sends a *"we already have this one — thanks!"* reply when a forwarded email is de-duplicated against an existing post.
+- **`digestFrequency`** — `monthly` (default) | `weekly` | `off`. One email summarizing what's new across every site this address belongs to. Defaults to `off` for `@missionary.org` addresses. See [New-letter notifications](#new-letter-notifications).
 
 **Neither ack fires for messages promoted out of a pending site**, and this is a property of the promotion path rather than a per-user preference — there is nothing to opt into. See step 6 of the [onboarding flow](#flow).
 
@@ -669,9 +685,66 @@ An authenticated settings page at `/{slug}/settings` still exists for ACL member
 
 Acks double as an end-to-end smoke test for the send-and-receive email pipeline: they exercise SendGrid send from `no-reply@mail.pdayletters.com` (the single canonical sender — see [Domains](#domains)), the token-signing service, and the `users` table read/write path.
 
+### New-letter notifications
+
+As designed so far, the service publishes letters to a website and never tells anyone a new one exists. Grandparents are a core audience and will not remember to check a URL. Without a nudge, the archive gets built for readers who never arrive.
+
+#### The digest
+
+**One email per person, not per site.** A grandparent with two grandchildren serving gets a single message covering both. Per-site digests would put two near-identical emails in the same inbox on the same morning, and the count grows fastest for exactly the people most likely to find it tiresome.
+
+**Monthly by default, weekly on request.** Monthly is the setting that survives contact with a real inbox — rare enough that nobody reaches for unsubscribe, and a three-week-old letter is not stale in an archive people read in batches anyway. Weekly matches the actual publishing cadence and is there for the parents and grandparents who want it.
+
+**Subscribed by default, with one exception.** Everyone who accepts an invitation is opted in; a notification nobody enables is a feature nobody uses, and these are people who asked to be on this list by clicking through an invitation. The exception is `@missionary.org` addresses, defaulting to `off` for the same reason `postAckEmails` does — the missionary wrote the letters and does not need a monthly summary of their own mail.
+
+**If nothing published, nothing sends.** No "no new letters this month" email, ever. An empty digest is pure noise, and it would arrive most reliably during exactly the stretch — a transfer, a sick week, a missionary between areas — when the family is already uneasy about the silence. Sending it would be a machine pointing that out once a month.
+
+**Contents,** per new post: missionary display name, subject, first two lines, one thumbnail, and a direct link. The link lands on `/{slug}/…` and SWA auth gates it normally; an expired session gets the [401 flow](#sessions-expire-and-re-authenticating-must-be-invisible), which is why that had to exist first. Hidden posts never appear, because the digest reads the same filtered payload as everything else.
+
+**Mechanically it is machinery that already exists.** A `digestFrequency` column on the `users` row, a timer-triggered Function, one `memberships` partition query per recipient, `lastPostAt` on each membership to decide what's new, the same self-originated sender as other generated mail (`no-reply@mail.pdayletters.com`, per [Domains](#domains)), and the same one-click HMAC opt-out the acks carry. The only genuinely new things are a column and a schedule.
+
+#### Text messages (stretch)
+
+An opt-in mobile number per user, texted a short line and a link when a letter posts. Nobody misses a text — that is the entire argument for it, and it is a good one.
+
+Held as a stretch goal because it is the only feature in the plan that leaves the current cost and compliance envelope:
+
+- **It isn't free.** Outbound SMS carries a per-message fee and requires a rented number, against a service budgeted at ~$12–15/month in total.
+- **US A2P messaging requires sender registration** (10DLC or toll-free verification) before carriers deliver reliably. That is an application with a review, not a config toggle.
+- **`STOP` handling is mandatory**, which means an inbound message path, per-number opt-out state, and honoring it permanently — a second unsubscribe system running alongside the HMAC email one.
+- **It introduces phone numbers**, the first genuinely sensitive personal data the service would hold. Everything stored today is an email address the person already handed to a mail provider.
+
+**If built, it is per-post rather than digested.** A monthly text is pointless; immediacy is the only thing SMS offers that email doesn't. Default off, always, with the number collected on the settings page and confirmed by a round-trip code before anything is sent to it.
+
+### Editing and hiding posts
+
+Both capabilities are asserted in [Access control](#access-control) and in [Moderation / quarantine](#moderation--quarantine). This is what they actually do.
+
+#### Editing
+
+An owner can change a post's **subject** and **body** — copy-editing, fixing a typo, or retroactively removing a name, an address, or an identifying detail about someone else that the missionary wrote in a hurry and would not have written on reflection.
+
+- **Edits are made against the rendered post, never the raw message.** `rendered/{slug}/posts.json` is rewritable by definition; `raw/` is not. So every edit is reversible by re-rendering, and the archive continues to hold what the missionary actually wrote.
+- **Edited HTML passes through the same sanitizer as ingested HTML.** An owner is a trusted user, but a *compromised* owner session pasting a `<script>` tag into a body would otherwise write stored XSS directly into the file every reader downloads. One sanitizer, one code path, no trusted-input exception.
+- **Edits are ETag-guarded**, like every other write to `posts.json` — see [Concurrency](#extracting-and-de-duplicating-forwards). Two owners editing different posts on the same Saturday morning is ordinary.
+- **No edit history and no "edited" badge.** The intended uses are typo fixes and anonymization, and flagging "this post was edited" to readers would advertise the anonymization it exists to perform — exactly backwards. `raw/` remains the record for anyone entitled to it.
+- **Dedup fields are not editable.** `originalFrom`, `originalDate`, `originalMessageId`, and `bodyHead100` are derived from the source message. If an edited subject changed the value dedup keys on, a later re-forward of that same letter would stop matching and quietly reappear as a second post.
+
+#### Hiding
+
+**A hidden post is visible to owners and to nobody else.** Not to readers, not in search, not in the album, not in the offline export, not in the printed book, not through `/api/photo/`. One rule, no carve-outs.
+
+- **Shape:** a `hidden: true` field on the post. A boolean rather than a `visibility` enum, because a third state would need a third audience and there isn't one.
+- **Filtered server-side, at the API boundary.** `/api/content/{slug}/posts.json` strips hidden posts for `reader` callers before the bytes leave the Function. Client-side filtering would ship the hidden letter to the browser and trust the UI not to draw it, which is a CSS rule, not privacy. The same check gates `/api/photo/`, so a photo belonging to a hidden post cannot be pulled by URL either.
+- **Owners get them, marked.** The same endpoint returns hidden posts to `owner` callers with the flag intact, and the admin view renders them dimmed with an **Unhide** action — so a post can be taken out of view without being lost track of.
+- **Hiding does not affect dedup.** A hidden post keeps its slot in `posts.json` and still matches re-forwards of the same letter. Skipping hidden posts in the dedup scan would mean the next aunt to forward that email silently republishes it, undoing the moderation action with nobody aware it happened.
+- **The offline export and the printed book consume the same filtered payload** the reader UI does, so neither needs its own rule and neither can drift from this one.
+
+**Why hiding exists at all, when owners can already edit and delete.** It is the pause between them. Letters [publish immediately by design](#moderation--quarantine), so an owner who spots a problem wants it out of view *now* and wants to decide what to do about it later — when there is time to write a careful edit, or to ask the missionary what they meant. Deleting is the irreversible option and editing is the considered one; hiding is what makes it possible to stop the bleeding without choosing between them under pressure.
+
 ### Moderation / quarantine
 
-**Hands-off by design.** Posts publish immediately on ingest. Owners can edit any post's subject or body, hide, or delete via a lightweight authenticated admin view (see [Access control](#access-control)) — that gives them everything an approval workflow would, without slowing down the common case.
+**Hands-off by design.** Posts publish immediately on ingest. Owners can edit any post's subject or body, hide, or delete via a lightweight authenticated admin view (see [Editing and hiding posts](#editing-and-hiding-posts)) — that gives them everything an approval workflow would, without slowing down the common case.
 
 Rationale: missionaries have limited P-day computer time; adding a pending-approval step defeats the "zero effort" goal. Anything an approval queue would catch is equally fixable post-publish through the standard edit/hide/delete tools — usually before family notices, since owners are typically parents already watching for new posts. If real missionaries later ask for a pre-publish gate, we'll add it in response to that request rather than in anticipation of it.
 
@@ -685,7 +758,7 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 - **Download the offline archive** — one-click "Download my letters" produces a self-contained zip:
   - `index.html` — the same reader UI, but pointed at local files
-  - `posts.json`
+  - `posts.json` — the same ACL-filtered payload the reader receives, so hidden posts are absent unless the requester is an owner
   - `photos/` — all `large.webp` + `thumb.webp`
   - `raw/` — optional toggle to include the preserved archive too
   - Open `index.html` in any browser and it works, search included. Grandparents get their own copy without going through the owner.
@@ -694,7 +767,11 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 **Owner-only actions:**
 
-- **Permanent deletion.** An owner can request permanent deletion of the site and all archived content (raw, rendered, config, and per-missionary preferences). Guarded by an explicit typed confirmation to defend against misclicks. A [service operator](#service-operators) can invoke the same path on any site, with a recorded reason.
+- **Deletion is immediate to everyone, and permanent after 30 days.** An owner can delete the site and all archived content (raw, rendered, config, and per-missionary preferences). The site stops resolving at once and no ACL member can reach anything through any path; a timer purges the blobs for real 30 days later, including soft-deleted versions and snapshots. A [service operator](#service-operators) can invoke the same path on any site, with a recorded reason.
+
+  **The promise is worded that way on purpose.** `raw/` runs with soft-delete and versioning precisely so nothing is ever lost, so a literally-instant hard delete would mean disabling the one safety net protecting the irreplaceable half of the archive. A typed confirmation catches a misclick; it does not catch an owner who meant it in the moment, or a family mid-argument. Thirty days of quiet recoverability costs nothing, and it has to be **stated plainly at the confirmation prompt** — *"Your letters stop being visible immediately and are permanently erased 30 days from now"* — because a "permanent" button that isn't is worse than an honest one.
+
+  **A pending-site purge stays immediate.** Nothing there was ever claimed, and expiry follows 60 days of silence rather than a click, so there is no misclick to undo and no owner to change their mind.
 
 ### Journal Publish
 
@@ -763,7 +840,7 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 | Resource | SKU | Purpose | Est. $/mo |
 |---|---|---|---|
 | Static Web Apps | Standard | Web UI + auth + managed Functions. Standard is **required** — Google is a custom identity provider and isn't available on Free. | ~$9 |
-| Azure Functions | Consumption (via SWA managed) | Intake, ingest, render, content delivery, admin API, pending purge timer | ~$0 |
+| Azure Functions | Consumption (via SWA managed) | Intake, ingest, render, content delivery, operator API, pending purge timer, deletion purge timer, digest timer | ~$0 |
 | Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users`/`memberships` tables + `ingest`/`render` queues | <$3 for years of data |
 | SendGrid | Free tier | Inbound Parse + outbound ack/claim mail | $0 |
 | Key Vault | Standard | SendGrid API key, Lulu OAuth secret, HMAC token-signing key | ~$0.03 |
@@ -825,7 +902,8 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 
 ### Phase 4 — Reader UI
 - **Public landing page at `/`** — what the service is, the `post@pdayletters.com` address, and the `claim@pdayletters.com` instructions. Unauthenticated, entirely generic, no per-site information.
-- Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch index built client-side from `posts.json`.
+- **Subtle `beta` mark** beside the product name wherever it appears — landing page, site header, and the footer of outbound email. Removed in Phase 10 and not before. See [The service is in beta](#the-service-is-in-beta-until-the-privacy-policy-ships).
+- Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch index built client-side from `posts.json`, with search text derived by stripping tags from `bodyHtml`.
 - Content is served through `/api/content/…` and `/api/photo/…` per [Private content delivery](#private-content-delivery) from the start.
 - **Smoke-tested against a synthetic slug** seeded with fabricated letters and stock photos, with real test accounts on its ACL. Deliberately *not* a `public: true` escape hatch on a real missionary's site — a temporary flag that exposes real family mail is precisely the kind of thing that survives to production, and building the UI against the authenticated path from day one means Phase 5 has nothing to retrofit.
 
@@ -835,7 +913,8 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - **`memberships` table** maintained alongside `acl.json` on every invite, revoke, and claim, plus a rebuild-from-`config/*` utility for drift recovery.
 - **Site switcher** in the header, rendered only for users with more than one membership; **signed-in root redirect** to the most recently updated site, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
 - **Session-expiry handling** per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): a `/login` chooser page offering both providers, a `401` response override redirecting deep links there with `post_login_redirect_uri=.referrer`, and a **Sign in** button on the public root pointing back at `/`. Verify that `.referrer` substitution survives the hop through `/login`.
-- Owner admin view: manage invitees, hide/delete posts, edit any post's subject or body (for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). Edited bodies pass through the same sanitizer as ingested ones.
+- Owner admin view per [Editing and hiding posts](#editing-and-hiding-posts): edit any post's subject or body with edited HTML passing through the ingest sanitizer, ETag-guarded like every other `posts.json` write, and dedup-derived fields left read-only. **Hidden posts are stripped server-side** in `/api/content/` and `/api/photo/` for `reader` callers and returned flagged to `owner` callers, rendered dimmed with an **Unhide** action. Hidden posts still participate in dedup.
+- **Site deletion** per [Post-mission archive](#post-mission-archive): typed confirmation stating the 30-day erase in plain words, immediate removal from every read path, and a timer that hard-purges blobs and soft-deleted versions at day 30.
 - **Invitations** per [Invitations](#invitations): bulk paste-and-parse of addresses, one signed single-use invitation email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. No automated reminders to invitees, ever.
 - **`403` handling** per [Signed in, but not on the list](#signed-in-but-not-on-the-list): a page naming the rejected identity with a sign-out-and-switch-account action, distinct from the `401` re-authentication path.
 - **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): enforce `verifiedMissionary` removal protection; persistent banner while any owner is on `missionary.org`; standing prompt to the existing owner to get the missionary claimed while their address still works.
@@ -849,17 +928,25 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Per-slug daily ingest cap with alerting, so a mail loop or a forwarding rule gone wrong can't quietly generate thousands of posts and a matching storage bill.
 
 ### Phase 7 — Offline archive export
-- "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` + (optionally) `raw/` into a self-contained zip. Attachment path segments are re-sanitized on the way in to avoid zip-slip on the user's machine.
+- "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` + (optionally) `raw/` into a self-contained zip, built from the **same ACL-filtered payload the reader UI receives**, so hidden posts are absent for readers without a second filtering rule to keep in sync. Attachment path segments are re-sanitized on the way in to avoid zip-slip on the user's machine.
 - Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
 
-### Phase 8 — Journal Publish
+### Phase 8 — New-letter notifications
+- **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, `digestFrequency` on the `users` row defaulting to `monthly` and to `off` for `@missionary.org` addresses, a weekly option on the settings page, and the existing one-click HMAC opt-out.
+- **Empty digests are never sent.** Verify by letting a test site sit through a full cycle with nothing published and confirming no mail leaves.
+- **Verification:** put one recipient on two sites, publish to one, and confirm a single email arrives describing both sites' new content correctly. Back-date `lastPostAt` to check the window boundary. Follow a digest link with an expired session and confirm the Phase 5 `401` flow lands on the intended post. Hide a post and confirm it never appears in a digest.
+- **Stretch — SMS.** Not started until the digest ships and the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch) have answers. Per-post rather than digested, default off, number confirmed by a round-trip code.
+
+### Phase 9 — Journal Publish
 - Assemble a hardcover photo book from a missionary's posts + photos and place the print order via the Lulu Print API.
+- Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
 - Full design in [Journal Publish](#journal-publish), including why Shutterfly + Rakuten was ruled out.
 
----
+### Phase 10 — Terms, privacy, and leaving beta
+Written last, against what was actually built rather than what was planned. Until it ships the product carries the [beta mark](#the-service-is-in-beta-until-the-privacy-policy-ships).
 
-## Open questions to confirm
-
-Design-review follow-ups are tracked in [issue #1](https://github.com/kurtzeborn/mission-journal/issues/1) rather than duplicated here, and feature-specific questions stay with their own sections. The one open question that changes a decision already written into this document:
-
-1. **Permanent deletion vs. soft delete.** The owner-facing promise is that "delete everything" is permanent, but `raw/` has soft-delete and versioning enabled precisely so nothing is ever lost. These are in direct conflict. Options: honor deletion by also purging soft-deleted versions and blob snapshots (simple, matches the promise, forfeits the safety net); or restate the promise as "removed from the service, retained for N days, then permanently erased" (safer against misclicks, requires saying so in the UI). Leaning toward the latter with N = 30 and explicit wording at the confirmation prompt.
+- **Terms of use:** who owns the content (the missionary and their family, never the service), what the service may do with it (store, render, print on request — nothing else), and the acceptable-use line.
+- **Privacy policy:** what is retained and for how long, that `raw/` is kept indefinitely and deliberately, the 30-day erase window on deletion, and who can see what — **including that service operators can reach any site**, per [Operator access is visible and logged](#operator-access-is-visible-and-logged). That disclosure is the reason this cannot be boilerplate.
+- **Takedown and dispute process:** the written policy behind the mechanism [The 60-day cliff](#the-60-day-cliff) already describes — what evidence is required, who decides, and what the outcomes are (add an owner, or delete the site).
+- **Transactional-mail position:** a short statement that claim emails, acks, invitations, and digests are responses to a specific action rather than marketing, and that each carries an opt-out.
+- **Then remove the beta mark.** Publishing this is what ends beta. There is no separate announcement and no other gate.
