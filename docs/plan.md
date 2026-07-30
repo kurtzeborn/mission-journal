@@ -76,7 +76,7 @@ Three of the constraints above cannot be verified until someone with a real `@mi
             │  No parsing. No logic.   │   │  Functions API           │
             └───────────┬──────────────┘   │  /api/content/{slug}/…   │
                         ▼                  │  /api/photo/{slug}/…     │
-            ┌──────────────────────────┐   │  admin · ACL · claim     │
+            ┌──────────────────────────┐   │  manage · ACL · claim    │
             │  Ingest Function         │   └───────────┬──────────────┘
             │  classify · route by     │               │ ACL check,
             │  sender · dedupe         │               │ then stream
@@ -418,12 +418,47 @@ All blob containers are private, with public access disabled at the account leve
 - **Roles per missionary's letters site:**
   - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit/hide/delete any post (including editing the subject or body — for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
   - `reader` — invited viewer. Read-only for site content; can also download the offline archive and order a printed book for themselves (see [Post-mission archive](#post-mission-archive) and [Journal Publish](#journal-publish)).
+- **A service-wide `operator` role exists outside this model** — not per-site, not stored in any ACL, and not grantable from the web UI. See [Service operators](#service-operators).
 - **`verifiedMissionary` owners cannot be removed by others.** An owner entry created through the `claim@` flow (see [Ownership and the 60-day window](#ownership-and-the-60-day-window)) carries this flag and is removable only by that owner themselves. It's the tiebreaker that makes a genuine ownership dispute resolvable instead of a race.
 - **Owners on `missionary.org` are warned continuously.** Any owner identity on that domain stops working 60 days after the missionary returns home, so the admin UI shows a persistent banner until a non-`missionary.org` owner exists — see [The 60-day cliff](#the-60-day-cliff).
 - **Invitations:** an owner enters one or more email addresses and a role; each is added to `acl.json` **and sent an invitation email carrying a signed link**, and access binds to whatever identity accepts through that link. See [Invitations](#invitations).
 - SWA route rules enforce that `/{missionary-slug}/*` requires an authenticated user whose email is in that slug's ACL. API calls check the same ACL server-side.
 - **Forwarding is gated by the same ACL.** Anyone on a missionary's ACL can forward historical missionary emails to `post@pdayletters.com` and have them land on that missionary's site.
 - **Inline forwards are owner-only.** Readers can forward, but only with the original message attached, because inline forwarded text carries no proof of authorship — see [Message classification](#message-classification).
+
+### Service operators
+
+Several things this document already promises have no actor: deleting a site after an abuse report, resolving an ownership dispute the [60-day window](#the-60-day-cliff) has already closed on, re-rendering history after a sanitizer or extractor fix, reprocessing a message the classifier got wrong, or walking a stuck owner through an invitation they can't get to work. All of them require acting on a site the actor is not a member of.
+
+**An operator is an owner on every slug, resolved at authorization time.** The shared ACL check behind [Private content delivery](#private-content-delivery) returns `owner` for an operator on any site, and **nothing is written to that site's `acl.json` or to `memberships`**. That single choice does most of the work: operators never appear in an owner's invitee list, never populate a site switcher or the signed-in root redirect (an operator reaches a site by typing its URL), and the owner admin UI needs no operator-specific variant, because an operator opening `/{slug}` *is* an owner as far as the authorization layer is concerned. Adding or removing an operator is one config change instead of a fan-out write across every site in the service.
+
+**The operator list is configuration, not data** — an `OPERATOR_EMAILS` Function app setting, expected to hold one or two addresses. A privilege this broad must not be grantable through the interface it grants: if operators lived in a blob or a table, one compromised operator account could quietly add a second and make the escalation permanent and self-sustaining. As a setting, adding an operator requires Azure control-plane access — a separate credential, separately recorded in the Azure Activity Log. There is deliberately no UI for editing it.
+
+**Operator status is not consulted by the email path.** Ingest resolves forwarding rights from `acl.json` alone, so being an operator does not confer the ability to publish into a stranger's site by email. A `From:` header — even a DMARC-passing one — is a far weaker identity signal than a signed-in session, and there is no scenario in which an operator needs to author content on someone else's site rather than administer it.
+
+#### What operators can do that owners cannot
+
+- **Delete any site**, through the same permanent-deletion path an owner uses (see [Post-mission archive](#post-mission-archive)) — one code path, one retention story. The confirmation additionally requires a **reason string**, recorded in the audit log, because it is the only part of the action that cannot be reconstructed from the data afterward.
+- **Inspect or purge a pending site** before its window lapses — the disposal route for a site that spam created, and the only way to look at one at all, since pending sites render nothing and have no ACL.
+- **Reprocess raw mail.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `raw/_inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). Both are already promised elsewhere in this document; the operator is the actor who delivers on them.
+- **See service-wide message flow** — the `/manage/last-received` view from Phase 1 spans every slug, so it can never be an owner-facing page.
+
+#### What operators deliberately cannot do
+
+- **Remove a `verifiedMissionary` owner.** That flag is what makes an ownership dispute resolvable instead of a race, and an operator who can clear it with a click reduces the protection to decoration. An operator settling a dispute adds an owner or deletes the site — both drastic, both logged — rather than quietly unseating the one person who proved control of the mailbox.
+- **Add or remove operators**, per the config-not-data rule above.
+- **Act invisibly.** See below.
+
+#### Operator access is visible and logged
+
+"Private by default" is a headline goal and an operator is the standing exception to it, so the exception is made observable rather than left implicit:
+
+- **Every operator action against a site they don't belong to emits an `OperatorAction` event** to App Insights — actor, slug, action, timestamp, and the reason string where one was collected. **Reads are logged, not only writes.** Reading a family's letters is the privilege that matters most here, and a write-only audit trail would miss exactly that.
+- **A persistent banner appears on any site where the operator is not an ACL member:** *"You are viewing this site as an operator. This access is logged."* This guards against the likelier failure by far — an operator forgetting which hat they are wearing and editing a real family's post — and makes the boundary visible while they work.
+
+Disclosing this access to owners in plain language belongs with the terms-of-use work rather than in the product UI, and is tracked in the follow-up issue alongside the dispute-resolution process it makes possible.
+
+**Operator routes live under `/manage/*`, never `/admin/*`.** The Azure Functions host reserves the `admin` route prefix for its own management API; Functions registered there deploy without complaint and then 404 at runtime.
 
 ### Signing in and getting around
 
@@ -588,7 +623,7 @@ This is exactly backwards from when disputes tend to surface — "I found out ye
 1. **Bind a personal account, not the missionary one.** The claim link should be followed with a personal Google or Microsoft account. Ownership then survives indefinitely, because the ACL entry is keyed on an identity that doesn't expire. The `claim@` reply says this in as many words — and if the Church tenant blocks third-party OAuth, it's the only option that works anyway.
 2. **Handle the `@missionary.org` owner case defensively, not as an expected path.** If the tenant *does* permit third-party OAuth, a missionary may reach for their Church Google account and end up with an owner identity that dies with the mailbox. Any owner on that domain triggers a persistent, non-dismissible banner in the admin UI: *"This account stops working 60 days after you return home. Add a personal account as an owner now."* It stays until a non-`missionary.org` owner exists. Cheap to implement, and it costs nothing if the case never occurs.
 3. **Nudge the existing owner, continuously.** The owner admin view carries a standing prompt — *"Is [missionary] set up on this site? They can only claim it while their `@missionary.org` address works."* This costs nothing, requires no detection of mission end, and resolves the non-adversarial 99% long before the window closes. If `returnDate` is set in `profile.json` (see below), the prompt escalates in the weeks either side of it; otherwise it escalates after ~4 weeks of no new letters. False positives are cheap — it's a banner, not an email.
-4. **A human dispute path is the only real backstop after 60 days.** Nothing automated can verify a returned missionary's identity once the address is gone. The archive itself is the evidence: every `direct` message in `raw/` carries a DMARC-verified `@missionary.org` origin, which proves authorship long after the mailbox is deactivated. Turning that into an actual process belongs with the terms-of-use work — tracked in the follow-up issue, and a prerequisite before the service is offered to anyone outside a known circle.
+4. **A human dispute path is the only real backstop after 60 days.** Nothing automated can verify a returned missionary's identity once the address is gone. The archive itself is the evidence: every `direct` message in `raw/` carries a DMARC-verified `@missionary.org` origin, which proves authorship long after the mailbox is deactivated. The means of acting on a decision exists — a [service operator](#service-operators) can add an owner to any site or delete it outright — so what is missing is the policy governing when to do so, which belongs with the terms-of-use work: tracked in the follow-up issue, and a prerequisite before the service is offered to anyone outside a known circle.
 
 **Deliverability is manageable, because every reply is solicited.** The `claim@` reply is not cold outbound — it answers a message the missionary just sent us. That matters more than domain reputation does: `missionary.org`'s MX is Google, and Gmail weights prior correspondence with a sender heavily as a positive signal. Missionaries email friends and family constantly and receive replies without incident, and this is the same shape.
 
@@ -659,7 +694,7 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 **Owner-only actions:**
 
-- **Permanent deletion.** An owner can request permanent deletion of the site and all archived content (raw, rendered, config, and per-missionary preferences). Guarded by an explicit typed confirmation to defend against misclicks.
+- **Permanent deletion.** An owner can request permanent deletion of the site and all archived content (raw, rendered, config, and per-missionary preferences). Guarded by an explicit typed confirmation to defend against misclicks. A [service operator](#service-operators) can invoke the same path on any site, with a recorded reason.
 
 ### Journal Publish
 
@@ -746,7 +781,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 
 ### Phase 0 — Foundation
 - Domains already registered: `pdayletters.com` (canonical), `pdayemail.com`, `pday.email`, `missionaryjournal.org`. Verify each in the SWA custom-domain UI; configure the three non-canonical domains as 301 redirects to the canonical.
-- Set the `ACCEPTED_INGEST_DOMAINS` Function app setting to the four accepted domains, and `MISSIONARY_DOMAINS` to `missionary.org` — overridden to a controlled test domain in non-production, per [Building blind](#building-blind).
+- Set the `ACCEPTED_INGEST_DOMAINS` Function app setting to the four accepted domains, and `MISSIONARY_DOMAINS` to `missionary.org` — overridden to a controlled test domain in non-production, per [Building blind](#building-blind). Set `OPERATOR_EMAILS` to the one or two service-operator addresses, per [Service operators](#service-operators); it is settable only here, never from the web UI.
 - Create Azure subscription resource group.
 - Storage account (GRS): containers `raw/` (soft-delete + versioning on), `pending/`, `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Azure Tables `users` and `memberships`. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days.
 - Key Vault + managed identity for Functions (SendGrid API key, HMAC token-signing key, Lulu OAuth secret).
@@ -768,7 +803,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
   - Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/` with sanitized path segments. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
 - No dedup yet — every accepted message becomes a post. Any duplicates produced during bulk-forward testing get cleaned up when Phase 2 lands.
 - ACL for this phase is a **hand-edited JSON blob** — no auth UI yet. Manually add test accounts.
-- **Verification UI:** a page at `/manage/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Two constraints, both non-negotiable even for a throwaway page: it is **behind SWA authentication and restricted to an operator allowlist** — sender addresses and subject lines of private family mail are exactly what this service is built to protect — and it must **not** live under `/admin/*`, because the Azure Functions host reserves the `admin` route prefix for its own management API. Functions registered there deploy without complaint and then 404 at runtime.
+- **Verification UI:** a page at `/manage/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Two constraints, both non-negotiable even for a throwaway page: it is **behind SWA authentication and restricted to `OPERATOR_EMAILS`** (see [Service operators](#service-operators)) — sender addresses and subject lines of private family mail are exactly what this service is built to protect — and it must **not** live under `/admin/*`, because the Azure Functions host reserves the `admin` route prefix for its own management API. Functions registered there deploy without complaint and then 404 at runtime.
 
 ### Phase 2 — De-duplication, onboarding, and outbound send
 - Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then the sender+day hard gate plus exact normalized subject **or** `bodyHead100` match per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts; `If-None-Match: *` on first write.
@@ -804,6 +839,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - **Invitations** per [Invitations](#invitations): bulk paste-and-parse of addresses, one signed single-use invitation email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. No automated reminders to invitees, ever.
 - **`403` handling** per [Signed in, but not on the list](#signed-in-but-not-on-the-list): a page naming the rejected identity with a sign-out-and-switch-account action, distinct from the `401` re-authentication path.
 - **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): enforce `verifiedMissionary` removal protection; persistent banner while any owner is on `missionary.org`; standing prompt to the existing owner to get the missionary claimed while their address still works.
+- **Operator authorization** per [Service operators](#service-operators): `OPERATOR_EMAILS` resolves to `owner` inside the shared ACL check on every slug, with no write to `acl.json` or `memberships`, so operators stay out of switchers, root redirects, and invitee lists. Includes the "acting as operator" banner on non-member sites, `OperatorAction` telemetry on reads as well as writes, operator site deletion with a recorded reason, and `verifiedMissionary` removal blocked for operators exactly as it is for owners. The email path is untouched — forwarding rights stay `acl.json`-only.
 
 ### Phase 6 — Polish
 - Photo album view (aggregated across all posts for a missionary).
