@@ -353,6 +353,8 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
   "bodyHtml": "<p>…</p>",                    // SANITIZED at render time — never raw email HTML
   "bodyHead100": "…",                        // first 100 normalized chars — dedup gate only
   "hidden": false,                           // owner-only visibility — filtered server-side
+  "editedBy": null,                          // owner email of the most recent edit — owner-visible only
+  "editedAt": null,                          // timestamp of that edit; never shown to readers
   "originalMessageId": "<CAB=…@mail.missionary.org>",  // dedupe key when available
   "originalFrom": "elder.smith@missionary.org",
   "photos": [
@@ -673,7 +675,7 @@ Initial preferences:
 
 - **`postAckEmails`** — bool. Sends a short *"Posted — thanks!"* reply on every successfully published letter. **Default `true` for everyone except `@missionary.org` senders, where it defaults to `false`.** The two groups have genuinely different needs: a forwarder is actively managing a site and needs to know their forward landed, whereas a missionary adding `post@` to their weekly email should never hear from us again. A weekly ack is 104 interruptions across a mission, each one consuming scarce P-day computer time, in service of a site somebody else is watching. And that's the real argument — **the missionary isn't monitoring the site; the owner is.** If letters stop arriving, a parent notices first. Missionaries who *want* confirmation can turn it on from the settings page or the `claim@` reply.
 - **`dedupeAckEmails`** — bool, default `true`. Sends a *"we already have this one — thanks!"* reply when a forwarded email is de-duplicated against an existing post.
-- **`digestFrequency`** — `monthly` (default) | `weekly` | `off`. One email summarizing what's new across every site this address belongs to. Defaults to `off` for `@missionary.org` addresses. See [New-letter notifications](#new-letter-notifications).
+- **`digestFrequency`** — `monthly` | `weekly` | `off`. One email summarizing what's new across every site this address belongs to. **Chosen by the user at first sign-in rather than defaulted**, with `monthly` preselected; `off` for `@missionary.org` rows, which are created by ingest and never sign in. See [New-letter notifications](#new-letter-notifications).
 
 **Neither ack fires for messages promoted out of a pending site**, and this is a property of the promotion path rather than a per-user preference — there is nothing to opt into. See step 6 of the [onboarding flow](#flow).
 
@@ -695,7 +697,13 @@ As designed so far, the service publishes letters to a website and never tells a
 
 **Monthly by default, weekly on request.** Monthly is the setting that survives contact with a real inbox — rare enough that nobody reaches for unsubscribe, and a three-week-old letter is not stale in an archive people read in batches anyway. Weekly matches the actual publishing cadence and is there for the parents and grandparents who want it.
 
-**Subscribed by default, with one exception.** Everyone who accepts an invitation is opted in; a notification nobody enables is a feature nobody uses, and these are people who asked to be on this list by clicking through an invitation. The exception is `@missionary.org` addresses, defaulting to `off` for the same reason `postAckEmails` does — the missionary wrote the letters and does not need a monthly summary of their own mail.
+**The preference is asked, not assumed.** On a user's **first sign-in** — accepting an invitation, or claiming a site — a single question appears alongside the rest of that flow: *"How often should we email you when new letters arrive? Monthly / Weekly / Never."* Monthly is preselected, and the whole thing is one tap.
+
+Asking beats either default. Opting everyone in silently means the service's first act toward a new grandparent is signing them up for recurring mail they never agreed to, which is exactly the behavior that trains people to hit unsubscribe on everything from a domain. Defaulting to off means the feature quietly doesn't exist for most people. Asking at first sign-in costs one line in a flow the user is already completing attentively, and it produces an answer that is actually theirs.
+
+**`@missionary.org` addresses never see the question** — their row is created by the ingest path rather than by a sign-in, they typically have no Google or Microsoft identity to sign in with at all, and they wrote the letters. `off`, for the same reason `postAckEmails` is.
+
+**Changeable afterward** from `/{slug}/settings`, and from the one-click opt-out link every digest carries.
 
 **If nothing published, nothing sends.** No "no new letters this month" email, ever. An empty digest is pure noise, and it would arrive most reliably during exactly the stretch — a transfer, a sick week, a missionary between areas — when the family is already uneasy about the silence. Sending it would be a machine pointing that out once a month.
 
@@ -727,7 +735,7 @@ An owner can change a post's **subject** and **body** — copy-editing, fixing a
 - **Edits are made against the rendered post, never the raw message.** `rendered/{slug}/posts.json` is rewritable by definition; `raw/` is not. So every edit is reversible by re-rendering, and the archive continues to hold what the missionary actually wrote.
 - **Edited HTML passes through the same sanitizer as ingested HTML.** An owner is a trusted user, but a *compromised* owner session pasting a `<script>` tag into a body would otherwise write stored XSS directly into the file every reader downloads. One sanitizer, one code path, no trusted-input exception.
 - **Edits are ETag-guarded**, like every other write to `posts.json` — see [Concurrency](#extracting-and-de-duplicating-forwards). Two owners editing different posts on the same Saturday morning is ordinary.
-- **No edit history and no "edited" badge.** The intended uses are typo fixes and anonymization, and flagging "this post was edited" to readers would advertise the anonymization it exists to perform — exactly backwards. `raw/` remains the record for anyone entitled to it.
+- **No "edited" badge, but the edit is recorded.** `editedBy` and `editedAt` are written on the post — not to police owners, who are trusted, but so that *"why does this letter not match the one in my inbox?"* has an answer years later when nobody remembers. **Owner-visible only**, and never rendered to readers: the intended uses are typo fixes and anonymization, and flagging "this post was edited" to readers would advertise the anonymization it exists to perform — exactly backwards. Only the most recent edit is kept; a full revision history would be a second copy of every letter to store, filter, and delete, and `raw/` already holds the original.
 - **Dedup fields are not editable.** `originalFrom`, `originalDate`, `originalMessageId`, and `bodyHead100` are derived from the source message. If an edited subject changed the value dedup keys on, a later re-forward of that same letter would stop matching and quietly reappear as a second post.
 
 #### Hiding
@@ -913,7 +921,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - **`memberships` table** maintained alongside `acl.json` on every invite, revoke, and claim, plus a rebuild-from-`config/*` utility for drift recovery.
 - **Site switcher** in the header, rendered only for users with more than one membership; **signed-in root redirect** to the most recently updated site, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
 - **Session-expiry handling** per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): a `/login` chooser page offering both providers, a `401` response override redirecting deep links there with `post_login_redirect_uri=.referrer`, and a **Sign in** button on the public root pointing back at `/`. Verify that `.referrer` substitution survives the hop through `/login`.
-- Owner admin view per [Editing and hiding posts](#editing-and-hiding-posts): edit any post's subject or body with edited HTML passing through the ingest sanitizer, ETag-guarded like every other `posts.json` write, and dedup-derived fields left read-only. **Hidden posts are stripped server-side** in `/api/content/` and `/api/photo/` for `reader` callers and returned flagged to `owner` callers, rendered dimmed with an **Unhide** action. Hidden posts still participate in dedup.
+- Owner admin view per [Editing and hiding posts](#editing-and-hiding-posts): edit any post's subject or body with edited HTML passing through the ingest sanitizer, ETag-guarded like every other `posts.json` write, and dedup-derived fields left read-only. Each edit stamps `editedBy` / `editedAt`, surfaced in the admin view and **stripped from the reader payload**. **Hidden posts are stripped server-side** in `/api/content/` and `/api/photo/` for `reader` callers and returned flagged to `owner` callers, rendered dimmed with an **Unhide** action. Hidden posts still participate in dedup.
 - **Site deletion** per [Post-mission archive](#post-mission-archive): typed confirmation stating the 30-day erase in plain words, immediate removal from every read path, and a timer that hard-purges blobs and soft-deleted versions at day 30.
 - **Invitations** per [Invitations](#invitations): bulk paste-and-parse of addresses, one signed single-use invitation email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. No automated reminders to invitees, ever.
 - **`403` handling** per [Signed in, but not on the list](#signed-in-but-not-on-the-list): a page naming the rejected identity with a sign-out-and-switch-account action, distinct from the `401` re-authentication path.
@@ -932,7 +940,8 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
 
 ### Phase 8 — New-letter notifications
-- **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, `digestFrequency` on the `users` row defaulting to `monthly` and to `off` for `@missionary.org` addresses, a weekly option on the settings page, and the existing one-click HMAC opt-out.
+- **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, and the existing one-click HMAC opt-out.
+- **`digestFrequency` is collected, not defaulted** — add the monthly/weekly/never question to the invitation-acceptance and claim flows built in Phases 2 and 5, with `monthly` preselected, plus a control on `/{slug}/settings`. Rows created by ingest are set `off` and never prompted.
 - **Empty digests are never sent.** Verify by letting a test site sit through a full cycle with nothing published and confirming no mail leaves.
 - **Verification:** put one recipient on two sites, publish to one, and confirm a single email arrives describing both sites' new content correctly. Back-date `lastPostAt` to check the window boundary. Follow a digest link with an expired session and confirm the Phase 5 `401` flow lands on the intended post. Hide a post and confirm it never appears in a digest.
 - **Stretch — SMS.** Not started until the digest ships and the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch) have answers. Per-post rather than digested, default off, number confirmed by a round-trip code.
@@ -950,3 +959,11 @@ Written last, against what was actually built rather than what was planned. Unti
 - **Takedown and dispute process:** the written policy behind the mechanism [The 60-day cliff](#the-60-day-cliff) already describes — what evidence is required, who decides, and what the outcomes are (add an owner, or delete the site).
 - **Transactional-mail position:** a short statement that claim emails, acks, invitations, and digests are responses to a specific action rather than marketing, and that each carries an opt-out.
 - **Then remove the beta mark.** Publishing this is what ends beta. There is no separate announcement and no other gate.
+
+---
+
+## Open questions to confirm
+
+Feature-specific questions stay with their own sections. This one spans the service:
+
+1. **There is no way to contact a human.** Every path in this document that ends in "a service operator decides" — an abuse report, an ownership dispute after the [60-day cliff](#the-60-day-cliff), a missionary who finds a site about themselves — assumes the person can reach us, and nothing anywhere tells them how. [pitch.md](pitch.md) doesn't either. The likely answer is a monitored address on the public landing page and in the email footer, but it needs deciding before the pilot rather than after: the first person who needs it will be the one least able to wait.
