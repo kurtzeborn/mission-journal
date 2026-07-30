@@ -33,9 +33,9 @@ Facts about the world the design has to accommodate. These are not preferences �
 
   This largely **de-risks the `direct` path**: an enforcing `p=quarantine` policy can only be maintained if the domain's own outbound mail aligns, so `Authentication-Results` on a genuine missionary email should show a DMARC pass. Phase 0 still confirms against a real message — relaxed alignment and a Proofpoint relay leave enough room that it's worth seeing an actual header rather than inferring one.
 
-  It also clarifies **where filtering actually happens**. Proofpoint appears only in SPF, so it is the **outbound relay** — inbound mail to a missionary lands at **Gmail**, and Gmail's filtering is what our replies must satisfy. That is good news twice over: Gmail weights prior correspondence with a sender heavily, and Gmail's behavior can be tested against any ordinary Gmail account without needing a Church one. (Caveat: a tenant can route inbound through a third-party scanner via Google-side rules that DNS won't reveal, so this is the likely picture rather than a certain one.)
+  It also clarifies **where filtering happens**. Proofpoint appears only in SPF, so it is the **outbound relay** — inbound mail to a missionary lands at **Gmail**, and Gmail's filtering is what our replies must satisfy. Two consequences: Gmail weights prior correspondence with a sender heavily, and Gmail's behavior can be tested against any ordinary Gmail account. (A tenant can route inbound through a third-party scanner via Google-side rules that DNS won't reveal, so this is the likely picture rather than a certain one.)
 - **⚠️ We have no access to an `@missionary.org` account, and may not for a long time.** Every path that depends on one — `direct` classification, `claim@`, and the OAuth question above — must be **implemented blind and verified later**. This does not block the build, but it changes how the build has to be done: see [Building blind](#building-blind).
-- **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide, and an organization of this size and posture may well have done so. The design must not depend on the answer — and doesn't: the claim flow deliberately separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account simply binds a personal one. Worth testing eventually, because it determines how the claim email should be worded.
+- **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide. The design must not depend on the answer — and doesn't: the claim flow separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account binds a personal one. Worth testing eventually, because it determines how the claim email should be worded.
 
 ### Building blind
 
@@ -53,7 +53,7 @@ Three of the constraints above cannot be verified until someone with a real `@mi
 
 **Feature-flag `claim@`.** Keep the handler behind a setting so it can ship dark and be enabled once a real round-trip has been observed. Until then `claim@` accepts mail and does nothing, which is indistinguishable from the documented "ignored without reply" behavior and therefore leaks nothing.
 
-**Accept that the first real missionary is the pilot.** The first onboarding should be someone we can talk to directly, so a failure is a conversation rather than a support ticket from a stranger. Everything above exists to make that conversation short.
+**Accept that the first real missionary is the pilot.** The first onboarding should be someone we can talk to directly, so a failure is a conversation rather than a support ticket from a stranger.
 
 ---
 
@@ -108,9 +108,9 @@ Three of the constraints above cannot be verified until someone with a real `@mi
 
 Every surface carrying the product name — the public landing page, the site header, the footer of outbound email — carries a small **beta** mark beside it. Deliberately subtle: one word next to the name, not a banner, not an interstitial, nothing to dismiss.
 
-**It is a factual claim, not a disclaimer.** There is no terms of use, no privacy policy, no written takedown process, and — per [Building blind](#building-blind) — several paths that have never run against a real `@missionary.org` account. Someone about to hand over two years of their family's letters is entitled to know that going in, and one word says it more honestly than a paragraph nobody reads.
+**It is a factual claim, not a disclaimer.** There is no terms of use, no privacy policy, no written takedown process, and — per [Building blind](#building-blind) — several paths that have never run against a real `@missionary.org` account. Someone about to hand over two years of their family's letters is entitled to know that going in.
 
-**Publishing the privacy policy is what removes it.** A single checkable event rather than a judgment call about readiness — which also means the document gets written instead of perpetually deferred. See [Phase 10](#phase-10--terms-privacy-and-leaving-beta).
+**Publishing the privacy policy is what removes it.** A single checkable event rather than a judgment call about readiness. See [Phase 10](#phase-10--terms-privacy-and-leaving-beta).
 
 ### Domains
 
@@ -225,13 +225,13 @@ The bucket query is an in-memory scan of the missionary's already-loaded `posts.
 
 No similarity scoring, no weights, no threshold.
 
-**Why exact match rather than fuzzy scoring.** Weighted similarity scoring (Jaro–Winkler over normalized subject and body, with a tuned cutoff) would be solving a problem the hard gates have already eliminated. Missionaries write **once a week**; after requiring an exact sender match *and* an exact calendar-day match, the candidate set is almost always empty, and when it isn't, the two messages are either byte-similar re-forwards of one letter (both normalized fields match trivially) or genuinely different messages sent the same day — a second letter with more photos, say — where subject and opening line differ obviously. There is no realistic middle ground for a similarity score to adjudicate, so weights and a threshold would be tuning knobs with nothing to tune against. Exact matching is a fraction of the code, has no calibration surface, and fails in the safe direction: a missed duplicate is a visible extra post an owner can delete in one click, whereas a false positive silently swallows a real letter.
+**Why exact match rather than fuzzy scoring.** Weighted similarity scoring (Jaro–Winkler over normalized subject and body, with a tuned cutoff) would be solving a problem the hard gates have already eliminated. Missionaries write **once a week**; after requiring an exact sender match *and* an exact calendar-day match, the candidate set is almost always empty, and when it isn't, the two messages are either byte-similar re-forwards of one letter (both normalized fields match trivially) or genuinely different messages sent the same day — a second letter with more photos, say — where subject and opening line differ obviously. There is no middle ground for a similarity score to adjudicate. Exact matching is a fraction of the code, has no calibration surface, and fails in the safe direction: a missed duplicate is a visible extra post an owner can delete in one click, whereas a false positive silently swallows a real letter.
 
 **Upgrade path.** Raw MIME is archived permanently, so if real-world data ever shows duplicates slipping through, we can reintroduce scoring and re-run it across all history without asking anyone to resubmit.
 
 **Storage of truth.** Dedup does not use a separate Azure Table. `rendered/{slug}/posts.json` already contains every field the check needs (`originalMessageId`, `originalFrom`, `originalDate`, `subject`, `bodyHead100`), so ingest just loads that blob and scans it in memory. `bodyHead100` is **stored** rather than computed, because the full plain-text body is no longer kept at all (see [Data model](#data-model-postsjson-entry)) and those hundred characters were the only thing dedup ever read out of it. `subjectNormalized` is still computed on the fly against the 0–2 candidates that pass the sender+date gate — a cheap transform of a field that is already present.
 
-**Concurrency.** A parent bulk-forwarding several weeks of missionary emails in quick succession is an entirely normal usage pattern, so ingests for a single slug can arrive in bursts. Handled with **optimistic concurrency on `posts.json`**:
+**Concurrency.** A parent bulk-forwarding several weeks of letters is a normal usage pattern, so ingests for a single slug arrive in bursts. Handled with **optimistic concurrency on `posts.json`**:
 
 1. Ingest loads `posts.json` and records its ETag. (On the very first message for a slug the blob doesn't exist yet — write with `If-None-Match: *` so two simultaneous first messages can't both create it.)
 2. Runs the dedup check against the loaded posts.
@@ -239,7 +239,7 @@ No similarity scoring, no weights, no threshold.
 4. If new: append the post skeleton in memory, `PUT` back to blob with `If-Match: <etag>`, then write `raw/{slug}/{msgId}/`, then enqueue render.
 5. On `412 Precondition Failed` (a sibling ingest committed between our load and our write), restart at step 1. On the retry the newly-committed sibling post is now visible, so if it *was* a duplicate of ours we'll correctly ack instead of appending.
 
-`raw/` is only written after the ETag write succeeds, so a lost race never leaves an orphaned raw folder to clean up. At weekly-per-missionary cadence — even with occasional 5–10-message bulk-forward bursts — collisions are infrequent and each retry is cheap (one JSON fetch + one hash compare). If contention ever becomes measurable we can move to a blob lease for stricter serialization, but the optimistic path is expected to hold for a long time.
+`raw/` is only written after the ETag write succeeds, so a lost race never leaves an orphaned raw folder to clean up. At weekly-per-missionary cadence — even with occasional 5–10-message bulk-forward bursts — collisions are infrequent and each retry is cheap (one JSON fetch + one hash compare). If contention ever becomes measurable, a blob lease gives stricter serialization.
 
 **On dedup hit:** don't create a new post. Send a courtesy acknowledgment reply (see [Notification preferences](#notification-preferences)) unless suppressed for that user. We deliberately do not track who else has forwarded a given message — the courtesy reply is the only outward signal, addressed to the current forwarder alone. A `who-forwarded-what` history would be data we collect but never use.
 
@@ -268,7 +268,7 @@ This inverts the usual failure mode: the only way to lose a message is for Blob 
 
 - `raw/_inbox/` accumulates payloads for messages that are ultimately rejected. A lifecycle rule deletes `_inbox/` blobs after 30 days; accepted messages are copied into `raw/{slug}/{msgId}/` by the ingest Function and are unaffected.
 - Rejected mail therefore *is* briefly on disk. This is a deliberate trade: 30 days of quarantined spam in a private container is a much smaller cost than permanently losing a real letter to a parser bug.
-- Message size ceiling is SendGrid's 30 MB. Gmail caps outbound attachments at 25 MB, so Gmail senders hit their own limit first. A message rejected at the SMTP layer for size never reaches the webhook — the sender gets a normal bounce from their own provider, which is the correct behavior and requires nothing from us.
+- Message size ceiling is SendGrid's 30 MB. Gmail caps outbound attachments at 25 MB, so Gmail senders hit their own limit first. A message rejected at the SMTP layer for size never reaches the webhook; the sender gets a bounce from their own provider.
 
 ### Missionary routing
 
@@ -330,7 +330,7 @@ Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook t
 
 **`raw/` is an internal asset and is never handed to anyone.** No API route serves it, and it is not in the offline export. Its whole purpose is *reprocessing* — re-rendering history when the sanitizer or the forward extractor improves, re-running `_inbox/` after a classifier fix, and standing as the DMARC-verified evidence of authorship behind an [ownership dispute](#the-60-day-cliff). Every one of those is something the service does *to* `raw/`, not something a user reads out of it.
 
-That restriction is what lets the rest of the design be simple. `rendered/` is the published surface, and everything with a rule attached — sanitization, hidden posts, an owner's retroactive anonymization — is enforced there. A downloadable `raw/` would silently reopen all three: it is unsanitized HTML, it contains posts an owner has hidden, and it still holds the name they removed. One copy of the letters is the audience-facing one; the other is machinery.
+That restriction is what lets the rest of the design be simple. `rendered/` is the published surface, and everything with a rule attached — sanitization, hidden posts, an owner's retroactive anonymization — is enforced there. A downloadable `raw/` would silently reopen all three: it is unsanitized HTML, it contains posts an owner has hidden, and it still holds the name they removed.
 
 **Two things that are not exceptions.** The [full-resolution photo download](#photo-handling) reads a raw *attachment* and re-emits it EXIF-stripped — a derivative of one photo, not the message. And an owner can [restore a post's original text](#restoring-the-original), which re-renders from `raw/` into `rendered/` — the content becomes visible, but through the sanitizer and the normal read path, and only by an act that discards their own edits.
 
@@ -400,13 +400,13 @@ All blob containers are private, with public access disabled at the account leve
 
 **Why this rather than SAS tokens.** Because SWA injects the authenticated principal, the Function performs no token validation of its own — base64-decode a header, read an email address, check a list. There is no SAS to mint, no expiry to track, no client-side refresh logic, no CORS configuration, and no bearer token that can be forwarded to someone off the ACL. At this volume the extra hop costs effectively nothing: a page view pulling ten ~300 KB WebP renditions moves ~3 MB through a Consumption Function, and responses carry `Cache-Control: private, max-age=3600` so repeat views are served from the browser cache.
 
-**Upgrade path, if it's ever needed.** If egress through Functions or added latency ever shows up in telemetry, swap to a **user-delegation SAS** scoped to `rendered/{slug}/` and minted once per session after the same ACL check. Bytes then come straight from Blob Storage. Deliberately not built now — it trades real complexity for performance nobody has asked for.
+**Upgrade path, if it's ever needed.** If egress through Functions or added latency ever shows up in telemetry, swap to a **user-delegation SAS** scoped to `rendered/{slug}/` and minted once per session after the same ACL check. Bytes then come straight from Blob Storage. Not built now: it adds complexity for performance nobody has asked for.
 
 **Private content delivery is Functions-mediated, and Functions on Consumption scale to zero.** The first API call a reader makes after sign-in is `/api/content/{slug}/posts.json`, which pays a ~1–3 s Node cold start on a site nobody has visited for a while. Photos are unaffected — they can't be requested until `posts.json` has returned, by which point the app is warm. Static Web Apps authentication is handled by the SWA platform rather than by a managed Function, so signing in does *not* pre-warm anything; `posts.json` is the warm-up. Given a weekly visit cadence this is acceptable, and `Cache-Control: private, max-age=3600` keeps repeat views off the Function entirely.
 
 **Standard tier does not, on its own, fix this.** Supporting Google auth forces Standard (custom identity providers aren't available on Free), but SWA *managed* functions still run on Consumption at any tier — Standard raises limits, it doesn't add always-ready instances. What Standard buys is the **escape hatch**: it permits a linked backend, so the API can be moved to a separately-deployed Function App on Flex Consumption with always-ready instances if telemetry ever justifies the extra resource and cost.
 
-**A keep-alive ping is rejected.** Firing a timer every five minutes to stop the platform doing the thing it is designed to do would burn something like 100,000 executions a month to save a second or two on a weekly visit — and worse, it would hide the cold start from telemetry rather than remove it, so the first honest signal that the API is too slow would be a user complaining instead of a metric moving. The one or two seconds on first load is accepted as the cost of a scale-to-zero backend. If it ever genuinely matters, the linked backend above is the real fix and should be bought on purpose.
+**A keep-alive ping is rejected.** A five-minute timer would burn roughly 100,000 executions a month to save a second or two on a weekly visit, and it would hide the cold start from telemetry rather than remove it — so the first signal that the API is too slow would be a complaint rather than a metric. The one or two seconds on first load is accepted as the cost of a scale-to-zero backend; the linked backend above is the fix if it ever matters.
 
 **The offline export is unaffected.** It's an owner- or reader-initiated download of content they're already entitled to, packaged as plain files.
 
@@ -463,7 +463,7 @@ Several things this document already promises have no actor: deleting a site aft
 
 - **Delete any site**, through the same permanent-deletion path an owner uses (see [Post-mission archive](#post-mission-archive)) — one code path, one retention story. The confirmation additionally requires a **reason string**, recorded in the audit log, because it is the only part of the action that cannot be reconstructed from the data afterward.
 - **Inspect or purge a pending site** before its window lapses — the disposal route for a site that spam created, and the only way to look at one at all, since pending sites render nothing and have no ACL.
-- **Reprocess raw mail service-wide.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `raw/_inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). Both are already promised elsewhere in this document; the operator is the actor who delivers on them. Owners can re-render a single post on their own site — see [Restoring the original](#restoring-the-original) — but a sweep across every slug is not an owner-shaped action, and `_inbox/` belongs to no site at all.
+- **Reprocess raw mail service-wide.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `raw/_inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). The operator is the actor who delivers on both. Owners can re-render a single post on their own site — see [Restoring the original](#restoring-the-original) — but a sweep across every slug is not an owner-shaped action, and `_inbox/` belongs to no site at all.
 - **See service-wide message flow** — the `/manage/last-received` view from Phase 1 spans every slug, so it can never be an owner-facing page.
 
 #### What operators deliberately cannot do
@@ -501,13 +501,13 @@ Access *policy* is above. This section is the reader-facing half: how someone wh
 
 **Each invitee gets exactly one email**, self-originated from `no-reply@mail.pdayletters.com` (see [Domains](#domains)) — the only class of outbound mail the service sends to someone who never wrote to us. Three things make that acceptable, and all three are requirements rather than niceties:
 
-- **It names the human who invited them**, in the subject and the first line: *"Sarah Smith invited you to read Elder Smith's letters."* Unattributed, it is a message from an unfamiliar domain, about a named person, asking you to click a link — a very good impression of phishing.
+- **It names the human who invited them**, in the subject and the first line: *"Sarah Smith invited you to read Elder Smith's letters."* Unattributed, it is a message from an unfamiliar domain, about a named person, asking you to click a link — indistinguishable from phishing.
 - **It is never repeated.** No reminders, no nudges. An unaccepted invitation stays unaccepted. Anything else turns a text box on a web page into a mechanism for repeatedly mailing arbitrary strangers.
 - **It carries the one-click opt-out** already built for acks, which here means "never invite me to anything again" and is honored ahead of any future invitation to that address.
 
 **The link is a signed invitation token, and that token — not the typed address — is what grants access.** Same HMAC mechanism as the claim link, scoped smaller: single-use, bound to one slug and one role, 30-day expiry.
 
-It exists because the ACL is keyed on email address, but **the address an owner knows for someone is frequently not the address behind their Google or Microsoft account.** A parent invites `grandma@aol.com`; Grandma signs in with the Gmail account her tablet set up years ago; the ACL check fails; she is locked out of a site she was just invited to, and neither she nor the parent can see why. Multiply by every relative with a work address, an old ISP address, or a shared household mailbox.
+It exists because the ACL is keyed on email address, but **the address an owner knows for someone is frequently not the address behind their Google or Microsoft account.** A parent invites `grandma@aol.com`; she signs in with the Gmail account on her tablet; the ACL check fails, and neither she nor the parent can see why. The same applies to every relative with a work address, an old ISP address, or a shared household mailbox.
 
 Binding on acceptance avoids that entirely: whatever identity signs in *through the invitation link* is written to the ACL. The typed address is **where to send the invitation**, not **who the person must prove they are**. Both are recorded — `invitedEmail` alongside the bound identity — so the owner's list still shows the address they typed.
 
@@ -517,7 +517,7 @@ Binding on acceptance avoids that entirely: whatever identity signs in *through 
 
 #### Switching between sites
 
-A grandparent with two grandchildren out, or a friend of several missionaries, belongs to more than one ACL. **There is deliberately no dashboard page.** A portal you pass through on every visit is worse than the thing it indexes, and for the overwhelming majority — who have exactly one site — it would be pure friction between them and the letters.
+A grandparent with two grandchildren out, or a friend of several missionaries, belongs to more than one ACL. **There is deliberately no dashboard page.** For the overwhelming majority — who have exactly one site — it would be pure friction between them and the letters.
 
 Instead the site header carries a **switcher, rendered only when the signed-in user has more than one membership**, listing the other missionaries by display name as direct links. One membership and nothing appears at all; the UI is exactly as it is today. Populated from a single `memberships` partition query (see [Storage layout](#storage-layout)).
 
@@ -576,7 +576,7 @@ There is no signup form. A site comes into existence because someone mailed us a
 
 #### Re-inviting the missionary
 
-A single invitation is too few. Picture a missionary who adds `post@` to his BCC line, skims the reply on a busy P-day, and never acts on it. The rolling window means nothing is lost — but six months later there are twenty-six letters sitting unrendered and unviewable, his family has read none of them, and his only contact from us was one message half a year ago. He believes it's working. It is, in the sense that everything is preserved; it isn't, in the sense that no site exists.
+A single invitation is too few. A missionary who adds `post@` to his BCC line, skims the reply on a busy P-day, and never acts on it loses nothing — the rolling window preserves every letter — but six months later there are twenty-six letters unrendered and unviewable, his family has read none of them, and his only contact from us was one message half a year ago. Everything is preserved; no site exists.
 
 So the invitation repeats, on a **tapering schedule, always as a reply to an actual letter**:
 
@@ -679,7 +679,7 @@ A `users` row is **created by the ingest path**, not only by sign-in. The missio
 
 Initial preferences:
 
-- **`postAckEmails`** — bool. Sends a short *"Posted — thanks!"* reply on every successfully published letter. **Default `true` for everyone except `@missionary.org` senders, where it defaults to `false`.** The two groups have genuinely different needs: a forwarder is actively managing a site and needs to know their forward landed, whereas a missionary adding `post@` to their weekly email should never hear from us again. A weekly ack is 104 interruptions across a mission, each one consuming scarce P-day computer time, in service of a site somebody else is watching. And that's the real argument — **the missionary isn't monitoring the site; the owner is.** If letters stop arriving, a parent notices first. Missionaries who *want* confirmation can turn it on from the settings page or the `claim@` reply.
+- **`postAckEmails`** — bool. Sends a short *"Posted — thanks!"* reply on every successfully published letter. **Default `true` for everyone except `@missionary.org` senders, where it defaults to `false`.** The two groups have genuinely different needs: a forwarder is actively managing a site and needs to know their forward landed, whereas a missionary adding `post@` to their weekly email should never hear from us again. A weekly ack is 104 interruptions across a mission, each one consuming scarce P-day computer time, in service of a site somebody else is watching: **the missionary isn't monitoring the site; the owner is.** If letters stop arriving, a parent notices first. Missionaries who *want* confirmation can turn it on from the settings page or the `claim@` reply.
 - **`dedupeAckEmails`** — bool, default `true`. Sends a *"we already have this one — thanks!"* reply when a forwarded email is de-duplicated against an existing post.
 - **`digestFrequency`** — `monthly` | `weekly` | `off`. One email summarizing what's new across every site this address belongs to. **Chosen by the user at first sign-in rather than defaulted**, with `monthly` preselected; `off` for `@missionary.org` rows, which are created by ingest and never sign in. See [New-letter notifications](#new-letter-notifications).
 
@@ -701,17 +701,17 @@ As designed so far, the service publishes letters to a website and never tells a
 
 **One email per person, not per site.** A grandparent with two grandchildren serving gets a single message covering both. Per-site digests would put two near-identical emails in the same inbox on the same morning, and the count grows fastest for exactly the people most likely to find it tiresome.
 
-**Monthly by default, weekly on request.** Monthly is the setting that survives contact with a real inbox — rare enough that nobody reaches for unsubscribe, and a three-week-old letter is not stale in an archive people read in batches anyway. Weekly matches the actual publishing cadence and is there for the parents and grandparents who want it.
+**Monthly by default, weekly on request.** Monthly is rare enough that nobody reaches for unsubscribe, and a three-week-old letter is not stale in an archive people read in batches. Weekly matches the publishing cadence, for the parents and grandparents who want it.
 
 **The preference is asked, not assumed.** On a user's **first sign-in** — accepting an invitation, or claiming a site — a single question appears alongside the rest of that flow: *"How often should we email you when new letters arrive? Monthly / Weekly / Never."* Monthly is preselected, and the whole thing is one tap.
 
-Asking beats either default. Opting everyone in silently means the service's first act toward a new grandparent is signing them up for recurring mail they never agreed to, which is exactly the behavior that trains people to hit unsubscribe on everything from a domain. Defaulting to off means the feature quietly doesn't exist for most people. Asking at first sign-in costs one line in a flow the user is already completing attentively, and it produces an answer that is actually theirs.
+Asking beats either default. Opting everyone in silently makes the service's first act toward a new grandparent an unrequested subscription, which is what trains people to unsubscribe from a domain entirely. Defaulting to off means the feature doesn't exist for most people. Asking at first sign-in costs one line in a flow the user is already completing attentively.
 
 **`@missionary.org` addresses never see the question** — their row is created by the ingest path rather than by a sign-in, they typically have no Google or Microsoft identity to sign in with at all, and they wrote the letters. `off`, for the same reason `postAckEmails` is.
 
 **Changeable afterward** from `/{slug}/settings`, and from the one-click opt-out link every digest carries.
 
-**If nothing published, nothing sends.** No "no new letters this month" email, ever. An empty digest is pure noise, and it would arrive most reliably during exactly the stretch — a transfer, a sick week, a missionary between areas — when the family is already uneasy about the silence. Sending it would be a machine pointing that out once a month.
+**If nothing published, nothing sends.** No "no new letters this month" email, ever. An empty digest is pure noise, and it would arrive most reliably during exactly the stretch — a transfer, a sick week, a missionary between areas — when the family is already uneasy about the silence.
 
 **Contents,** per new post: missionary display name, subject, first two lines, one thumbnail, and a direct link. The link lands on `/{slug}/…` and SWA auth gates it normally; an expired session gets the [401 flow](#sessions-expire-and-re-authenticating-must-be-invisible), which is why that had to exist first. Hidden posts never appear, because the digest reads the same filtered payload as everything else.
 
@@ -756,7 +756,7 @@ It is not a read of `raw/` — nobody is handed the `.eml`. It is a *rewrite of 
 - **Idempotent, like every other render.** Content-hash photo IDs mean a restore rewrites the same blobs rather than orphaning the previous set, so restoring twice costs nothing and changes nothing the second time.
 - **Owner-only, and scoped to one post on a site they own.** The service-wide version — re-rendering history after a sanitizer or extractor fix — is an [operator](#service-operators) action.
 
-The alternative was a "view original" pane showing the untouched text side by side, which is friendlier and wrong: it is exactly the raw disclosure the storage rule forbids, it would hand a reader the name an owner had just removed, and it would present unsanitized HTML to a browser. Making the only route back a deliberate, destructive, owner-only overwrite keeps one published version of each letter and one archive nobody reads.
+**A "view original" pane is rejected.** Showing the untouched text side by side is exactly the raw disclosure the storage rule forbids: it would hand a reader the name an owner had just removed, and it would present unsanitized HTML to a browser. A deliberate, destructive, owner-only overwrite keeps one published version of each letter and one archive nobody reads.
 
 #### Hiding
 
@@ -768,7 +768,7 @@ The alternative was a "view original" pane showing the untouched text side by si
 - **Hiding does not affect dedup.** A hidden post keeps its slot in `posts.json` and still matches re-forwards of the same letter. Skipping hidden posts in the dedup scan would mean the next aunt to forward that email silently republishes it, undoing the moderation action with nobody aware it happened.
 - **The offline export and the printed book consume the same filtered payload** the reader UI does, so neither needs its own rule and neither can drift from this one.
 
-**Why hiding exists at all, when owners can already edit and delete.** It is the pause between them. Letters [publish immediately by design](#moderation--quarantine), so an owner who spots a problem wants it out of view *now* and wants to decide what to do about it later — when there is time to write a careful edit, or to ask the missionary what they meant. Deleting is the irreversible option and editing is the considered one; hiding is what makes it possible to stop the bleeding without choosing between them under pressure.
+**Why hiding exists at all, when owners can already edit and delete.** It is the pause between them. Letters [publish immediately by design](#moderation--quarantine), so an owner who spots a problem wants it out of view *now* and wants to decide what to do about it later — when there is time to write a careful edit, or to ask the missionary what they meant. Deleting is the irreversible option and editing is the considered one; hiding lets an owner act immediately without choosing between them under pressure.
 
 ### Moderation / quarantine
 
