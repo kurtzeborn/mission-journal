@@ -443,6 +443,19 @@ Instead the site header carries a **switcher, rendered only when the signed-in u
 
 Together with the signed-in root redirect (see [Missionary routing](#missionary-routing)) this makes discovery complete without adding a page: land on any site you belong to, reach all the others from there. Before this, a reader who lost the URL had no way back in — every site is auth-gated, the root was generic regardless of session, and nothing in the product would tell you which sites you could even see.
 
+#### Sessions expire, and re-authenticating must be invisible
+
+Static Web Apps issues its own session cookie at the edge; the app never sees a token, only the decoded `x-ms-client-principal` header. **Its lifetime is not configurable and Microsoft doesn't publish it** — it is commonly observed at around eight hours. Plan for "about a working day," and design so the exact number doesn't matter.
+
+**MSAL is not a lever here.** SWA managed authentication is platform-level and server-side, with no hook for extending or refreshing the session. Reaching for MSAL would mean abandoning SWA auth entirely and validating tokens inside every Function — which forfeits the central simplification behind [Private content delivery](#private-content-delivery), where the API performs no token validation of its own. Not worth it to lengthen a session.
+
+So the answer is not a longer session, it's making the return trip cost one click. Two flows, because expiry surfaces in two different places:
+
+- **A deep link — the case that matters most.** Family members reach their letters site by bookmark or by a link someone texted them, so an expired session lands on `/{slug}` and, with no handling, yields a bare `401`. A [`responseOverrides`](https://learn.microsoft.com/azure/static-web-apps/configuration#response-overrides) rule on `401` redirects to the sign-in chooser carrying `post_login_redirect_uri=.referrer`, so after signing in they arrive at the page they originally asked for. Without this, the most common way anyone visits this service is also the one that breaks the worst.
+- **The root page.** `/` is anonymous-allowed, so an expired session simply sees the public landing page rather than being redirected — correct behavior, since it's also what a genuine stranger must see. It therefore needs a visible **Sign in** button, pointing at the chooser with `post_login_redirect_uri=/`. Sending them back to the *root* rather than to a site is deliberate: root already knows how to resolve a signed-in visitor to their most recent site, so the destination logic lives in exactly one place and can't drift.
+
+**Sign-in is a chooser page, not a direct provider link.** SWA sign-in routes are provider-specific (`/.auth/login/google`, `/.auth/login/aad`), and with two providers there is nothing sensible to guess — picking wrong strands a user on an account that isn't on any ACL. A small `/login` page presents both buttons and threads `post_login_redirect_uri` through to whichever they choose. **Verify during Phase 5** that SWA's `.referrer` substitution survives the hop through an intermediate page; if it doesn't, the 401 override can capture the original path itself and pass it explicitly.
+
 ### Onboarding and auto-provisioning
 
 There is no signup form. A site comes into existence because someone mailed us a letter.
@@ -758,6 +771,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 - Load `acl.json` from `config/{slug}/` and enforce via SWA route rules + API-level checks.
 - **`memberships` table** maintained alongside `acl.json` on every invite, revoke, and claim, plus a rebuild-from-`config/*` utility for drift recovery.
 - **Site switcher** in the header, rendered only for users with more than one membership; **signed-in root redirect** to the most recently updated site, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
+- **Session-expiry handling** per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): a `/login` chooser page offering both providers, a `401` response override redirecting deep links there with `post_login_redirect_uri=.referrer`, and a **Sign in** button on the public root pointing back at `/`. Verify that `.referrer` substitution survives the hop through `/login`.
 - Owner admin view: manage invitees, hide/delete posts, edit any post's subject or body (for copy-editing, retroactive anonymization of names or locations, or fixing typos after publication). Edited bodies pass through the same sanitizer as ingested ones.
 - **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): enforce `verifiedMissionary` removal protection; persistent banner while any owner is on `missionary.org`; standing prompt to the existing owner to get the missionary claimed while their address still works.
 
