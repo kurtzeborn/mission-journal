@@ -33,7 +33,7 @@ Facts about the world the design has to accommodate. These are not preferences �
 
   This largely **de-risks the `direct` path**: an enforcing `p=quarantine` policy can only be maintained if the domain's own outbound mail aligns, so `Authentication-Results` on a genuine missionary email should show a DMARC pass. Phase 0 still confirms against a real message — relaxed alignment and a Proofpoint relay leave enough room that it's worth seeing an actual header rather than inferring one.
 
-  It also clarifies **where filtering actually happens**. An earlier draft assumed Proofpoint screened inbound mail; the MX records say otherwise. Proofpoint appears only in SPF, so it is the **outbound relay** — inbound mail to a missionary lands at **Gmail**, and Gmail's filtering is what our replies must satisfy. That is good news twice over: Gmail weights prior correspondence with a sender heavily, and Gmail's behavior can be tested against any ordinary Gmail account without needing a Church one. (Caveat: a tenant can route inbound through a third-party scanner via Google-side rules that DNS won't reveal, so this is the likely picture rather than a certain one.)
+  It also clarifies **where filtering actually happens**. Proofpoint appears only in SPF, so it is the **outbound relay** — inbound mail to a missionary lands at **Gmail**, and Gmail's filtering is what our replies must satisfy. That is good news twice over: Gmail weights prior correspondence with a sender heavily, and Gmail's behavior can be tested against any ordinary Gmail account without needing a Church one. (Caveat: a tenant can route inbound through a third-party scanner via Google-side rules that DNS won't reveal, so this is the likely picture rather than a certain one.)
 - **⚠️ We have no access to an `@missionary.org` account, and may not for a long time.** Every path that depends on one — `direct` classification, `claim@`, and the OAuth question above — must be **implemented blind and verified later**. This does not block the build, but it changes how the build has to be done: see [Building blind](#building-blind).
 - **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide, and an organization of this size and posture may well have done so. The design must not depend on the answer — and doesn't: the claim flow deliberately separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account simply binds a personal one. Worth testing eventually, because it determines how the claim email should be worded.
 
@@ -215,7 +215,7 @@ The bucket query is an in-memory scan of the missionary's already-loaded `posts.
 
 No similarity scoring, no weights, no threshold.
 
-**Why exact match rather than fuzzy scoring.** An earlier draft ran weighted Jaro–Winkler over normalized subject and body with a tuned 0.90 cutoff. That machinery was solving a problem the hard gates had already eliminated. Missionaries write **once a week**; after requiring an exact sender match *and* an exact calendar-day match, the candidate set is almost always empty, and when it isn't, the two messages are either byte-similar re-forwards of one letter (both normalized fields match trivially) or genuinely different messages sent the same day — a second letter with more photos, say — where subject and opening line differ obviously. There was no realistic middle ground for a similarity score to adjudicate, so the weights and threshold were three tuning knobs with nothing to tune against. Exact matching is a fraction of the code, has no calibration surface, and fails in the safe direction: a missed duplicate is a visible extra post an owner can delete in one click, whereas a false positive silently swallows a real letter.
+**Why exact match rather than fuzzy scoring.** Weighted similarity scoring (Jaro–Winkler over normalized subject and body, with a tuned cutoff) would be solving a problem the hard gates have already eliminated. Missionaries write **once a week**; after requiring an exact sender match *and* an exact calendar-day match, the candidate set is almost always empty, and when it isn't, the two messages are either byte-similar re-forwards of one letter (both normalized fields match trivially) or genuinely different messages sent the same day — a second letter with more photos, say — where subject and opening line differ obviously. There is no realistic middle ground for a similarity score to adjudicate, so weights and a threshold would be tuning knobs with nothing to tune against. Exact matching is a fraction of the code, has no calibration surface, and fails in the safe direction: a missed duplicate is a visible extra post an owner can delete in one click, whereas a false positive silently swallows a real letter.
 
 **Upgrade path.** Raw MIME is archived permanently, so if real-world data ever shows duplicates slipping through, we can reintroduce scoring and re-run it across all history without asking anyone to resubmit.
 
@@ -237,7 +237,7 @@ No similarity scoring, no weights, no threshold.
 
 ### Email ingestion — SendGrid Inbound Parse
 
-**Decision: SendGrid Inbound Parse.** An earlier draft also considered Logic Apps polling an M365 shared mailbox. SendGrid wins on the plan's "minimal moving parts" goal by a wide margin — one webhook versus a Logic App plus Graph API auth plus tenant accepted-domain configuration plus alias management. See [docs/email-options.md](email-options.md) for the full vendor comparison.
+**Decision: SendGrid Inbound Parse.** The alternative considered was Logic Apps polling an M365 shared mailbox. SendGrid wins on the plan's "minimal moving parts" goal by a wide margin — one webhook versus a Logic App plus Graph API auth plus tenant accepted-domain configuration plus alias management. See [docs/email-options.md](email-options.md) for the full vendor comparison.
 
 **Setup:** MX records on the apex of each of the four accepted domains point at SendGrid. Inbound Parse supports multiple hosts on a single account, all delivering to one webhook. SendGrid POSTs a parsed multipart form (headers, text, HTML, attachments, spam score) to a single HTTPS Function endpoint.
 
@@ -257,7 +257,7 @@ This inverts the usual failure mode: the only way to lose a message is for Blob 
 **Consequences worth noting:**
 
 - `raw/_inbox/` accumulates payloads for messages that are ultimately rejected. A lifecycle rule deletes `_inbox/` blobs after 30 days; accepted messages are copied into `raw/{slug}/{msgId}/` by the ingest Function and are unaffected.
-- Rejected mail therefore *is* briefly on disk, contrary to the earlier "never archived" phrasing. This is a deliberate trade: 30 days of quarantined spam in a private container is a much smaller cost than permanently losing a real letter to a parser bug.
+- Rejected mail therefore *is* briefly on disk. This is a deliberate trade: 30 days of quarantined spam in a private container is a much smaller cost than permanently losing a real letter to a parser bug.
 - Message size ceiling is SendGrid's 30 MB. Gmail caps outbound attachments at 25 MB, so Gmail senders hit their own limit first. A message rejected at the SMTP layer for size never reaches the webhook — the sender gets a normal bounce from their own provider, which is the correct behavior and requires nothing from us.
 
 ### Missionary routing
@@ -285,7 +285,7 @@ There is one ingest address, `post@pdayletters.com`, plus the same local-part on
 
 The target site is resolved from the letter's author via [Sender-based routing](#sender-based-routing), so the recipient address carries no routing information at all — it exists only to get the message to us.
 
-**Why this replaced per-missionary addresses.** Earlier drafts used `{slug}@ingest.{domain}` and, before that, `{slug}-{4-char-token}@…` for unguessability. Both are gone. The token went first: the classifier already rejects anything that isn't a verified `direct` or an ACL-member `forward`, so obscurity bought no defense while costing an ugly address, a `profile.json` field, extra parser logic, and a rotation UI. The per-missionary address went next for a stronger reason — encoding the target site in an attacker-supplied field means the code must separately prove the sender is entitled to publish there, and that check is exactly the kind of thing that gets forgotten. Deriving the target from the authenticated author removes the input rather than validating it.
+**Why not per-missionary addresses.** Two alternatives were considered and rejected: `{slug}@ingest.{domain}`, and `{slug}-{4-char-token}@…` for unguessability. The token adds nothing — the classifier already rejects anything that isn't a verified `direct` or an ACL-member `forward`, so obscurity buys no defense while costing an ugly address, a `profile.json` field, extra parser logic, and a rotation UI. The per-missionary address is rejected for a stronger reason: encoding the target site in an attacker-supplied field means the code must separately prove the sender is entitled to publish there, and that check is exactly the kind of thing that gets forgotten. Deriving the target from the authenticated author removes the input rather than validating it.
 
 ### Storage layout
 
@@ -365,7 +365,7 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 
 The original `Date:` header keeps its offset rather than being normalized to UTC. Missionaries write from all over the world, and the local calendar day is both the value the dedup gate keys on and the one readers actually mean when they say "the letter from the 6th."
 
-`ingestDomain` was dropped. It existed so an acknowledgment email could name the address the sender used — but acks are composed at ingest time, when that value is already in hand, so nothing ever read it back. Same category as `alsoSubmittedBy`: data collected and never used. It's logged to App Insights instead, matching how client type and DKIM results are already handled.
+**No `ingestDomain` field.** An acknowledgment email could name the address the sender wrote to, but acks are composed at ingest time when that value is already in hand, so storing it on the post buys nothing. It's logged to App Insights instead, matching how client type and DKIM results are handled.
 
 ### Content sanitization
 
@@ -415,7 +415,7 @@ All blob containers are private, with public access disabled at the account leve
 
 **Client-side MiniSearch, index built in the browser.** The reader fetches `posts.json` and calls `addAll(posts)` on load. There is no prebuilt index artifact.
 
-**Why no prebuilt `search-index.json`.** An earlier draft had the render function emit one. It was a net loss: a serialized MiniSearch index stores the inverted index *plus* the stored fields, so it's typically **larger than the source text it indexes** — and the reader still had to download `posts.json` separately to display anything. The site was shipping roughly twice the necessary bytes. Dropping it removes an artifact, a build step, a file to keep in the export bundle, and a whole class of staleness bug — including a live one, since the post-edit path in Phase 5 never rebuilt the index and would have left edited posts unsearchable by their new text.
+**Why no prebuilt `search-index.json`.** A serialized MiniSearch index stores the inverted index *plus* the stored fields, so it is typically **larger than the source text it indexes** — and the reader still needs `posts.json` to display anything, so emitting one would ship roughly twice the necessary bytes. Skipping it also avoids an artifact, a build step, a file to keep in the export bundle, and a class of staleness bug: the post-edit path in Phase 5 would have to rebuild the index or leave edited posts unsearchable by their new text.
 
 **Size in practice.** A full two-year mission is ~104 letters at roughly 500–1500 words each — about 1.5 MB of JSON, or **~250–350 KB compressed**, comparable to a single photo. Indexing that many documents takes milliseconds. In exchange, list rendering, post navigation, and search all become instant with no further round-trips, and the same code path works offline in the exported archive.
 
@@ -540,14 +540,12 @@ Two properties matter more than the exact numbers:
 
 #### The retention window is rolling, and it upgrades
 
-An earlier draft fixed `expiresAt` at 14 days from the *first* message and applied it to every pending site regardless of provenance. Both halves of that were wrong, and together they produced silent data loss on exactly the user the service exists for: a missionary who adds `post@` to his BCC line and tells nobody would have his letters deleted on day 14, have the next letter start a fresh 14-day clock, and lose those too — indefinitely, without ever being told, while believing it was working.
+The window has two properties, and both matter:
 
-Two corrections:
-
-- **Rolling, not fixed.** Every message for a pending slug resets the clock. The window measures *inactivity*, not age. A site receiving weekly letters never expires, which is the correct behavior — an arriving letter is fresh evidence the slug is real and in use.
+- **Rolling, not fixed.** Every message for a pending slug resets the clock, so the window measures *inactivity*, not age. A site receiving weekly letters never expires — an arriving letter is fresh evidence the slug is real and in use. A fixed window measured from the first message would instead delete a bootstrapping missionary's letters on day 14, start a fresh clock on the next letter, and lose those too, indefinitely and silently, while he believed it was working.
 - **The window depends on what we can prove.** A `forward`-created pending site rests on a stranger's assertion and keeps the short 14-day fuse. A `direct` message is DMARC-verified mail from the missionary's own account — definitionally not spam — and raises the window to **60 days**. The upgrade is sticky: once `hasDirect` is set it never reverts, even if later messages are forwards.
 
-The 14-day fuse exists to stop junk from accumulating pending sites forever. That is a sound goal, but it was being applied to a message class where it has nothing to do — verified missionary mail is the one input we trust most, and it was being treated like the one we trust least.
+The 14-day fuse exists to stop junk from accumulating pending sites forever, which is why it applies only to the message class it was designed for. Verified missionary mail is the strongest input the service accepts, so it gets the long window.
 
 #### The missionary is contacted only if they wrote to us first
 
@@ -559,11 +557,7 @@ The single exception is the claim invitation in step 3, and it isn't really an e
 
 **The ideal path runs the other direction anyway.** A parent forwards the first letter home, gets the claim link, sets up the site, and then asks the missionary to add `post@` to their BCC going forward. The missionary never touches a setup flow, and their weekly letters land on an already-active site. The `direct`-bootstrap path above is the safety net for when nobody thought to do that first — not the path we advertise.
 
-This is a deliberate trade. An earlier draft notified the missionary on *every* pending-site creation as a check against someone claiming a site they had no business claiming. Dropping that notice accepts the loophole in exchange for the surprise-gift scenario, and the loopholes are bounded elsewhere: provisioning at all requires possessing a genuine letter from that `@missionary.org` address, unclaimed sites evaporate, and the missionary retains an unconditional right of return (below).
-
-#### The missionary is never contacted unprompted
-
-A parent can build an entire letters site without their missionary ever knowing — and the printed book at the homecoming is a genuinely good reason to want that. So the service never emails `{slug}@missionary.org` on its own initiative. Claim emails, reminders, and acknowledgments go **only to the person who submitted the message**. Nothing is CC'd or BCC'd to the missionary.
+This is a deliberate trade. The alternative — notifying the missionary on *every* pending-site creation, as a check against someone claiming a site they had no business claiming — would forfeit the surprise-gift scenario entirely. Skipping that notice accepts the loophole instead, and the loopholes are bounded elsewhere: provisioning at all requires possessing a genuine letter from that `@missionary.org` address, unclaimed sites evaporate, and the missionary retains an unconditional right of return (below).
 
 #### When a letter arrives for a site that already exists
 
@@ -632,11 +626,11 @@ Initial preferences:
 
 **Neither ack fires for messages promoted out of a pending site.** Both are answering the question *"did my forward work?"*, and at promotion the claim redirect has just put the sender on the finished site with every letter visible on it. See step 6 of the [onboarding flow](#flow). This is a property of the promotion path rather than a per-user preference — there is nothing to opt into, because a batch ack at that moment is never the fastest way to learn the answer.
 
-Every generated email carries a one-click opt-out for its own category ("Don't email me every time a letter posts"). The link is a **signed token** hitting a Function endpoint that flips the flag directly, with no sign-in required. An earlier draft pointed these at the authenticated settings page on the reasoning that all recipients are ACL members — that no longer holds, because acks now go to `@missionary.org` senders who typically have no Google or Microsoft identity and cannot sign in at all. The claim flow already requires an HMAC signing service, so this reuses it rather than adding one.
+Every generated email carries a one-click opt-out for its own category ("Don't email me every time a letter posts"). The link is a **signed token** hitting a Function endpoint that flips the flag directly, with no sign-in required. It cannot point at the authenticated settings page instead, because acks go to `@missionary.org` senders who typically have no Google or Microsoft identity and cannot sign in at all. The claim flow already requires an HMAC signing service, so this reuses it rather than adding one.
 
 An authenticated settings page at `/{slug}/settings` still exists for ACL members who'd rather toggle preferences directly.
 
-**Mail-loop protection.** Now that the service replies to essentially every inbound message, a misconfigured autoresponder on the other end could ping-pong indefinitely. Three guards: outbound acks carry `Auto-Submitted: auto-replied` (RFC 3834); inbound messages carrying `Auto-Submitted` other than `no`, or `Precedence: bulk`/`list`/`junk`, are never acked; and no ack is ever sent to an address on one of our own ingest domains.
+**Mail-loop protection.** Because the service replies to essentially every inbound message, a misconfigured autoresponder on the other end could ping-pong indefinitely. Three guards: outbound acks carry `Auto-Submitted: auto-replied` (RFC 3834); inbound messages carrying `Auto-Submitted` other than `no`, or `Precedence: bulk`/`list`/`junk`, are never acked; and no ack is ever sent to an address on one of our own ingest domains.
 
 Acks double as an end-to-end smoke test for the send-and-receive email pipeline: they exercise SendGrid send from `no-reply@mail.pdayletters.com` (the single canonical sender — see [Domains](#domains)), the token-signing service, and the `users` table read/write path.
 
@@ -779,7 +773,7 @@ Reordered to validate the highest-risk piece (email pipeline) first, with intent
 ### Phase 2 — De-duplication, onboarding, and outbound send
 - Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then the sender+day hard gate plus exact normalized subject **or** `bodyHead100` match per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts; `If-None-Match: *` on first write.
 - Ingest becomes conditional: on match-miss, append the post skeleton to `posts.json` with `If-Match` and write raw/; on match-hit, don't touch either and send a courtesy ack instead.
-- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`; a claim email to the forwarder, or the tapering invitation series to a missionary whose own `direct` messages created the site, driven by `claimEmailSentAt` / `claimEmailCount` on their `users` row and always sent as a reply to an arriving letter; **an anonymous-allowed `/claim/{token}` landing page** showing the missionary's name, waiting counts, and sample subjects before any sign-in, threading `post_login_redirect_uri` back to itself, then establishing the first owner, collecting the display name, and promoting accumulated raw; **a non-dead-end failure page** for spent, stale, or already-claimed tokens, including "email me a new link" restricted to previously-emailed addresses; claim tokens sharing the pending site's rolling `expiresAt`; one day-7 reminder per pending site to forwarders only; rolling `expiresAt` reset on every message, at 60 days once `hasDirect` is set and 14 days otherwise; timer-triggered purge when the window lapses.
+- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`; a claim email to the forwarder, or the tapering invitation series to a missionary whose own `direct` messages created the site, driven by `claimEmailSentAt` / `claimEmailCount` on their `users` row and always sent as a reply to an arriving letter; **an anonymous-allowed `/claim/{token}` landing page** showing the missionary's name, waiting counts, and sample subjects before any sign-in, threading `post_login_redirect_uri` back to itself, then establishing the first owner, collecting the display name, and promoting accumulated raw; **a failure page** for spent, stale, or already-claimed tokens, including "email me a new link" restricted to previously-emailed addresses; claim tokens sharing the pending site's rolling `expiresAt`; one day-7 reminder per pending site to forwarders only; rolling `expiresAt` reset on every message, at 60 days once `hasDirect` is set and 14 days otherwise; timer-triggered purge when the window lapses.
 - **`claim@` handler** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): accept only DMARC-passing senders in `MISSIONARY_DOMAINS`, ignore everything else without reply, mail back a signed claim link that adds a `verifiedMissionary` owner. Reply copy must tell them to sign in with a **personal** Google/Microsoft account and explain the 60-day expiry. **Ships behind a feature flag** and is exercised end-to-end against a stand-in domain — see [Building blind](#building-blind).
 - The "a site already exists" reply for DKIM-verified non-ACL senders, including `claim@` instructions.
 - HMAC token-signing service (claim links + one-click opt-out links), key from Key Vault.
