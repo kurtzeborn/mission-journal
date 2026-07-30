@@ -1,5 +1,10 @@
-# Missionary Journal
+# P-Day Letters
 
-An automatic journal/blog service for LDS missionaries. Missionaries CC a special email address on their weekly emails home and the site automatically publishes each message as a blog entry — with attached photos — to their personal, access-controlled journal.
+An automatic weekly-letters archive for LDS missionaries.
 
-See [docs/pitch.md](docs/pitch.md) for the full pitch.
+A missionary BCCs one shared address on their weekly email home — or a family member forwards it after the fact. Either way, the letter and its photos are published to that missionary's private, access-controlled letters site, where everything is searchable. When the mission ends, the whole archive can be downloaded as a self-contained offline copy or printed as a hardcover book.
+
+- [docs/pitch.md](docs/pitch.md) — what the service does, in plain language.
+- [docs/plan.md](docs/plan.md) — full technical design.
+
+**Status:** design stage. Nothing is deployed yet, and the service is not accepting mail.
