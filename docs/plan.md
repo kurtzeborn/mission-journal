@@ -31,17 +31,19 @@ Facts about the world the design has to accommodate. These are not preferences �
   - **SPF** → `v=spf1 include:%{ir}.%{v}.%{d}.spf.has.pphosted.com ~all`. Outbound is relayed through **Proofpoint**, not Google directly.
   - **DMARC** → `v=DMARC1; p=quarantine; fo=1; rua=…@emaildefense.proofpoint.com`.
 
-  This largely **de-risks the `direct` path**: an enforcing `p=quarantine` policy can only be maintained if the domain's own outbound mail aligns, so `Authentication-Results` on a genuine missionary email should show a DMARC pass. Phase 0 still confirms against a real message — relaxed alignment and a Proofpoint relay leave enough room that it's worth seeing an actual header rather than inferring one.
+  This largely **de-risks the `direct` path**: an enforcing `p=quarantine` policy can only be maintained if the domain's own outbound mail aligns, so `Authentication-Results` on a genuine missionary email should show a DMARC pass. It is still confirmed against a real message before `direct` goes live — relaxed alignment and a Proofpoint relay leave enough room that it's worth seeing an actual header rather than inferring one.
 
   It also clarifies **where filtering happens**. Proofpoint appears only in SPF, so it is the **outbound relay** — inbound mail to a missionary lands at **Gmail**, and Gmail's filtering is what our replies must satisfy. Two consequences: Gmail weights prior correspondence with a sender heavily, and Gmail's behavior can be tested against any ordinary Gmail account. (A tenant can route inbound through a third-party scanner via Google-side rules that DNS won't reveal, so this is the likely picture rather than a certain one.)
-- **⚠️ We have no access to an `@missionary.org` account, and may not for a long time.** Every path that depends on one — `direct` classification, `claim@`, and the OAuth question above — must be **implemented blind and verified later**. This does not block the build, but it changes how the build has to be done: see [Building blind](#building-blind).
+- **⚠️ We have no access to an `@missionary.org` account yet.** Every path that depends on one — `direct` classification, `claim@`, and the OAuth question below — must be **implemented blind and verified later**. This does not block the build, but it changes how the build has to be done: see [Building blind](#building-blind). Access is expected rather than hypothetical — a missionary in the author's own family enters the field partway through the build — so this is a scheduling constraint on one phase, not a permanent condition. The design still must not *depend* on the answer, because the next person to run this service will not have that account either.
 - **⚠️ It is unknown whether an `@missionary.org` Google account can sign in to third-party apps at all.** Google Workspace admins can block or allowlist third-party OAuth access tenant-wide. The design must not depend on the answer — and doesn't: the claim flow separates *proving control of the mailbox* (email) from *which identity owns the site* (OAuth), so a missionary who cannot use their Church account binds a personal one. Worth testing eventually, because it determines how the claim email should be worded.
 
 ### Building blind
 
-Three of the constraints above cannot be verified until someone with a real `@missionary.org` account is available to test with. The response is not to stall, but to build so that **being wrong is cheap and immediately visible**.
+Three of the constraints above cannot be verified until someone with a real `@missionary.org` account is available to test with. That access is expected partway through the build rather than never, so this is about **sequencing the unverifiable work behind everything else** — and building so that being wrong is cheap and immediately visible when the answers finally arrive.
 
-**Make the missionary domain configuration, not a constant.** A `MISSIONARY_DOMAINS` Function app setting (default `missionary.org`) is what the classifier, slug derivation, and the `claim@` handler all check against. This single change converts "untestable" into "testable against a stand-in": point it at a domain we control — a test Google Workspace domain, or even a personal Gmail address during development — and the entire `direct` and `claim@` flow can be exercised end to end, including DMARC evaluation, slug derivation, claim-token issuance, sign-in binding, and the `verifiedMissionary` ACL write. It also costs nothing if the Church ever adds a second domain.
+**The build is ordered so the blind parts come last.** [Stage 1](#stage-1--vertical-slice) is forward-only: it needs a genuine missionary letter, but only as an *attachment* someone forwards, which any family member on a mission already has. Everything that requires *sending* from `@missionary.org` — `direct` classification, `claim@`, the ownership flow — is deferred to [Phase 6](#phase-6--direct-ingest) and later, by which point the account exists. Nothing waits on it that didn't have to.
+
+**Make the missionary domain configuration, not a constant.** A `MISSIONARY_DOMAINS` Function app setting (default `missionary.org`) is what the classifier, slug derivation, and the `claim@` handler all check against. This single change converts "untestable" into "testable against a stand-in": point it at a domain we control — a test Google Workspace domain, or even a personal Gmail address during development — and the entire `direct` and `claim@` flow can be exercised end to end, including DMARC evaluation, slug derivation, claim-token issuance, sign-in binding, and the `verifiedMissionary` ACL write. It stays worth keeping after real access arrives, because it is also how the service absorbs a second Church domain.
 
 **Most of the risk isn't logic — it's header format.** Our code never performs DMARC itself; SendGrid does, and the classifier reads the resulting `Authentication-Results` header. So the classification *logic* is fully testable offline against hand-crafted `.eml` fixtures. What we genuinely cannot know is the exact shape of that header for real `missionary.org` mail routed through Proofpoint. That is a parsing question with a narrow failure surface, not an architectural unknown.
 
@@ -110,7 +112,7 @@ Every surface carrying the product name — the public landing page, the site he
 
 **It is a factual claim, not a disclaimer.** There is no terms of use, no privacy policy, no written takedown process, and — per [Building blind](#building-blind) — several paths that have never run against a real `@missionary.org` account. Someone about to hand over two years of their family's letters is entitled to know that going in.
 
-**Publishing the privacy policy is what removes it.** A single checkable event rather than a judgment call about readiness. See [Phase 10](#phase-10--terms-privacy-and-leaving-beta).
+**Publishing the privacy policy is what removes it.** A single checkable event rather than a judgment call about readiness. See [Phase 12](#phase-12--terms-privacy-and-leaving-beta).
 
 ### Domains
 
@@ -192,7 +194,7 @@ In both cases the author's address must be in `MISSIONARY_DOMAINS` — a Functio
 
 **Unresolvable messages.** If no `@missionary.org` author can be recovered — spam, a `reader` sending an inline forward, a mangled forward, a letter written from an unregistered personal address — the message is rejected silently and logged. Nothing is archived.
 
-**Alternate sender addresses (deferred to Phase 6).** Some missionaries write from a personal account rather than `@missionary.org`, leaving routing nothing to key on. An owner-managed `alternateSenders` array in `profile.json` maps additional addresses onto the slug. Deferred because it requires the owner admin UI to exist first, and because `@missionary.org` covers the overwhelming majority.
+**Alternate sender addresses (deferred to Phase 9).** Some missionaries write from a personal account rather than `@missionary.org`, leaving routing nothing to key on. An owner-managed `alternateSenders` array in `profile.json` maps additional addresses onto the slug. Deferred because it requires the owner admin UI to exist first, and because `@missionary.org` covers the overwhelming majority.
 
 #### Extracting and de-duplicating forwards
 
@@ -420,13 +422,13 @@ All blob containers are private, with public access disabled at the account leve
 - **Full-resolution downloads:** served on-demand by a small Function that reads the raw attachment, strips EXIF in-flight, and streams it back as JPEG. Downloads are rare enough that on-demand generation is cheaper than storing an EXIF-stripped copy of every photo. This is the one place a client receives bytes derived from `raw/`, and it is a single photo re-emitted through a transform — not the message, its HTML, or its headers. It is subject to the same ACL check and hidden-post filter as `/api/photo/`.
 - Because raw is preserved, we can always reprocess (different sizes, HEIC → WebP, face detection later) without asking the missionary for anything.
 
-**Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip (Phase 7 — a 2-year mission's ~1000 photos), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint and by the photo-book PDF generator in Phase 8.
+**Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip (Phase 5 — a 2-year mission's ~1000 photos), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint and by the photo-book PDF generator in Phase 11.
 
 ### Search
 
 **Client-side MiniSearch, index built in the browser.** The reader fetches `posts.json` and calls `addAll(posts)` on load. There is no prebuilt index artifact.
 
-**Why no prebuilt `search-index.json`.** A serialized MiniSearch index stores the inverted index *plus* the stored fields, so it is typically **larger than the source text it indexes** — and the reader still needs `posts.json` to display anything, so emitting one would ship roughly twice the necessary bytes. Skipping it also avoids an artifact, a build step, a file to keep in the export bundle, and a class of staleness bug: the post-edit path in Phase 5 would have to rebuild the index or leave edited posts unsearchable by their new text.
+**Why no prebuilt `search-index.json`.** A serialized MiniSearch index stores the inverted index *plus* the stored fields, so it is typically **larger than the source text it indexes** — and the reader still needs `posts.json` to display anything, so emitting one would ship roughly twice the necessary bytes. Skipping it also avoids an artifact, a build step, a file to keep in the export bundle, and a class of staleness bug: the post-edit path in Phase 9 would have to rebuild the index or leave edited posts unsearchable by their new text.
 
 **Search text is derived from `bodyHtml` in the browser.** Posts carry no plain-text body (see [Data model](#data-model-postsjson-entry)), so the reader strips tags from the sanitized HTML as it indexes. The HTML has already been reduced to a small allowlist by the render function, so this is a trivial transform rather than a parsing problem, and it costs a few milliseconds across a full mission. **Hidden posts are never indexed**, because they never reach the client at all — see [Editing and hiding posts](#editing-and-hiding-posts).
 
@@ -464,7 +466,7 @@ Several things this document already promises have no actor: deleting a site aft
 - **Delete any site**, through the same permanent-deletion path an owner uses (see [Post-mission archive](#post-mission-archive)) — one code path, one retention story. The confirmation additionally requires a **reason string**, recorded in the audit log, because it is the only part of the action that cannot be reconstructed from the data afterward.
 - **Inspect or purge a pending site** before its window lapses — the disposal route for a site that spam created, and the only way to look at one at all, since pending sites render nothing and have no ACL.
 - **Reprocess raw mail service-wide.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `raw/_inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). The operator is the actor who delivers on both. Owners can re-render a single post on their own site — see [Restoring the original](#restoring-the-original) — but a sweep across every slug is not an owner-shaped action, and `_inbox/` belongs to no site at all.
-- **See service-wide message flow** — the `/manage/last-received` view from Phase 1 spans every slug, so it can never be an owner-facing page.
+- **See service-wide message flow** — the `/manage/last-received` view spans every slug, so it can never be an owner-facing page.
 
 #### What operators deliberately cannot do
 
@@ -534,7 +536,7 @@ So the answer is not a longer session, it's making the return trip cost one clic
 - **A deep link — the case that matters most.** Family members reach their letters site by bookmark or by a link someone texted them, so an expired session lands on `/{slug}` and, with no handling, yields a bare `401`. A [`responseOverrides`](https://learn.microsoft.com/azure/static-web-apps/configuration#response-overrides) rule on `401` redirects to the sign-in chooser carrying `post_login_redirect_uri=.referrer`, so after signing in they arrive at the page they originally asked for.
 - **The root page.** `/` is anonymous-allowed, so an expired session simply sees the public landing page rather than being redirected — correct behavior, since it's also what a genuine stranger must see. It therefore needs a visible **Sign in** button, pointing at the chooser with `post_login_redirect_uri=/`. Sending them back to the *root* rather than to a site is deliberate: root already knows how to resolve a signed-in visitor to their most recent site, so the destination logic lives in exactly one place and can't drift.
 
-**Sign-in is a chooser page, not a direct provider link.** SWA sign-in routes are provider-specific (`/.auth/login/google`, `/.auth/login/aad`), and with two providers there is nothing sensible to guess — picking wrong strands a user on an account that isn't on any ACL. A small `/login` page presents both buttons and threads `post_login_redirect_uri` through to whichever they choose. **Verify during Phase 5** that SWA's `.referrer` substitution survives the hop through an intermediate page; if it doesn't, the 401 override can capture the original path itself and pass it explicitly.
+**Sign-in is a chooser page, not a direct provider link.** SWA sign-in routes are provider-specific (`/.auth/login/google`, `/.auth/login/aad`), and with two providers there is nothing sensible to guess — picking wrong strands a user on an account that isn't on any ACL. A small `/login` page presents both buttons and threads `post_login_redirect_uri` through to whichever they choose. **Verify during Phase 9** that SWA's `.referrer` substitution survives the hop through an intermediate page; if it doesn't, the 401 override can capture the original path itself and pass it explicitly.
 
 #### Signed in, but not on the list
 
@@ -842,7 +844,7 @@ Assemble a physical hardcover photo book from a missionary's journal — all pos
 - **Rakuten approval is not guaranteed** for a private-audience service with no public content, so the affiliate flow may not even be provisionable when we want it.
 - **Marginal revenue upside** (~5% affiliate commission on a subset of clicks with a 15-day cookie window) doesn't justify the second-provider code, secret management, or support surface.
 
-If a user specifically wants Shutterfly, the manual path is always available to them without our involvement: they open Shutterfly directly, use the offline archive export (Phase 7) to obtain their photos, and upload manually.
+If a user specifically wants Shutterfly, the manual path is always available to them without our involvement: they open Shutterfly directly, use the offline archive export (Phase 5) to obtain their photos, and upload manually.
 
 #### Implementation notes
 
@@ -880,103 +882,133 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 
 ---
 
-## Build plan (proposed phases)
+## Build plan
 
-Reordered to validate the highest-risk piece (email pipeline) first, with intentionally rudimentary UIs at each stage to confirm the plumbing works end-to-end before we invest in polish. See [docs/email-options.md](email-options.md) for the vendor / pricing comparison behind the email decisions in Phase 0.
+Two stages. **Stage 1 is a narrow vertical slice** — a real letter, forwarded by hand, readable on a site and downloadable as an offline archive. It is forward-only, single-user, and exists to put the whole pipeline under real mail as early as possible. **Stage 2 widens it** into the service the rest of this document describes.
+
+Stage 1's development loop is *forward a real letter → look at the result → delete everything → repeat*, so it is optimized for iteration rather than for onboarding anyone. There is one site; its ACL is a hand-written file with a single `owner` entry. **Nothing in it is throwaway** — that file is the real format, checked by the real code path, so there is no temporary authorization bypass to remember to remove. The plan rejects a `public: true` flag in the reader for the same reason.
+
+See [docs/email-options.md](email-options.md) for the vendor / pricing comparison behind the email decisions in Phase 0.
+
+---
+
+## Stage 1 — Vertical slice
 
 ### Phase 0 — Foundation
-- Domains already registered: `pdayletters.com` (canonical), `pdayemail.com`, `pday.email`, `missionaryjournal.org`. Verify each in the SWA custom-domain UI; configure the three non-canonical domains as 301 redirects to the canonical.
-- Set the `ACCEPTED_INGEST_DOMAINS` Function app setting to the four accepted domains, and `MISSIONARY_DOMAINS` to `missionary.org` — overridden to a controlled test domain in non-production, per [Building blind](#building-blind). Set `OPERATOR_EMAILS` to the one or two service-operator addresses, per [Service operators](#service-operators); it is settable only here, never from the web UI.
-- Create Azure subscription resource group.
-- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `pending/`, `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Azure Tables `users` and `memberships`. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days.
-- Key Vault + managed identity for Functions (SendGrid API key, HMAC token-signing key, Lulu OAuth secret).
+- Create the Azure resource group.
+- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days. The `pending/` container, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
 - App Insights instance (for rejection logging and general telemetry).
-- Provision SendGrid. DNS on all four domains: **MX on the apex** pointing at SendGrid Inbound Parse; DKIM CNAMEs and DMARC policy only on `pdayletters.com` since it's the sole outbound sender, with sending subdomain `mail.pdayletters.com`.
-- **Deferred verification — blocked on access to a real `@missionary.org` account.** These are not Phase 0 gates, because we cannot run them yet (see [Building blind](#building-blind)). They are the checklist to run the moment an account is available, and the build proceeds against a stand-in domain until then:
-  - Send a real message from a missionary account and inspect `Authentication-Results` for an actual DMARC pass, confirming the `direct` classifier's header parsing.
-  - Send a threaded reply per the rules in [Ownership and the 60-day window](#ownership-and-the-60-day-window) and confirm it lands in the inbox rather than spam. Expected to pass — it's a solicited reply into Gmail — and partially testable in the meantime against an ordinary Gmail account.
-  - Test whether an `@missionary.org` Google account can sign in to a third-party OAuth app. Determines the wording of the claim email, not the architecture.
+- Key Vault + managed identity for Functions, holding the SendGrid API key.
+- Static Web App with `pdayletters.com` as a custom domain. **Stage 1 needs only the Microsoft identity provider**, which is built in. Google is a *custom* provider and forces Standard tier; it arrives in Phase 3, before anyone outside the ACL sees content. Confirm SWA Free-tier managed-function limits are adequate before running Stage 1 on Free.
+- Set `ACCEPTED_INGEST_DOMAINS`, and `MISSIONARY_DOMAINS` to the real `missionary.org` — no stand-in is needed, because the letters being forwarded are genuine missionary mail. `OPERATOR_EMAILS` is a Stage 2 setting: with one site and one user, that site's own ACL is the entire authorization model.
+- Provision SendGrid. **MX on the apex of `pdayletters.com`** pointing at Inbound Parse. Set the DKIM CNAMEs and the DMARC policy now as well, with sending subdomain `mail.pdayletters.com`, even though nothing sends until Phase 8 — sender reputation benefits from age, and unused records cost nothing. The three redirect domains are Stage 2.
+- Write `config/{slug}/acl.json` and `profile.json` by hand: one `owner` entry, one display name.
+- **A reset script.** Wiping a slug must be one command — `raw/{slug}/`, `rendered/{slug}/`, and the `_inbox` residue, **including soft-deleted versions and blob versions**, or every iteration of the loop silently accretes storage that soft-delete is designed to keep. It is also the honest first draft of the deletion purge in Phase 9.
 
-### Phase 1 — Inbound email pipeline (receive → classify → save)
-- **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail. Since no `@missionary.org` account is available, fixtures use a stand-in domain and hand-written `Authentication-Results` headers covering pass, fail, and absent cases.
+### Phase 1 — Inbound forward pipeline
+**Forward-only.** `direct` exists as a classifier branch and is covered by fixtures, but nothing exercises it until [Phase 6](#phase-6--direct-ingest-and-de-duplication).
+
+- **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail. `direct`-path fixtures use hand-written `Authentication-Results` headers covering pass, fail, and absent cases until a real account exists.
 - Intake Function: SendGrid Inbound Parse webhook that writes the raw POST body to `raw/_inbox/{ulid}.raw`, enqueues the ULID, returns 200, and does nothing else.
 - Queue-triggered ingest Function:
-  - Classifier: `direct` / `forward` / `rejected` per the [message classification](#message-classification) table. DKIM re-verification against the sender domain's public key for `forward` messages with an embedded `.eml`.
-  - **Diagnostics for the unverifiable paths** per [Building blind](#building-blind): log the full `Authentication-Results` header verbatim for any message whose `From:` domain is in `MISSIONARY_DOMAINS`, and raise a warning — not a silent rejection — when such a message fails to classify.
-  - Slug resolution via [sender-based routing](#sender-based-routing); forwarder-vs-ACL check for `forward` messages; inline forwards accepted only from owners.
+  - Classifier per the [message classification](#message-classification) table, with only the `forward` branch live. DKIM re-verification against `missionary.org`'s public key for the embedded `.eml`.
+  - **Report the DKIM re-verification result explicitly**, pass or fail, rather than folding a failure into the silent-rejection path. Re-verifying a real forward of recent missionary mail is the first honest test of whether that check is viable at all — DKIM keys rotate, and the plan leans on re-verification for a use case that explicitly includes letters forwarded years later.
+  - Slug resolution via [sender-based routing](#sender-based-routing); forwarder-vs-ACL check against the hand-written `acl.json`; inline forwards accepted only from owners.
   - Original-message extractor: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators).
   - Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/` with sanitized path segments. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
-- No dedup yet — every accepted message becomes a post. Any duplicates produced during bulk-forward testing get cleaned up when Phase 2 lands.
-- ACL for this phase is a **hand-edited JSON blob** — no auth UI yet. Manually add test accounts.
-- **Verification UI:** a page at `/manage/last-received` listing the most recent 50 messages in `raw/` (subject, class, sender, `receivedAt`). Two constraints, both non-negotiable even for a throwaway page: it is **behind SWA authentication and restricted to `OPERATOR_EMAILS`** (see [Service operators](#service-operators)) — sender addresses and subject lines of private family mail are exactly what this service is built to protect — and it must **not** live under `/admin/*`, because the Azure Functions host reserves the `admin` route prefix for its own management API. Functions registered there deploy without complaint and then 404 at runtime.
+- **`posts.json` is ETag-guarded from the first write**, per [Concurrency](#extracting-and-de-duplicating-forwards) — `If-None-Match: *` on creation, `If-Match` on append, retry on `412`. This is separate from dedup and cannot wait for it: bulk-forwarding a stack of letters in one sitting is the very first thing that will happen, and unguarded concurrent appends lose posts silently.
+- **No dedup.** One forwarder cannot duplicate their own letters, and the reset script is the cleanup path. Dedup arrives in [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow), where pending-site promotion is the first thing that genuinely cannot work without it.
+- **Verification is Storage Explorer.** No `/manage/last-received` page — it would need an authorization model that doesn't exist until Phase 3, and inspecting blobs directly is adequate for two phases. The operator view arrives in Phase 9 with the role it belongs to.
 
-### Phase 2 — De-duplication, onboarding, and outbound send
-- Dedup at ingest time, scanning `rendered/{slug}/posts.json`: exact `originalMessageId` match first, then the sender+day hard gate plus exact normalized subject **or** `bodyHead100` match per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Optimistic-concurrency retry on ETag conflicts; `If-None-Match: *` on first write.
-- Ingest becomes conditional: on match-miss, append the post skeleton to `posts.json` with `If-Match` and write raw/; on match-hit, don't touch either and send a courtesy ack instead.
-- **Pending sites and the claim flow** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`; a claim email to the forwarder, or the tapering invitation series to a missionary whose own `direct` messages created the site, driven by `claimEmailSentAt` / `claimEmailCount` on their `users` row and always sent as a reply to an arriving letter; **an anonymous-allowed `/claim/{token}` landing page** showing the missionary's name, waiting counts, and sample subjects before any sign-in, threading `post_login_redirect_uri` back to itself, then establishing the first owner, collecting the display name, and promoting accumulated raw; **a failure page** for spent, stale, or already-claimed tokens, including "email me a new link" restricted to previously-emailed addresses; claim tokens sharing the pending site's rolling `expiresAt`; one day-7 reminder per pending site to forwarders only; rolling `expiresAt` reset on every message, at 60 days once `hasDirect` is set and 14 days otherwise; timer-triggered purge when the window lapses.
-- **`claim@` handler** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): accept only DMARC-passing senders in `MISSIONARY_DOMAINS`, ignore everything else without reply, mail back a signed claim link that adds a `verifiedMissionary` owner. Reply copy must tell them to sign in with a **personal** Google/Microsoft account and explain the 60-day expiry. **Ships behind a feature flag** and is exercised end-to-end against a stand-in domain — see [Building blind](#building-blind).
-- The "a site already exists" reply for DKIM-verified non-ACL senders, including `claim@` instructions.
-- HMAC token-signing service (claim links + one-click opt-out links), key from Key Vault.
-- Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards. Both are suppressed on the pending-promotion path. Replies to inbound mail set `From:` to the address written to and carry `In-Reply-To`/`References` threading headers.
-- Settings page fragment at `/{slug}/settings` with both toggles (auth via SWA identity). One-click token links flip flags without sign-in.
-- **Verification:** hand-craft duplicate forwards from a test mailbox and confirm the raw folder count stays flat while the ack arrives. Bulk-forward five near-simultaneously to exercise the ETag-retry path. Forward from an unknown address, confirm a pending site is created and nothing renders, then claim it end-to-end — confirming the pre-sign-in page shows correct counts, that the token survives the OAuth redirect, and that all accumulated messages appear deduplicated and in date order. Re-click a spent claim link and confirm the "already set up" page rather than an error. Let a second pending site expire and confirm it purges. Send a `direct` message from the stand-in missionary domain to a slug with no site and confirm exactly one invitation goes out, that a second `direct` message resets `expiresAt` without sending another, and that the window is 60 days rather than 14. Back-date `claimEmailSentAt` past each taper threshold and confirm the next arriving letter triggers exactly one re-invitation carrying the correct waiting-letter count.
-
-### Phase 3 — Render pipeline
+### Phase 2 — Render pipeline
 - Queue-triggered render Function: parse raw `.eml` → **sanitize HTML** per [Content sanitization](#content-sanitization) (allowlist, `cid:` rewriting, remote-image stripping) → resize photos to WebP + strip EXIF → write photos to `rendered/{slug}/photos/{p_sha256[:12]}/*` and fill in the target post's `photos` array in `posts.json` (ETag-guarded, same as ingest).
 - HEIC decoding from the outset — iPhone missionaries make this the common case, not an edge case.
-- Guard against oversized messages: cap decoded attachment bytes per message and stream rather than buffer, so a 25 MB email doesn't exhaust a Consumption instance's memory or its execution timeout.
-- Idempotent: rerunning against the same `raw/` yields the same rendered output, guaranteed by content-hash photo IDs. Post text and dedup fields are already in `posts.json` from Phase 1/2; render only fills in photo-related fields and sanitized HTML, so double-runs are safe.
-- **Verification:** extend the operator page to list rendered posts alongside a thumbnail strip; confirm posts sort by `originalDate` and that photo arrays fill in shortly after ingest. Run the Phase 1 fixture corpus through and diff the rendered output.
+- Guard against oversized messages: cap decoded attachment bytes **and decoded pixel dimensions** per message, and stream rather than buffer, so neither a 25 MB email nor a small file that decodes to a gigapixel image exhausts a Consumption instance. A decode failure drops that photo and publishes the post, rather than failing the ingest.
+- Idempotent: rerunning against the same `raw/` yields the same rendered output, guaranteed by content-hash photo IDs. Post text is already in `posts.json` from Phase 1; render only fills in sanitized HTML and photo fields, so double-runs are safe.
+- **Verification:** run the Phase 1 fixture corpus through and diff the rendered output. Confirm posts sort by `originalDate` and that photo arrays fill in shortly after ingest.
 
-### Phase 4 — Reader UI
-- **Public landing page at `/`** — what the service is, the `post@pdayletters.com` address, and the `claim@pdayletters.com` instructions. Unauthenticated, entirely generic, no per-site information.
-- **Subtle `beta` mark** beside the product name wherever it appears — landing page, site header, and the footer of outbound email. Removed in Phase 10 and not before. See [The service is in beta](#the-service-is-in-beta-until-the-privacy-policy-ships).
+### Phase 3 — Auth and private content delivery
+- SWA authentication enabled. **Microsoft alone is enough to unblock the loop**; add Google — custom provider, Standard tier — before any content is shown to someone who isn't you, since the eventual audience is Google-native.
+- `/api/content/{slug}/posts.json` and `/api/photo/{slug}/{photoId}/{size}.webp` per [Private content delivery](#private-content-delivery): read `x-ms-client-principal`, check `config/{slug}/acl.json`, stream the blob, `Cache-Control: private, max-age=3600`.
+- **One shared authorization function** returning a role for (identity, slug). Stage 1 has a single branch — look up `acl.json`. Operators (Phase 9) resolve above it and invitations (Phase 9) write into it; neither changes the callers.
+- Response hardening on every byte-streaming endpoint: `Content-Type` pinned from our own transcode rather than from the attachment, `X-Content-Type-Options: nosniff`, and the strict `Content-Security-Policy` from [Content sanitization](#content-sanitization).
+- SWA route rules gating `/{missionary-slug}/*`, plus the **`401` deep-link override** — cheap, and the difference between a bookmark that works and a bare error. The `/login` chooser, the `403` page, and the site switcher are Phase 9.
+
+### Phase 4 — Reader UI and search
+- **Public landing page at `/`** — what the service is and the `post@pdayletters.com` address. Unauthenticated, entirely generic, no per-site information. `claim@` instructions arrive with the claim flow in Phase 7.
+- **Subtle `beta` mark** beside the product name wherever it appears. Removed in Phase 12 and not before. See [The service is in beta](#the-service-is-in-beta-until-the-privacy-policy-ships).
 - Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch index built client-side from `posts.json`, with search text derived by stripping tags from `bodyHtml`.
-- Content is served through `/api/content/…` and `/api/photo/…` per [Private content delivery](#private-content-delivery) from the start.
-- **Smoke-tested against a synthetic slug** seeded with fabricated letters and stock photos, with real test accounts on its ACL. Deliberately *not* a `public: true` escape hatch on a real missionary's site — a temporary flag that exposes real family mail is precisely the kind of thing that survives to production, and building the UI against the authenticated path from day one means Phase 5 has nothing to retrofit.
+- Content is served through `/api/content/…` and `/api/photo/…` from the start. There is deliberately no anonymous escape hatch — a temporary flag that exposes real family mail is precisely the kind of thing that survives to production.
+- **Base the type scale, contrast, and touch targets on the actual audience.** Grandparents are the primary readers, and this is far cheaper to decide here than to retrofit.
 
-### Phase 5 — Auth & ACL
-- SWA Standard with Google + Microsoft providers.
-- Load `acl.json` from `config/{slug}/` and enforce via SWA route rules + API-level checks.
-- **`memberships` table** maintained alongside `acl.json` on every invite, revoke, and claim, plus a rebuild-from-`config/*` utility for drift recovery.
-- **Site switcher** in the header, rendered only for users with more than one membership; **signed-in root redirect** to the most recently updated site, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
-- **Session-expiry handling** per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): a `/login` chooser page offering both providers, a `401` response override redirecting deep links there with `post_login_redirect_uri=.referrer`, and a **Sign in** button on the public root pointing back at `/`. Verify that `.referrer` substitution survives the hop through `/login`.
-- Owner admin view per [Editing and hiding posts](#editing-and-hiding-posts): edit any post's subject or body with edited HTML passing through the ingest sanitizer, ETag-guarded like every other `posts.json` write, and dedup-derived fields left read-only. Each edit stamps `editedBy` / `editedAt`, surfaced in the admin view and **stripped from the reader payload**. **Hidden posts are stripped server-side** in `/api/content/` and `/api/photo/` for `reader` callers and returned flagged to `owner` callers, rendered dimmed with an **Unhide** action. Hidden posts still participate in dedup.
-- **Restore original** per [Restoring the original](#restoring-the-original): owner-only, one post at a time, re-runs render from `raw/` and overwrites the post. Confirmation names whose edits are being discarded; `editedBy` / `editedAt` clear and `hidden` is preserved. No "view original" pane — restoring is the only route back.
-- **Site deletion** per [Post-mission archive](#post-mission-archive): typed confirmation stating the 30-day erase in plain words, immediate removal from every read path, and a timer that hard-purges blobs and soft-deleted versions at day 30.
-- **Invitations** per [Invitations](#invitations): bulk paste-and-parse of addresses, one signed single-use invitation email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. No automated reminders to invitees, ever.
-- **`403` handling** per [Signed in, but not on the list](#signed-in-but-not-on-the-list): a page naming the rejected identity with a sign-out-and-switch-account action, distinct from the `401` re-authentication path.
-- **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): enforce `verifiedMissionary` removal protection; persistent banner while any owner is on `missionary.org`; standing prompt to the existing owner to get the missionary claimed while their address still works.
-- **Operator authorization** per [Service operators](#service-operators): `OPERATOR_EMAILS` resolves to `owner` inside the shared ACL check on every slug, with no write to `acl.json` or `memberships`, so operators stay out of switchers, root redirects, and invitee lists. Includes the "acting as operator" banner on non-member sites, `OperatorAction` telemetry on reads as well as writes, operator site deletion with a recorded reason, and `verifiedMissionary` removal blocked for operators exactly as it is for owners. The email path is untouched — forwarding rights stay `acl.json`-only.
+### Phase 5 — Offline archive export
+- "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` into a self-contained zip, built from the **same ACL-filtered payload the reader UI receives**, so there is never a second filtering rule to keep in sync. **`raw/` is never bundled** — see [Storage layout](#storage-layout).
+- Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
+- **Measure the full-mission case early even though Stage 1 won't hit it.** A two-year archive is ~1000 photos and several GB assembled inside a Consumption Function with a hard execution timeout. Trivial at five letters, potentially a redesign at scale, and much better discovered now than under a deadline in Stage 2.
 
-### Phase 6 — Polish
-- Photo album view (aggregated across all posts for a missionary).
-- Search UI refinement (highlights, snippets, filters).
-- Owner-managed profile (display name, optional `returnDate` — drives the ownership-window nudges and the book cover's mission dates).
-- `alternateSenders` in `profile.json` — owner-managed additional addresses that map to this slug, for missionaries permitted to write from a personal account.
+**Stage 1 is done when:** a real letter forwarded from a personal mailbox appears at `/{slug}` signed in as the ACL's one owner, with its photos, findable by searching a word from its body — and the downloaded zip does the same thing offline.
+
+---
+
+## Stage 2 — Widening
+
+### Phase 6 — Direct ingest
+**Gated on access to a real `@missionary.org` account**, which is what makes everything here testable rather than inferred. See [Building blind](#building-blind).
+
+- **`direct` classification goes live.** Log the full `Authentication-Results` header verbatim for any message whose `From:` domain is in `MISSIONARY_DOMAINS`, and raise a *warning* rather than a silent rejection when such a message fails to classify.
+- **Run the deferred Phase 0 checklist**, which this phase exists to unblock: confirm a genuine DMARC pass on Proofpoint-relayed missionary mail, confirm a threaded reply reaches the inbox rather than spam, and test whether an `@missionary.org` Google account can sign in to a third-party OAuth app.
+- **Still no dedup.** While one person drives both sides of the test, sending the same letter twice is a choice rather than an accident. It becomes unavoidable in Phase 7, where a pending site accumulates from several relatives at once.
+- **Verification:** send a `direct` message and confirm it publishes to the same slug that a forward of the same letter reaches.
+
+### Phase 7 — Onboarding: pending sites and the claim flow
+Until this ships, sites are hand-provisioned. This is what makes the service self-serve.
+
+- Create the `pending/` container and the `users` table. Add the HMAC token-signing service (key from Key Vault).
+- **De-duplication**, which promotion cannot work without: exact `originalMessageId` match first, then the sender+day hard gate plus normalized subject / `bodyHead100` matching per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Ingest becomes conditional — on match-miss, append and write `raw/`; on match-hit, touch neither. This is the first point where duplicates are inevitable rather than self-inflicted: a pending site accumulates forwards from several relatives alongside the missionary's own `direct` copies, and promotion deduplicates the whole backlog in one pass.
+- **Arrival order needs no tie-breaking.** A letter must be sent before it can be forwarded, so the `direct` copy normally arrives first and first-write-wins is correct by default. The one inversion is a message replayed from `_inbox/` after a classifier fix, landing after a forward that already published — where keeping the published post is still the right answer.
+- **Pending sites and claim** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`; a claim email to the forwarder, or the tapering invitation series to a missionary whose own `direct` messages created the site, driven by `claimEmailSentAt` / `claimEmailCount` and always sent as a reply to an arriving letter; **an anonymous-allowed `/claim/{token}` landing page** showing the missionary's name, waiting counts, and sample subjects before any sign-in, threading `post_login_redirect_uri` back to itself, then establishing the first owner, collecting the display name, and promoting accumulated raw; **a failure page** for spent, stale, or already-claimed tokens, including "email me a new link" restricted to previously-emailed addresses and rate-limited per pending site; claim tokens sharing the pending site's rolling `expiresAt`; one day-7 reminder per pending site to forwarders only; rolling `expiresAt` reset on every message, at 60 days once `hasDirect` is set and 14 days otherwise; timer-triggered purge when the window lapses.
+- **Signed links perform state changes on `POST`, never on `GET`.** `missionary.org` runs Proofpoint, and Proofpoint URL Defense fetches links in mail — as do Outlook Safe Links and most corporate scanners. A scanner following a claim link would consume the single-use token before the human ever sees the page, and then consume the replacement too. `GET` renders a page with a button; the button does the work.
+- **Claim redemption is atomic.** Mark the token spent under an ETag or lease on `claim.json` *before* writing the ACL, and create `acl.json` with `If-None-Match: *`, so a double-click or a scanner racing the user cannot produce two first owners.
+- **`claim@` handler** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): accept only DMARC-passing senders in `MISSIONARY_DOMAINS`, ignore everything else without reply, mail back a signed claim link that adds a `verifiedMissionary` owner. Reply copy must tell them to sign in with a **personal** Google/Microsoft account and explain the 60-day expiry.
+- The "a site already exists" reply for DKIM-verified non-ACL senders, including `claim@` instructions.
+
+### Phase 8 — Outbound mail and preferences
+- Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards. Both suppressed on the pending-promotion path. Replies to inbound mail set `From:` to the address written to and carry `In-Reply-To`/`References` threading headers.
+- **An ACL member whose message is rejected always gets told why.** Silence is correct for strangers and wrong for someone who can already read the site — a reader who forwarded inline, or anyone whose DKIM re-verification failed, otherwise concludes it worked and loses the letter.
+- Per-user settings page at **`/settings`**, not `/{slug}/settings` — these are columns on one `users` row, and a per-site URL implies a per-site scope that doesn't exist.
+- One-click opt-out links that flip flags without sign-in, `POST`-confirmed per the scanner problem in Phase 7.
 - Per-slug daily ingest cap with alerting, so a mail loop or a forwarding rule gone wrong can't quietly generate thousands of posts and a matching storage bill.
 
-### Phase 7 — Offline archive export
-- "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` into a self-contained zip, built from the **same ACL-filtered payload the reader UI receives**, so hidden posts are absent for readers without a second filtering rule to keep in sync. **`raw/` is never bundled** — see [Storage layout](#storage-layout).
-- Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
+### Phase 9 — Owner admin, invitations, and operators
+- **`memberships` table** maintained alongside `acl.json`, plus a rebuild-from-`config/*` utility for drift recovery. Deferred this far deliberately — it is a derived index whose only consumers are the switcher and the root redirect, and scanning `config/*/acl.json` answers the same question until there are enough sites for it to matter.
+- **Site switcher** and **signed-in root redirect**, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
+- **Session handling** completed per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): the `/login` chooser page, and a **Sign in** button on the public root. Verify that SWA's `.referrer` substitution survives the hop through `/login`.
+- **`403` handling** per [Signed in, but not on the list](#signed-in-but-not-on-the-list): a page naming the rejected identity with a sign-out-and-switch-account action, distinct from the Phase 3 `401` path.
+- Owner admin view per [Editing and hiding posts](#editing-and-hiding-posts): edit any post's subject or body with edited HTML passing through the ingest sanitizer, ETag-guarded, dedup-derived fields read-only. Each edit stamps `editedBy` / `editedAt`, surfaced in the admin view and **stripped from the reader payload**. **Hidden posts are stripped server-side** in `/api/content/` and `/api/photo/` for `reader` callers and returned flagged to `owner` callers, rendered dimmed with an **Unhide** action. Hidden posts still participate in dedup.
+- **Restore original** per [Restoring the original](#restoring-the-original): owner-only, one post at a time, re-runs render from `raw/` and overwrites the post. Confirmation names whose edits are being discarded; `editedBy` / `editedAt` clear and `hidden` is preserved.
+- **Site deletion** per [Post-mission archive](#post-mission-archive): typed confirmation stating the 30-day erase in plain words, immediate removal from every read path, and a timer that hard-purges blobs and soft-deleted versions at day 30 — **including `books/{slug}/` and the site's `memberships` rows**, which are easy to leave behind.
+- **Invitations** per [Invitations](#invitations): bulk paste-and-parse, one signed single-use email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. **Capped per site and per day**, since an uncapped bulk field is an outbound-mail cannon pointed at the sending domain's reputation.
+- Owner-managed profile: display name, optional `returnDate`, and `alternateSenders` for missionaries writing from a personal account.
+- **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): enforce `verifiedMissionary` removal protection; persistent banner while any owner is on `missionary.org`; standing prompt to get the missionary claimed while their address still works.
+- **Operator authorization** per [Service operators](#service-operators): `OPERATOR_EMAILS` resolves to `owner` inside the shared authorization function from Phase 3, above the `acl.json` lookup and with no write to `acl.json` or `memberships`. Includes the `/manage/last-received` service-wide view, the "acting as operator" banner, `OperatorAction` telemetry on reads as well as writes, operator site deletion with a recorded reason, and `verifiedMissionary` removal blocked for operators exactly as for owners. The email path is untouched — forwarding rights stay `acl.json`-only.
 
-### Phase 8 — New-letter notifications
-- **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, and the existing one-click HMAC opt-out.
-- **`digestFrequency` is collected, not defaulted** — add the monthly/weekly/never question to the invitation-acceptance and claim flows built in Phases 2 and 5, with `monthly` preselected, plus a control on `/{slug}/settings`. Rows created by ingest are set `off` and never prompted.
+### Phase 10 — New-letter notifications
+- **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, and the existing one-click HMAC opt-out. Carries `List-Unsubscribe` and `List-Unsubscribe-Post` headers, which bulk mail now needs for inbox placement.
+- **`digestFrequency` is collected, not defaulted** — add the monthly/weekly/never question to the invitation-acceptance and claim flows from Phases 7 and 9, with `monthly` preselected, plus a control on `/settings`. Rows created by ingest are set `off` and never prompted.
 - **Empty digests are never sent.** Verify by letting a test site sit through a full cycle with nothing published and confirming no mail leaves.
-- **Verification:** put one recipient on two sites, publish to one, and confirm a single email arrives describing both sites' new content correctly. Back-date `lastPostAt` to check the window boundary. Follow a digest link with an expired session and confirm the Phase 5 `401` flow lands on the intended post. Hide a post and confirm it never appears in a digest.
+- **Verification:** put one recipient on two sites, publish to one, and confirm a single email arrives describing both sites' new content correctly. Back-date `lastPostAt` to check the window boundary. Follow a digest link with an expired session and confirm the `401` flow lands on the intended post. Hide a post and confirm it never appears in a digest.
 - **Stretch — SMS.** Not started until the digest ships and the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch) have answers. Per-post rather than digested, default off, number confirmed by a round-trip code.
 
-### Phase 9 — Journal Publish
+### Phase 11 — Journal Publish
 - Assemble a hardcover photo book from a missionary's posts + photos and place the print order via the Lulu Print API.
 - Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
 - Full design in [Journal Publish](#journal-publish), including why Shutterfly + Rakuten was ruled out.
 
-### Phase 10 — Terms, privacy, and leaving beta
+### Phase 12 — Terms, privacy, and leaving beta
 Written last, against what was actually built rather than what was planned. Until it ships the product carries the [beta mark](#the-service-is-in-beta-until-the-privacy-policy-ships).
 
 - **Terms of use:** who owns the content (the missionary and their family, never the service), what the service may do with it (store, render, print on request — nothing else), and the acceptable-use line.
-- **Privacy policy:** what is retained and for how long, that `raw/` is kept indefinitely and deliberately, the 30-day erase window on deletion, and who can see what — **including that service operators can reach any site**, per [Operator access is visible and logged](#operator-access-is-visible-and-logged). That disclosure is the reason this cannot be boilerplate.
+- **Privacy policy:** what is retained and for how long, that `raw/` is kept indefinitely and deliberately, the 30-day erase window on deletion, that submitting a book discloses its contents to the print provider, and who can see what — **including that service operators can reach any site**, per [Operator access is visible and logged](#operator-access-is-visible-and-logged). That disclosure is the reason this cannot be boilerplate.
 - **Takedown and dispute process:** the written policy behind the mechanism [The 60-day cliff](#the-60-day-cliff) already describes — what evidence is required, who decides, and what the outcomes are (add an owner, or delete the site).
 - **Transactional-mail position:** a short statement that claim emails, acks, invitations, and digests are responses to a specific action rather than marketing, and that each carries an opt-out.
 - **Then remove the beta mark.** Publishing this is what ends beta. There is no separate announcement and no other gate.
