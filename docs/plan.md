@@ -422,7 +422,7 @@ All blob containers are private, with public access disabled at the account leve
 - **Full-resolution downloads:** served on-demand by a small Function that reads the raw attachment, strips EXIF in-flight, and streams it back as JPEG. Downloads are rare enough that on-demand generation is cheaper than storing an EXIF-stripped copy of every photo. This is the one place a client receives bytes derived from `raw/`, and it is a single photo re-emitted through a transform — not the message, its HTML, or its headers. It is subject to the same ACL check and hidden-post filter as `/api/photo/`.
 - Because raw is preserved, we can always reprocess (different sizes, HEIC → WebP, face detection later) without asking the missionary for anything.
 
-**Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip (Phase 5 — a 2-year mission's ~1000 photos), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint and by the photo-book PDF generator in Phase 11.
+**Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip ([Phase 5](#phase-5--offline-archive-export) — a 2-year mission's ~1000 photos, ~400–500 MB as WebP against ~600–700 MB as JPEG), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint and by the photo-book PDF generator in Phase 11.
 
 ### Search
 
@@ -689,7 +689,7 @@ Initial preferences:
 
 Every generated email carries a one-click opt-out for its own category ("Don't email me every time a letter posts"). The link is a **signed token** hitting a Function endpoint that flips the flag directly, with no sign-in required. It cannot point at the authenticated settings page instead, because acks go to `@missionary.org` senders who typically have no Google or Microsoft identity and cannot sign in at all. The claim flow already requires an HMAC signing service, so this reuses it rather than adding one.
 
-An authenticated settings page at `/{slug}/settings` still exists for ACL members who'd rather toggle preferences directly.
+An authenticated settings page at `/settings` still exists for ACL members who'd rather toggle preferences directly. It is not per-slug — these are columns on one `users` row spanning every site the address belongs to.
 
 **Mail-loop protection.** Because the service replies to essentially every inbound message, a misconfigured autoresponder on the other end could ping-pong indefinitely. Three guards: outbound acks carry `Auto-Submitted: auto-replied` (RFC 3834); inbound messages carrying `Auto-Submitted` other than `no`, or `Precedence: bulk`/`list`/`junk`, are never acked; and no ack is ever sent to an address on one of our own ingest domains.
 
@@ -711,7 +711,7 @@ Asking beats either default. Opting everyone in silently makes the service's fir
 
 **`@missionary.org` addresses never see the question** — their row is created by the ingest path rather than by a sign-in, they typically have no Google or Microsoft identity to sign in with at all, and they wrote the letters. `off`, for the same reason `postAckEmails` is.
 
-**Changeable afterward** from `/{slug}/settings`, and from the one-click opt-out link every digest carries.
+**Changeable afterward** from `/settings`, and from the one-click opt-out link every digest carries.
 
 **If nothing published, nothing sends.** No "no new letters this month" email, ever. An empty digest is pure noise, and it would arrive most reliably during exactly the stretch — a transfer, a sick week, a missionary between areas — when the family is already uneasy about the silence.
 
@@ -944,7 +944,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 ### Phase 5 — Offline archive export
 - "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` into a self-contained zip, built from the **same ACL-filtered payload the reader UI receives**, so there is never a second filtering rule to keep in sync. **`raw/` is never bundled** — see [Storage layout](#storage-layout).
 - Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
-- **Measure the full-mission case early even though Stage 1 won't hit it.** A two-year archive is ~1000 photos and several GB assembled inside a Consumption Function with a hard execution timeout. Trivial at five letters, potentially a redesign at scale, and much better discovered now than under a deadline in Stage 2.
+- **Measure the full-mission case early even though Stage 1 won't hit it.** A two-year archive is ~1000 photos — roughly **400–500 MB** of WebP renditions gathered from ~2000 blob reads, since `raw/` is excluded. The cost is not compression: the renditions are already entropy-coded, so photo entries should be **stored rather than deflated** and only `index.html` and `posts.json` are worth compressing. The real constraint is holding an HTTP response open for the length of the *client's* download, which a slow connection can stretch past the SWA managed-function response timeout with no resume. Trivial at five letters, potentially a redesign at scale, and much better discovered now than under a deadline in Stage 2.
 
 **Stage 1 is done when:** a real letter forwarded from a personal mailbox appears at `/{slug}` signed in as the ACL's one owner, with its photos, findable by searching a word from its body — and the downloaded zip does the same thing offline.
 
