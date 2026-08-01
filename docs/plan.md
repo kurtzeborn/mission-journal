@@ -326,6 +326,13 @@ config/
                                        returnDate (optional)
     acl.json                           Email allowlist + roles, incl.
                                        verifiedMissionary flag
+
+books/                                 Journal Publish output. Built on
+  {missionary-slug}/                   demand, reconstructible from
+    {book-id}/                         rendered/. See Journal Publish.
+      interior.pdf · cover.pdf
+      manifest.json                    Posts + photos included, provider,
+                                       order id
 ```
 
 Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
@@ -896,7 +903,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 
 ### Phase 0 — Foundation
 - Create the Azure resource group.
-- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days. The `pending/` container, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
+- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
 - App Insights instance (for rejection logging and general telemetry).
 - Key Vault + managed identity for Functions, holding the SendGrid API key.
 - Static Web App with `pdayletters.com` as a custom domain. **Stage 1 needs only the Microsoft identity provider**, which is built in. Google is a *custom* provider and forces Standard tier; it arrives in Phase 3, before anyone outside the ACL sees content. Confirm SWA Free-tier managed-function limits are adequate before running Stage 1 on Free.
@@ -906,7 +913,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - **A reset script.** Wiping a slug must be one command — `raw/{slug}/`, `rendered/{slug}/`, and the `_inbox` residue, **including soft-deleted versions and blob versions**, or every iteration of the loop silently accretes storage that soft-delete is designed to keep. It is also the honest first draft of the deletion purge in Phase 9.
 
 ### Phase 1 — Inbound forward pipeline
-**Forward-only.** `direct` exists as a classifier branch and is covered by fixtures, but nothing exercises it until [Phase 6](#phase-6--direct-ingest-and-de-duplication).
+**Forward-only.** `direct` exists as a classifier branch and is covered by fixtures, but nothing exercises it until [Phase 6](#phase-6--direct-ingest).
 
 - **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail. `direct`-path fixtures use hand-written `Authentication-Results` headers covering pass, fail, and absent cases until a real account exists.
 - Intake Function: SendGrid Inbound Parse webhook that writes the raw POST body to `raw/_inbox/{ulid}.raw`, enqueues the ULID, returns 200, and does nothing else.
@@ -964,6 +971,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 Until this ships, sites are hand-provisioned. This is what makes the service self-serve.
 
 - Create the `pending/` container and the `users` table. Add the HMAC token-signing service (key from Key Vault).
+- **The three redirect domains go live**, deferred from Phase 0 and needed now: MX on each apex so `post@` and `claim@` are accepted there too, added to `ACCEPTED_INGEST_DOMAINS`, plus 301s to `pdayletters.com` at the SWA edge with all paths preserved. Until this phase every message came from one person who knew the canonical address; from here the addresses go to strangers who may have been told any of the four.
 - **De-duplication**, which promotion cannot work without: exact `originalMessageId` match first, then the sender+day hard gate plus normalized subject / `bodyHead100` matching per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Ingest becomes conditional — on match-miss, append and write `raw/`; on match-hit, touch neither. This is the first point where duplicates are inevitable rather than self-inflicted: a pending site accumulates forwards from several relatives alongside the missionary's own `direct` copies, and promotion deduplicates the whole backlog in one pass.
 - **Arrival order needs no tie-breaking.** A letter must be sent before it can be forwarded, so the `direct` copy normally arrives first and first-write-wins is correct by default. The one inversion is a message replayed from `_inbox/` after a classifier fix, landing after a forward that already published — where keeping the published post is still the right answer.
 - **Pending sites and claim** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`; a claim email to the forwarder, or the tapering invitation series to a missionary whose own `direct` messages created the site, driven by `claimEmailSentAt` / `claimEmailCount` and always sent as a reply to an arriving letter; **an anonymous-allowed `/claim/{token}` landing page** showing the missionary's name, waiting counts, and sample subjects before any sign-in, threading `post_login_redirect_uri` back to itself, then establishing the first owner, collecting the display name, and promoting accumulated raw; **a failure page** for spent, stale, or already-claimed tokens, including "email me a new link" restricted to previously-emailed addresses and rate-limited per pending site; claim tokens sharing the pending site's rolling `expiresAt`; one day-7 reminder per pending site to forwarders only; rolling `expiresAt` reset on every message, at 60 days once `hasDirect` is set and 14 days otherwise; timer-triggered purge when the window lapses.
