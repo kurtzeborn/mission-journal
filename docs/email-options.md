@@ -37,6 +37,19 @@ Prices listed here reflect publicly advertised pricing as of mid-2026. Providers
 - **Deliverability**: Industry-leading. Shared IP pool for Free/Essentials; dedicated IPs on Pro+.
 - **Custom domain**: standard "Sender Authentication" via CNAME records (DKIM + branded return-path). Free.
 
+### Cloudflare Email Service (Email Routing + Email Workers)
+
+Verified against Cloudflare's docs, August 2026. **This is no longer routing-only** — Cloudflare added outbound sending, so it is now one of only three shortlisted options that does both directions.
+
+- **Inbound**: **unlimited and free on every plan**, including Workers Free. MX-based. Instead of a webhook, an inbound message invokes a Worker's `email()` handler with the envelope sender, recipient, headers, and `raw` as a `ReadableStream`.
+- **Outbound**: requires **Workers Paid ($5/mo)**. 3,000 emails included per month, then **$0.35 per 1,000**. Sends to verified destination addresses in your own account are free and don't count against quota. Daily limits start conservative for new accounts and scale with sending reputation.
+- **Message size**: **25 MiB inbound** (larger is rejected at SMTP). Outbound is **5 MiB** including attachments — irrelevant here, since our outbound is text plus at most one thumbnail.
+- **Recipients**: 50 per message. We send one message per person, so this never binds.
+- **`message.reply()`** builds a threaded reply that passes through the same SMTP session and preserves the `Message-ID` chain. Its constraints line up almost exactly with the reply design in [plan.md](plan.md): the outgoing sender domain must match the domain that received the mail, and the recipient must match the incoming sender. **It requires the incoming message to pass DMARC**, which our `direct` and `claim@` traffic does by definition but a relative forwarding from an old ISP account may not.
+- **`message.setReject(reason)`** returns a real SMTP error to the sending server. See [Durability](#durability-is-the-axis-cloudflare-wins) below — this is the most interesting property on offer.
+- **Requires the domain's nameservers to be on Cloudflare.** All four domains are currently on Namecheap, so this is a migration, not a config change.
+- **Workers Free CPU limits apply to email handlers**; Cloudflare explicitly warns that complex handlers fail with `EXCEEDED_CPU`. Streaming a 25 MiB message would want the Paid plan anyway — which is the same $5 outbound needs.
+
 ### Azure Communication Services (ACS) Email
 
 > **ACS Email is send-only. It cannot receive mail** — verified against Microsoft Learn, August 2026. There is no MX-based inbound path and no received-message event; the only Event Grid events ACS emits are `EmailDeliveryReportReceived` and `EmailEngagementTrackingReportReceived`, which report on mail *we sent*. Choosing ACS therefore means running a second provider for inbound, which is a split (see [Split vs. single-provider](#split-vs-single-provider)).
@@ -101,6 +114,18 @@ Prices listed here reflect publicly advertised pricing as of mid-2026. Providers
 - **Attachment limit**: 150 MB per message (but 25 MB is the practical delivery ceiling for the receiving side).
 - **Deliverability**: routed through Exchange Online; fine for tenant-to-consumer at low volume, degrades badly under load.
 
+## Durability is the axis Cloudflare wins
+
+The inbound design in [plan.md](plan.md) is shaped around a specific SendGrid weakness. The intake Function does exactly two things — store the raw body, enqueue the ID — and returns 200, *because SendGrid permanently discards a message once its webhook retries are exhausted*. Every ounce of complexity in that Function is a chance to lose a letter forever.
+
+An Email Worker changes the failure mode at the root. The handler runs **inside the SMTP transaction**, so a failure can return a temporary error to the *sending* mail server, which then retries on its own schedule for days. Gmail, Exchange Online, and Proofpoint all do this correctly. There is no window in which a letter is accepted and then quietly dropped.
+
+For a service whose central promise is that these letters are preserved permanently and are, for many families, the only surviving copy, losing one is the worst failure available. That makes this a real argument and not a technicality.
+
+**It also removes an unauthenticated public endpoint.** A SendGrid Inbound Parse webhook is a URL that anyone who discovers it can POST arbitrary bytes to, and ours would write those bytes to Blob Storage and enqueue work. SendGrid supports signed webhooks and we should use them regardless — but an Email Worker has no public HTTP surface at all, so the problem does not exist rather than being mitigated.
+
+**The counterweight is deliverability.** Cloudflare's sending product is young and has no reputation history comparable to SendGrid's or Postmark's. The single hardest delivery in this system is a short message containing a claim link, addressed to a Gmail inbox on `missionary.org`, behind Proofpoint — which is the exact shape of a phishing email. That is the worst possible place to bet on an unproven sender, and it is the strongest argument for keeping outbound where the reputation already is.
+
 ## Cost projections per scenario
 
 Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message size where per-MB pricing applies.
@@ -111,6 +136,7 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 |---|---:|---:|---:|---|
 | SendGrid | $0 (free) | $0 (free tier) | **$0** | Trivially covered by free tier |
 | ACS Email | **cannot receive** | ~$0.03 | **—** | Send-only; needs a second provider for inbound |
+| Cloudflare | $0 (unlimited) | included | **$5** | Workers Paid is required for any outbound at all |
 | Postmark | (included) | $15 | **$15** | No free tier |
 | Mailgun | (included) | $15 | **$15** | No free tier |
 | MailerSend | $0 (free) | $0 (free tier) | **$0** | Free tier fits |
@@ -123,6 +149,7 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 |---|---:|---:|---:|---|
 | SendGrid | $0 | $0 | **$0** | 1,000/mo is 33/day, well under the 100/day free ceiling |
 | ACS Email | **cannot receive** | ~$0.75 | **—** | Send-only; needs a second provider for inbound |
+| Cloudflare | $0 (unlimited) | included | **$5** | 1,000/mo sits inside the 3,000 included |
 | Postmark | (included) | $15 | **$15** | Minimum plan |
 | Mailgun | (included) | $15 | **$15** | Minimum plan |
 | MailerSend | $0 | $0 | **$0** | 1K/mo fits free tier |
@@ -136,6 +163,7 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 | SendGrid | $0 | $0 | **$0** | 15K/mo is 500/day, still under 100/day only if we can burst — in practice we'd exceed on peak days. **Realistic:** move to Essentials ~$20/mo |
 | SendGrid Essentials 50K | $0 | ~$20 | **~$20** | Comfortable headroom |
 | ACS Email (send) + SendGrid (receive) | $0 | ~$11 | **~$11** | Only viable as a split — ACS cannot receive |
+| Cloudflare | $0 (unlimited) | ~$4 | **~$9** | $5 base + 12,000 over the included 3,000 |
 | Postmark | (included) | $50 | **$50** | 50K tier |
 | Mailgun Foundation | (included) | $35 | **$35** | 50K tier |
 | MailerSend Hobby | (included) | $28 | **$28** | 50K tier |
@@ -148,6 +176,7 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 |---|---:|---:|---:|---|
 | SendGrid Pro 300K | $0 (still free) | ~$300 | **~$300** | Pro tier for dedicated IP and higher deliverability |
 | ACS Email (send) + SendGrid (receive) | $0 | ~$110 | **~$110** | Only viable as a split — ACS cannot receive |
+| Cloudflare | $0 (unlimited) | ~$51 | **~$56** | $5 base + 147,000 at $0.35/1,000 |
 | Postmark 300K | (included) | $175 | **$175** | Strong deliverability |
 | Mailgun Scale | (included) | $90+ (custom) | **~$100–200** | Negotiable at this level |
 | MailerSend | (custom) | ~$150 | **~$150** | Priced comparably |
@@ -158,15 +187,17 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 
 **Initial + Low traffic**: **SendGrid.** $0/month cost, Inbound Parse is unlimited on the free tier, deliverability is best-in-class from day one. Reduces surprises when we later hit paid tiers because we're already on the platform. Skips the friction of picking a paid provider for the first year.
 
-**Growth**: Two viable paths, depending on preference:
+**Growth**: Three viable paths:
 - **Stay on SendGrid Essentials 50K** at ~$20/mo. Zero friction, same platform, minimal migration risk.
-- **Split: ACS Email for outbound, SendGrid for inbound.** ~$11/mo, since Inbound Parse stays free. Buys managed-identity send with no API key to rotate, at the cost of two vendors, two sets of DNS records, and two dashboards. ACS cannot receive, so a clean single-vendor move to Azure is not on the table at any price.
+- **Move to Cloudflare** at ~$9/mo. Cheaper, one vendor for both directions, and the durability story above. Costs a nameserver migration and a bet on a younger sender.
+- **Split: ACS Email for outbound, SendGrid for inbound.** ~$11/mo. Buys managed-identity send with no API key to rotate, at the cost of two vendors. ACS cannot receive, so a clean single-vendor move to Azure is not on the table at any price.
 
-Recommendation: **stay on SendGrid** unless we hit a specific pain point (auditability, cost pressure, or wanting to eliminate the third-party dependency). Saving ~$9/mo isn't worth splitting the pipeline across two providers — see below.
+Recommendation: **stay on SendGrid** unless we hit a specific pain point. Cloudflare is the more interesting of the two alternatives by a wide margin, and the one to revisit first.
 
 **Scale**: Reconsider. At 1,000 missionaries the pricing spread is large enough to matter:
-- **Amazon SES** (~$17/mo) is by far the cheapest and is the only alternative that can handle *both* directions on its own — SES Email Receiving exists, though only in a subset of regions.
-- **ACS Email** (~$110/mo) for outbound only, leaving inbound on SendGrid.
+- **Amazon SES** (~$17/mo) is the cheapest and handles both directions, at the cost of adding AWS to an all-Azure stack.
+- **Cloudflare** (~$56/mo) is the cheapest single vendor that needs no second cloud.
+- **ACS Email** (~$110/mo) for outbound only, leaving inbound elsewhere.
 - **Postmark** (~$175/mo) is more expensive but has the best deliverability reputation.
 - **SendGrid Pro** (~$300/mo) is comfortable but pricey.
 
@@ -181,6 +212,8 @@ Some teams split "send with X" from "receive with Y." For this project I recomme
 - Save your architectural complexity budget for the actual application, not for optimizing $10/mo.
 
 **Note that choosing ACS Email forces a split**, since it cannot receive. That is the main argument against it, and it is a stronger one than the cost comparison.
+
+**Cloudflare-in / SendGrid-out is the one split worth considering**, because it puts each vendor where it is strongest: SMTP-level retry semantics on the irreplaceable half, and an established sender reputation on the half that has to reach a Gmail inbox. It is still two vendors, two dashboards, and a second runtime — but unlike the ACS split, both halves are chosen rather than forced.
 
 ## Deliverability tips (all providers)
 
@@ -198,14 +231,17 @@ If we start with SendGrid and later want to switch, expected effort:
 |---|---|---|
 | SendGrid → ACS Email (send) | ~1 week | Change SDK calls + DNS DKIM records. Business logic unchanged. |
 | SendGrid → ACS Email (receive) | **impossible** | ACS cannot receive mail. Inbound must stay elsewhere, which makes this a split rather than a migration. |
+| SendGrid → Cloudflare (receive) | ~1 week | Move nameservers to Cloudflare, new MX, port the intake Function to a Worker. Classification logic unchanged. Adds a second runtime and splits telemetry away from App Insights. |
+| SendGrid → Cloudflare (send) | ~1 week | New DKIM records + a send binding or REST call. Reply threading maps onto `message.reply()` closely. |
 | SendGrid → Postmark or Mailgun | ~2–3 days | Very similar APIs; mostly a client-library swap. |
 | Anything → M365 (send) | Not recommended | Not designed for programmatic transactional send at any real volume. |
 | Anything → Amazon SES | ~1 week per direction | Full-fat AWS setup; adds cross-cloud IAM. |
 
 ## Bottom line
 
-- **Start with SendGrid.** Inbound Parse is unlimited and unmetered on every tier, deliverability is best-in-class from day one, and it is the only shortlisted provider that does both directions well. Point **MX at the apex of `pdayletters.com`** at Inbound Parse, and authenticate `mail.pdayletters.com` for sending.
-- **The outbound plan choice is not a Phase 0 decision.** Nothing sends until Phase 8. Phase 0 needs an account, MX, DKIM CNAMEs, and a DMARC record — all of which work on a trial or free account, and none of which depend on the outbound tier. Pick the tier when there is outbound traffic to price.
+- **Start with SendGrid.** Inbound Parse is unlimited and unmetered on every tier, deliverability is best-in-class from day one, and it keeps all compute in Azure Functions. Point **MX at the apex of `pdayletters.com`** at Inbound Parse, and authenticate `mail.pdayletters.com` for sending.
+- **The outbound plan choice is not a Phase 0 decision.** Nothing sends until Phase 8. Phase 0 needs an account, MX, DKIM CNAMEs, and a DMARC record — all of which work on a trial or free account, and none of which depend on the outbound tier.
+- **Authenticate the Inbound Parse webhook.** It is otherwise a public URL that writes attacker-supplied bytes into Blob Storage. Use SendGrid's signed-webhook verification in Phase 1, not later.
+- **Cloudflare is the first alternative to revisit**, and the only one that beats SendGrid on something the project actually cares about — SMTP-level retry semantics mean an accepted letter cannot be silently dropped. Revisit if we ever lose a message to webhook retry exhaustion, if SendGrid's pricing moves, or at the Growth tier where it is roughly half the cost.
 - **Do not pick ACS Email.** It cannot receive mail, so it can only ever be half the solution.
-- **Reassess at ~50K emails/month combined.** By then we'll have real usage data.
 - **Never use M365 for outbound at scale.** Fine for early prototypes; migrate off before opening to non-family users.
