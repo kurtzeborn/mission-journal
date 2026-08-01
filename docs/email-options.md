@@ -4,9 +4,11 @@ This document compares the realistic options for the Mission Journal service's e
 
 Prices listed here reflect publicly advertised pricing as of mid-2026. Providers change pricing regularly; verify at signup and don't lock in on numbers here.
 
+**SendGrid's published pricing is currently hard to read.** Twilio has consolidated the SendGrid site into twilio.com and the plan table renders client-side, so the tiers below could not be re-verified from the public page. Treat them as indicative and confirm in the account console. This does not block Phase 0 — see [Bottom line](#bottom-line).
+
 ## Requirements recap
 
-- **Inbound**: receive emails at tokenized addresses on an ingest subdomain. Filter to messages classifiable as `direct` (from `@missionary.org`) or `forward_*` (forwarded by an ACL member). See [plan.md](plan.md).
+- **Inbound**: receive mail at **two fixed shared addresses**, `post@` and `claim@`, with **MX on the apex** of each owned domain. There are no tokenized or per-missionary addresses — routing derives the missionary from the letter's *author*, never from the recipient — so the provider only needs plain MX-plus-webhook delivery of parsed MIME. Messages are classified as `direct` (from `@missionary.org`) or `forward` (forwarded by an ACL member). See [plan.md](plan.md).
 - **Outbound**: send acknowledgments, digests, forwards, notifications, and unsubscribe-link emails. Deliverability into personal Gmail / Outlook.com / Yahoo inboxes matters.
 - **Attachment sizes**: missionary photos average 3–5 MB, worst case 20 MB per email (batches of high-res photos). Provider caps and per-MB pricing matter.
 - **Custom domain**: DKIM/SPF/DMARC authentication with the service's own domain.
@@ -37,13 +39,13 @@ Prices listed here reflect publicly advertised pricing as of mid-2026. Providers
 
 ### Azure Communication Services (ACS) Email
 
-- **Pricing**: pay-per-use, no monthly base.
-  - Send: $0.00025 per email + $0.00012 per MB of message size (headers + body + attachments).
-  - Receive: $0.00025 per email + $0.00012 per MB.
-- **Attachment limit**: 30 MB per message (send and receive).
+> **ACS Email is send-only. It cannot receive mail** — verified against Microsoft Learn, August 2026. There is no MX-based inbound path and no received-message event; the only Event Grid events ACS emits are `EmailDeliveryReportReceived` and `EmailEngagementTrackingReportReceived`, which report on mail *we sent*. Choosing ACS therefore means running a second provider for inbound, which is a split (see [Split vs. single-provider](#split-vs-single-provider)).
+
+- **Pricing**: pay-per-use, no monthly base. Send: $0.00025 per email + $0.00012 per MB of message size (headers + body + attachments).
+- **Attachment limit**: 30 MB per message.
 - **Deliverability**: shared Azure sender pool; can request dedicated pool for a fee at scale.
 - **Custom domain**: verified custom domain via DNS TXT records; DKIM/SPF managed automatically. Free.
-- **Integration**: Event Grid → Function is the cleanest inbound path in Azure. Managed identity for send calls (no API key rotation).
+- **Integration**: managed identity for send calls, so no API key to rotate or store in Key Vault. This is the genuine advantage and it applies to outbound only.
 
 ### Postmark
 
@@ -108,7 +110,7 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 | Provider | Inbound cost | Outbound cost | **Total / month** | Notes |
 |---|---:|---:|---:|---|
 | SendGrid | $0 (free) | $0 (free tier) | **$0** | Trivially covered by free tier |
-| ACS Email | ~$0.01 | ~$0.03 | **~$0.04** | Genuinely pay-per-use |
+| ACS Email | **cannot receive** | ~$0.03 | **—** | Send-only; needs a second provider for inbound |
 | Postmark | (included) | $15 | **$15** | No free tier |
 | Mailgun | (included) | $15 | **$15** | No free tier |
 | MailerSend | $0 (free) | $0 (free tier) | **$0** | Free tier fits |
@@ -120,7 +122,7 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 | Provider | Inbound | Outbound | **Total** | Notes |
 |---|---:|---:|---:|---|
 | SendGrid | $0 | $0 | **$0** | 1,000/mo is 33/day, well under the 100/day free ceiling |
-| ACS Email | ~$0.15 | ~$0.75 | **~$1** | Pay-per-use scales linearly |
+| ACS Email | **cannot receive** | ~$0.75 | **—** | Send-only; needs a second provider for inbound |
 | Postmark | (included) | $15 | **$15** | Minimum plan |
 | Mailgun | (included) | $15 | **$15** | Minimum plan |
 | MailerSend | $0 | $0 | **$0** | 1K/mo fits free tier |
@@ -131,9 +133,9 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 
 | Provider | Inbound | Outbound | **Total** | Notes |
 |---|---:|---:|---:|---|
-| SendGrid | $0 | $0 | **$0** | 15K/mo is 500/day, still under 100/day only if we can burst \u2014 in practice we'd exceed on peak days. **Realistic:** move to Essentials ~$20/mo |
+| SendGrid | $0 | $0 | **$0** | 15K/mo is 500/day, still under 100/day only if we can burst — in practice we'd exceed on peak days. **Realistic:** move to Essentials ~$20/mo |
 | SendGrid Essentials 50K | $0 | ~$20 | **~$20** | Comfortable headroom |
-| ACS Email | ~$1.50 | ~$11 | **~$13** | Continues to scale linearly |
+| ACS Email (send) + SendGrid (receive) | $0 | ~$11 | **~$11** | Only viable as a split — ACS cannot receive |
 | Postmark | (included) | $50 | **$50** | 50K tier |
 | Mailgun Foundation | (included) | $35 | **$35** | 50K tier |
 | MailerSend Hobby | (included) | $28 | **$28** | 50K tier |
@@ -145,12 +147,12 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 | Provider | Inbound | Outbound | **Total** | Notes |
 |---|---:|---:|---:|---|
 | SendGrid Pro 300K | $0 (still free) | ~$300 | **~$300** | Pro tier for dedicated IP and higher deliverability |
-| ACS Email | ~$15 | ~$110 | **~$125** | Cheapest big-provider option |
+| ACS Email (send) + SendGrid (receive) | $0 | ~$110 | **~$110** | Only viable as a split — ACS cannot receive |
 | Postmark 300K | (included) | $175 | **$175** | Strong deliverability |
 | Mailgun Scale | (included) | $90+ (custom) | **~$100–200** | Negotiable at this level |
 | MailerSend | (custom) | ~$150 | **~$150** | Priced comparably |
 | Amazon SES | ~$2 | ~$15 | **~$17** | Cheapest by 5–10× |
-| M365 + Graph | \u2014 | **not viable** | \u2014 | Exceeds daily quota; tenant would be throttled or suspended |
+| M365 + Graph | — | **not viable** | — | Exceeds daily quota; tenant would be throttled or suspended |
 
 ## Recommendations by stage
 
@@ -158,12 +160,13 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 
 **Growth**: Two viable paths, depending on preference:
 - **Stay on SendGrid Essentials 50K** at ~$20/mo. Zero friction, same platform, minimal migration risk.
-- **Move to ACS Email** at ~$13/mo. Single Azure bill, managed-identity auth (no API keys to rotate), Event Grid integration is the cleanest inbound path in Azure. Slightly lower cost but non-negligible migration work.
+- **Split: ACS Email for outbound, SendGrid for inbound.** ~$11/mo, since Inbound Parse stays free. Buys managed-identity send with no API key to rotate, at the cost of two vendors, two sets of DNS records, and two dashboards. ACS cannot receive, so a clean single-vendor move to Azure is not on the table at any price.
 
-Recommendation: **stay on SendGrid** unless we hit a specific pain point (auditability, cost pressure, or wanting to eliminate the third-party dependency). The $7/mo savings of ACS isn't worth the migration effort.
+Recommendation: **stay on SendGrid** unless we hit a specific pain point (auditability, cost pressure, or wanting to eliminate the third-party dependency). Saving ~$9/mo isn't worth splitting the pipeline across two providers — see below.
 
 **Scale**: Reconsider. At 1,000 missionaries the pricing spread is large enough to matter:
-- **ACS Email** (~$125/mo) or **Amazon SES** (~$17/mo) are the cheapest.
+- **Amazon SES** (~$17/mo) is by far the cheapest and is the only alternative that can handle *both* directions on its own — SES Email Receiving exists, though only in a subset of regions.
+- **ACS Email** (~$110/mo) for outbound only, leaving inbound on SendGrid.
 - **Postmark** (~$175/mo) is more expensive but has the best deliverability reputation.
 - **SendGrid Pro** (~$300/mo) is comfortable but pricey.
 
@@ -174,15 +177,17 @@ If we hit scale, the right call depends on operational preferences by that point
 Some teams split "send with X" from "receive with Y." For this project I recommend **against** splitting:
 
 - Both sides of the pipeline benefit from single-vendor observability (one dashboard, one bounce/complaint pipeline, one set of DNS records).
+- The service replies to inbound mail *as* the address it was written to, with `In-Reply-To` threading — see [plan.md](plan.md). Splitting puts the receiving domain and the sending domain under different vendors' authentication, which is workable but is exactly the kind of DNS/DKIM alignment problem that is miserable to debug remotely.
 - Save your architectural complexity budget for the actual application, not for optimizing $10/mo.
-- The only reason to split is if we hit an inbound-heavy scale where SendGrid's Inbound Parse limits become an issue — and there are no such limits.
+
+**Note that choosing ACS Email forces a split**, since it cannot receive. That is the main argument against it, and it is a stronger one than the cost comparison.
 
 ## Deliverability tips (all providers)
 
 - **Warm up gradually.** Send small volume for the first two weeks; ramp up. This applies especially to Pro/dedicated-IP plans.
 - **DMARC policy = `quarantine`** on the sending subdomain from day one. `reject` at apex once we're stable.
 - **List-Unsubscribe header** on every outbound. Required by Gmail/Yahoo since Feb 2024 for bulk senders (>5K/day). Our unsubscribe-token endpoint doubles as the target.
-- **Distinct subdomains for sending vs. transactional.** `mail.missionaryjournal.org` for digests, `no-reply.missionaryjournal.org` for system emails. Isolates reputation.
+- **One sending subdomain, `mail.pdayletters.com`.** Envelope sender and DKIM signing live there for every class of outbound mail. Splitting digests and system mail across two subdomains isolates reputation in theory, but at this volume it halves the sending history behind each one, and low-volume subdomains are treated worse than a single established one.
 - **Bounce and complaint webhooks.** All providers support these. Automatically remove hard-bounced addresses from ACLs; alert the owner when a complaint arrives.
 
 ## Migration friction ranking
@@ -191,14 +196,16 @@ If we start with SendGrid and later want to switch, expected effort:
 
 | Move | Effort | Rationale |
 |---|---|---|
-| SendGrid \u2192 ACS Email (send) | ~1 week | Change SDK calls + DNS DKIM records. Business logic unchanged. |
-| SendGrid \u2192 ACS Email (receive) | ~1 week | New MX record, new Event Grid handler, keep classification logic identical. |
-| SendGrid \u2192 Postmark or Mailgun | ~2–3 days | Very similar APIs; mostly a client-library swap. |
-| Anything \u2192 M365 (send) | Not recommended | Not designed for programmatic transactional send at any real volume. |
-| Anything \u2192 Amazon SES | ~1 week per direction | Full-fat AWS setup; adds cross-cloud IAM. |
+| SendGrid → ACS Email (send) | ~1 week | Change SDK calls + DNS DKIM records. Business logic unchanged. |
+| SendGrid → ACS Email (receive) | **impossible** | ACS cannot receive mail. Inbound must stay elsewhere, which makes this a split rather than a migration. |
+| SendGrid → Postmark or Mailgun | ~2–3 days | Very similar APIs; mostly a client-library swap. |
+| Anything → M365 (send) | Not recommended | Not designed for programmatic transactional send at any real volume. |
+| Anything → Amazon SES | ~1 week per direction | Full-fat AWS setup; adds cross-cloud IAM. |
 
 ## Bottom line
 
-- **Start with SendGrid.** Free, best-in-class, no decisions to defer. Configure DNS and Inbound Parse on `ingest.missionaryjournal.org`, and authenticate `mail.missionaryjournal.org` for sending.
-- **Reassess at ~50K emails/month combined.** By then we'll have real usage data and can decide whether the ~$7/mo savings and cleaner Azure story of ACS Email justify a migration.
+- **Start with SendGrid.** Inbound Parse is unlimited and unmetered on every tier, deliverability is best-in-class from day one, and it is the only shortlisted provider that does both directions well. Point **MX at the apex of `pdayletters.com`** at Inbound Parse, and authenticate `mail.pdayletters.com` for sending.
+- **The outbound plan choice is not a Phase 0 decision.** Nothing sends until Phase 8. Phase 0 needs an account, MX, DKIM CNAMEs, and a DMARC record — all of which work on a trial or free account, and none of which depend on the outbound tier. Pick the tier when there is outbound traffic to price.
+- **Do not pick ACS Email.** It cannot receive mail, so it can only ever be half the solution.
+- **Reassess at ~50K emails/month combined.** By then we'll have real usage data.
 - **Never use M365 for outbound at scale.** Fine for early prototypes; migrate off before opening to non-family users.
