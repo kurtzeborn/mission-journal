@@ -29,7 +29,7 @@ Free the managed Functions reach storage with a connection string instead.
 ])
 param staticWebAppSku string = 'Free'
 
-@description('Comma-separated domains accepted as forward sources during ingest.')
+@description('Comma-separated domains this service accepts inbound mail on. Recipient-side, not sender-side.')
 param acceptedIngestDomains string
 
 @description('Comma-separated domains treated as genuine missionary mail.')
