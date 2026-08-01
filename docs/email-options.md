@@ -151,23 +151,27 @@ Dropping from four domains to one changed this table materially — it removed t
 
 **Mailgun is the weakest credible option**, which is not where its reputation would put it. At one domain it's free, so cost no longer rules it out — but its maximum inbound message size is published nowhere, and its own documentation disagrees with its own pricing page about how long `store()` retains a message. For a system whose failure mode is "the only surviving copy of a letter," undocumented limits are disqualifying on their own.
 
-**Postmark is disqualified by tier structure, not quality.** It is the best-regarded sender here and has the most generous documented inbound size limit, but its Free tier is 100 messages/month total and its $15 Basic tier **excludes inbound entirely**, so the cheapest usable plan is Pro at $16.50/mo — more than Resend Free and less capable than Resend Pro. It also has no HMAC webhook signing, only Basic Auth credentials embedded in the URL.
+**Postmark is disqualified by tier structure, not quality.** It is the best-regarded sender here and has the most generous documented inbound size limit, but its Free tier is 100 messages/month total and its $15 Basic tier **excludes inbound entirely**, so the cheapest usable plan is Pro at $16.50/mo. It also has no HMAC webhook signing, only Basic Auth credentials embedded in the URL.
 
-**The choice came down to Cloudflare vs. Resend, and it is genuinely close.** Cloudflare wins outright on the inbound guarantee: unlimited, free, no daily cap, and a failure returns an SMTP error so the sending server never lets go of the message. Resend wins on everything downstream of that — one runtime instead of two, one telemetry system instead of two, managed identity instead of a long-lived SAS exported to a third party, and idempotent retries for free. **Resend's metadata-only webhook is the deciding technical detail**: it is the only webhook design here that doesn't have to squeeze a whole message through the 30 MB Static Web Apps request ceiling.
+**The choice came down to Cloudflare vs. Resend, and it was genuinely close.** Resend wins on everything downstream of ingest — one runtime instead of two, one telemetry system instead of two, managed identity instead of a long-lived SAS exported to a third party, and idempotent retries for free, since its server-assigned `email_id` makes a retry overwrite rather than duplicate. **Its metadata-only webhook is a genuinely better design**: it is the only one here that doesn't have to squeeze a whole message through the 30 MB Static Web Apps request ceiling.
 
-**The price of choosing Resend is the shared quota**, and it is a real price. 100/day and 3,000/month spanning both directions means a historical backfill can hit the cap and, from Phase 8, sending competes with receiving for the same allowance. Cloudflare has no equivalent coupling. This is the one line item that could send us back — see [Migration friction ranking](#migration-friction-ranking).
+**It lost on the quota, and specifically on what happens at the quota.** Free is 100/day and 3,000/month spanning both directions. That alone would be survivable — you could spread a backfill over two days, or pay $20 for one month. What isn't survivable is that **Resend documents no behavior for inbound mail arriving over the cap**. If it returns a 4xx at SMTP, nothing is lost and the sender retries; if it accepts and drops, letters disappear silently. Nobody says which.
+
+**Bulk-forwarding an entire mission's back catalogue in one sitting is an explicitly supported scenario** — roughly 100 messages, landing exactly on the limit, performed once, with mail that by definition cannot be re-sent. Taking an undocumented failure mode on precisely that operation is not a trade worth making for $0, and paying $20/mo to avoid it costs four times Cloudflare's outbound tier. Cloudflare's inbound is unlimited, uncapped, free, and fails as an SMTP error the sending server retries for days.
 
 ## Durability is the axis Cloudflare wins
 
 The inbound design in [plan.md](plan.md) is shaped around a specific SendGrid weakness. The intake Function does exactly two things — store the raw body, enqueue the ID — and returns 200, *because SendGrid permanently discards a message once its webhook retries are exhausted*. Every ounce of complexity in that Function is a chance to lose a letter forever.
 
-An Email Worker would change that failure mode at the root. The handler runs **inside the SMTP transaction**, so a failure returns a temporary error to the *sending* mail server, which then retries on its own schedule for days. Gmail, Exchange Online, and Proofpoint all do this correctly. There is no window in which a letter is accepted and then quietly dropped.
+An Email Worker changes that failure mode at the root. The handler runs **inside the SMTP transaction**, so a failure returns a temporary error to the *sending* mail server, which then retries on its own schedule for days. Gmail, Exchange Online, and Proofpoint all do this correctly. There is no window in which a letter is accepted and then quietly dropped.
 
-For a service whose central promise is that these letters are preserved permanently and are, for many families, the only surviving copy, losing one is the worst failure available. That makes this a real argument and not a technicality — and it is why Cloudflare stays documented as the fallback rather than being discarded.
+For a service whose central promise is that these letters are preserved permanently and are, for many families, the only surviving copy, losing one is the worst failure available. That makes this a real argument and not a technicality.
 
-**What makes Resend acceptable anyway** is that its gap is much narrower than SendGrid's. Resend stores the message on arrival, independently of whether our endpoint ever answers, retries on a schedule, and leaves it replayable from the dashboard for 30 days. The only failure it doesn't cover is Resend losing data itself. That is a weaker guarantee than "the sender still holds it," but it is a different category from "permanently discarded," which is what the original design was defending against.
+**It also removes an unauthenticated public endpoint.** A webhook is a URL that anyone who discovers it can POST arbitrary bytes to, and ours would write those bytes to Blob Storage and enqueue work. Signature verification mitigates that and any webhook provider would require it — but an Email Worker has no public HTTP surface at all, so the problem does not exist rather than being managed.
 
-**It also means keeping an authenticated public endpoint.** A webhook is a URL anyone who discovers it can POST to, and ours writes to Blob Storage and enqueues work. Svix signature verification is therefore not optional — it is the first thing the intake Function does, before it writes anything. An Email Worker would have removed the problem instead of mitigating it; this is part of what Resend costs.
+**The counterweight is a credential outside Azure.** The Worker needs a storage SAS, which means a long-lived secret living in a third party's edge platform — the one place this design can't use managed identity. Scope it as if it will leak: write-only to `raw/_inbox/`, add-only to the ingest queue, no read on `rendered/`, no delete anywhere.
+
+**And deliverability, for outbound only.** Cloudflare's sending product is young and has no reputation history comparable to Postmark's. The single hardest delivery in this system is a short message containing a claim link, addressed to a Gmail inbox on `missionary.org`, behind Proofpoint — which is the exact shape of a phishing email. That is the worst possible place to bet on an unproven sender, and it is the strongest argument for splitting outbound to a specialist at Phase 8.
 
 **The counterweight is deliverability.** Cloudflare's sending product is young and has no reputation history comparable to SendGrid's or Postmark's. The single hardest delivery in this system is a short message containing a claim link, addressed to a Gmail inbox on `missionary.org`, behind Proofpoint — which is the exact shape of a phishing email. That is the worst possible place to bet on an unproven sender, and it is the strongest argument for keeping outbound where the reputation already is.
 
@@ -230,14 +234,14 @@ Costs shown are **monthly**, in USD, and rounded. Assumes 4 MB average message s
 
 ## Recommendations by stage
 
-**Initial + Low traffic**: **Resend Free.** $0/month, inbound included, and the metadata-only webhook is what makes ingest work behind Static Web Apps. The catch is the shared 100/day, 3,000/mo quota — fine for one missionary at ~20 letters a month, tight the first time someone backfills a full mission in one sitting.
+**Initial + Low traffic**: **Cloudflare.** $0/month, inbound unlimited and uncapped, and it is the only option where a failure is an SMTP error the sending server retries rather than a message we have already taken responsibility for. Nothing about volume forces a decision at this stage.
 
 **Growth**: Three viable paths:
-- **Resend Pro** at $20/mo. No daily cap, 50,000/mo, zero migration. The default.
-- **Move inbound to Cloudflare** and keep Resend for outbound. Unlimited free inbound removes the quota coupling entirely, at the cost of a second runtime and a split telemetry story.
-- **Split: ACS Email for outbound, Resend for inbound.** Buys managed-identity send with no API key to rotate, at the cost of two vendors. ACS cannot receive, so a clean single-vendor move to Azure is not on the table at any price.
+- **Stay on Cloudflare** and add Workers Paid at $5/mo for outbound. Zero friction, one fewer vendor, and inbound stays uncapped.
+- **Split: Cloudflare in, Postmark out** at ~$16.50/mo. Buys the best deliverability reputation available for the claim-link email, which is the hardest delivery in the system.
+- **Split: ACS Email for outbound, Cloudflare for inbound.** Buys managed-identity send with no API key to rotate, at the cost of two vendors. ACS cannot receive, so a clean single-vendor move to Azure is not on the table at any price.
 
-Recommendation: **Resend Pro** unless the quota or a deliverability problem forces the question.
+Recommendation: **stay on Cloudflare for inbound permanently**, and let outbound be decided at Phase 8 by deliverability evidence rather than by cost.
 
 **Scale**: Reconsider. At 1,000 missionaries the pricing spread is large enough to matter:
 - **Amazon SES** (~$17/mo) is the cheapest and handles both directions, at the cost of adding AWS to an all-Azure stack.
@@ -258,7 +262,7 @@ Some teams split "send with X" from "receive with Y." For this project I recomme
 
 **Note that choosing ACS Email forces a split**, since it cannot receive. That is the main argument against it, and it is a stronger one than the cost comparison.
 
-**Cloudflare-in / Resend-out is the one split worth considering**, because it puts each vendor where it is strongest: unlimited free inbound with SMTP-level retry semantics on the irreplaceable half, and a normal REST sending API on the half that has to reach a Gmail inbox. It is still two vendors, two dashboards, and a second runtime — but unlike the ACS split, both halves are chosen rather than forced. **It is also the specific move to make if the shared quota becomes the binding constraint**, since it decouples receiving from sending completely.
+**Cloudflare-in / Postmark-out is the one split worth considering**, because it puts each vendor where it is strongest: SMTP-level retry semantics on the irreplaceable half, and an established sender reputation on the half that has to reach a Gmail inbox behind Proofpoint. It is still two vendors and two dashboards — but unlike the ACS split, both halves are chosen rather than forced.
 
 ## Deliverability tips (all providers)
 
@@ -274,24 +278,25 @@ We are starting on Cloudflare. If we later need to move:
 
 | Move | Effort | Rationale |
 |---|---|---|
-| Resend → Cloudflare (receive) | ~3–4 days | The designated retreat, and the one to take if the shared quota bites. Change MX, port the intake Function to an Email Worker, mint a narrowly-scoped SAS. Buys unlimited free inbound and SMTP-level failure; costs a second runtime and split telemetry. |
-| Resend → Postmark (receive) | ~3–4 days | Similar webhook shape, but reintroduces the 30 MB SWA request ceiling and has no HMAC signature verification. |
-| Resend → SendGrid or Mailgun (receive) | ~1 week | Same, plus SendGrid's discard-after-retry behavior or Mailgun's undocumented size limit. |
-| Resend → Postmark (send) | ~2–3 days | Swap the REST client and move DKIM records. Worth it only if deliverability disappoints. |
+| Cloudflare → Resend (receive) | ~3–4 days | The designated retreat. Change MX, port the Worker to a Svix-verified intake Function, fetch content by API. Its metadata-only webhook is the one that fits behind Static Web Apps without hitting the 30 MB request ceiling. **Budget for Pro at $20/mo** — the Free quota is the reason we aren't there already. |
+| Cloudflare → Postmark (receive) | ~1 week | Same shape, plus a 30 MB request ceiling with no headroom and no HMAC webhook signing. |
+| Cloudflare → SendGrid or Mailgun (receive) | ~1 week | Same, plus SendGrid's discard-after-retry behavior or Mailgun's undocumented size limit. |
+| Cloudflare → Postmark or Resend (send) | ~2–3 days | Swap the send binding for a REST client and move DKIM records. Reply threading has to be rebuilt by hand, since nothing else has `message.reply()`. |
 | Anything → ACS Email (receive) | **impossible** | ACS cannot receive mail. |
 | Anything → M365 (send) | Not recommended | Not designed for programmatic transactional send at any real volume. |
 | Anything → Amazon SES | ~1 week per direction | Full-fat AWS setup; adds cross-cloud IAM. |
 
 ## Bottom line
 
-**Decision: Resend for inbound, on the Free plan, with Cloudflare as the documented fallback.**
+**Decision: Cloudflare for inbound, revisit outbound at Phase 8.**
 
-- **Resend for ingest.** MX on the apex of `pdayletters.com`, a Svix-verified webhook carrying metadata only, and a Function that pulls the raw MIME by API and streams it to Blob Storage. **The metadata-only webhook is what makes it work behind Static Web Apps** — every other webhook provider posts the full message and sits directly under the 30 MB request ceiling.
-- **Nothing leaves Azure.** Storage writes happen inside a Function using managed identity. The Cloudflare design would have required exporting a long-lived SAS into a third party's secret store, and put the component that touches every message on a second runtime reporting to a second telemetry system.
-- **Retries are idempotent.** The server-assigned `email_id` names the blob, so a retry overwrites instead of duplicating — a property the Worker design had to solve by hand.
-- **⚠️ The quota is the real cost, and it is shared.** Free is 100/day and 3,000/month **across inbound and outbound combined**. A full-mission backfill is ~100 letters, exactly at the cap, and from Phase 8 sending competes with receiving. **Pro at $20/mo removes the daily limit**; treat the upgrade as triggered by the first real backfill or by Phase 8, whichever comes first. Cloudflare's unlimited free inbound remains the strongest argument against this choice.
-- **Two unknowns to close before real letters depend on it:** what inbound mail does when the quota is exhausted, and what Resend's maximum inbound message size actually is. Neither is documented.
-- **Outbound stays open until Phase 8.** Resend is the default now that it's already in the stack, with **Postmark as the deliverability fallback** — the hardest delivery in this system is a claim link into a Gmail inbox behind Proofpoint.
+- **Cloudflare Email Routing for ingest.** MX on the apex of `pdayletters.com`, an Email Worker that streams the raw MIME straight to Blob Storage and enqueues the ULID. Inbound is unlimited, uncapped, and free on every plan, and it is the only option where a failure is an SMTP error the sending server retries rather than a message we have already accepted responsibility for.
+- **Uncapped inbound is what decided it.** Resend's design is better in almost every respect downstream of ingest, but its Free plan counts received mail against a 100/day allowance shared with outbound — and **documents nothing about what happens when that cap is hit**. Bulk-forwarding an entire mission's letters in one sitting is a first-class supported scenario, it lands squarely on that limit, and the mail involved cannot be re-sent. That is the wrong place for an undocumented failure mode at any price.
+- **It removes a public endpoint rather than securing one.** Every webhook-based provider requires us to stand up a URL and then defend it. The Worker has no HTTP surface at all, and it never traverses Static Web Apps, so the **30 MB SWA request limit stops applying**.
+- **Two vendors total.** Everything is Azure or Cloudflare, and Cloudflare is already the DNS provider — so inbound mail adds no new relationship, bill, or account to secure. **The honest cost is runtimes, not vendors**: an Email Worker alongside Azure Functions means the component that touches every message reports to Workers Logs while everything else reports to App Insights, and it needs a storage SAS living outside Azure. Both are accepted deliberately.
+- **This puts Stage 1 at $0 for email**, and combined with SWA Free it keeps the whole service to storage costs until real users arrive.
+- **Outbound stays open until Phase 8.** Cloudflare's own sending ($5/mo, 3,000 included) is the default, but its reputation is young and the hardest delivery in this system — a claim link into a Gmail inbox behind Proofpoint — is the worst place to bet on that. **Postmark is the fallback for deliverability, Resend for ergonomics.** Verify Cloudflare's outbound header allowlist before committing: the design needs `In-Reply-To`, `References`, `Auto-Submitted`, `List-Unsubscribe`, and `List-Unsubscribe-Post`, and custom headers are allowlist-controlled.
+- **Resend remains the designated fallback for inbound**, at Pro rather than Free. If Cloudflare disappoints, it is the only webhook provider whose design avoids the serverless request-size problem, and it stores messages on arrival so a dead endpoint loses nothing.
 - **Do not pick ACS Email.** It cannot receive mail, so it can only ever be half the solution.
 - **Do not pick Mailgun.** Its maximum inbound message size is published nowhere and its retention docs contradict each other.
 - **Never use M365 for outbound at scale.** Fine for early prototypes; migrate off before opening to non-family users.
