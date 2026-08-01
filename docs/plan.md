@@ -66,14 +66,14 @@ Three of the constraints above cannot be verified until someone with a real `@mi
     writes email       │         │                    reads
                        ▼         ▼                      │
             ┌──────────────────────────┐                ▼
-            │  Cloudflare Email Routing│      ┌──────────────────┐
-            │  MX on all 4 domains,    │      │  Static Web App  │◄─ Google / MS
+            │  Resend (MX on apex)     │      ┌──────────────────┐
+            │  pdayletters.com         │      │  Static Web App  │◄─ Google / MS
             │  post@ · claim@ only     │      │  (Free tier)     │      auth
             └───────────┬──────────────┘      │  /{missionary}   │
-                        │ in-SMTP             └────────┬─────────┘
+                        │ webhook             └────────┬─────────┘
                         ▼                              │ x-ms-client-
             ┌──────────────────────────┐               │  principal
-            │  Email Worker            │               ▼
+            │  Intake Function         │               ▼
             │  dump raw + enqueue.     │   ┌──────────────────────────┐
             │  No parsing. No logic.   │   │  Functions API           │
             └───────────┬──────────────┘   │  /api/content/{slug}/…   │
@@ -116,29 +116,22 @@ Every surface carrying the product name — the public landing page, the site he
 
 ### Domains
 
-Four registered domains, one canonical:
+**One domain: `pdayletters.com`.** All web UI, auth, mail, and outbound links point here.
 
-| Domain | Role |
-|---|---|
-| **`pdayletters.com`** | **Canonical.** All web UI, auth, and outbound-email links point here. |
-| `pdayemail.com` | 301 → `pdayletters.com` via a Cloudflare Redirect Rule, all paths preserved. |
-| `pday.email` | 301 → `pdayletters.com` via a Cloudflare Redirect Rule, all paths preserved. |
-| `missionaryjournal.org` | 301 → `pdayletters.com` via a Cloudflare Redirect Rule, all paths preserved. |
+Three other names were registered speculatively — `pdayemail.com`, `pday.email`, and `missionaryjournal.org` — and are **deliberately not used**. Serving them would mean a second MX path, a second entry in `ACCEPTED_INGEST_DOMAINS`, redirect rules to maintain, and a fourth spelling of the address for people to get wrong. None of that buys a user anything: everyone is told one address, and that address is the only one that has ever been advertised. They can be redirected later if a real need appears, or allowed to lapse.
 
-**Redirects happen at Cloudflare, not at Static Web Apps.** DNS already lives there for inbound mail, Redirect Rules cost nothing, and keeping the three aliases off the SWA resource matters: the **Free tier allows only 2 custom domains**, so `pdayletters.com` plus `www` is exactly the budget. Attaching all four would force the Standard plan on domain count alone.
+**Why one canonical web domain rather than several?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no user benefit. It also keeps the site inside the SWA **Free plan's 2-custom-domain limit** (`pdayletters.com` plus `www`), so the tier is decided by the auth requirement in Phase 3 and nothing else.
 
-**Why one canonical web domain instead of serving all four?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no real user benefit given the redirect model already puts users on the canonical domain within one round-trip.
-
-**Two shared addresses, accepted on all four domains.** There is no per-missionary ingest address — everyone everywhere is told to use the same two:
+**Two shared addresses.** There is no per-missionary ingest address — everyone everywhere is told to use the same two:
 
 | Address | Verb | Who may use it |
 |---|---|---|
 | **`post@pdayletters.com`** | "Publish this letter." | Anyone. The classifier decides what's accepted. |
 | **`claim@pdayletters.com`** | "I am this missionary; give me control of my site." | `@missionary.org` senders only, DMARC-verified. Everything else is ignored without reply. |
 
-Both exist on `pdayemail.com`, `pday.email`, and `missionaryjournal.org` as well; `pdayletters.com` is the canonical form used in all instructions.
+Resend is catch-all, so *every* address at the domain is accepted at SMTP. The classifier honours exactly these two local-parts and silently drops the rest; there is no separate alias configuration to keep in sync.
 
-The target letters site is determined from **who wrote the letter**, not from which address received it — see [Sender-based routing](#sender-based-routing). The accepted-domain list is a Function app setting (`ACCEPTED_INGEST_DOMAINS`), not a config blob; it changes roughly never.
+The target letters site is determined from **who wrote the letter**, not from which address received it — see [Sender-based routing](#sender-based-routing). The accepted-domain list is a Function app setting (`ACCEPTED_INGEST_DOMAINS`), not a config blob; it holds one value today and changes roughly never.
 
 **Why two addresses rather than one?** `post@` and `claim@` express different *intents*, and separating them is what lets the `post@` path stay completely silent for missionaries. If a single address had to serve both, the system would have to infer intent — typically "reply if this sender isn't on the ACL yet" — which would send an unsolicited email to exactly the missionary whose parent is building a surprise site. An explicit address makes the request unambiguous and makes replying safe, because sending to `claim@` *is* the consent to be replied to.
 
@@ -249,41 +242,51 @@ No similarity scoring, no weights, no threshold.
 
 **Post ordering:** posts are sorted by the **original `Date:` header**, not `receivedAt`. Forwards land in their correct historical position in the timeline. `receivedAt` is retained on each post for audit and for a "Recently added" ribbon in the reader UI.
 
-### Email ingestion — Cloudflare Email Routing
+### Email ingestion — Resend
 
-**Decision: Cloudflare Email Routing with an Email Worker.** Six providers were compared on inbound handling; see [docs/email-options.md](email-options.md). Three properties decided it:
+**Decision: Resend.** Six providers were compared on inbound handling; see [docs/email-options.md](email-options.md). Cloudflare Email Routing was the runner-up and remains the documented fallback. Three properties decided it:
 
-1. **A failure is an SMTP error, not a lost letter.** Every webhook-based provider accepts the message first and then tries to hand it to us. Cloudflare's handler runs *inside the SMTP transaction*, so a failure returns a temporary error and the **sending** server retries for days. Gmail, Exchange Online, and Proofpoint all do this correctly.
-2. **There is no public endpoint to defend.** A webhook is a URL anyone can POST arbitrary bytes to; it has to be authenticated, rate-limited, and worried about. An Email Worker has no HTTP surface.
-3. **It never traverses Static Web Apps**, so the **30 MB SWA request-size limit does not apply**. A webhook-based ingest would sit directly under that ceiling — SendGrid's own inbound maximum is also 30 MB, leaving no headroom at all.
+1. **The webhook carries metadata only.** No body, no headers, no attachments — you fetch those afterward from the Received Emails API. Resend states this is deliberate, "to support large attachments in serverless environments that have limited request body sizes." **The 30 MB SWA request-size limit therefore never applies**, which is otherwise a hard ceiling that a conventional webhook ingest sits directly underneath.
+2. **Nothing leaves Azure.** Every storage write happens inside a Function using managed identity. The Cloudflare design required exporting a long-lived Azure SAS into a third party's secret store; this one exports no credential at all.
+3. **One runtime, one telemetry story.** An Email Worker would have put the component that touches *every* message on a different platform, reporting to Workers Logs while everything else reports to App Insights.
 
-Inbound is unlimited and free on every Cloudflare plan, which puts Stage 1 at $0. The cost is that all four domains must use Cloudflare nameservers, and the Worker is a second runtime alongside Azure Functions.
+**Setup:** MX on the apex of `pdayletters.com` points at Resend, which is catch-all — every address at the domain is accepted. The `to` field is read only to select a verb (`post@` vs `claim@`); everything else is dropped by the classifier.
 
-**Setup:** MX on the apex of each accepted domain points at Cloudflare. A single Email Worker handles every address on every domain; the `to` field is read only to select a verb (`post@` vs `claim@`), never a destination.
+#### The intake Function must be almost too dumb to fail
 
-#### The Worker must be almost too dumb to fail
+The intake Function does exactly three things:
 
-The Worker does exactly two things:
-
-1. Stream `message.raw` verbatim into `raw/_inbox/{ulid}.raw`.
-2. Enqueue `{ulid}` on the ingest queue.
+1. Verify the Svix webhook signature. A bad signature returns `403` and writes nothing.
+2. `GET` the raw MIME from the `raw.download_url` on the Received Emails API and stream it verbatim into `raw/_inbox/{email_id}.raw`.
+3. Enqueue `{email_id}` on the ingest queue.
 
 No parsing, no classification, no slug resolution, no ACL lookup, no dedup, no `posts.json` read, no outbound email. All of that happens in a **separate queue-triggered ingest Function** where a failure is retried from durable storage and eventually dead-lettered for inspection rather than lost.
 
-The reasoning is the same as it would be for a webhook, but the payoff is larger. If the blob write fails, the Worker throws, Cloudflare returns a temporary failure to the sending MTA, and that server still holds the only copy and will try again. **There is no window in which the message has been accepted and then lost.**
+**Failure of any step returns non-2xx, and Resend retries.** The message is durably stored on Resend's side the moment it is accepted, independently of whether our endpoint ever answers, and remains replayable from the dashboard for the retention window. That is a weaker guarantee than an SMTP-level rejection, where the sending server never lets go — but it covers every realistic failure short of Resend losing data itself.
 
 **Consequences worth noting:**
 
-- The Worker holds Azure credentials at Cloudflare's edge. Use a **narrowly scoped SAS granting write-only access to `raw/_inbox/` and add-only access to the ingest queue**, stored as a Worker secret and rotated on a schedule. It must not be able to read `rendered/`, and it must not be able to delete anything.
+- **Name the blob after Resend's `email_id`, never a generated ULID.** The ID is server-assigned and stable across webhook retries, so a retry overwrites the same blob instead of creating a duplicate. This is the quiet advantage of the pull model: retries are idempotent for free.
+- **The raw download URL expires about an hour after issue.** Fetch it immediately; never persist it. If a retry arrives after expiry, re-call the Received Emails API for a fresh URL rather than reusing the one in the original event.
 - `raw/_inbox/` accumulates payloads for messages that are ultimately rejected. A lifecycle rule deletes `_inbox/` blobs after 30 days; accepted messages are copied into `raw/{slug}/{msgId}/` by the ingest Function and are unaffected.
 - Rejected mail therefore *is* briefly on disk. This is a deliberate trade: 30 days of quarantined spam in a private container is a much smaller cost than permanently losing a real letter to a parser bug.
-- **Message size ceiling is 25 MiB**, above which Cloudflare rejects at SMTP and the sender gets a bounce from their own provider. Gmail caps outbound attachments at 25 MB, so Gmail senders hit their own limit first. Tighter than SendGrid's 30 MB, but it fails visibly rather than silently.
-- **`setReject()` is deliberately not used for spam.** A permanent SMTP error tells a prober which addresses exist. Unrecognized senders are accepted and dropped silently by the ingest Function, exactly as before — SMTP rejection is reserved for messages we genuinely cannot store.
-- Workers Free imposes CPU and memory limits on email handlers that a 25 MiB stream could plausibly exceed. Move ingest to **Workers Paid ($5/mo)** before real letters depend on it.
+- **Retention is 30 days on Resend's side**, and their copy is a convenience, not the archive. The blob write is what makes a letter permanent, and it happens within seconds of receipt.
+
+#### The quota is shared between inbound and outbound
+
+Resend counts a *received* email against the same allowance as a sent one: **100/day and 3,000/month on the Free plan, combined across both directions.** This has three consequences the design has to respect.
+
+- **A first backfill can hit the daily cap.** Two years of weekly letters is roughly 100 messages — exactly the Free limit, in the one sitting the plan expects to happen first. Either spread a large backfill across days or move to Pro for that month.
+- **From [Phase 8](#phase-8--outbound-mail-and-preferences), sending competes with receiving.** Every ack, digest, and reminder consumes headroom that inbound letters also need. Nothing else in this design couples those two, and it is the strongest argument for leaving Free before outbound goes live.
+- **What happens to inbound mail at the cap is undocumented.** `daily_quota_exceeded` is described as a `429` on the API; whether inbound SMTP receives a 4xx (harmless — the sender retries) or something that loses the message is not stated anywhere. **Confirm this before any irreplaceable letter depends on it** — see [Open questions](#open-questions-to-confirm).
+
+**Pro ($20/mo) removes the daily cap entirely** and raises the pool to 50,000/month. Treat the upgrade as triggered by the first real backfill or by Phase 8, whichever comes first, rather than by a cost review.
+
+**Maximum inbound message size is not documented anywhere.** Gmail caps outbound attachments at 25 MB, so Gmail senders hit their own limit first and get a bounce from their own provider — but we should establish Resend's real ceiling empirically during Phase 1 rather than discover it with someone's letter.
 
 ### Missionary routing
 
-**Path-based on the canonical domain**: `pdayletters.com/{missionary-slug}` (see [Domains](#domains); the three non-canonical domains 301-redirect here so all paths continue to resolve).
+**Path-based on the canonical domain**: `pdayletters.com/{missionary-slug}` (see [Domains](#domains)).
 - One TLS certificate, one origin, no CORS quirks for the future offline packager.
 - **Slug is the raw local-part of the missionary's `@missionary.org` email**, lowercased. **No other transformation** — dots, underscores, and hyphens are kept verbatim. Examples:
   - `elder.smith@missionary.org` → `elder.smith`
@@ -303,7 +306,7 @@ Single storage account, cool-tier by default (photos rarely re-read after postin
 ```
 raw/                                   Preserved archive. Write-once by
   _inbox/                              convention; container-level
-    {ulid}.raw                         soft-delete + versioning enabled.
+    {email_id}.raw                     soft-delete + versioning enabled.
                                        Verbatim webhook payloads awaiting
                                        processing. 30-day lifecycle rule.
   {missionary-slug}/
@@ -344,7 +347,7 @@ books/                                 Journal Publish output. Built on
                                        order id
 ```
 
-Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the webhook to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
+Plus one **Storage Queue** (`ingest`) carrying `_inbox` message IDs from the intake Function to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
 
 **`raw/` is an internal asset and is never handed to anyone.** No API route serves it, and it is not in the offline export. Its whole purpose is *reprocessing* — re-rendering history when the sanitizer or the forward extractor improves, re-running `_inbox/` after a classifier fix, and standing as the DMARC-verified evidence of authorship behind an [ownership dispute](#the-60-day-cliff). Every one of those is something the service does *to* `raw/`, not something a user reads out of it.
 
@@ -422,7 +425,7 @@ All blob containers are private, with public access disabled at the account leve
 
 **Private content delivery is Functions-mediated, and Functions on Consumption scale to zero.** The first API call a reader makes after sign-in is `/api/content/{slug}/posts.json`, which pays a ~1–3 s Node cold start on a site nobody has visited for a while. Photos are unaffected — they can't be requested until `posts.json` has returned, by which point the app is warm. Static Web Apps authentication is handled by the SWA platform rather than by a managed Function, so signing in does *not* pre-warm anything; `posts.json` is the warm-up. Given a weekly visit cadence this is acceptable, and `Cache-Control: private, max-age=3600` keeps repeat views off the Function entirely.
 
-**Standard tier does not, on its own, fix this.** Supporting Google auth forces Standard (custom identity providers aren't available on Free), but SWA *managed* functions still run on Consumption at any tier — Standard raises limits, it doesn't add always-ready instances. What Standard buys is the **escape hatch**: it permits a linked backend, so the API can be moved to a separately-deployed Function App on Flex Consumption with always-ready instances if telemetry ever justifies the extra resource and cost. Note that ingest is unaffected either way — the Email Worker runs at Cloudflare's edge and has no cold start.
+**Standard tier does not, on its own, fix this.** Supporting Google auth forces Standard (custom identity providers aren't available on Free), but SWA *managed* functions still run on Consumption at any tier — Standard raises limits, it doesn't add always-ready instances. What Standard buys is the **escape hatch**: it permits a linked backend, so the API can be moved to a separately-deployed Function App on Flex Consumption with always-ready instances if telemetry ever justifies the extra resource and cost. Cold start is not a correctness risk on the intake path: Resend retries a failed webhook, so a slow first invocation costs latency rather than a letter.
 
 **A keep-alive ping is rejected.** A five-minute timer would burn roughly 100,000 executions a month to save a second or two on a weekly visit, and it would hide the cold start from telemetry rather than remove it — so the first signal that the API is too slow would be a complaint rather than a metric. The one or two seconds on first load is accepted as the cost of a scale-to-zero backend; the linked backend above is the fix if it ever matters.
 
@@ -888,11 +891,12 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 | Static Web Apps | **Free** through Phase 2, **Standard** from Phase 3 | Web UI + auth + managed Functions. Standard is required only once Google is added — custom identity providers aren't available on Free. | $0 → ~$9 |
 | Azure Functions | Consumption (via SWA managed) | Ingest, render, content delivery, operator API, pending purge timer, deletion purge timer, digest timer | ~$0 |
 | Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users`/`memberships` tables + `ingest`/`render` queues | <$3 for years of data |
-| Cloudflare | Workers Free → **Workers Paid** | DNS, Email Routing (inbound, unlimited and free), the ingest Email Worker, and 301 redirect rules for the three alias domains | $0 → $5 |
-| Key Vault | Standard | Outbound provider key, Lulu OAuth secret, HMAC token-signing key | ~$0.03 |
-| Custom domains + certs | SWA (canonical) + Cloudflare (aliases) | `pdayletters.com` on SWA; the 3 redirect entry points never touch Azure | $0 (certs are managed) |
+| Resend | **Free** → **Pro** at first backfill or Phase 8 | Inbound MX + webhook, and outbound from Phase 8. Free is 100/day and 3,000/mo **shared across both directions**; Pro removes the daily cap. | $0 → $20 |
+| Key Vault | Standard | Resend API key, Lulu OAuth secret, HMAC token-signing key | ~$0.03 |
+| DNS | Cloudflare (free) | Authoritative DNS for `pdayletters.com`, including MX and DKIM records | $0 |
+| Custom domains + certs | Managed by SWA | `pdayletters.com` + `www` — exactly the Free plan's limit of 2 | $0 (certs are managed) |
 
-**Rough total: $0–3/month through Stage 1**, rising to **~$17–20/month** once Google auth (SWA Standard) and outbound mail (Workers Paid) are both live. The two Stage-1 line items that were previously assumed — SWA Standard and a mail provider — are both deferred to the phases that actually need them.
+**Rough total: $0–3/month through Stage 1**, rising to **~$30/month** once Google auth (SWA Standard, ~$9) and outbound mail (Resend Pro, $20) are both live. Both of those Stage-1 line items were previously assumed from day one and are now deferred to the phases that actually need them.
 
 **GRS rather than LRS on storage.** LRS keeps three copies in a single datacenter, which does not survive a regional loss — an awkward fit for a service whose central promise is that these letters are preserved permanently and are, for many families, the only surviving copy. The delta is roughly a dollar a month at this scale. If the cost ever matters, the right narrowing is GRS on `raw/` only (the irreplaceable data) with LRS on `rendered/`, which is fully reconstructible from `raw/`.
 
@@ -915,10 +919,10 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - Storage account (GRS): containers `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
 - App Insights instance (for rejection logging and general telemetry).
 - Key Vault + managed identity for Functions. No provider API key is needed yet — nothing sends until Phase 8.
-- **Move all four domains to Cloudflare nameservers.** They are on Namecheap today. Do this first: MX, DKIM, and the redirect rules all depend on it, and propagation is the one step that can't be hurried.
-- Static Web App on the **Free plan**, with `pdayletters.com` as a custom domain. **Stage 1 needs only the Microsoft identity provider**, which is built in. Free allows 2 custom domains, which is exactly `pdayletters.com` plus `www` — the three redirect domains live at Cloudflare instead, so they cost nothing here. Google is a *custom* provider and forces Standard; it arrives in Phase 3, before anyone outside the ACL sees content.
+- **Point `pdayletters.com` at Cloudflare DNS.** Do this first — MX and DKIM both depend on it, and propagation is the one step that can't be hurried. The other three registered domains are not used; see [Domains](#domains).
+- Static Web App on the **Free plan**, with `pdayletters.com` as a custom domain. **Stage 1 needs only the Microsoft identity provider**, which is built in. Free allows 2 custom domains, which is exactly `pdayletters.com` plus `www`. Google is a *custom* provider and forces Standard; it arrives in Phase 3, before anyone outside the ACL sees content.
 - Set `ACCEPTED_INGEST_DOMAINS`, and `MISSIONARY_DOMAINS` to the real `missionary.org` — no stand-in is needed, because the letters being forwarded are genuine missionary mail. `OPERATOR_EMAILS` is a Stage 2 setting: with one site and one user, that site's own ACL is the entire authorization model.
-- **Enable Cloudflare Email Routing on `pdayletters.com`**, MX on the apex, with a catch-all route bound to the Email Worker. Set the DKIM CNAMEs and the DMARC policy now as well, with sending subdomain `mail.pdayletters.com`, even though nothing sends until Phase 8 — sender reputation benefits from age, and unused records cost nothing. **The outbound provider is a Phase 8 decision, not this one**; inbound is unlimited and free on every Cloudflare plan, so Stage 1 costs nothing either way. The three redirect domains are Stage 2.
+- **Provision Resend and add its MX record** to `pdayletters.com`, plus a webhook subscribed to `email.received`. Set the DKIM records and the DMARC policy now as well, with sending subdomain `mail.pdayletters.com`, even though nothing sends until Phase 8 — sender reputation benefits from age, and unused records cost nothing. Store the API key and the Svix webhook secret in Key Vault. **Free is adequate for Stage 1** but its 100/day allowance is shared with outbound; see [the quota warning](#the-quota-is-shared-between-inbound-and-outbound).
 - **Mint the ingest SAS**: write-only on `raw/_inbox/`, add-only on the `ingest` queue, no read, no delete. Store it as a Worker secret. This credential lives outside Azure, so it gets the narrowest scope in the system.
 - Write `config/{slug}/acl.json` and `profile.json` by hand: one `owner` entry, one display name.
 - **A reset script.** Wiping a slug must be one command — `raw/{slug}/`, `rendered/{slug}/`, and the `_inbox` residue, **including soft-deleted versions and blob versions**, or every iteration of the loop silently accretes storage that soft-delete is designed to keep. It is also the honest first draft of the deletion purge in Phase 9.
@@ -927,8 +931,8 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 **Forward-only.** `direct` exists as a classifier branch and is covered by fixtures, but nothing exercises it until [Phase 6](#phase-6--direct-ingest).
 
 - **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail. `direct`-path fixtures use hand-written `Authentication-Results` headers covering pass, fail, and absent cases until a real account exists.
-- **Email Worker**: streams `message.raw` to `raw/_inbox/{ulid}.raw`, enqueues the ULID, and does nothing else. On any failure it **throws rather than swallowing**, so Cloudflare returns a temporary SMTP error and the sending server keeps the only copy and retries. Deploy with Wrangler; keep it in this repo alongside the Functions so the two ship together.
-- **Worker telemetry goes to Workers Logs, not App Insights.** That is the real cost of a second runtime: the first component to touch every message reports somewhere else. Accept it for Stage 1, but treat a Worker-side error rate as something you must remember to look at — nothing in Azure will tell you.
+- **Intake Function**: verifies the Svix signature, fetches the raw MIME from `raw.download_url`, streams it to `raw/_inbox/{email_id}.raw`, enqueues the ID, and does nothing else. Any failure returns non-2xx so Resend retries; the blob is named after Resend's own `email_id`, so a retry overwrites rather than duplicates. A bad signature returns `403` and writes nothing.
+- **Establish Resend's real inbound size ceiling here**, empirically. It is documented nowhere, and Phase 1 — with a fixture corpus and no real letters at stake — is the only cheap place to find it.
 - Queue-triggered ingest Function:
   - Classifier per the [message classification](#message-classification) table, with only the `forward` branch live. DKIM re-verification against `missionary.org`'s public key for the embedded `.eml`.
   - **Report the DKIM re-verification result explicitly**, pass or fail, rather than folding a failure into the silent-rejection path. Re-verifying a real forward of recent missionary mail is the first honest test of whether that check is viable at all — DKIM keys rotate, and the plan leans on re-verification for a use case that explicitly includes letters forwarded years later.
@@ -984,7 +988,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 Until this ships, sites are hand-provisioned. This is what makes the service self-serve.
 
 - Create the `pending/` container and the `users` table. Add the HMAC token-signing service (key from Key Vault).
-- **The three redirect domains go live**, deferred from Phase 0 and needed now: MX on each apex so `post@` and `claim@` are accepted there too, added to `ACCEPTED_INGEST_DOMAINS`, plus **Cloudflare Redirect Rules** issuing 301s to `pdayletters.com` with all paths preserved. They never attach to the Static Web App, which keeps it inside the Free plan's 2-domain limit until Google auth forces Standard anyway. Until this phase every message came from one person who knew the canonical address; from here the addresses go to strangers who may have been told any of the four.
+- **Move to Resend Pro** if it hasn't happened already. Self-serve onboarding is the point at which inbound volume stops being predictable, and the Free plan's 100/day allowance is shared with every ack and invitation this phase introduces.
 - **De-duplication**, which promotion cannot work without: exact `originalMessageId` match first, then the sender+day hard gate plus normalized subject / `bodyHead100` matching per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Ingest becomes conditional — on match-miss, append and write `raw/`; on match-hit, touch neither. This is the first point where duplicates are inevitable rather than self-inflicted: a pending site accumulates forwards from several relatives alongside the missionary's own `direct` copies, and promotion deduplicates the whole backlog in one pass.
 - **Arrival order needs no tie-breaking.** A letter must be sent before it can be forwarded, so the `direct` copy normally arrives first and first-write-wins is correct by default. The one inversion is a message replayed from `_inbox/` after a classifier fix, landing after a forward that already published — where keeping the published post is still the right answer.
 - **Pending sites and claim** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`; a claim email to the forwarder, or the tapering invitation series to a missionary whose own `direct` messages created the site, driven by `claimEmailSentAt` / `claimEmailCount` and always sent as a reply to an arriving letter; **an anonymous-allowed `/claim/{token}` landing page** showing the missionary's name, waiting counts, and sample subjects before any sign-in, threading `post_login_redirect_uri` back to itself, then establishing the first owner, collecting the display name, and promoting accumulated raw; **a failure page** for spent, stale, or already-claimed tokens, including "email me a new link" restricted to previously-emailed addresses and rate-limited per pending site; claim tokens sharing the pending site's rolling `expiresAt`; one day-7 reminder per pending site to forwarders only; rolling `expiresAt` reset on every message, at 60 days once `hasDirect` is set and 14 days otherwise; timer-triggered purge when the window lapses.
@@ -1042,7 +1046,13 @@ Feature-specific questions stay with their own sections. This one spans the serv
 
 1. **There is no way to contact a human.** Every path in this document that ends in "a service operator decides" — an abuse report, an ownership dispute after the [60-day cliff](#the-60-day-cliff), a missionary who finds a site about themselves — assumes the person can reach us, and nothing anywhere tells them how. [pitch.md](pitch.md) doesn't either. The likely answer is a monitored address on the public landing page and in the email footer, but it needs deciding before the pilot rather than after: the first person who needs it will be the one least able to wait.
 
-2. **What `Authentication-Results` header does Cloudflare actually produce?** The classifier reads SPF/DKIM/DMARC results rather than computing them, so its input format is now Cloudflare's rather than SendGrid's. Confirm the exact shape against a real `missionary.org` message routed through Proofpoint before writing the parser — this is the same [building blind](#building-blind) risk as before, just pointed at a different vendor.
+2. **What `Authentication-Results` header does Resend actually produce?** The classifier reads SPF/DKIM/DMARC results rather than computing them, so its input format is the provider's. Confirm the exact shape against a real `missionary.org` message routed through Proofpoint before writing the parser — this is the [building blind](#building-blind) risk, pointed at Resend.
+
+3. **What happens to inbound mail when the Resend quota is exhausted?** `daily_quota_exceeded` is documented as a `429` on the API. Whether an inbound message arriving over the cap gets a 4xx at SMTP — harmless, because the sending server retries — or is accepted and dropped is documented nowhere. **This is the highest-priority unknown in the plan**, because the answer decides whether the Free tier can ever be trusted with a real letter. Test it deliberately before Phase 1 ends.
+
+4. **What is Resend's maximum inbound message size?** Not published. Gmail's own 25 MB attachment cap means Gmail senders bounce first, but forwards from other clients could exceed it silently. Establish it empirically in Phase 1.
+
+5. **Does Resend support the headers Phase 8 needs?** `In-Reply-To`, `References`, `Auto-Submitted`, `List-Unsubscribe`, and `List-Unsubscribe-Post` all have to survive on outbound mail for reply threading and one-click unsubscribe to work. Verify before Phase 8, not during it.
 
 3. **Is Cloudflare's outbound header allowlist compatible with the design?** Custom headers on sent mail are allowlist-controlled (`E_HEADER_NOT_ALLOWED`). Phase 8 needs `In-Reply-To`, `References`, `Auto-Submitted`, `List-Unsubscribe`, and `List-Unsubscribe-Post`. If any are blocked, reply threading or one-click unsubscribe has to move to another provider. **Verify before Phase 8, not during it** — this is the single fact that decides whether Cloudflare can be the outbound provider at all.
 
