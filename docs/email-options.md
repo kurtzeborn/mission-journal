@@ -62,26 +62,40 @@ Verified against Cloudflare's docs, August 2026. **This is no longer routing-onl
 
 ### Postmark
 
-- **Pricing**: no free tier. Inbound is included in the outbound message count (each inbound message costs one "message credit").
-  - $15/mo for 10K messages
-  - $50/mo for 50K
-  - $115/mo for 150K
-  - $175/mo for 300K
-- **Attachment limit**: 10 MB by default (upgradeable to 25 MB by request).
-- **Deliverability**: Regarded as the best in the industry for transactional email.
-- **Custom domain**: DKIM + return-path setup via DNS. Free.
+- **Pricing** (at 10K messages/mo): Free $0 (100/mo), Basic $15, Pro $16.50, Platform $18. The pricing page asks how many emails you "send **and receive**," so inbound consumes quota.
+- **Inbound is not on every tier.** Free, Pro, and Platform include Inbound Email; **Basic does not**. The cheapest usable inbound tier is therefore **Pro at $16.50/mo**, not the $15 headline.
+- **Inbound size**: cumulative attachments may not exceed **35 MB** — the most generous of the six.
+- **Failure handling**: 10 retries over roughly 10 hours (1 min → 6 hrs), then the message is marked *Inbound Error*. It is **retained and replayable** via `PUT /messages/inbound/{id}/retry` for the retention period, 45 days by default.
+- **⚠️ No webhook signature verification.** Postmark's docs state plainly that HMAC signing is not supported; the recommended model is **HTTP Basic Auth credentials embedded in the webhook URL**, combined with allowlisting their published inbound IPs. A password in a URL is materially weaker than a signature, and SWA IP restrictions are Standard-only and site-wide. This is the strongest argument against Postmark for inbound here.
+- **Domains**: up to 10 on Pro.
+- **Deliverability**: still regarded as the best in the industry for transactional mail.
 
-### Mailgun
+### Mailgun (Sinch)
 
-- **Pricing**:
-  - Free tier: gone as of 2023 (was 5K/mo).
-  - Flex: $15/mo for 10K + $0.80–1.00 per additional 1K
-  - Foundation: $35/mo for 50K
-  - Growth: $80/mo for 100K
-  - Scale: starts at $90/mo, custom for higher volume
-- **Inbound**: "Routes" feature, included on all paid tiers. Free tier is receive-only historically but current status is unclear.
-- **Attachment limit**: 25 MB.
-- **Deliverability**: shared IP on lower tiers; dedicated on Growth+.
+- **Pricing**: Free $0 (100/day), Basic from $15/mo (10K), Foundation $35/mo (50K), Scale $90/mo (100K).
+- **Inbound routes are tiered**: Free gets **1 route**, Basic gets **5**, and only Foundation and above get "full access to inbound routing." Worse, **custom sending domains are capped at 1 on both Free and Basic** — four domains requires **Foundation at $35/mo**.
+- **Inbound size**: **unpublished.** No maximum inbound message size appears anywhere in Mailgun's docs or help center. For a design whose entire risk is 20 MB photo batches, an undocumented limit is worse than a low documented one.
+- **Failure handling**: retries for a total of 8 hours; 406 stops retries immediately. **What happens after exhaustion is undocumented.** The `store()` action retains messages, but the retention figure conflicts across their own sources — 3 days in the docs, "up to 7 days depending on plan" in the help center, and 1 day on Foundation per the pricing page.
+- **Signature verification**: yes, HMAC-SHA256 over `timestamp + token`, plus optional TLS client certificates.
+
+### Resend
+
+The most interesting of the alternatives, because its inbound design solves a problem the others don't.
+
+- **Pricing**: Free $0 (3,000/mo, 100/day, **1 domain**), Pro $20/mo (50,000/mo, 10 domains). Inbound is included on every plan including Free. Whether inbound decrements the quota is not stated — treat as UNVERIFIED.
+- **The webhook carries metadata only** — no body, no headers, no attachments. You fetch content afterward from the Received Emails and Attachments APIs. Resend states this is deliberate: *"This design choice supports large attachments in serverless environments that have limited request body sizes."* **That sidesteps the 30 MB SWA request ceiling entirely**, which no other webhook-based provider here does.
+- **Failure handling**: *"Resend stores emails as soon as they come in"*, so a dead webhook loses nothing. Retries on a published schedule, plus manual replay from the dashboard. Content retention is 30 days — ample, since we copy to Blob within seconds.
+- **Signature verification**: yes, via Svix (`svix-id`, `svix-timestamp`, `svix-signature`).
+- **Catch-all only**: any address at the domain is accepted and forwarded; you filter on `to` yourself. That matches our design, which already ignores everything but two known local-parts.
+- **The binding constraint is domains.** Free allows one, and we need four, so realistic cost is **$20/mo**.
+
+### CloudMailin
+
+An inbound specialist, and the best conceptual fit of the six — priced out of contention.
+
+- **Pricing is tiered on message size**, which is exactly the wrong axis for us: Free 512 KB, Starter $25/mo 2 MB, Professional $45/mo 10 MB, **Premium $85/mo 50 MB**. A 20 MB photo batch means Premium. Every cheaper tier rejects our worst case outright.
+- **All paid plans write attachments directly to S3, Azure Blob, or GCS** — natively the thing we would otherwise hand-roll. At $85/mo it doesn't matter, but it is the single most elegant fit on offer.
+- Custom domains and catch-all receiving on all paid plans.
 
 ### MailerSend
 
@@ -113,6 +127,29 @@ Verified against Cloudflare's docs, August 2026. **This is no longer routing-onl
   - **Not really transactional-grade** — no per-message tracking, no bounce webhooks, no automatic reputation management, and Microsoft actively throttles bulk-looking traffic from tenants.
 - **Attachment limit**: 150 MB per message (but 25 MB is the practical delivery ceiling for the receiving side).
 - **Deliverability**: routed through Exchange Online; fine for tenant-to-consumer at low volume, degrades badly under load.
+
+## Inbound handling, head to head
+
+Inbound is the deciding axis. Outbound is a solved commodity and a Phase 8 decision; inbound is where a letter can be lost forever, and the six candidates differ enormously.
+
+| | Cost for 4 domains | Max inbound size | If our endpoint is down | Webhook auth |
+|---|---|---|---|---|
+| **Cloudflare** | **$0** | 25 MiB | **Sender's own MTA retries for days** — nothing is ever accepted then lost | N/A — no public endpoint exists |
+| **Resend** | $20/mo | not published | Stored on arrival; retries + manual replay; 30-day window | Svix signature |
+| **Postmark** | $16.50/mo | **35 MB** | Stored; 10 retries over ~10 hrs; replayable 45 days | ⚠️ **none** — Basic Auth in the URL + IP allowlist |
+| **Mailgun** | $35/mo | **unpublished** | 8 hrs of retries; **post-exhaustion behavior undocumented** | HMAC-SHA256 |
+| **SendGrid** | $0 | 30 MB | ⚠️ **permanently discarded** | signed webhooks (opt-in) |
+| **CloudMailin** | **$85/mo** | 50 MB (at that price) | — | — |
+
+Three things fall out of this.
+
+**CloudMailin is priced on the one axis that hurts us.** It bills by maximum message size, and our worst case is a 20 MB photo batch, so the first tier that accepts our mail at all is Premium at $85/mo. That's genuinely a shame — it's the only provider here that writes attachments straight into Azure Blob Storage as a built-in feature, which is precisely the thing we'd otherwise write ourselves.
+
+**Mailgun is the weakest credible option**, which is not where its reputation would put it. Four domains forces Foundation at $35/mo (Basic allows exactly one custom domain), its maximum inbound message size is published nowhere, and its own documentation disagrees with its own pricing page about how long `store()` retains a message. For a system whose failure mode is "the only surviving copy of a letter," undocumented limits are disqualifying on their own.
+
+**Resend is the strongest fallback**, and worth understanding even though we aren't choosing it. Its inbound webhook deliberately carries *metadata only* — you fetch the body and attachments separately by API — expressly so that large messages don't have to squeeze through a serverless request-body limit. That is the one design here that neatly dodges the 30 MB SWA request ceiling. If Cloudflare ever falls through and we need a webhook-based provider behind Static Web Apps, Resend is the one to pick, not Postmark or Mailgun.
+
+**And none of them dislodges Cloudflare on the axis that matters most.** Every provider in this table except Cloudflare has the same fundamental shape: accept the message, then try to hand it to us, then cope somehow when that fails. They differ only in how gracefully they cope. Cloudflare alone never accepts responsibility in the first place — a failure is an SMTP error and the sending server holds the message. Gmail, Exchange Online, and Proofpoint all retry correctly for days. That is a categorically different guarantee, not an incrementally better one, and it costs nothing.
 
 ## Durability is the axis Cloudflare wins
 
@@ -225,23 +262,27 @@ Some teams split "send with X" from "receive with Y." For this project I recomme
 
 ## Migration friction ranking
 
-If we start with SendGrid and later want to switch, expected effort:
+We are starting on Cloudflare. If we later need to move:
 
 | Move | Effort | Rationale |
 |---|---|---|
-| SendGrid → ACS Email (send) | ~1 week | Change SDK calls + DNS DKIM records. Business logic unchanged. |
-| SendGrid → ACS Email (receive) | **impossible** | ACS cannot receive mail. Inbound must stay elsewhere, which makes this a split rather than a migration. |
-| SendGrid → Cloudflare (receive) | ~1 week | Move nameservers to Cloudflare, new MX, port the intake Function to a Worker. Classification logic unchanged. Adds a second runtime and splits telemetry away from App Insights. |
-| SendGrid → Cloudflare (send) | ~1 week | New DKIM records + a send binding or REST call. Reply threading maps onto `message.reply()` closely. |
-| SendGrid → Postmark or Mailgun | ~2–3 days | Very similar APIs; mostly a client-library swap. |
+| Cloudflare → Resend (receive) | ~3–4 days | The cleanest retreat. Change MX, add a webhook Function, fetch content by API. Its metadata-only webhook is the one that fits behind Static Web Apps without hitting the 30 MB request ceiling. |
+| Cloudflare → SendGrid (receive) | ~1 week | Change MX, port the Worker back to an intake Function, and reintroduce the discard-after-retry risk plus a 30 MB request ceiling with no headroom. |
+| Cloudflare → Postmark or Mailgun (receive) | ~1 week | Same shape as SendGrid, plus Postmark's missing webhook signatures or Mailgun's undocumented size limit. |
+| Cloudflare → Postmark or Resend (send) | ~2–3 days | Swap the send binding for a REST client and move DKIM records. Reply threading has to be rebuilt by hand, since nothing else has `message.reply()`. |
+| Anything → ACS Email (receive) | **impossible** | ACS cannot receive mail. |
 | Anything → M365 (send) | Not recommended | Not designed for programmatic transactional send at any real volume. |
 | Anything → Amazon SES | ~1 week per direction | Full-fat AWS setup; adds cross-cloud IAM. |
 
 ## Bottom line
 
-- **Start with SendGrid.** Inbound Parse is unlimited and unmetered on every tier, deliverability is best-in-class from day one, and it keeps all compute in Azure Functions. Point **MX at the apex of `pdayletters.com`** at Inbound Parse, and authenticate `mail.pdayletters.com` for sending.
-- **The outbound plan choice is not a Phase 0 decision.** Nothing sends until Phase 8. Phase 0 needs an account, MX, DKIM CNAMEs, and a DMARC record — all of which work on a trial or free account, and none of which depend on the outbound tier.
-- **Authenticate the Inbound Parse webhook.** It is otherwise a public URL that writes attacker-supplied bytes into Blob Storage. Use SendGrid's signed-webhook verification in Phase 1, not later.
-- **Cloudflare is the first alternative to revisit**, and the only one that beats SendGrid on something the project actually cares about — SMTP-level retry semantics mean an accepted letter cannot be silently dropped. Revisit if we ever lose a message to webhook retry exhaustion, if SendGrid's pricing moves, or at the Growth tier where it is roughly half the cost.
+**Decision: Cloudflare for inbound, revisit outbound at Phase 8.**
+
+- **Cloudflare Email Routing for ingest.** MX on the apex of all four domains, an Email Worker that streams the raw MIME straight to Blob Storage and enqueues the ULID. Inbound is unlimited and free on every plan, and it is the only option where a failure is an SMTP error the sending server retries rather than a message we have already accepted responsibility for.
+- **It removes a public endpoint rather than securing one.** Every webhook-based provider requires us to stand up an unauthenticated URL and then defend it. The Worker has no HTTP surface at all, and it never traverses Static Web Apps, so the **30 MB SWA request limit stops applying** — which SendGrid's 30 MB inbound cap would otherwise have sat directly on top of.
+- **This puts Stage 1 at $0 for email**, and combined with SWA Free it keeps the whole service to storage costs until real users arrive.
+- **Outbound stays open until Phase 8.** Cloudflare's own sending ($5/mo, 3,000 included) is the default, but its reputation is young and the hardest delivery in this system — a claim link into a Gmail inbox behind Proofpoint — is the worst place to bet on that. **Postmark is the fallback for deliverability, Resend for ergonomics.** Verify Cloudflare's outbound header allowlist before committing: the design needs `In-Reply-To`, `References`, `Auto-Submitted`, `List-Unsubscribe`, and `List-Unsubscribe-Post`, and custom headers are allowlist-controlled.
+- **Resend is the designated fallback for inbound.** If Cloudflare disappoints, it is the only webhook provider whose design avoids the serverless request-size problem, and it stores messages on arrival so a dead endpoint loses nothing.
 - **Do not pick ACS Email.** It cannot receive mail, so it can only ever be half the solution.
+- **Do not pick Mailgun.** Four domains costs $35/mo, and its maximum inbound message size is published nowhere.
 - **Never use M365 for outbound at scale.** Fine for early prototypes; migrate off before opening to non-family users.
