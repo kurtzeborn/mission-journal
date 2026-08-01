@@ -68,7 +68,7 @@ Three of the constraints above cannot be verified until someone with a real `@mi
             ┌──────────────────────────┐                ▼
             │  Cloudflare Email Routing│      ┌──────────────────┐
             │  MX on pdayletters.com   │      │  Static Web App  │◄─ Google / MS
-            │  post@ · claim@ only     │      │  (Free tier)     │      auth
+            │  post@ · claim@ only     │      │  (Standard tier) │      auth
             └───────────┬──────────────┘      │  /{missionary}   │
                         │ in-SMTP             └────────┬─────────┘
                         ▼                              │ x-ms-client-
@@ -120,7 +120,7 @@ Every surface carrying the product name — the public landing page, the site he
 
 Three other names were registered speculatively — `pdayemail.com`, `pday.email`, and `missionaryjournal.org` — and are **deliberately not used**. Serving them would mean a second MX path, a second entry in `ACCEPTED_INGEST_DOMAINS`, redirect rules to maintain, and a fourth spelling of the address for people to get wrong. None of that buys a user anything: everyone is told one address, and that address is the only one that has ever been advertised. They can be redirected later if a real need appears, or allowed to lapse.
 
-**Why one canonical web domain rather than several?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no user benefit. It also keeps the site inside the SWA **Free plan's 2-custom-domain limit** (`pdayletters.com` plus `www`), so the tier is decided by the auth requirement in Phase 3 and nothing else.
+**Why one canonical web domain rather than several?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no user benefit.
 
 **Two shared addresses.** There is no per-missionary ingest address — everyone everywhere is told to use the same two:
 
@@ -882,14 +882,14 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 
 | Resource | SKU | Purpose | Est. $/mo |
 |---|---|---|---|
-| Static Web Apps | **Free** through Phase 2, **Standard** from Phase 3 | Web UI + auth + managed Functions. Standard is required only once Google is added — custom identity providers aren't available on Free. | $0 → ~$9 |
+| Static Web Apps | **Standard** from Phase 0 | Web UI + auth + managed Functions. Standard is strictly required from Phase 3 for Google auth, but it is taken from the start because **managed identity is Standard-only** — on Free the managed Functions have no identity and must hold a storage connection string in app settings. | ~$9 |
 | Azure Functions | Consumption (via SWA managed) | Ingest, render, content delivery, operator API, pending purge timer, deletion purge timer, digest timer | ~$0 |
 | Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users`/`memberships` tables + `ingest`/`render` queues | <$3 for years of data |
 | Cloudflare | Workers Free → **Workers Paid** | DNS, Email Routing (inbound — unlimited, free, uncapped), and the ingest Email Worker | $0 → $5 |
 | Key Vault | Standard | Outbound provider key, Lulu OAuth secret, HMAC token-signing key, and the Worker's storage SAS | ~$0.03 |
-| Custom domains + certs | Managed by SWA | `pdayletters.com` + `www` — exactly the Free plan's limit of 2 | $0 (certs are managed) |
+| Custom domains + certs | Managed by SWA | `pdayletters.com` + `www` — Standard allows 6 | $0 (certs are managed) |
 
-**Rough total: $0–3/month through Stage 1**, rising to **~$17–20/month** once Google auth (SWA Standard, ~$9) and outbound mail (Workers Paid, $5) are both live. The two Stage-1 line items that were previously assumed — SWA Standard and a mail provider — are both deferred to the phases that actually need them.
+**Rough total: ~$12/month through Stage 1**, rising to **~$17/month** once outbound mail (Workers Paid, $5) goes live in Phase 8. Standard was pulled forward from Phase 3 to Phase 0 deliberately: the alternative was a storage connection string sitting in application settings for the whole of Stage 1, and paying $9/month to keep a real credential out of configuration is the right trade on a service holding other families' letters. The mail provider is still deferred to the phase that needs it.
 
 **Only two vendors.** Everything is Azure or Cloudflare, and Cloudflare would be in the picture for DNS regardless — so inbound mail costs no additional relationship, no additional bill, and no additional account to secure. That was a deciding factor alongside the uncapped inbound quota.
 
@@ -913,9 +913,9 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - Create the Azure resource group.
 - Storage account (GRS): containers `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
 - App Insights instance (for rejection logging and general telemetry).
-- Key Vault for later secrets. No provider API key is needed yet — nothing sends until Phase 8. **Managed identity is not available on the SWA Free plan**, and Key Vault references don't work with managed Functions at all, so Stage 1's Functions reach storage with a connection string in app settings. That is a real secret in configuration, accepted because no family data exists yet; it goes away in Phase 3, when Google auth forces Standard and the identity becomes available. Requesting an identity on Free fails with the misleading `SkuCode 'Free' is invalid` — the property must be absent, not `None`.
+- Key Vault for later secrets. No provider API key is needed yet — nothing sends until Phase 8. Note that **Key Vault references don't work with SWA managed Functions at all** — the Functions must call Key Vault from their own code, using the managed identity.
 - **Point `pdayletters.com` at Cloudflare nameservers.** It is on Namecheap today. Do this first — MX and DKIM both depend on it, and propagation is the one step that can't be hurried. The other three registered domains are not used; see [Domains](#domains).
-- Static Web App on the **Free plan**, with `pdayletters.com` as a custom domain. **Stage 1 needs only the Microsoft identity provider**, which is built in. Free allows 2 custom domains, which is exactly `pdayletters.com` plus `www`. Google is a *custom* provider and forces Standard; it arrives in Phase 3, before anyone outside the ACL sees content.
+- Static Web App on the **Standard plan**, with `pdayletters.com` as a custom domain. **Stage 1 needs only the Microsoft identity provider**, which is built in; Google is a *custom* provider and arrives in Phase 3, before anyone outside the ACL sees content. Standard is taken from the start anyway because managed identity is Standard-only, and without one the Functions would need a storage connection string in configuration. Requesting an identity on Free fails with the misleading `SkuCode 'Free' is invalid` — on Free the `identity` property must be absent entirely, not `None`.
 - Set `ACCEPTED_INGEST_DOMAINS`, and `MISSIONARY_DOMAINS` to the real `missionary.org` — no stand-in is needed, because the letters being forwarded are genuine missionary mail. `OPERATOR_EMAILS` is a Stage 2 setting: with one site and one user, that site's own ACL is the entire authorization model.
 - **Enable Cloudflare Email Routing on `pdayletters.com`**, with a catch-all route bound to the Email Worker. **Do not hand-write MX, SPF, or DKIM** — enabling Email Routing creates all three automatically: three `*.mx.cloudflare.net` MX records, `v=spf1 include:_spf.mx.cloudflare.net ~all` on the apex, and a `cf2024-1._domainkey` DKIM record. Cloudflare needs that SPF because forwarding *is* sending; it rewrites the envelope sender via SRS so SPF passes at the destination.
 - **Publish DMARC by hand** — it is the one record Cloudflare does not create. Start at `p=none` with an `rua` address and leave it there through Stage 1. Cloudflare warns explicitly that *"restrictive DMARC policies can make forwarded emails fail"*, and this service is built entirely on forwarded mail, so tightening to `quarantine` or `reject` is a decision that needs evidence from `rua` reports first. **The outbound provider is a Phase 8 decision**, and its DKIM key cannot be published before it is chosen — Cloudflare's own sending uses a separate `cf-bounce` selector.
