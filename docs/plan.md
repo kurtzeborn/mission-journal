@@ -51,7 +51,7 @@ Three of the constraints above cannot be verified until someone with a real `@mi
 
 - Log the **full `Authentication-Results` header verbatim** to App Insights for every message whose `From:` domain is in `MISSIONARY_DOMAINS`, whether it classifies or not.
 - A message from a configured missionary domain that **fails** classification is logged at warning level with the parse failure and the raw header — never folded into the ordinary silent-rejection path, where it would be indistinguishable from spam.
-- `raw/_inbox/` already retains the verbatim payload for 30 days, so a message misclassified by a header-parsing bug can be reprocessed after a fix rather than lost.
+- `inbox/` already retains the verbatim payload for 30 days, so a message misclassified by a header-parsing bug can be reprocessed after a fix rather than lost.
 
 **Feature-flag `claim@`.** Keep the handler behind a setting so it can ship dark and be enabled once a real round-trip has been observed. Until then `claim@` accepts mail and does nothing, which is indistinguishable from the documented "ignored without reply" behavior and therefore leaks nothing.
 
@@ -258,7 +258,7 @@ No similarity scoring, no weights, no threshold.
 
 The Worker does exactly two things:
 
-1. Stream `message.raw` verbatim into `raw/_inbox/{ulid}.raw`.
+1. Stream `message.raw` verbatim into `inbox/{ulid}.raw`.
 2. Enqueue `{ulid}` on the ingest queue.
 
 No parsing, no classification, no slug resolution, no ACL lookup, no dedup, no `posts.json` read, no outbound email. All of that happens in a **separate queue-triggered ingest Function** where a failure is retried from durable storage and eventually dead-lettered for inspection rather than lost.
@@ -267,9 +267,9 @@ The reasoning is the same as it would be for a webhook, but the payoff is larger
 
 **Consequences worth noting:**
 
-- The Worker holds Azure credentials at Cloudflare's edge. Use a **narrowly scoped SAS granting write-only access to `raw/_inbox/` and add-only access to the ingest queue**, stored as a Worker secret and rotated on a schedule. It must not be able to read `rendered/`, and it must not be able to delete anything. This is the sharpest edge of the design: a credential that lives outside Azure, so scope it as if it will leak.
-- **An SMTP retry produces a second ULID and therefore a second `_inbox` blob.** Retries are not idempotent at this layer, unlike a provider-assigned message ID would be. That is acceptable because deduplication happens downstream on `Message-ID` in the ingest Function, where it has to exist anyway to handle the same letter forwarded by two different relatives — but it does mean `_inbox/` will occasionally hold duplicates, and nothing before the ingest Function should assume otherwise.
-- `raw/_inbox/` accumulates payloads for messages that are ultimately rejected. A lifecycle rule deletes `_inbox/` blobs after 30 days; accepted messages are copied into `raw/{slug}/{msgId}/` by the ingest Function and are unaffected.
+- The Worker holds Azure credentials at Cloudflare's edge. Use a **narrowly scoped SAS granting write-only access to the `inbox` container and add-only access to the ingest queue**, stored as a Worker secret and rotated on a schedule. It must not be able to read `rendered/`, and it must not be able to delete anything. This is the sharpest edge of the design: a credential that lives outside Azure, so scope it as if it will leak. **The landing zone is a separate container rather than a prefix inside `raw/` precisely so this is expressible** — a blob service SAS can be scoped to a container or a single blob, but not to a prefix, so `raw/_inbox/` would have meant handing the Worker write access to the entire permanent archive. Back both tokens with **stored access policies**, so a leak can be revoked by deleting the policy instead of rotating the account key and breaking everything else at once.
+- **An SMTP retry produces a second ULID and therefore a second `inbox` blob.** Retries are not idempotent at this layer, unlike a provider-assigned message ID would be. That is acceptable because deduplication happens downstream on `Message-ID` in the ingest Function, where it has to exist anyway to handle the same letter forwarded by two different relatives — but it does mean `inbox/` will occasionally hold duplicates, and nothing before the ingest Function should assume otherwise.
+- `inbox/` accumulates payloads for messages that are ultimately rejected. A lifecycle rule deletes `inbox/` blobs after 30 days; accepted messages are copied into `raw/{slug}/{msgId}/` by the ingest Function and are unaffected.
 - Rejected mail therefore *is* briefly on disk. This is a deliberate trade: 30 days of quarantined spam in a private container is a much smaller cost than permanently losing a real letter to a parser bug.
 - **Cloudflare rejects unauthenticated mail before the Worker ever runs.** An inbound message must pass SPF *or* carry a valid DKIM signature; failing both is refused at SMTP. This is free spam filtering and it shrinks what the classifier has to defend against — but it also means a legitimate forward from a badly-configured old ISP account can be bounced without us seeing it. It fails visibly, as a bounce to the sender, rather than silently, which is the property that makes it acceptable.
 - **Cloudflare supports ARC**, attaching the original authentication results when it forwards. That is worth knowing for the classifier, which reads `Authentication-Results` rather than computing verdicts itself — see [Open questions](#open-questions-to-confirm).
@@ -298,11 +298,16 @@ The reasoning is the same as it would be for a webhook, but the payoff is larger
 Single storage account, cool-tier by default (photos rarely re-read after posting).
 
 ```
+inbox/                                 Landing zone. Verbatim inbound
+  {ulid}.raw                           payloads awaiting processing.
+                                       30-day lifecycle rule. A separate
+                                       container, not a prefix in raw/, so
+                                       the Worker's SAS can be scoped to it
+                                       and reach nothing else.
+
 raw/                                   Preserved archive. Write-once by
-  _inbox/                              convention; container-level
-    {ulid}.raw                         soft-delete + versioning enabled.
-                                       Verbatim webhook payloads awaiting
-                                       processing. 30-day lifecycle rule.
+                                       convention; container-level
+                                       soft-delete + versioning enabled.
   {missionary-slug}/
     {msgId}/
       message.eml                      Full raw MIME
@@ -341,9 +346,9 @@ books/                                 Journal Publish output. Built on
                                        order id
 ```
 
-Plus one **Storage Queue** (`ingest`) carrying `_inbox` ULIDs from the Email Worker to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
+Plus one **Storage Queue** (`ingest`) carrying `inbox` ULIDs from the Email Worker to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
 
-**`raw/` is an internal asset and is never handed to anyone.** No API route serves it, and it is not in the offline export. Its whole purpose is *reprocessing* — re-rendering history when the sanitizer or the forward extractor improves, re-running `_inbox/` after a classifier fix, and standing as the DMARC-verified evidence of authorship behind an [ownership dispute](#the-60-day-cliff). Every one of those is something the service does *to* `raw/`, not something a user reads out of it.
+**`raw/` is an internal asset and is never handed to anyone.** No API route serves it, and it is not in the offline export. Its whole purpose is *reprocessing* — re-rendering history when the sanitizer or the forward extractor improves, re-running `inbox/` after a classifier fix, and standing as the DMARC-verified evidence of authorship behind an [ownership dispute](#the-60-day-cliff). Every one of those is something the service does *to* `raw/`, not something a user reads out of it.
 
 That restriction is what lets the rest of the design be simple. `rendered/` is the published surface, and everything with a rule attached — sanitization, hidden posts, an owner's retroactive anonymization — is enforced there. A downloadable `raw/` would silently reopen all three: it is unsanitized HTML, it contains posts an owner has hidden, and it still holds the name they removed.
 
@@ -478,7 +483,7 @@ Several things this document already promises have no actor: deleting a site aft
 
 - **Delete any site**, through the same permanent-deletion path an owner uses (see [Post-mission archive](#post-mission-archive)) — one code path, one retention story. The confirmation additionally requires a **reason string**, recorded in the audit log, because it is the only part of the action that cannot be reconstructed from the data afterward.
 - **Inspect or purge a pending site** before its window lapses — the disposal route for a site that spam created, and the only way to look at one at all, since pending sites render nothing and have no ACL.
-- **Reprocess raw mail service-wide.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `raw/_inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). The operator is the actor who delivers on both. Owners can re-render a single post on their own site — see [Restoring the original](#restoring-the-original) — but a sweep across every slug is not an owner-shaped action, and `_inbox/` belongs to no site at all.
+- **Reprocess raw mail service-wide.** `raw/` is preserved specifically so history can be re-rendered after a sanitizer or extractor fix, and `inbox/` retains misclassified messages for 30 days so they can be re-run after a classifier fix (see [Building blind](#building-blind)). The operator is the actor who delivers on both. Owners can re-render a single post on their own site — see [Restoring the original](#restoring-the-original) — but a sweep across every slug is not an owner-shaped action, and `inbox/` belongs to no site at all.
 - **See service-wide message flow** — the `/manage/last-received` view spans every slug, so it can never be an owner-facing page.
 
 #### What operators deliberately cannot do
@@ -911,7 +916,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 
 ### Phase 0 — Foundation
 - Create the Azure resource group.
-- Storage account (GRS): containers `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `raw/_inbox/` blobs at 30 days. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
+- Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `inbox/` blobs at 30 days. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
 - App Insights instance (for rejection logging and general telemetry).
 - Key Vault for later secrets. No provider API key is needed yet — nothing sends until Phase 8. Note that **Key Vault references don't work with SWA managed Functions at all** — the Functions must call Key Vault from their own code, using the managed identity.
 - **Point `pdayletters.com` at Cloudflare nameservers.** It is on Namecheap today. Do this first — MX and DKIM both depend on it, and propagation is the one step that can't be hurried. The other three registered domains are not used; see [Domains](#domains).
@@ -919,15 +924,15 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - Set `ACCEPTED_INGEST_DOMAINS`, and `MISSIONARY_DOMAINS` to the real `missionary.org` — no stand-in is needed, because the letters being forwarded are genuine missionary mail. `OPERATOR_EMAILS` is a Stage 2 setting: with one site and one user, that site's own ACL is the entire authorization model.
 - **Enable Cloudflare Email Routing on `pdayletters.com`**, with a catch-all route bound to the Email Worker. **Do not hand-write MX, SPF, or DKIM** — enabling Email Routing creates all three automatically: three `*.mx.cloudflare.net` MX records, `v=spf1 include:_spf.mx.cloudflare.net ~all` on the apex, and a `cf2024-1._domainkey` DKIM record. Cloudflare needs that SPF because forwarding *is* sending; it rewrites the envelope sender via SRS so SPF passes at the destination.
 - **Publish DMARC by hand** — it is the one record Cloudflare does not create. Start at `p=none` with an `rua` address and leave it there through Stage 1. Cloudflare warns explicitly that *"restrictive DMARC policies can make forwarded emails fail"*, and this service is built entirely on forwarded mail, so tightening to `quarantine` or `reject` is a decision that needs evidence from `rua` reports first. **The outbound provider is a Phase 8 decision**, and its DKIM key cannot be published before it is chosen — Cloudflare's own sending uses a separate `cf-bounce` selector.
-- **Mint the Worker's storage SAS** — write-only to `raw/_inbox/`, add-only to the `ingest` queue, no read on `rendered/`, no delete anywhere. Store it as a Worker secret. This credential lives outside Azure, so it gets the narrowest scope in the system. Record its expiry somewhere you will actually see it; a silently expired SAS turns every inbound letter into an SMTP retry loop.
+- **Mint the Worker's storage SAS** — write-only to the `inbox` container, add-only to the `ingest` queue, no read on `rendered/`, no delete anywhere, and no access to `raw/` at all. Back both with stored access policies so they can be revoked without rotating the account key. Store them as Worker secrets. This credential lives outside Azure, so it gets the narrowest scope in the system. Record its expiry somewhere you will actually see it; a silently expired SAS turns every inbound letter into an SMTP retry loop. **Verify the scope by probing it** rather than trusting the permission flags — write, read, list, delete, and a cross-container write, confirming only the first succeeds.
 - Write `config/{slug}/acl.json` and `profile.json` by hand: one `owner` entry, one display name.
-- **A reset script.** Wiping a slug must be one command — `raw/{slug}/`, `rendered/{slug}/`, and the `_inbox` residue, **including soft-deleted versions and blob versions**, or every iteration of the loop silently accretes storage that soft-delete is designed to keep. It is also the honest first draft of the deletion purge in Phase 9.
+- **A reset script.** Wiping a slug must be one command — `raw/{slug}/`, `rendered/{slug}/`, and the `inbox` residue, **including soft-deleted versions and blob versions**, or every iteration of the loop silently accretes storage that soft-delete is designed to keep. It is also the honest first draft of the deletion purge in Phase 9.
 
 ### Phase 1 — Inbound forward pipeline
 **Forward-only.** `direct` exists as a classifier branch and is covered by fixtures, but nothing exercises it until [Phase 6](#phase-6--direct-ingest).
 
 - **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original, a message with `cid:` inline images, and one with HEIC attachments. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail. `direct`-path fixtures use hand-written `Authentication-Results` headers covering pass, fail, and absent cases until a real account exists.
-- **Email Worker**: streams `message.raw` to `raw/_inbox/{ulid}.raw`, enqueues the ULID, and does nothing else. On any failure it **throws rather than swallowing**, so Cloudflare returns a temporary SMTP error and the sending server keeps the only copy and retries. Deploy with Wrangler; keep it in this repo alongside the Functions so the two ship together.
+- **Email Worker**: streams `message.raw` to `inbox/{ulid}.raw`, enqueues the ULID, and does nothing else. On any failure it **throws rather than swallowing**, so Cloudflare returns a temporary SMTP error and the sending server keeps the only copy and retries. Deploy with Wrangler; keep it in this repo alongside the Functions so the two ship together.
 - **Worker telemetry goes to Workers Logs, not App Insights.** That is the real cost of a second runtime: the first component to touch every message reports somewhere else. Accept it for Stage 1, but treat a Worker-side error rate as something you must remember to look at — nothing in Azure will tell you.
 - **Exercise a bulk backfill deliberately**, not just single letters. Forward twenty or more messages in one sitting and confirm the queue drains, `posts.json` survives the concurrent appends via its ETag guard, and nothing is dropped. This is the shape of the very first real use, and it is the scenario the provider choice was made to protect.
 - Queue-triggered ingest Function:
@@ -987,7 +992,7 @@ Until this ships, sites are hand-provisioned. This is what makes the service sel
 - Create the `pending/` container and the `users` table. Add the HMAC token-signing service (key from Key Vault).
 - **Move ingest to Workers Paid** if it hasn't happened already. Self-serve onboarding is the point at which inbound volume stops being predictable, and Workers Free's CPU and memory limits on email handlers are not something to discover under load.
 - **De-duplication**, which promotion cannot work without: exact `originalMessageId` match first, then the sender+day hard gate plus normalized subject / `bodyHead100` matching per [de-duplicating forwards](#extracting-and-de-duplicating-forwards). Ingest becomes conditional — on match-miss, append and write `raw/`; on match-hit, touch neither. This is the first point where duplicates are inevitable rather than self-inflicted: a pending site accumulates forwards from several relatives alongside the missionary's own `direct` copies, and promotion deduplicates the whole backlog in one pass.
-- **Arrival order needs no tie-breaking.** A letter must be sent before it can be forwarded, so the `direct` copy normally arrives first and first-write-wins is correct by default. The one inversion is a message replayed from `_inbox/` after a classifier fix, landing after a forward that already published — where keeping the published post is still the right answer.
+- **Arrival order needs no tie-breaking.** A letter must be sent before it can be forwarded, so the `direct` copy normally arrives first and first-write-wins is correct by default. The one inversion is a message replayed from `inbox/` after a classifier fix, landing after a forward that already published — where keeping the published post is still the right answer.
 - **Pending sites and claim** per [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning): unresolvable-but-valid slugs create `pending/{slug}/`; a claim email to the forwarder, or the tapering invitation series to a missionary whose own `direct` messages created the site, driven by `claimEmailSentAt` / `claimEmailCount` and always sent as a reply to an arriving letter; **an anonymous-allowed `/claim/{token}` landing page** showing the missionary's name, waiting counts, and sample subjects before any sign-in, threading `post_login_redirect_uri` back to itself, then establishing the first owner, collecting the display name, and promoting accumulated raw; **a failure page** for spent, stale, or already-claimed tokens, including "email me a new link" restricted to previously-emailed addresses and rate-limited per pending site; claim tokens sharing the pending site's rolling `expiresAt`; one day-7 reminder per pending site to forwarders only; rolling `expiresAt` reset on every message, at 60 days once `hasDirect` is set and 14 days otherwise; timer-triggered purge when the window lapses.
 - **Signed links perform state changes on `POST`, never on `GET`.** `missionary.org` runs Proofpoint, and Proofpoint URL Defense fetches links in mail — as do Outlook Safe Links and most corporate scanners. A scanner following a claim link would consume the single-use token before the human ever sees the page, and then consume the replacement too. `GET` renders a page with a button; the button does the work.
 - **Claim redemption is atomic.** Mark the token spent under an ETag or lease on `claim.json` *before* writing the ACL, and create `acl.json` with `If-None-Match: *`, so a double-click or a scanner racing the user cannot produce two first owners.

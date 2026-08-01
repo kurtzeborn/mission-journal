@@ -35,7 +35,7 @@ param acceptedIngestDomains string
 @description('Comma-separated domains treated as genuine missionary mail.')
 param missionaryDomains string = 'missionary.org'
 
-@description('Days before raw/_inbox/ blobs are deleted by lifecycle policy.')
+@description('Days before inbox blobs are deleted by lifecycle policy.')
 param inboxRetentionDays int = 30
 
 var suffix = uniqueString(resourceGroup().id)
@@ -91,7 +91,12 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
   }
 }
 
+// `inbox` is a separate container, not a prefix inside `raw`. A blob service
+// SAS can only be scoped to a container or a single blob — prefix scoping
+// needs a hierarchical namespace. Keeping the landing zone separate means the
+// Worker's credential cannot touch the permanent archive even if it leaks.
 var containerNames = [
+  'inbox'
   'raw'
   'rendered'
   'config'
@@ -124,10 +129,10 @@ resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-
   }
 ]
 
-// The Worker writes every inbound message to raw/_inbox/ before anything
-// parses it. Once ingest has copied a message to raw/{slug}/, the _inbox copy
-// is landing-zone residue. Versions and snapshots are expired too, or
-// soft-delete quietly retains everything this rule is meant to remove.
+// The Worker writes every inbound message to the inbox container before
+// anything parses it. Once ingest has copied a message to raw/{slug}/, the
+// inbox copy is landing-zone residue. Versions and snapshots are expired too,
+// or soft-delete quietly retains everything this rule is meant to remove.
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storage
   name: 'default'
@@ -144,7 +149,7 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05
                 'blockBlob'
               ]
               prefixMatch: [
-                'raw/_inbox/'
+                'inbox/'
               ]
             }
             actions: {
