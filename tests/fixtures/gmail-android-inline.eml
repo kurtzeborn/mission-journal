@@ -93,15 +93,15 @@ ARC-Authentication-Results: i=2; mx.cloudflare.net;
 	dkim=pass header.d=gmail.com header.s=20251104 header.b=E66j5BCd;
 	dmarc=pass header.from=gmail.com policy.dmarc=none;
 	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-lf1-x134.google.com) smtp.helo=mail-lf1-x134.google.com;
-	spf=pass (mx.cloudflare.net: domain of family.example@example.com designates 2a00:1450:4864:20::134 as permitted sender) smtp.mailfrom=family.example@example.com;
+	spf=pass (mx.cloudflare.net: domain of family.example@gmail.com designates 2a00:1450:4864:20::134 as permitted sender) smtp.mailfrom=family.example@gmail.com;
 	arc=pass smtp.remote-ip="2a00:1450:4864:20::134"
-Received-SPF: pass (mx.cloudflare.net: domain of family.example@example.com designates 2a00:1450:4864:20::134 as permitted sender)
-	receiver=mx.cloudflare.net; client-ip=2a00:1450:4864:20::134; envelope-from="family.example@example.com"; helo=mail-lf1-x134.google.com;
+Received-SPF: pass (mx.cloudflare.net: domain of family.example@gmail.com designates 2a00:1450:4864:20::134 as permitted sender)
+	receiver=mx.cloudflare.net; client-ip=2a00:1450:4864:20::134; envelope-from="family.example@gmail.com"; helo=mail-lf1-x134.google.com;
 Authentication-Results: mx.cloudflare.net;
 	dkim=pass header.d=gmail.com header.s=20251104 header.b=E66j5BCd;
 	dmarc=pass header.from=gmail.com policy.dmarc=none;
 	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-lf1-x134.google.com) smtp.helo=mail-lf1-x134.google.com;
-	spf=pass (mx.cloudflare.net: domain of family.example@example.com designates 2a00:1450:4864:20::134 as permitted sender) smtp.mailfrom=family.example@example.com;
+	spf=pass (mx.cloudflare.net: domain of family.example@gmail.com designates 2a00:1450:4864:20::134 as permitted sender) smtp.mailfrom=family.example@gmail.com;
 	arc=pass smtp.remote-ip="2a00:1450:4864:20::134"
 X-CF-SpamH-Score: 0
 Received: by mail-lf1-x134.google.com with SMTP id 2adb3069b0e04-5b0115b9e17so2236345e87.0
@@ -165,7 +165,7 @@ X-Received: by 2002:a05:6512:1053:b0:5ae:af98:497f with SMTP id
 MIME-Version: 1.0
 References: <CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>
 In-Reply-To: <CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>
-From: Family Example <family.example@example.com>
+From: Family Example <family.example@gmail.com>
 Date: Sat, 1 Aug 2026 21:08:48 -0700
 X-Gm-Features: AUfX_mx70lILlIcky2pyn1BSisFHGAKxlzm-HDYbR6AkhhXajoc_45YYTn3dVoM
 Message-ID: <CAApcrfj0MvECR18r9xFwQn2Mzq+NooLz98xFrfzKcyQSXS-QCg@mail.gmail.com>

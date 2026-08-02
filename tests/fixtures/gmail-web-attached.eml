@@ -93,15 +93,15 @@ ARC-Authentication-Results: i=2; mx.cloudflare.net;
 	dkim=pass header.d=gmail.com header.s=20251104 header.b=EgXPEBoR;
 	dmarc=pass header.from=gmail.com policy.dmarc=none;
 	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-lf1-x133.google.com) smtp.helo=mail-lf1-x133.google.com;
-	spf=pass (mx.cloudflare.net: domain of family.example@example.com designates 2a00:1450:4864:20::133 as permitted sender) smtp.mailfrom=family.example@example.com;
+	spf=pass (mx.cloudflare.net: domain of family.example@gmail.com designates 2a00:1450:4864:20::133 as permitted sender) smtp.mailfrom=family.example@gmail.com;
 	arc=pass smtp.remote-ip="2a00:1450:4864:20::133"
-Received-SPF: pass (mx.cloudflare.net: domain of family.example@example.com designates 2a00:1450:4864:20::133 as permitted sender)
-	receiver=mx.cloudflare.net; client-ip=2a00:1450:4864:20::133; envelope-from="family.example@example.com"; helo=mail-lf1-x133.google.com;
+Received-SPF: pass (mx.cloudflare.net: domain of family.example@gmail.com designates 2a00:1450:4864:20::133 as permitted sender)
+	receiver=mx.cloudflare.net; client-ip=2a00:1450:4864:20::133; envelope-from="family.example@gmail.com"; helo=mail-lf1-x133.google.com;
 Authentication-Results: mx.cloudflare.net;
 	dkim=pass header.d=gmail.com header.s=20251104 header.b=EgXPEBoR;
 	dmarc=pass header.from=gmail.com policy.dmarc=none;
 	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-lf1-x133.google.com) smtp.helo=mail-lf1-x133.google.com;
-	spf=pass (mx.cloudflare.net: domain of family.example@example.com designates 2a00:1450:4864:20::133 as permitted sender) smtp.mailfrom=family.example@example.com;
+	spf=pass (mx.cloudflare.net: domain of family.example@gmail.com designates 2a00:1450:4864:20::133 as permitted sender) smtp.mailfrom=family.example@gmail.com;
 	arc=pass smtp.remote-ip="2a00:1450:4864:20::133"
 X-CF-SpamH-Score: 1
 Received: by mail-lf1-x133.google.com with SMTP id 2adb3069b0e04-5b28c91fba5so2608386e87.1
@@ -161,7 +161,7 @@ X-Received: by 2002:a05:6512:64eb:b0:5ae:b819:7880 with SMTP id
  2adb3069b0e04-5b2e2301201mr1235429e87.6.1785643240811; Sat, 01 Aug 2026
  21:00:40 -0700 (PDT)
 MIME-Version: 1.0
-From: Family Example <family.example@example.com>
+From: Family Example <family.example@gmail.com>
 Date: Sat, 1 Aug 2026 21:00:31 -0700
 X-Gm-Features: AUfX_mwiGQLbIJsJ_Ulcms6wcp1wvAgPPPM1wm-WcEjg9izajH1P2rSvaqq5c84
 Message-ID: <CAApcrfj811_BW+qOdu65JVqQ-b6yUpNtQ8Huck--ZAL7sjVAZg@mail.gmail.com>
@@ -193,7 +193,7 @@ Content-Disposition: attachment;
 Content-ID: <f_msb9v77r0>
 X-Attachment-Id: f_msb9v77r0
 
-Delivered-To: family.example@example.com
+Delivered-To: family.example@gmail.com
 Received: by 2002:a05:6022:52a7:b0:10b:6086:96f3 with SMTP id x39csp2254310lax;
         Sat, 1 Aug 2026 20:20:56 -0700 (PDT)
 X-Forwarded-Encrypted: i=4; AHgh+Roeg3fjQ19vTMVNkCBOMjTQyc1cmXYy129fxdawNi2sLaF9uKAEGvtg5bSvgB5H7psB7DV6ew8AB01YWINrF0k4@gmail.com
@@ -230,7 +230,7 @@ ARC-Authentication-Results: i=3; mx.google.com;
 Return-Path: <SRS0=hf4-=3f=missionary.org=elder.example@pdayletters.com>
 Received: from i-bhf.cloudflare-email.net (i-bhf.cloudflare-email.net. [104.30.8.175])
         by mx.google.com with ESMTPS id 4fb4d7f45d1cf-6a09c78b78fsi4532681a12.207.2026.08.01.20.20.55
-        for <family.example@example.com>
+        for <family.example@gmail.com>
         (version=TLS1_3 cipher=TLS_AES_128_GCM_SHA256 bits=128/128);
         Sat, 01 Aug 2026 20:20:56 -0700 (PDT)
 Received-SPF: pass (google.com: domain of srs0=hf4-=3f=missionary.org=elder.example@pdayletters.com designates 104.30.8.175 as permitted sender) client-ip=104.30.8.175;
@@ -262,8 +262,8 @@ DKIM-Signature: v=1; a=rsa-sha256; s=cf2024-1; d=pdayletters.com; c=relaxed/rela
 	AqgSJWJFsNlIgklsSwHL3FtCgjkM08vB3OV1LxaXtgCIgCe2S8Cbdgh9Cdyynamn+z0RcU2zzvj
 	SRTyb8y8mUKp34xlr4poV0eiuRH4mGNQr9jmH5n809D5ljM9V7TPLuKajCpGDs4x6FDwHoGBUyT
 	+08AC5CTcaXaHf5cLov8MMrx80JQQTyDX+rzIRkiBjJG2o4aE14dCbaFtX/crgbTl4cUHuzA==;
-X-Forwarded-To: family.example@example.com
-X-Forwarded-For: post@pdayletters.com family.example@example.com
+X-Forwarded-To: family.example@gmail.com
+X-Forwarded-For: post@pdayletters.com family.example@gmail.com
 Feedback-ID: pdayletters.com:1:1:Cloudflare
 Received: from mail-ed1-x52b.google.com (2a00:1450:4864:20::52b)
         by cloudflare-email.net (cloudflare) id 8HdUWUfx8E68

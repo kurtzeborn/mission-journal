@@ -54,11 +54,23 @@ export default {
         const blobUrl = `https://${env.STORAGE_ACCOUNT}.blob.core.windows.net/` +
             `${env.INBOX_CONTAINER}/${id}.raw?${sas(env.INBOX_SAS)}`;
 
+        // The envelope is recorded as metadata because it cannot be recovered
+        // from the message afterwards. A missionary who BCCs the site sends a
+        // letter whose To: header names their family, not post@ — the address
+        // the message was actually delivered to exists only in the SMTP
+        // transaction, and this Worker is the last place it is visible.
+        //
+        // Percent-encoded: both values are sender-controlled, and blob
+        // metadata is sent as HTTP headers, where an embedded newline would be
+        // header injection. Encoding also guarantees the ASCII that Azure
+        // requires of metadata values.
         const put = await fetch(blobUrl, {
             method: 'PUT',
             headers: {
                 'x-ms-blob-type': 'BlockBlob',
-                'Content-Type': 'message/rfc822'
+                'Content-Type': 'message/rfc822',
+                'x-ms-meta-envelopeto': encodeURIComponent(message.to ?? ''),
+                'x-ms-meta-envelopefrom': encodeURIComponent(message.from ?? '')
             },
             body: raw
         });

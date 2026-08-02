@@ -23,12 +23,12 @@ const load = async (name) => extractOriginal(await readFile(join(fixtures, `${na
 
 const config = { authservId: 'mx.cloudflare.net', missionaryDomains: ['missionary.org'] };
 
-// The Outlook captures are the ones used for the forward path, because they
-// are internally consistent: the outer From: is scott@kurtzeborn.org and the
-// Cloudflare verdict reads header.from=kurtzeborn.org. In the Gmail captures
-// the scrubber rewrote From: to example.com but left the verdict saying
-// gmail.com, so they cannot exercise alignment.
+// The forward-path tests use both providers, because the captures differ in
+// what they prove: the Outlook ones carry a custom forwarding domain, the
+// Gmail ones a consumer mailbox. Both now agree with the Cloudflare verdict
+// they were captured with.
 const FORWARDER = 'scott@kurtzeborn.org';
+const GMAIL_FORWARDER = 'family.example@gmail.com';
 
 const acl = (members) => (slug) => (slug === 'elder.example' ? members : null);
 const asReader = acl([{ address: FORWARDER, role: 'reader' }]);
@@ -233,4 +233,22 @@ test('the missionary domain is configuration, not a constant', async () => {
 
     assert.equal(result.class, CLASS.rejected);
     assert.equal(result.reason, 'author-not-missionary');
+});
+
+test('a consumer-mailbox forwarder is accepted on the same terms', async () => {
+    // Same path as the Outlook captures, different provider: the alignment
+    // check must not depend on the forwarder running their own domain.
+    const extracted = await load('gmail-web-attached');
+    const result = classify({
+        extracted,
+        headers: extracted.headers,
+        config,
+        lookupAcl: acl([{ address: GMAIL_FORWARDER, role: 'reader' }]),
+        dkimVerified: true
+    });
+
+    assert.equal(result.class, CLASS.forward);
+    assert.equal(result.forwarder, GMAIL_FORWARDER);
+    assert.equal(result.slug, 'elder.example');
+    assert.equal(result.disposition, DISPOSITION.publish);
 });
