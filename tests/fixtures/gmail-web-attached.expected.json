@@ -19,7 +19,9 @@
   "inlineImageCount": 1,
   "inlineCids": ["ii_msb8f3it0"],
   "embeddedPartFilename": "Semana 13 — conferencia de zona y una llanta ponchada.eml",
+  "dkimOnPristine": "pass",
   "notes": [
+    "The only attachment capture whose embedded original still verifies: d=missionary.org s=google passes, because Gmail stored the message unmodified.",
     "The outer Subject header is present and empty; Gmail does not auto-populate a subject for forward-as-attachment. Two such forwards from one relative on the same day produce identical empty subjectNormalized values, so an equality test on a normalized field must treat empty as never matching.",
     "The outer body is a multipart/alternative of an empty text/plain and an empty text/html, neither carrying a Content-Transfer-Encoding header.",
     "The embedded part's filename is a split RFC 2047 encoded word with the extension divided across the boundary: ...ponchada=2Eem?= =?UTF-8?Q?l?=. Decoding each word independently loses the .eml.",

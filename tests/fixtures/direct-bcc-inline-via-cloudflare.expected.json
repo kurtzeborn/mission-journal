@@ -22,6 +22,7 @@
     "dmarc": "pass",
     "dmarcPolicy": "quarantine"
   },
+  "dkimOnPristine": "pass",
   "notes": [
     "Bcc: post@pdayletters.com is present in this recipient's own copy. Gmail does not strip it, so absence of Bcc proves nothing about how the message was addressed.",
     "Return-Path is SRS-rewritten to SRS0=hf4-=3f=missionary.org=elder.example@pdayletters.com, so the sender's address never appears literally in it.",

@@ -19,7 +19,9 @@
   "inlineImageCount": 1,
   "inlineCids": ["ii_msb8f3it0"],
   "embeddedPartFilename": "Semana 13 — conferencia de zona y una llanta ponchada.eml",
+  "dkimOnPristine": "unsigned",
   "notes": [
+    "The embedded original carries no DKIM-Signature header at all. Outlook mobile exports the message without it, so there is nothing to re-verify even in principle.",
     "Selecting embedded originals by Content-Type: message/rfc822 finds nothing here, so a reader forwarding from Outlook mobile would be rejected by a rule written that way. Acceptance must rest on DKIM re-verification of the payload, not on the part's declared type, which the forwarder controls.",
     "attachmentCount and inlineImageCount describe the embedded original. The outer message has exactly one part, the .eml itself; the three images exist only inside the base64 payload.",
     "The embedded payload is a complete RFC 5322 message of roughly 192 KB carrying the missionary's From: and original DKIM signature.",

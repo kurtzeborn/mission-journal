@@ -188,9 +188,28 @@ Design principles:
 - **Key acceptance on `dmarc=pass` plus `header.from` alignment, not on all three methods passing.** DMARC is already the composite: it passes when SPF *or* DKIM aligns with the `From:` domain. Requiring SPF, DKIM, and DMARC to pass independently adds no security over DMARC alone while rejecting legitimate mail whenever one leg breaks — which is routine, since forwarding rewrites the envelope sender and breaks SPF by design. SPF and DKIM results are recorded for diagnostics; DMARC decides.
 - **The target site is derived from the letter's author, never from the recipient address** — see [Sender-based routing](#sender-based-routing). Every message goes to the same `post@` address, so there is no attacker-supplied "which site" input to validate.
 - **The forwarder must be on the same ACL that grants them read access to the destination missionary's letters site.** There is no separate "allowed forwarders" list — access implies forwarding rights.
-- **Inline-forward extraction is restricted to the `owner` role.** Text between forward separators is entirely forwarder-controlled and carries no cryptographic evidence of authorship — a `reader` could otherwise fabricate a letter, attribute it to the missionary, and backdate it anywhere in the timeline. Owners can already edit and delete any post, so allowing them inline forwards grants no privilege they don't have. `reader`-submitted forwards must carry an embedded copy of the original message whose DKIM signature re-verifies against `missionary.org`. The declared MIME type of that part is not the test — it is forwarder-controlled, and Outlook Android labels the embedded original `application/octet-stream` — so acceptance rests on the signature alone.
+- **Inline-forward extraction is restricted to the `owner` role.** Text between forward separators is entirely forwarder-controlled and carries no cryptographic evidence of authorship — a `reader` could otherwise fabricate a letter, attribute it to the missionary, and backdate it anywhere in the timeline. Owners can already edit and delete any post, so allowing them inline forwards grants no privilege they don't have. `reader`-submitted forwards must carry an embedded copy of the original message. The declared MIME type of that part is not the test — it is forwarder-controlled, and Outlook Android labels the embedded original `application/octet-stream`. Neither is a valid DKIM signature something a legitimate forwarder can supply on demand; see [What DKIM re-verification proves](#what-dkim-re-verification-proves). A signature that re-verifies publishes the post outright. One that does not is **held for owner approval** rather than published or dropped, because an unverified embedded original is exactly as forgeable as inline text, and the owner is the only trust anchor left. Owner submissions skip the hold — they can already post anything.
 - **Reject silently — unless the sender has proven they hold real missionary mail.** No bounce or error by default, because bouncing leaks which addresses exist and invites probing. The exception is a message carrying a **DKIM-valid `message/rfc822` original from `@missionary.org`**: that sender demonstrably possesses a genuine missionary letter, so they're a real person in the circle rather than a prober, and silence would leave them believing their forward worked. They get a short reply explaining what to do — see [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning). Everything else is dropped without a word.
 - **Log every rejection** to App Insights (sender, subject, reason, timestamp — no message body). Rejected messages are not archived to blob storage.
+
+#### What DKIM re-verification proves
+
+Re-verification works, and it fails far more often than the design first assumed. Measured with `mailauth` against the pristine captures in the private repo:
+
+| Specimen | `d=missionary.org s=google` |
+| --- | --- |
+| Missionary's BCC, delivered through Cloudflare | **pass** |
+| The same message, delivered through Exchange Online | body hash did not verify |
+| Forward-as-attachment from Gmail web | **pass** |
+| Forward-as-attachment from Outlook web | body hash did not verify |
+| Forward-as-attachment from Outlook desktop | body hash did not verify |
+| Forward-as-attachment from Outlook Android | no `DKIM-Signature` header at all |
+
+The first two rows are the same message with the same signature, so the cause is isolated: Exchange Online injects a `<meta>` tag into the HTML part on delivery, and DKIM signs a body hash. A forward-as-attachment can only embed whatever the forwarder's mailbox already holds, so the damage is done before the forwarder acts. Outlook mobile goes further and exports the original with the signature stripped.
+
+Three consequences follow. **The ingest path itself is safe**, because mail reaches it through Cloudflare rather than Exchange, so the missionary's own BCC verifies. **Verification is a property of the forwarder's mail provider, not of their honesty or their client**, so it cannot be used as a rejection test without turning away most Microsoft-hosted family members. And **an unverified forward is not evidence of anything**, so it earns owner review rather than publication.
+
+One question this leaves open for [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow): the courtesy auto-reply below is triggered by a DKIM-valid original, which most real forwards will not have. Loosening that trigger would let a prober draw replies with a fabricated attachment, so it stays strict until the claim flow needs otherwise.
 
 #### Sender-based routing
 

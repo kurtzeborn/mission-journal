@@ -18,7 +18,9 @@
   "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
   "inlineImageCount": 1,
   "inlineCids": ["ii_msb8f3it0"],
+  "dkimOnPristine": "body-hash-fail",
   "notes": [
+    "The embedded original fails DKIM re-verification: Exchange rewrote the HTML part on delivery, before the forwarder ever touched the message, so the signed body hash no longer matches.",
     "The outer Message-ID is folded onto a continuation line. A line-oriented read of Message-ID returns empty here, and originalMessageId is the primary dedupe key, so headers must be unfolded before any header is read.",
     "The embedded original's boundaries are preserved verbatim, so inner and outer boundary namespaces overlap in format and must be tracked separately.",
     "Attachment names are plain, not encoded words, because they are ASCII."

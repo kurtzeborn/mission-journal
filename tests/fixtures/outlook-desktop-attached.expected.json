@@ -18,7 +18,9 @@
   "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
   "inlineImageCount": 1,
   "inlineCids": ["ii_msb8f3it0"],
+  "dkimOnPristine": "body-hash-fail",
   "notes": [
+    "The embedded original fails DKIM re-verification for the same reason as the Outlook web capture: the mailbox copy was rewritten in transit.",
     "The compose body is empty, yet the wrapper still base64-encodes a WordSection1 stylesheet block that Outlook web omits entirely. Relaying through a shared Exchange Online tenant does not normalize client output.",
     "The outer Message-ID is folded onto a continuation line.",
     "The message/rfc822 part carries its own Content-ID (an @namprd07.prod.outlook.com value) that has no cid: reference anywhere in the body. A Content-ID is not evidence that a part is an inline image."

@@ -22,7 +22,9 @@
     "dmarc": null,
     "spf": "pass"
   },
+  "dkimOnPristine": "body-hash-fail",
   "notes": [
+    "The missionary's signature does not survive this path. Verified with mailauth against the pristine capture: d=missionary.org s=google returns 'body hash did not verify' here, while the byte-identical message delivered through Cloudflare passes. The injected <meta> tag is the whole cause.",
     "Exchange Online omits the authserv-id entirely: the header opens 'Authentication-Results: spf=pass (sender IP is ...)'. RFC 8601 requires that field, so a header with no identifier must match no configured authserv-id rather than being accepted as unlabelled.",
     "Exchange injects <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"> at the top of the HTML part. That 84-byte insertion is the only body difference from the Cloudflare copy; all three images are byte-identical across both paths.",
     "Because the HTML is mutated in transit but the plain-text part is not, bodyHead100 must be normalized from text/plain rather than from tag-stripped HTML."
