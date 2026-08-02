@@ -1,0 +1,29 @@
+name = "mj-ingest"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# Observability is not optional here: this is the only component whose
+# telemetry does not reach App Insights, so Workers Logs is the sole record
+# that inbound mail is being accepted at all.
+[observability]
+enabled = true
+
+[vars]
+STORAGE_ACCOUNT = "mjstutfe5uagkbz7q"
+INBOX_CONTAINER = "inbox"
+INGEST_QUEUE = "ingest"
+
+# Secrets are set out of band, never committed:
+#
+#   wrangler secret put INBOX_SAS     # container SAS, write-only, policy worker-write
+#   wrangler secret put QUEUE_SAS     # queue SAS, add-only,   policy worker-add
+#
+# Both are backed by stored access policies expiring 2027-08-01, so a leak is
+# revoked by deleting the policy rather than rotating the account key.
+#
+# Optional, for keeping fixture capture alive while the catch-all points here:
+#
+#   wrangler secret put SHADOW_FORWARD   # a verified Email Routing destination
+#
+# Cloudflare will not forward to an address it has not verified, so add the
+# destination in the Email Routing dashboard first.
