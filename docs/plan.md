@@ -962,8 +962,8 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 
 | Resource | SKU | Purpose | Est. $/mo |
 |---|---|---|---|
-| Static Web Apps | **Standard** from Phase 0 | Web UI + auth + managed Functions. Standard is strictly required from Phase 3 for Google auth, but it is taken from the start because **managed identity is Standard-only** — on Free the managed Functions have no identity and must hold a storage connection string in app settings. | ~$9 |
-| Azure Functions | Consumption (via SWA managed) | Ingest, render, content delivery, operator API, pending purge timer, deletion purge timer, digest timer | ~$0 |
+| Static Web Apps | **Standard** from Phase 0 | Web UI + auth + the HTTP API. Standard is required from Phase 3 for Google auth. | ~$9 |
+| Azure Functions | Consumption, its own app | Ingest, render, pending purge timer, deletion purge timer, digest timer. **Managed functions cannot host any of these** — inside Static Web Apps, triggers and bindings are [limited to HTTP](https://learn.microsoft.com/azure/static-web-apps/apis-functions#constraints), and managed functions get **no managed identity** regardless of SKU. Background work therefore runs in a separate Function App, which reaches storage with its own identity. | ~$0 |
 | Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users`/`memberships` tables + `ingest`/`render` queues | <$3 for years of data |
 | Cloudflare | Workers Free → **Workers Paid** | DNS, Email Routing (inbound — unlimited, free, uncapped), and the ingest Email Worker | $0 → $5 |
 | Key Vault | Standard | Outbound provider key, Lulu OAuth secret, HMAC token-signing key, and the Worker's storage SAS | ~$0.03 |
