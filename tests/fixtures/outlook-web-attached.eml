@@ -1,4 +1,4 @@
-Delivered-To: elder.example@missionary.org
+Delivered-To: family.example@example.com
 Received: by 2002:a05:6022:52a7:b0:10b:6086:96f3 with SMTP id x39csp2222269lax;
         Sat, 1 Aug 2026 19:10:12 -0700 (PDT)
 X-Received: by 2002:a05:690c:5c0b:b0:81f:d515:8c06 with SMTP id 00721157ae682-81fd5158c22mr67058917b3.29.1785636611885;
@@ -30,7 +30,7 @@ ARC-Authentication-Results: i=2; mx.google.com;
 Return-Path: <scott@kurtzeborn.org>
 Received: from SN4PR2101CU001.outbound.protection.outlook.com (mail-southcentralusazlp170120001.outbound.protection.outlook.com. [2a01:111:f403:c10d::1])
         by mx.google.com with ESMTPS id 00721157ae682-81fcd11c3b0si105886807b3.91.2026.08.01.19.10.11
-        for <elder.example@missionary.org>
+        for <family.example@example.com>
         (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
         Sat, 01 Aug 2026 19:10:11 -0700 (PDT)
 Received-SPF: pass (google.com: domain of scott@kurtzeborn.org designates 2a01:111:f403:c10d::1 as permitted sender) client-ip=2a01:111:f403:c10d::1;
@@ -57,8 +57,8 @@ Received: from BL0PR07MB7923.namprd07.prod.outlook.com
  ([fe80::75f3:68a4:a358:18b4]) by BL0PR07MB7923.namprd07.prod.outlook.com
  ([fe80::75f3:68a4:a358:18b4%2]) with mapi id 15.21.0270.015; Sun, 2 Aug 2026
  02:10:08 +0000
-From: Elder Example <scott@kurtzeborn.org>
-To: "elder.example@missionary.org" <elder.example@missionary.org>
+From: Family Example <scott@kurtzeborn.org>
+To: "family.example@example.com" <family.example@example.com>
 Subject: =?Windows-1252?Q?Fw:_Week_12_=97_transfers_and_a_bike_repair?=
 Thread-Topic: =?Windows-1252?Q?Week_12_=97_transfers_and_a_bike_repair?=
 Thread-Index: AQHdIiQAb5Glt+bOVE6C1YOMsvJqSA==
@@ -261,15 +261,15 @@ X-Gm-Gg: AR+sD13OPGRucHsXCZgC2womcjS0L3HtLEYfb6Oxol3TNSbKdv406kplh5KKjUxheOP
 X-Received: by 2002:ac2:4c10:0:b0:5ae:bade:3d27 with SMTP id
  2adb3069b0e04-5b2e4f73462mr581313e87.37.1785635662335; Sat, 01 Aug 2026
  18:54:22 -0700 (PDT)
-From: Elder Example <elder.example@missionary.org>
+From: Family Example <family.example@example.com>
 Date: Sat, 1 Aug 2026 18:54:12 -0700
 X-Gm-Features: AUfX_mwGI_UP4phMygIkDF6_ntL0MI0iULlgp6KGA4PzbOQ44JEmEFXN4PD5Fc8
 Message-ID: <CAApcrfhcyqEX1Stinczagkv_8YawCsjjetHp9ZvQ2Uk=S6gNjw@mail.gmail.com>
 Subject: =?UTF-8?Q?Week_12_=E2=80=94_transfers_and_a_bike_repair?=
 To: "scott@kurtzeborn.org" <scott@kurtzeborn.org>
-Cc: Elder Example <elder.example@missionary.org>
+Cc: Family Example <family.example@example.com>
 Content-Type: multipart/mixed; boundary="0000000000005a2a62065806b3ae"
-Return-Path: elder.example@missionary.org
+Return-Path: family.example@example.com
 X-MS-Exchange-Organization-ExpirationStartTime: 02 Aug 2026 01:54:24.7653
  (UTC)
 X-MS-Exchange-Organization-ExpirationStartTimeReason: OriginalSubmit
