@@ -27,6 +27,7 @@
     "dmarcPolicy": "none"
   },
   "notes": [
+    "Scrubbing artifact: the outer From: was rewritten to family.example@example.com, but the Cloudflare Authentication-Results still reads dmarc=pass header.from=gmail.com. The two disagree, so this capture cannot exercise DMARC alignment and a correct classifier rejects it as misaligned. Use the outlook-* captures for classification tests, where the forwarder domain and the verdict agree. The pristine copy in the private repo is consistent.",
     "date is null because the quoted block carries no timezone and no seconds. The rendered time is the forwarder's local wall clock, so an absolute instant cannot be recovered from an inline forward.",
     "dateText separates 8:20 from PM with U+202F NARROW NO-BREAK SPACE, not U+0020. A parser splitting on ASCII whitespace will not find the meridiem.",
     "The inline image keeps its original Content-ID (ii_msb8f3it0) and the cid: reference stays live, so the image is still resolvable after flattening.",

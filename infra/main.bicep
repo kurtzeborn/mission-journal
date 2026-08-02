@@ -395,7 +395,7 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
       }
       runtime: {
         name: 'node'
-        version: '22'
+        version: '24'
       }
       // Always-ready instances would forfeit the free grant on both executions
       // and GB-seconds, and nothing here is latency-sensitive.

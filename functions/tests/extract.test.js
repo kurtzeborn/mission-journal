@@ -24,19 +24,33 @@ for (const name of names) {
         const got = await extractOriginal(raw);
 
         assert.equal(got.source, expected.extractionSource, 'extractionSource');
-        // Direct sends have no forwarder, and their sidecars omit the field.
-        if (expected.forwarder !== undefined) {
-            assert.equal(got.forwarder, expected.forwarder, 'forwarder');
+        // A direct send has no forwarder. Expressing that as an explicit null
+        // rather than skipping the check keeps the assertion honest.
+        assert.equal(got.forwarder, expected.forwarder ?? null, 'forwarder');
+
+        // Worth asserting even when empty: the outer subject of an attached
+        // forward from Gmail web is the empty string, and the Fwd:/Fw:/FW:
+        // prefixes differ per client.
+        if ('outerSubject' in expected) {
+            assert.equal(got.outerSubject, expected.outerSubject, 'outerSubject');
         }
 
         if (expected.embeddedPartType) {
             assert.equal(got.embeddedPartType, expected.embeddedPartType, 'embeddedPartType');
         }
 
-        if (expected.extractionSource === null) return;
-
         assert.equal(got.original.from, expected.original.from, 'original.from');
         assert.equal(got.original.subject, expected.original.subject, 'original.subject');
+
+        // The sidecars record the original offset; the extractor normalises to
+        // UTC. Comparing instants rather than text keeps both honest.
+        if (expected.original.date) {
+            assert.equal(
+                new Date(got.original.date).getTime(),
+                new Date(expected.original.date).getTime(),
+                'original.date'
+            );
+        }
 
         if (expected.extractionSource === 'inline') {
             assert.equal(got.original.dateText, expected.original.dateText, 'original.dateText');

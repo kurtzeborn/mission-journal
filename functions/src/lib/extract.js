@@ -139,9 +139,14 @@ function splitAttachments(parsed) {
 
 const stripCid = (id) => String(id || '').replace(/^</, '').replace(/>$/, '');
 
+// Gmail web sends an attached forward with a present-but-empty Subject header,
+// which postal-mime reports as undefined. An absent subject and an empty one
+// mean the same thing downstream, so both collapse to the empty string.
+const subjectOf = (parsed) => repairCp1252(parsed.subject) ?? '';
+
 export async function extractOriginal(raw) {
     const outer = await PostalMime.parse(raw);
-    const forwarder = outer.from?.address?.toLowerCase() ?? null;
+    const sender = outer.from?.address?.toLowerCase() ?? null;
 
     const embedded = findEmbeddedMessage(outer);
     if (embedded) {
@@ -151,8 +156,10 @@ export async function extractOriginal(raw) {
             source: 'rfc822',
             embeddedPartType: embedded.declaredType,
             embeddedBytes: embedded.bytes,
-            forwarder,
-            outerSubject: repairCp1252(outer.subject) ?? null,
+            sender,
+            forwarder: sender,
+            headers: outer.headers,
+            outerSubject: subjectOf(outer),
             original: {
                 from: inner.from?.address?.toLowerCase() ?? null,
                 subject: repairCp1252(inner.subject) ?? null,
@@ -171,7 +178,29 @@ export async function extractOriginal(raw) {
 
     const quoted = readQuotedHeaders(repairCp1252(outer.text));
     if (!quoted || !quoted.from) {
-        return { source: null, forwarder, outerSubject: outer.subject ?? null };
+        // Nothing was forwarded: the message in hand *is* the original. It
+        // still has to yield a usable record, because a direct send from the
+        // missionary is the intended path, not a degenerate case.
+        const { inline, files } = splitAttachments(outer);
+        return {
+            source: null,
+            embeddedPartType: null,
+            sender,
+            forwarder: null,
+            headers: outer.headers,
+            outerSubject: subjectOf(outer),
+            original: {
+                from: sender,
+                subject: repairCp1252(outer.subject) ?? null,
+                date: outer.date ? new Date(outer.date).toISOString() : null,
+                dateText: null,
+                datePrecision: 'second',
+                messageId: outer.messageId ?? null
+            },
+            attachments: files,
+            inlineImages: inline,
+            inlineCids: inline.map((a) => stripCid(a.contentId))
+        };
     }
 
     const { inline, files } = splitAttachments(outer);
@@ -183,8 +212,10 @@ export async function extractOriginal(raw) {
     return {
         source: 'inline',
         embeddedPartType: null,
-        forwarder,
-        outerSubject: repairCp1252(outer.subject) ?? null,
+        sender,
+        forwarder: sender,
+        headers: outer.headers,
+        outerSubject: subjectOf(outer),
         original: {
             from: parseAddress(quoted.from),
             subject: quoted.subject ?? null,

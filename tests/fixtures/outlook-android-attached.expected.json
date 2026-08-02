@@ -10,7 +10,7 @@
   "original": {
     "from": "elder.example@missionary.org",
     "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
-    "date": "2026-08-01T20:20:39-07:00",
+    "date": "2026-08-01T20:20:59-07:00",
     "messageId": "<CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>",
     "datePrecision": "second"
   },
@@ -21,6 +21,7 @@
   "embeddedPartFilename": "Semana 13 — conferencia de zona y una llanta ponchada.eml",
   "dkimOnPristine": "unsigned",
   "notes": [
+    "The Date header on the embedded original reads 20:20:59, twenty seconds later than the 20:20:39 every other capture of this same message reports. The Message-ID is byte-identical across all four attached forwards, so this is one message, and Outlook for Android rewrote its Date when attaching it. Verified against the pristine capture, so it is not a scrubbing artifact. Deduplication must therefore key on Message-ID; a key built from sender plus timestamp would treat this copy as a different letter.",
     "The embedded original carries no DKIM-Signature header at all. Outlook mobile exports the message without it, so there is nothing to re-verify even in principle.",
     "Selecting embedded originals by Content-Type: message/rfc822 finds nothing here, so a reader forwarding from Outlook mobile would be rejected by a rule written that way. Acceptance must rest on DKIM re-verification of the payload, not on the part's declared type, which the forwarder controls.",
     "attachmentCount and inlineImageCount describe the embedded original. The outer message has exactly one part, the .eml itself; the three images exist only inside the base64 payload.",

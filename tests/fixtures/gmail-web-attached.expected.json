@@ -21,6 +21,7 @@
   "embeddedPartFilename": "Semana 13 — conferencia de zona y una llanta ponchada.eml",
   "dkimOnPristine": "pass",
   "notes": [
+    "Scrubbing artifact: the outer From: was rewritten to family.example@example.com, but the Cloudflare Authentication-Results still reads dmarc=pass header.from=gmail.com. The two disagree, so this capture cannot exercise DMARC alignment and a correct classifier rejects it as misaligned. Use the outlook-* captures for classification tests, where the forwarder domain and the verdict agree. The pristine copy in the private repo is consistent.",
     "The only attachment capture whose embedded original still verifies: d=missionary.org s=google passes, because Gmail stored the message unmodified.",
     "The outer Subject header is present and empty; Gmail does not auto-populate a subject for forward-as-attachment. Two such forwards from one relative on the same day produce identical empty subjectNormalized values, so an equality test on a normalized field must treat empty as never matching.",
     "The outer body is a multipart/alternative of an empty text/plain and an empty text/html, neither carrying a Content-Transfer-Encoding header.",

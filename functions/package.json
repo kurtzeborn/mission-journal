@@ -5,10 +5,10 @@
   "type": "module",
   "main": "src/functions/*.js",
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
-    "test": "node --test tests/"
+    "test": "node --test \"tests/**/*.test.js\""
   },
   "dependencies": {
     "@azure/functions": "^4.6.0",
