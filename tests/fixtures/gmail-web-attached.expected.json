@@ -1,0 +1,28 @@
+{
+  "description": "Gmail web \"forward as attachment\". Carries the original as a message/rfc822 part, so every original header is recoverable exactly. Also the empty-subject case.",
+  "client": "gmail-web",
+  "capture": "forward-attached",
+  "classification": "forward",
+  "extractionSource": "rfc822",
+  "embeddedPartType": "message/rfc822",
+  "forwarder": "family.example@example.com",
+  "outerSubject": "",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": "2026-08-01T20:20:39-07:00",
+    "messageId": "<CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "embeddedPartFilename": "Semana 13 — conferencia de zona y una llanta ponchada.eml",
+  "notes": [
+    "The outer Subject header is present and empty; Gmail does not auto-populate a subject for forward-as-attachment. Two such forwards from one relative on the same day produce identical empty subjectNormalized values, so an equality test on a normalized field must treat empty as never matching.",
+    "The outer body is a multipart/alternative of an empty text/plain and an empty text/html, neither carrying a Content-Transfer-Encoding header.",
+    "The embedded part's filename is a split RFC 2047 encoded word with the extension divided across the boundary: ...ponchada=2Eem?= =?UTF-8?Q?l?=. Decoding each word independently loses the .eml.",
+    "The original's boundaries are preserved verbatim inside the embedded message, and Gmail's outer boundaries use the same generator format. Inner and outer differ only in the tail, so boundary matching must be exact rather than by prefix."
+  ]
+}

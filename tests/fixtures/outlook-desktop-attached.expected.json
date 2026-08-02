@@ -1,0 +1,26 @@
+{
+  "description": "Outlook desktop \"forward as attachment\". Shows that a client's fingerprint survives the attachment path even with an empty compose body.",
+  "client": "outlook-desktop",
+  "capture": "forward-attached",
+  "classification": "forward",
+  "extractionSource": "rfc822",
+  "embeddedPartType": "message/rfc822",
+  "forwarder": "scott@kurtzeborn.org",
+  "outerSubject": "FW: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": "2026-08-01T20:20:39-07:00",
+    "messageId": "<CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "notes": [
+    "The compose body is empty, yet the wrapper still base64-encodes a WordSection1 stylesheet block that Outlook web omits entirely. Relaying through a shared Exchange Online tenant does not normalize client output.",
+    "The outer Message-ID is folded onto a continuation line.",
+    "The message/rfc822 part carries its own Content-ID (an @namprd07.prod.outlook.com value) that has no cid: reference anywhere in the body. A Content-ID is not evidence that a part is an inline image."
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "description": "Gmail Android \"forward inline\". Structurally the same MIME as Gmail web, because Gmail's servers assemble the message; the app contributes only body text.",
+  "client": "gmail-android",
+  "capture": "forward-inline",
+  "classification": "forward",
+  "extractionSource": "inline",
+  "embeddedPartType": null,
+  "forwarder": "family.example@example.com",
+  "outerSubject": "Fwd: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": null,
+    "dateText": "Sat, Aug 1, 2026, 8:20\u202fPM",
+    "datePrecision": "minute",
+    "messageId": null
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "separator": "---------- Forwarded message ---------",
+  "htmlAnchor": "div.gmail_quote.gmail_quote_container",
+  "authentication": {
+    "authservId": "mx.cloudflare.net",
+    "dmarc": "pass",
+    "dmarcPolicy": "none"
+  },
+  "notes": [
+    "Against gmail-web-inline, the entire MIME difference is the compose wrapper: <div dir=\"auto\"></div><br> here against <div dir=\"ltr\"><br><br> on web. Twelve characters.",
+    "The quoted date text is not identical to web's, though: this client writes \"Sat, Aug 1, 2026, 8:20 PM\" where web writes \"... 2026 at 8:20 PM\". MIME assembly is server-side, but the quoted header block is composed on the device.",
+    "Same U+202F before PM as the web capture."
+  ]
+}

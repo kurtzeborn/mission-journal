@@ -1,0 +1,30 @@
+{
+  "description": "Outlook for Android \"forward inline\". A distinct producer from both Outlook web and desktop, despite relaying through the same Exchange Online tenant.",
+  "client": "outlook-android",
+  "capture": "forward-inline",
+  "classification": "forward",
+  "extractionSource": "inline",
+  "embeddedPartType": null,
+  "forwarder": "scott@kurtzeborn.org",
+  "outerSubject": "Fw: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": null,
+    "dateText": "Saturday, 01 August 2026 20:20:39",
+    "datePrecision": "second",
+    "messageId": null
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "separator": "________________________________",
+  "charset": "Windows-1252",
+  "transferEncoding": "quoted-printable",
+  "notes": [
+    "This is the only client that quotes the original time to the second, and it uses a 24-hour day-first format. Still no timezone, so the instant remains ambiguous.",
+    "The body opens with a 'Get Outlook for Android' advertisement line above the separator, so the separator is not the first line of the part.",
+    "Against outlook-web-inline it re-wraps the quoted-printable plain text at different columns and injects an Aptos font-stack div: 848 characters and 16 lines apart, on the same source message."
+  ]
+}

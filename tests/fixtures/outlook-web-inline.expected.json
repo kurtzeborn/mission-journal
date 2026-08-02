@@ -1,0 +1,32 @@
+{
+  "description": "Outlook web \"forward inline\". Legacy charset case: subject and body parts are labelled Windows-1252 rather than UTF-8.",
+  "client": "outlook-web",
+  "capture": "forward-inline",
+  "classification": "forward",
+  "extractionSource": "inline",
+  "embeddedPartType": null,
+  "forwarder": "scott@kurtzeborn.org",
+  "outerSubject": "Fw: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": null,
+    "dateText": "Saturday, August 1, 2026 8:20 PM",
+    "datePrecision": "minute",
+    "messageId": null
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "separator": "________________________________",
+  "htmlAnchor": "div[style*=\"border-top\"]",
+  "charset": "Windows-1252",
+  "transferEncoding": "quoted-printable",
+  "notes": [
+    "The subject encoded word declares Windows-1252 and carries the em dash as =97. Decoding it as UTF-8 yields a replacement character; the charset must be honoured per encoded word.",
+    "Both text parts also declare charset=\"Windows-1252\", so the legacy charset is not confined to headers.",
+    "The forward prefix is Fw:, not Fwd:. subjectNormalized must strip both.",
+    "The quoted header block uses Sent:, not Date:, and gives no timezone."
+  ]
+}

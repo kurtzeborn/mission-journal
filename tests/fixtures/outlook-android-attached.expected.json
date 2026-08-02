@@ -1,0 +1,29 @@
+{
+  "description": "Outlook for Android \"forward as attachment\". The embedded original is labelled application/octet-stream and base64-encoded whole, so no message/rfc822 part exists anywhere in the message.",
+  "client": "outlook-android",
+  "capture": "forward-attached",
+  "classification": "forward",
+  "extractionSource": "rfc822",
+  "embeddedPartType": "application/octet-stream",
+  "forwarder": "scott@kurtzeborn.org",
+  "outerSubject": "Fw: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": "2026-08-01T20:20:39-07:00",
+    "messageId": "<CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "embeddedPartFilename": "Semana 13 — conferencia de zona y una llanta ponchada.eml",
+  "notes": [
+    "Selecting embedded originals by Content-Type: message/rfc822 finds nothing here, so a reader forwarding from Outlook mobile would be rejected by a rule written that way. Acceptance must rest on DKIM re-verification of the payload, not on the part's declared type, which the forwarder controls.",
+    "attachmentCount and inlineImageCount describe the embedded original. The outer message has exactly one part, the .eml itself; the three images exist only inside the base64 payload.",
+    "The embedded payload is a complete RFC 5322 message of roughly 192 KB carrying the missionary's From: and original DKIM signature.",
+    "The filename is a split RFC 2047 encoded word in Windows-1252, divided at the dot: ...ponchada.?= =?Windows-1252?Q?eml?=. Gmail splits the same name in UTF-8 at a different point, so neither charset nor split position is predictable.",
+    "Because the nested message's parts and boundaries appear nowhere in the file, any tool that walks parts must recurse into decoded payloads. The fixture scrubber initially missed an address in here for exactly that reason."
+  ]
+}

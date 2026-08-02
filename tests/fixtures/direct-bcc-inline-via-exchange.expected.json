@@ -1,0 +1,30 @@
+{
+  "description": "The same missionary send as direct-bcc-inline-via-cloudflare, delivered instead through Exchange Online. Pairs with it to isolate what a delivery path mutates.",
+  "client": "gmail-web",
+  "capture": "direct",
+  "deliveryPath": "exchange",
+  "classification": "direct",
+  "extractionSource": null,
+  "embeddedPartType": null,
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": "2026-08-01T20:20:39-07:00",
+    "messageId": "<CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "authentication": {
+    "authservId": null,
+    "dmarc": null,
+    "spf": "pass"
+  },
+  "notes": [
+    "Exchange Online omits the authserv-id entirely: the header opens 'Authentication-Results: spf=pass (sender IP is ...)'. RFC 8601 requires that field, so a header with no identifier must match no configured authserv-id rather than being accepted as unlabelled.",
+    "Exchange injects <meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"> at the top of the HTML part. That 84-byte insertion is the only body difference from the Cloudflare copy; all three images are byte-identical across both paths.",
+    "Because the HTML is mutated in transit but the plain-text part is not, bodyHead100 must be normalized from text/plain rather than from tag-stripped HTML."
+  ]
+}

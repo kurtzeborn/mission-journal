@@ -1,0 +1,36 @@
+{
+  "description": "Gmail web \"forward inline\". The forwarded message is flattened into the outer body: no embedded message part exists, so the original's headers survive only as quoted text.",
+  "client": "gmail-web",
+  "capture": "forward-inline",
+  "classification": "forward",
+  "extractionSource": "inline",
+  "embeddedPartType": null,
+  "forwarder": "family.example@example.com",
+  "outerSubject": "Fwd: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": null,
+    "dateText": "Sat, Aug 1, 2026 at 8:20\u202fPM",
+    "datePrecision": "minute",
+    "messageId": null
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "separator": "---------- Forwarded message ---------",
+  "htmlAnchor": "div.gmail_quote.gmail_quote_container",
+  "authentication": {
+    "authservId": "mx.cloudflare.net",
+    "dmarc": "pass",
+    "dmarcPolicy": "none"
+  },
+  "notes": [
+    "date is null because the quoted block carries no timezone and no seconds. The rendered time is the forwarder's local wall clock, so an absolute instant cannot be recovered from an inline forward.",
+    "dateText separates 8:20 from PM with U+202F NARROW NO-BREAK SPACE, not U+0020. A parser splitting on ASCII whitespace will not find the meridiem.",
+    "The inline image keeps its original Content-ID (ii_msb8f3it0) and the cid: reference stays live, so the image is still resolvable after flattening.",
+    "Return-Path is SRS-rewritten to SRS0=57Kj=3f=gmail.com=family.example@pdayletters.com.",
+    "Subject arrives as two adjacent RFC 2047 encoded words that must be rejoined before decoding."
+  ]
+}

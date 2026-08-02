@@ -1,0 +1,32 @@
+{
+  "description": "Outlook desktop \"forward inline\". Both text parts are base64-encoded, so no markup, cid reference, or separator is visible in the raw bytes.",
+  "client": "outlook-desktop",
+  "capture": "forward-inline",
+  "classification": "forward",
+  "extractionSource": "inline",
+  "embeddedPartType": null,
+  "forwarder": "scott@kurtzeborn.org",
+  "outerSubject": "FW: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": null,
+    "dateText": "Saturday, August 1, 2026 8:21 PM",
+    "datePrecision": "minute",
+    "messageId": null
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "htmlAnchor": "div.WordSection1 > div[style*=\"border-top\"]",
+  "charset": "utf-8",
+  "transferEncoding": "base64",
+  "notes": [
+    "dateText reads 8:21 PM for a message sent at 20:20:39. Outlook desktop rounds the quoted time to the nearest minute where every other client truncates, so an inline-extracted timestamp can land in the following minute.",
+    "text/plain and text/html are both base64. Searching raw bytes for cid: or for a separator finds nothing; parts must be decoded first.",
+    "The subject mixes encodings within one header: =?utf-8?B?...?= followed by =?utf-8?Q?...?=. Charset and encoding are per encoded word, not per header.",
+    "Content-Disposition carries a size= parameter alongside filename=.",
+    "The forward prefix is uppercase FW: here and mixed-case Fw: from Outlook web."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "description": "Outlook web \"forward as attachment\". Carries the original as message/rfc822 with its headers intact.",
+  "client": "outlook-web",
+  "capture": "forward-attached",
+  "classification": "forward",
+  "extractionSource": "rfc822",
+  "embeddedPartType": "message/rfc822",
+  "forwarder": "scott@kurtzeborn.org",
+  "outerSubject": "Fw: Semana 13 — conferencia de zona y una llanta ponchada",
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": "2026-08-01T20:20:39-07:00",
+    "messageId": "<CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "notes": [
+    "The outer Message-ID is folded onto a continuation line. A line-oriented read of Message-ID returns empty here, and originalMessageId is the primary dedupe key, so headers must be unfolded before any header is read.",
+    "The embedded original's boundaries are preserved verbatim, so inner and outer boundary namespaces overlap in format and must be tracked separately.",
+    "Attachment names are plain, not encoded words, because they are ASCII."
+  ]
+}

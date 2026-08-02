@@ -1,0 +1,30 @@
+{
+  "description": "Missionary's own send, BCC'd to the ingest address, delivered through Cloudflare Email Routing. The authentication reference case: a real Authentication-Results chain over a real DKIM signature.",
+  "client": "gmail-web",
+  "capture": "direct",
+  "deliveryPath": "cloudflare",
+  "classification": "direct",
+  "extractionSource": null,
+  "embeddedPartType": null,
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Semana 13 — conferencia de zona y una llanta ponchada",
+    "date": "2026-08-01T20:20:39-07:00",
+    "messageId": "<CAGQrEk3Br+yrncJ0fufY-1GAqduEUn4_N6zzOOXZ=98rSVTnyw@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 1,
+  "inlineCids": ["ii_msb8f3it0"],
+  "authentication": {
+    "authservId": "mx.cloudflare.net",
+    "dmarc": "pass",
+    "dmarcPolicy": "quarantine"
+  },
+  "notes": [
+    "Bcc: post@pdayletters.com is present in this recipient's own copy. Gmail does not strip it, so absence of Bcc proves nothing about how the message was addressed.",
+    "Return-Path is SRS-rewritten to SRS0=hf4-=3f=missionary.org=elder.example@pdayletters.com, so the sender's address never appears literally in it.",
+    "Header order is ARC(i=3), mx.google.com, ARC(i=2), mx.cloudflare.net, ARC(i=1). Only the mx.cloudflare.net result is trustworthy here; selecting the first Authentication-Results header would read Google's."
+  ]
+}

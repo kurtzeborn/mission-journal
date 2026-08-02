@@ -1,0 +1,22 @@
+{
+  "description": "Missionary's own send with attachments and no inline image. The minimal direct case: no multipart/related layer and an ASCII subject.",
+  "client": "gmail-web",
+  "capture": "direct",
+  "classification": "direct",
+  "extractionSource": null,
+  "embeddedPartType": null,
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Week 12 — transfers and a bike repair",
+    "date": "2026-08-01T19:45:18-07:00",
+    "messageId": "<CAGQrEk0rFL4ZJOt91LSR32QrGw_mc3YxTGwwVrBAV9qecb1ASg@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 0,
+  "inlineCids": [],
+  "notes": [
+    "No multipart/related layer, since nothing is referenced by cid. Code that descends to the inline image through a related part must still find the attachments here."
+  ]
+}

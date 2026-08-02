@@ -1,0 +1,29 @@
+{
+  "description": "Outlook desktop inline forward of the plain Week 12 letter. The minimal-structure holdout: no multipart/related layer, no inline image, ASCII subject. Also a two-hop chain, where the immediately quoted sender is not the missionary.",
+  "client": "outlook-desktop",
+  "capture": "forward-inline",
+  "classification": "forward",
+  "extractionSource": "inline",
+  "embeddedPartType": null,
+  "forwarder": "scott@kurtzeborn.org",
+  "outerSubject": "FW: Week 12 — transfers and a bike repair",
+  "original": {
+    "from": "family.example@example.com",
+    "subject": "Week 12 — transfers and a bike repair",
+    "date": null,
+    "dateText": "Saturday, August 1, 2026 6:54 PM",
+    "datePrecision": "minute",
+    "messageId": null
+  },
+  "attachmentCount": 2,
+  "attachmentNames": ["bike_chain1.jpg", "bike_chain2.jpg"],
+  "inlineImageCount": 0,
+  "inlineCids": [],
+  "charset": "utf-8",
+  "transferEncoding": "base64",
+  "notes": [
+    "original.from is the intermediate forwarder, not the missionary: the letter reached this mailbox already forwarded once, so the first quoted header block attributes it to family.example@example.com. Taking the nearest quoted sender as the author would credit the wrong person, and the missionary's attribution sits deeper in the quoted text.",
+    "Every other fixture carries a multipart/related layer, an inline cid image, and a non-ASCII subject. This one has none of them, so code that assumes any of the three still has to pass here.",
+    "The two attachments appear in reverse order relative to the other captures; attachment order is not stable and must not be asserted."
+  ]
+}
