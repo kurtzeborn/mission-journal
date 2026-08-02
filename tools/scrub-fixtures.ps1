@@ -246,6 +246,12 @@ function Convert-Message {
         message/rfc822 part without recursion: the inner headers arrive as the
         body of a 7bit part and are rewritten literally, and the inner
         boundaries are already in the set.
+
+        A base64-encoded embedded message is the exception. Outlook Android
+        labels its forward-as-attachment payload application/octet-stream and
+        base64-encodes the whole original, so none of that message's own parts
+        or boundaries appear in the file and the walk cannot see them. Those
+        payloads are decoded and passed back through this function.
     #>
     param([string]$Raw, [ref]$Found)
 
@@ -278,9 +284,10 @@ function Convert-Message {
             $handled = $false
 
             $isText = (-not $ctype) -or ($ctype -match '(?i)^\s*(text/|message/)')
+            $isOpaque = $ctype -match '(?i)^\s*application/octet-stream'
             $enc = if ($cte) { $cte.ToLowerInvariant() } else { '' }
 
-            if ($isText -and $enc -eq 'base64') {
+            if (($isText -or $isOpaque) -and $enc -eq 'base64') {
                 $b64 = ($body -replace '\s', '')
                 if ($b64) {
                     # Only the decode is guarded. Wrapping the replace and
@@ -292,8 +299,17 @@ function Convert-Message {
 
                     if ($null -ne $bytes) {
                         $decoded = $script:Latin1.GetString($bytes)
-                        if (Test-Literal $decoded) { $Found.Value = $true }
-                        $replaced = Convert-Literal $decoded
+                        if ($decoded -match '^[A-Za-z][A-Za-z0-9-]*:\s') {
+                            # An embedded message: walk it as one, so its own
+                            # quoted-printable and base64 parts get decoded too.
+                            # A literal replace over the flat text would miss any
+                            # address split across a soft line break.
+                            $replaced = Convert-Message -Raw $decoded -Found $Found
+                        }
+                        else {
+                            if (Test-Literal $decoded) { $Found.Value = $true }
+                            $replaced = Convert-Literal $decoded
+                        }
                         if ($replaced -ne $decoded) {
                             [void]$out.Append((ConvertTo-Base64Lines $script:Latin1.GetBytes($replaced)))
                             $handled = $true
