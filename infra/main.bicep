@@ -44,9 +44,13 @@ var keyVaultName = toLower('${namePrefix}-kv-${suffix}')
 var workspaceName = '${namePrefix}-log-${suffix}'
 var appInsightsName = '${namePrefix}-ai-${suffix}'
 var staticWebAppName = '${namePrefix}-swa-${suffix}'
+var workerPlanName = '${namePrefix}-plan-${suffix}'
+var workerAppName = '${namePrefix}-fn-${suffix}'
 
 var storageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+var storageBlobDataOwner = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageQueueDataContributor = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
+var storageTableDataContributor = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 
 // ---------------------------------------------------------------------------
@@ -338,8 +342,168 @@ resource secretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (
   }
 }
 
+// ---------------------------------------------------------------------------
+// Background workers.
+//
+// These cannot live inside Static Web Apps: managed functions are limited to
+// HTTP triggers and get no managed identity, so a queue trigger reaching
+// storage by identity needs its own app. Flex Consumption rather than
+// Consumption because Consumption is legacy — Linux Consumption retires in
+// September 2028 and there is no in-place migration to Flex.
+// ---------------------------------------------------------------------------
+
+resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: 'app-package'
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+resource workerPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
+  name: workerPlanName
+  location: location
+  kind: 'functionapp'
+  sku: {
+    name: 'FC1'
+    tier: 'FlexConsumption'
+  }
+  properties: {
+    reserved: true
+  }
+}
+
+resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
+  name: workerAppName
+  location: location
+  kind: 'functionapp,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    serverFarmId: workerPlan.id
+    httpsOnly: true
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: '${storage.properties.primaryEndpoints.blob}${deploymentContainer.name}'
+          authentication: {
+            type: 'SystemAssignedIdentity'
+          }
+        }
+      }
+      runtime: {
+        name: 'node'
+        version: '22'
+      }
+      // Always-ready instances would forfeit the free grant on both executions
+      // and GB-seconds, and nothing here is latency-sensitive.
+      scaleAndConcurrency: {
+        maximumInstanceCount: 40
+        instanceMemoryMB: 2048
+      }
+    }
+    siteConfig: {
+      appSettings: [
+        {
+          name: 'AzureWebJobsStorage__accountName'
+          value: storage.name
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
+        }
+        // Identity-based connection for the ingest and render queues. Naming
+        // the service URIs without a credential selects the system-assigned
+        // identity.
+        {
+          name: 'STORAGE__queueServiceUri'
+          value: storage.properties.primaryEndpoints.queue
+        }
+        {
+          name: 'STORAGE__blobServiceUri'
+          value: storage.properties.primaryEndpoints.blob
+        }
+        {
+          name: 'STORAGE_ACCOUNT_NAME'
+          value: storage.name
+        }
+        {
+          name: 'ACCEPTED_INGEST_DOMAINS'
+          value: acceptedIngestDomains
+        }
+        {
+          name: 'MISSIONARY_DOMAINS'
+          value: missionaryDomains
+        }
+        {
+          name: 'KEY_VAULT_URI'
+          value: keyVault.properties.vaultUri
+        }
+      ]
+    }
+  }
+}
+
+// Blob Data Owner rather than Contributor: the Functions host manages its own
+// leases and the deployment package container, which Contributor cannot do.
+resource workerBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storage
+  name: guid(storage.id, workerApp.id, storageBlobDataOwner)
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      storageBlobDataOwner
+    )
+    principalId: workerApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource workerQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storage
+  name: guid(storage.id, workerApp.id, storageQueueDataContributor)
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      storageQueueDataContributor
+    )
+    principalId: workerApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource workerTableRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: storage
+  name: guid(storage.id, workerApp.id, storageTableDataContributor)
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      storageTableDataContributor
+    )
+    principalId: workerApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource workerSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: keyVault
+  name: guid(keyVault.id, workerApp.id, keyVaultSecretsUser)
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      keyVaultSecretsUser
+    )
+    principalId: workerApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 output storageAccountName string = storage.name
 output keyVaultName string = keyVault.name
 output appInsightsName string = appInsights.name
 output staticWebAppName string = staticWebApp.name
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
+output functionAppName string = workerApp.name
+
