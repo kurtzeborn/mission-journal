@@ -225,6 +225,8 @@ Because anyone on a missionary's ACL can forward historical email, the intake co
 
 **Decode part filenames as RFC 2047, and expect them split.** Gmail names the `message/rfc822` attachment after the original subject, so a non-ASCII subject yields an encoded-word `filename=` — broken across two adjacent encoded words, with the `.eml` extension itself divided between them (`…=2Eem?= =?UTF-8?Q?l?=`). Reading the parameter literally produces a filename containing raw `=?UTF-8?Q?` text; decoding each encoded word in isolation without rejoining them loses the extension.
 
+**Anchor inline-forward detection on the quote container, not the wrapper around it.** Gmail web and Gmail Android emit byte-identical forwarded content inside `<div class="gmail_quote gmail_quote_container">` and differ only in the compose wrapper preceding it — `<div dir="ltr"><br><br>` against `<div dir="auto"></div><br>`. With an empty forward body those twelve characters are the entire difference between the two captures. A matcher keyed on the wrapper passes one client and fails the other for no structural reason.
+
 **Extract the original:**
 
 1. **Prefer `message/rfc822` attachments.** Outlook, Apple Mail, and Gmail's "forward as attachment" all embed the original as an rfc822 MIME part with headers intact.
