@@ -83,6 +83,12 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
     deleteRetentionPolicy: {
       enabled: true
       days: 30
+      // Without this, a soft-deleted version cannot be removed by any means —
+      // the service returns 403 and the data simply ages out after `days`.
+      // That is incompatible with promising a family their letters are deleted
+      // when they ask. See the deletion notes under "Owner-only actions" in
+      // docs/plan.md for the trade-off this accepts.
+      allowPermanentDelete: true
     }
     containerDeleteRetentionPolicy: {
       enabled: true
