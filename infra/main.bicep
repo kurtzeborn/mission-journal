@@ -88,6 +88,12 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
       // That is incompatible with promising a family their letters are deleted
       // when they ask. See the deletion notes under "Owner-only actions" in
       // docs/plan.md for the trade-off this accepts.
+      //
+      // ON PURPOSE DURING DEVELOPMENT, AND REVISITED IN PHASE 9. It exists now
+      // so infra/reset-slug.ps1 can wipe a slug between test runs. Once the
+      // deletion timer has its own custom role, weigh turning this back off:
+      // it is the flag that stops soft delete from being an absolute backstop
+      // against a compromised credential mass-deleting the archive.
       allowPermanentDelete: true
     }
     containerDeleteRetentionPolicy: {
