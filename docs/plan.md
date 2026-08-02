@@ -221,7 +221,9 @@ Because anyone on a missionary's ACL can forward historical email, the intake co
 
 **Cap the message size before the parse call, not after.** A MIME parser fed untrusted mail is an attack surface — deeply nested multiparts, decompression bombs, and absurd part counts all burn CPU before any rule in this design gets a chance to apply.
 
-**Treat the inner message as its own MIME namespace.** Clients disagree on what they do to an embedded original: Outlook desktop re-encodes it under its own boundary strings, while Outlook web preserves the sending client's original boundaries verbatim inside the `message/rfc822` part. Anything that keys off boundary naming — or that assumes inner boundaries resemble outer ones — works on one client and fails on the next. Descend through the part tree the parser gives you rather than pattern-matching boundary strings.
+**Treat the inner message as its own MIME namespace.** Clients disagree on what they do to an embedded original: Outlook desktop re-encodes it under its own boundary strings, while Outlook web and Gmail both preserve the sending client's original boundaries verbatim inside the `message/rfc822` part — and because Gmail generates outer boundaries in the same format, the inner and outer strings differ only in their tail. Anything that keys off boundary naming — or that assumes inner boundaries resemble outer ones — works on one client and fails on the next. Descend through the part tree the parser gives you rather than pattern-matching boundary strings.
+
+**Decode part filenames as RFC 2047, and expect them split.** Gmail names the `message/rfc822` attachment after the original subject, so a non-ASCII subject yields an encoded-word `filename=` — broken across two adjacent encoded words, with the `.eml` extension itself divided between them (`…=2Eem?= =?UTF-8?Q?l?=`). Reading the parameter literally produces a filename containing raw `=?UTF-8?Q?` text; decoding each encoded word in isolation without rejoining them loses the extension.
 
 **Extract the original:**
 
@@ -242,6 +244,8 @@ Because anyone on a missionary's ACL can forward historical email, the intake co
 The bucket query is an in-memory scan of the missionary's already-loaded `posts.json`: filter posts whose `originalFrom` matches (case-insensitively) and whose `originalDate` day matches. Typically returns **0–2 candidates**.
 
 **Decision (only for candidates that pass both gates):** it's a duplicate if **either** normalized field matches exactly.
+
+**An empty normalized field never matches.** Gmail's *forward as attachment* composes with no subject unless the forwarder types one, so `Subject:` arrives present and empty — and a photos-only forward produces an empty `bodyHead100` the same way. Two such forwards from one relative on the same day both normalize to the empty string, match trivially, and the second letter is discarded as a duplicate of something it does not resemble. An empty normalized field is unmatchable, not a value.
 
 | Field | Normalization |
 |---|---|
