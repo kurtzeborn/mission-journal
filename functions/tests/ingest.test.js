@@ -18,8 +18,8 @@ const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'test
 const raw = (name) => readFile(join(fixtures, `${name}.eml`));
 
 const config = { authservId: 'mx.cloudflare.net', missionaryDomains: ['missionary.org'] };
-const OWNER = [{ address: 'scott@kurtzeborn.org', role: 'owner' }];
-const READER = [{ address: 'scott@kurtzeborn.org', role: 'reader' }];
+const OWNER = [{ email: 'scott@kurtzeborn.org', role: 'owner' }];
+const READER = [{ email: 'scott@kurtzeborn.org', role: 'reader' }];
 
 const silent = { info() {}, warn() {}, error() {} };
 
@@ -87,9 +87,12 @@ function memoryStore() {
                 etag: `etag-${++seq}`
             });
         },
+        // Wrapped exactly as infra/seed-config.ps1 writes it. The tests used
+        // to seed a bare array, which is why a two-way format mismatch with
+        // the real file survived a green suite.
         acl(slug, members) {
             blobs.set(`config/${slug}/acl.json`, {
-                bytes: Buffer.from(JSON.stringify(members), 'utf8'),
+                bytes: Buffer.from(JSON.stringify({ slug, members }), 'utf8'),
                 metadata: {},
                 etag: `etag-${++seq}`
             });
@@ -245,7 +248,7 @@ test('an unverified forward is stored hidden rather than dropped', async () => {
 
 test('a forward from someone not on the ACL is rejected and nothing is written', async () => {
     const store = memoryStore();
-    store.acl('elder.example', [{ address: 'stranger@example.com', role: 'owner' }]);
+    store.acl('elder.example', [{ email: 'stranger@example.com', role: 'owner' }]);
     const result = await ingestFixture(store, 'outlook-web-attached');
 
     assert.equal(result.status, 'rejected');
@@ -264,6 +267,25 @@ test('an inline forward from an owner is stored, from a reader is refused', asyn
     const refused = await ingestFixture(asReader, 'outlook-web-inline');
     assert.equal(refused.status, 'rejected');
     assert.equal(refused.reason, 'inline-requires-owner');
+});
+
+// The bytes infra/seed-config.ps1 actually uploads, checked in verbatim. Every
+// other test builds its ACL through a helper, so a helper that agreed with the
+// code and disagreed with the file would keep the suite green while every real
+// forward was rejected as `unknown-slug`. That is exactly what happened.
+test('the ACL that seed-config.ps1 writes is the ACL the classifier reads', async () => {
+    const seeded = await readFile(
+        join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'acl.seeded.json')
+    );
+    const store = memoryStore();
+    store.blobs.set('config/elder.example/acl.json', {
+        bytes: seeded,
+        metadata: {},
+        etag: 'etag-seeded'
+    });
+
+    const result = await ingestFixture(store, 'outlook-web-inline');
+    assert.equal(result.status, 'stored');
 });
 
 test('a lost write race is retried, not lost', async () => {

@@ -31,9 +31,9 @@ const FORWARDER = 'scott@kurtzeborn.org';
 const GMAIL_FORWARDER = 'family.example@gmail.com';
 
 const acl = (members) => (slug) => (slug === 'elder.example' ? members : null);
-const asReader = acl([{ address: FORWARDER, role: 'reader' }]);
-const asOwner = acl([{ address: FORWARDER, role: 'owner' }]);
-const strangersOnly = acl([{ address: 'someone.else@example.com', role: 'owner' }]);
+const asReader = acl([{ email: FORWARDER, role: 'reader' }]);
+const asOwner = acl([{ email: FORWARDER, role: 'owner' }]);
+const strangersOnly = acl([{ email: 'someone.else@example.com', role: 'owner' }]);
 
 // --- header selection ------------------------------------------------------
 
@@ -243,7 +243,7 @@ test('a consumer-mailbox forwarder is accepted on the same terms', async () => {
         extracted,
         headers: extracted.headers,
         config,
-        lookupAcl: acl([{ address: GMAIL_FORWARDER, role: 'reader' }]),
+        lookupAcl: acl([{ email: GMAIL_FORWARDER, role: 'reader' }]),
         dkimVerified: true
     });
 

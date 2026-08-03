@@ -1,0 +1,11 @@
+{
+  "slug": "elder.example",
+  "members": [
+    {
+      "email": "scott@kurtzeborn.org",
+      "role": "owner",
+      "verifiedMissionary": false,
+      "addedAt": "2026-08-03T06:30:00Z"
+    }
+  ]
+}

@@ -108,8 +108,9 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
     if (!members) return reject('unknown-slug', { sender, author, slug });
 
     // Access implies forwarding rights: there is no separate allowed-forwarder
-    // list to drift out of sync with the ACL.
-    const member = members.find((m) => m.address?.toLowerCase() === sender);
+    // list to drift out of sync with the ACL. Keyed on `email`, which is the
+    // field name in the stored acl.json.
+    const member = members.find((m) => m.email?.toLowerCase() === sender);
     if (!member) return reject('forwarder-not-on-acl', { sender, author, slug });
 
     const isOwner = member.role === 'owner';

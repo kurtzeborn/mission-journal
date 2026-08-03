@@ -281,13 +281,19 @@ async function writeRaw({ store, slug, msgId, raw, extracted, envelope, ulid, re
     }), { contentType: 'application/json' });
 }
 
+// acl.json is an object with a `members` array, not a bare array — that is
+// what infra/seed-config.ps1 writes and what the Phase 7 claim flow will
+// write. Read it in exactly one shape: a forgiving parser that also accepted a
+// bare array would let the two formats drift apart silently, and a
+// mis-parsed ACL fails closed as `unknown-slug`, which is indistinguishable
+// from spam in the logs.
 async function readAcl(store, slug) {
     const safe = validSlug(slug);
     if (!safe) return null;
     const blob = await store.readBlob('config', `${safe}/acl.json`);
     if (!blob) return null;
     const parsed = JSON.parse(Buffer.from(blob.bytes).toString('utf8'));
-    return Array.isArray(parsed) ? parsed : null;
+    return Array.isArray(parsed?.members) ? parsed.members : null;
 }
 
 // Rejections are logged without any body text: the whole point of rejecting a

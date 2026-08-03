@@ -1,0 +1,39 @@
+name: Test functions
+
+# The 49-test suite gated nothing until this existed: the only workflow in the
+# repo watched worker/**, so every ingest change shipped unverified by CI.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'tests/fixtures/**'
+      - '.github/workflows/test-functions.yml'
+  pull_request:
+    paths:
+      - 'functions/**'
+      - 'tests/fixtures/**'
+      - '.github/workflows/test-functions.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+        working-directory: functions
+
+      # The fixture corpus lives at the repo root, not under functions/, and
+      # the tests reach it by relative path — so this must run from a full
+      # checkout rather than a sparse one.
+      - run: npm test
+        working-directory: functions
