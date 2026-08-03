@@ -10,6 +10,7 @@ import { classify, aclSlugFor, CLASS, DISPOSITION } from './classify.js';
 import { dedupeKey, findDuplicate, bodyHead100, normalizeSubject } from './dedupe.js';
 import { rfc3339InOwnOffset, dayInOwnOffset } from './dates.js';
 import { attachmentPath, msgIdSegment, validSlug } from './paths.js';
+import { sanitizeBody } from './sanitize.js';
 
 // Cloudflare refuses messages over 25 MiB at SMTP time, so anything larger
 // than that in the inbox did not come from the mail path and is not a letter.
@@ -143,7 +144,11 @@ export async function runIngest({
         originalDate,
         receivedAt,
         subject: original.subject ?? extracted.outerSubject ?? '',
-        bodyHtml: original.html ?? null,
+        // Sanitized here as well as at render, so `rendered/` never holds raw
+        // email HTML even for the seconds between the two. Photos do not exist
+        // yet, so every cid: reference drops out of this pass; render rebuilds
+        // the body from raw/ with the real photo URLs once they do.
+        bodyHtml: original.html ? sanitizeBody(original.html) : null,
         bodyText: original.html ? null : (original.text ?? null),
         bodyHead100: candidate.head,
         hidden: verdict.disposition === DISPOSITION.hold,
