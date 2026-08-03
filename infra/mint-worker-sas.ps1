@@ -11,9 +11,12 @@
     revokes the token immediately, without rotating the account key and
     breaking everything else that uses it.
 
-    Output is printed, never written to disk. Paste the values into Wrangler:
-        npx wrangler secret put INBOX_SAS_URL
-        npx wrangler secret put INGEST_QUEUE_SAS_URL
+    Output is printed, never written to disk. The values are bare query
+    strings, not URLs: the Worker builds its own URL from the STORAGE_ACCOUNT
+    and container vars in wrangler.toml and appends the token. Set them in the
+    Cloudflare dashboard under Settings -> Variables and Secrets, or:
+        npx wrangler secret put INBOX_SAS
+        npx wrangler secret put QUEUE_SAS
 #>
 [CmdletBinding()]
 param(
@@ -38,25 +41,51 @@ $key = az storage account keys list `
     --resource-group $ResourceGroup `
     --query '[0].value' --output tsv
 
-# Write-only. No read, no list, no delete.
-az storage container policy create `
+# Policy creation is separate from token minting because the two have
+# different lifetimes: the policy is the revocation handle and outlives any
+# number of reissued tokens. Creating one that already exists is an error, so
+# re-running this script to reissue a token must not try.
+$blobPolicies = az storage container policy list `
     --container-name $InboxContainer `
-    --name $blobPolicy `
-    --permissions w `
-    --expiry $expiry `
     --account-name $StorageAccount `
     --account-key $key `
-    --output none
+    --output json | ConvertFrom-Json
 
-# Add-only. The Worker enqueues; it never reads or dequeues.
-az storage queue policy create `
+if ($blobPolicies.PSObject.Properties.Name -notcontains $blobPolicy) {
+    # Write-only. No read, no list, no delete.
+    az storage container policy create `
+        --container-name $InboxContainer `
+        --name $blobPolicy `
+        --permissions w `
+        --expiry $expiry `
+        --account-name $StorageAccount `
+        --account-key $key `
+        --output none
+    Write-Host "Created blob policy $blobPolicy (expires $expiry)"
+} else {
+    Write-Host "Reusing blob policy $blobPolicy (expires $($blobPolicies.$blobPolicy.expiry))"
+}
+
+$queuePolicies = az storage queue policy list `
     --queue-name $IngestQueue `
-    --name $queuePolicy `
-    --permissions a `
-    --expiry $expiry `
     --account-name $StorageAccount `
     --account-key $key `
-    --output none
+    --output json | ConvertFrom-Json
+
+if ($queuePolicies.PSObject.Properties.Name -notcontains $queuePolicy) {
+    # Add-only. The Worker enqueues; it never reads or dequeues.
+    az storage queue policy create `
+        --queue-name $IngestQueue `
+        --name $queuePolicy `
+        --permissions a `
+        --expiry $expiry `
+        --account-name $StorageAccount `
+        --account-key $key `
+        --output none
+    Write-Host "Created queue policy $queuePolicy (expires $expiry)"
+} else {
+    Write-Host "Reusing queue policy $queuePolicy (expires $($queuePolicies.$queuePolicy.expiry))"
+}
 
 $blobSas = az storage container generate-sas `
     --name $InboxContainer `
@@ -75,14 +104,16 @@ $queueSas = az storage queue generate-sas `
     --output tsv
 
 Write-Host ''
-Write-Host "Expires: $expiry" -ForegroundColor Yellow
+Write-Host 'The expiry that matters is the policy, not the token.' -ForegroundColor Yellow
 Write-Host 'A silently expired SAS turns every inbound letter into an SMTP retry loop.'
 Write-Host ''
-Write-Host 'INBOX_SAS_URL'
-Write-Host "https://$StorageAccount.blob.core.windows.net/$InboxContainer`?$blobSas"
+Write-Host 'INBOX_SAS'
+Write-Host $blobSas
 Write-Host ''
-Write-Host 'INGEST_QUEUE_SAS_URL'
-Write-Host "https://$StorageAccount.queue.core.windows.net/$IngestQueue`?$queueSas"
+Write-Host 'QUEUE_SAS'
+Write-Host $queueSas
+Write-Host ''
+Write-Host 'These are query strings, not URLs — the Worker builds the URL itself.' -ForegroundColor Yellow
 Write-Host ''
 Write-Host 'To revoke:' -ForegroundColor Yellow
 Write-Host "  az storage container policy delete --container-name $InboxContainer --name $blobPolicy --account-name $StorageAccount --account-key <key>"
