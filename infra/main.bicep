@@ -35,6 +35,9 @@ param acceptedIngestDomains string
 @description('Comma-separated domains treated as genuine missionary mail.')
 param missionaryDomains string = 'missionary.org'
 
+@description('The authserv-id of our own inbound mail provider, whose Authentication-Results is the only one trusted.')
+param authservId string = 'mx.cloudflare.net'
+
 @description('Days before inbox blobs are deleted by lifecycle policy.')
 param inboxRetentionDays int = 30
 
@@ -436,6 +439,14 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'MISSIONARY_DOMAINS'
           value: missionaryDomains
+        }
+        // The authserv-id whose verdict we accept. Selected by name rather
+        // than by position, because every message carries several
+        // Authentication-Results headers and only our own inbound provider's
+        // is evidence.
+        {
+          name: 'AUTHSERV_ID'
+          value: authservId
         }
         {
           name: 'KEY_VAULT_URI'

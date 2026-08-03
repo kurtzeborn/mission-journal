@@ -79,7 +79,7 @@ export function findEmbeddedMessage(parsed) {
 // forward. Values may wrap onto continuation lines, which are indented by
 // some clients and not by others, so a line that does not itself look like a
 // header is treated as a continuation of the previous one.
-export function readQuotedHeaders(text) {
+function readQuotedBlock(text) {
     if (!text) return null;
     const lines = text.split(/\r?\n/);
 
@@ -96,14 +96,19 @@ export function readQuotedHeaders(text) {
     const headers = {};
     let last = null;
     let seen = 0;
+    let end = lines.length;
 
     for (let i = start; i < lines.length && seen < 12; i++) {
         const line = lines[i];
         if (!line.trim()) {
-            if (Object.keys(headers).length) break;
+            if (Object.keys(headers).length) {
+                end = i + 1;
+                break;
+            }
             continue;
         }
         seen++;
+        end = i + 1;
         const match = line.match(HEADER_LINE);
         if (match) {
             last = match[1].toLowerCase();
@@ -113,7 +118,12 @@ export function readQuotedHeaders(text) {
         }
     }
 
-    return Object.keys(headers).length ? headers : null;
+    if (!Object.keys(headers).length) return null;
+    return { headers, body: lines.slice(end).join('\n') };
+}
+
+export function readQuotedHeaders(text) {
+    return readQuotedBlock(text)?.headers ?? null;
 }
 
 // An image is inline when the body actually points at it. Neither of the
@@ -144,6 +154,17 @@ const stripCid = (id) => String(id || '').replace(/^</, '').replace(/>$/, '');
 // mean the same thing downstream, so both collapse to the empty string.
 const subjectOf = (parsed) => repairCp1252(parsed.subject) ?? '';
 
+// The Date header verbatim, before any timezone normalization. A missionary's
+// local calendar day is what readers mean by "the letter from the 6th" and
+// what every copy of a message agrees on; converting to UTC throws the offset
+// away and can shift the day.
+function dateHeaderOf(parsed) {
+    for (const h of parsed.headers ?? []) {
+        if (h.key === 'date') return h.value;
+    }
+    return null;
+}
+
 export async function extractOriginal(raw) {
     const outer = await PostalMime.parse(raw);
     const sender = outer.from?.address?.toLowerCase() ?? null;
@@ -166,9 +187,12 @@ export async function extractOriginal(raw) {
                 // An embedded copy carries a real Date header, so this is the
                 // one path that yields an actual instant.
                 date: inner.date ? new Date(inner.date).toISOString() : null,
+                dateHeader: dateHeaderOf(inner),
                 dateText: null,
                 datePrecision: 'second',
-                messageId: inner.messageId ?? null
+                messageId: inner.messageId ?? null,
+                html: repairCp1252(inner.html) ?? null,
+                text: repairCp1252(inner.text) ?? null
             },
             attachments: files,
             inlineImages: inline,
@@ -176,8 +200,9 @@ export async function extractOriginal(raw) {
         };
     }
 
-    const quoted = readQuotedHeaders(repairCp1252(outer.text));
-    if (!quoted || !quoted.from) {
+    const quotedText = repairCp1252(outer.text);
+    const quoted = readQuotedBlock(quotedText);
+    if (!quoted || !quoted.headers.from) {
         // Nothing was forwarded: the message in hand *is* the original. It
         // still has to yield a usable record, because a direct send from the
         // missionary is the intended path, not a degenerate case.
@@ -193,9 +218,12 @@ export async function extractOriginal(raw) {
                 from: sender,
                 subject: repairCp1252(outer.subject) ?? null,
                 date: outer.date ? new Date(outer.date).toISOString() : null,
+                dateHeader: dateHeaderOf(outer),
                 dateText: null,
                 datePrecision: 'second',
-                messageId: outer.messageId ?? null
+                messageId: outer.messageId ?? null,
+                html: repairCp1252(outer.html) ?? null,
+                text: repairCp1252(outer.text) ?? null
             },
             attachments: files,
             inlineImages: inline,
@@ -207,7 +235,7 @@ export async function extractOriginal(raw) {
     // Gmail says Date:, Outlook says Sent:. Neither carries a timezone, so no
     // instant can be recovered — the text is kept verbatim instead, including
     // the narrow no-break space Gmail puts before the meridiem.
-    const dateText = quoted.date ?? quoted.sent ?? null;
+    const dateText = quoted.headers.date ?? quoted.headers.sent ?? null;
 
     return {
         source: 'inline',
@@ -217,12 +245,22 @@ export async function extractOriginal(raw) {
         headers: outer.headers,
         outerSubject: subjectOf(outer),
         original: {
-            from: parseAddress(quoted.from),
-            subject: quoted.subject ?? null,
+            from: parseAddress(quoted.headers.from),
+            subject: quoted.headers.subject ?? null,
             date: null,
+            dateHeader: null,
             dateText,
             datePrecision: dateText && /\d{1,2}:\d{2}:\d{2}/.test(dateText) ? 'second' : 'minute',
-            messageId: null
+            messageId: null,
+            // The plain-text body can be cut at the quoted header block. The
+            // HTML cannot: the boundary is per-client markup — Gmail's quote
+            // container, Outlook's border-top rule — and cutting it wrong
+            // silently truncates a letter. The whole HTML body is kept, so an
+            // inline forward carries the forwarder's own note as well. It is
+            // the honest representation of what arrived, and the raw MIME is
+            // archived either way if a slicer is written later.
+            html: repairCp1252(outer.html) ?? null,
+            text: quoted.body || null
         },
         attachments: files,
         inlineImages: inline,

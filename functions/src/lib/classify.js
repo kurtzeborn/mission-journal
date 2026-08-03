@@ -34,6 +34,21 @@ const reject = (reason, extra = {}) => ({
     ...extra
 });
 
+// Which slug's ACL the classifier is going to need. A direct send needs none —
+// DMARC has already authenticated the author — so this returns null and the
+// caller skips the lookup entirely. Exposed because the ACL lives in blob
+// storage and has to be fetched before `classify` runs, which is synchronous
+// by design: every decision it makes is a pure function of evidence in hand.
+export function aclSlugFor({ extracted, config }) {
+    const missionaryDomains = (config.missionaryDomains ?? []).map((d) => d.toLowerCase());
+    const senderDomain = domainOf(extracted?.sender);
+    if (!senderDomain || missionaryDomains.includes(senderDomain)) return null;
+
+    const author = extracted?.original?.from ?? null;
+    if (!author || !missionaryDomains.includes(domainOf(author))) return null;
+    return localPartOf(author);
+}
+
 /**
  * @param {object} input
  * @param {object} input.extracted     result of extractOriginal()
