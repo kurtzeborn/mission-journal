@@ -67,6 +67,17 @@ const MIN_LABELS = 3;
 const MIN_PROBE = 20;
 const PROBE_LENGTH = 50;
 
+// Blocks that mail clients emit by the dozen to carry spacing they have
+// already expressed some other way. Measured across the 24 stored letters:
+// every one of them arrived with 10-19 empty <p> and one empty <div>, about
+// 7% of the stored body and a blank line each on screen.
+//
+// Only these three. An empty <li> consumes a bullet, an empty <td> holds a
+// column open, and an empty heading is more likely to be a real authoring
+// mistake worth seeing -- none of those are safe to remove silently, and none
+// of them appear in the corpus anyway.
+const EMPTY_BLOCKS = new Set(['p', 'div', 'span']);
+
 const collapse = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
 // All whitespace removed, because the same prose arrives spaced differently in
@@ -128,7 +139,21 @@ export function sanitizeBody(
     const probe = squash(letterText).slice(0, PROBE_LENGTH);
     const dropHeaders = probe.length >= MIN_PROBE;
 
-    return sanitizeHtmlLib(String(html), {
+    // Output positions of horizontal rules that survived. `exclusiveFilter`
+    // runs innermost-first in closing order, and a frame's `tagPosition` is
+    // where its opening tag was written, so at the moment a block is judged
+    // this holds exactly the rules that closed before it did. A rule *inside*
+    // the block therefore sits at a position at or after the block's own, and
+    // a rule before or after it does not. Verified against sanitize-html
+    // rather than assumed.
+    //
+    // Without this, `<div><hr></div>` reads as empty -- no text, no media --
+    // and the block would be dropped together with the rule it exists to
+    // show. Images need no such bookkeeping: `mediaChildren` already excludes
+    // the ones this filter removed.
+    const rules = [];
+
+    const clean = sanitizeHtmlLib(String(html), {
         allowedTags: ALLOWED_TAGS,
         nonTextTags: DROP_CONTENT,
 
@@ -205,9 +230,27 @@ export function sanitizeBody(
             if (frame.tag === 'img') {
                 return !String(frame.attribs?.src ?? '').startsWith(PHOTO_PREFIX);
             }
-            return dropHeaders && isQuotedHeaderBlock(frame.text, probe);
+            if (frame.tag === 'hr') {
+                rules.push(frame.tagPosition);
+                return false;
+            }
+            if (dropHeaders && isQuotedHeaderBlock(frame.text, probe)) return true;
+
+            // Nesting resolves in a single pass: a parent's `text` is the text
+            // of its whole subtree, so a <div> wrapping nothing but empty
+            // paragraphs reads as empty in the same sweep that removes them.
+            // `&nbsp;` has already been decoded to a space by this point, so
+            // trimming catches it.
+            if (EMPTY_BLOCKS.has(frame.tag) && !frame.text.trim() && !frame.mediaChildren.length) {
+                return !rules.some((position) => position >= frame.tagPosition);
+            }
+            return false;
         }
     });
+
+    // Whatever the removed blocks were indented with is left behind between
+    // the surviving tags. It renders as nothing, so this only tidies the ends.
+    return clean.trim();
 }
 
 // The URL the reader fetches a rendition from. Kept here so the sanitizer and

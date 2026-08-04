@@ -884,6 +884,19 @@ An owner can change a post's **subject** and **body** — copy-editing, fixing a
 - **No "edited" badge, but the edit is recorded.** `editedBy` and `editedAt` are written on the post — not to police owners, who are trusted, but so that *"why does this letter not match the one in my inbox?"* has an answer years later when nobody remembers. **Owner-visible only**, and never rendered to readers: the intended uses are typo fixes and anonymization, and flagging "this post was edited" to readers would advertise the anonymization it exists to perform — exactly backwards. Only the most recent edit is kept; a full revision history would be a second copy of every letter to store, filter, and delete, and `raw/` already holds the original.
 - **Dedup fields are not editable.** `originalFrom`, `originalDate`, `originalMessageId`, and `bodyHead100` are derived from the source message. If an edited subject changed the value dedup keys on, a later re-forward of that same letter would stop matching and quietly reappear as a second post.
 
+#### Tidying the markup mail clients invent
+
+**The sanitizer removes empty blocks as well as dangerous ones.** Measured across the first 24 stored letters, every single one arrived carrying between 10 and 19 empty `<p>` elements and one empty `<div>` — 340 in total, about 7% of the stored body, and a blank line each on screen. None of it was written by anyone; it is spacing a mail client expressed twice.
+
+- **It happens in `sanitizeBody`, so ingest and editing get it from the same place.** A tidying pass that only ran on ingest would be undone the first time an owner corrected a typo, and one that only ran in the reader would leave the offline export and the print book untidied.
+- **The rule is "no text, no picture, no rule".** A block is removed only when its entire subtree renders nothing: `frame.text` is empty after trimming (`&nbsp;` has already been decoded to a space by then), it has no surviving image, and it contains no `<hr>`. Anything that puts a mark on the page keeps its wrapper.
+- **`<hr>` needs explicit bookkeeping and is the one real trap here.** A horizontal rule contributes no text and is not counted as a media child, so `<div><hr></div>` reads as empty and the naive rule takes the rule down with the wrapper — verified, not assumed. `exclusiveFilter` runs innermost-first in closing order, so recording the output position of each surviving rule and asking whether any sits at or after the block's own position distinguishes a rule *inside* the block from one merely near it.
+- **Only `p`, `div` and `span`.** An empty `<li>` still consumes a bullet and an empty `<td>` still holds a column open; removing either changes the shape of something the writer built deliberately.
+- **Nesting resolves in one pass**, because a parent's text is the text of its whole subtree — a `<div>` wrapping nothing but empty paragraphs is judged empty in the same sweep that removes them. No loop, no fixpoint.
+- **It is idempotent**, which is not a nicety: every owner edit re-sanitizes an already-stored body, so a pass that kept changing its own output would rewrite letters forever and defeat the ETag guard's purpose.
+
+**Existing letters are re-tidied with `functions/tools/tidy-posts.js`,** which replays the sanitizer over `posts.json` through the same ETag-guarded commit path an owner edit uses. It reports by default and needs `--apply` to write. Its safety net is that it compares the visible words and the image count of every body before and after and **refuses the whole run** — not just the offending letter — if either changed: a body that loses words means the sanitizer did something the tool did not predict, and the rest of the batch is no longer trustworthy either. `bodyText`, `editedBy` and `editedAt` are deliberately left alone, because no words changed and nobody edited anything; putting a person's name on a maintenance pass would corrupt the one provenance record [Editing](#editing) exists to keep honest.
+
 #### Restoring the original
 
 **This is the only way anyone gets at what the missionary originally wrote, and it is destructive.** An owner picks **Restore original** on a post; the render Function re-runs against `raw/{slug}/{msgId}/` and overwrites `subject`, `bodyHtml`, and the `photos` array with a fresh render.
@@ -1220,6 +1233,19 @@ Two things not to lose when this is reworked:
 - **The owner controls added alongside the moderation API are provisional** and were built to be replaced. They render only when `mount()` is given an `admin` object, so the archive never draws them.
 
 A sort-order bug was reported here and then withdrawn — the letters are chronological, newest first, and that was confirmed against the live data independently. See the note on offset-fragile date comparison under [Phase 6](#phase-6--direct-from-the-missionary) before that phase lands.
+
+### The editor has to stop being a box of HTML
+
+The provisional edit control is a `<textarea>` holding raw `bodyHtml`. That is workable for someone who reads HTML and unusable for everyone else, and "everyone else" is the entire intended audience — the owner is typically a parent, not a developer. **This is the blocker on letting anyone but us moderate a site.**
+
+The likely shape is **editing the letter in place**, making the already-rendered body `contenteditable` rather than swapping it for a box of markup. Reasons it fits this system specifically:
+
+- **The server stays the authority regardless.** Whatever HTML a browser produces goes through the same sanitizer and the same allowlist as a stranger's forwarded email, so a rich editor adds no trust and needs no exception. The pasted-from-Word disaster that usually sinks `contenteditable` is already handled: every `style`, `class`, `font` and `id` is stripped, and the [tidying pass](#tidying-the-markup-mail-clients-invent) removes the `<div><br></div>` scaffolding `contenteditable` itself emits.
+- **No dependency and no bundler.** The CSP is `script-src 'self'`, and the archive constraint above rules out anything needing a build step. A vendored rich-text library is possible but is a large amount of surface for what owners actually do: fix a typo, cut a paragraph, remove a name, delete a photo.
+- **Photos become directly manageable.** In the textarea a picture is an `<img>` tag among the prose; in place it is a picture you can select and delete, which is the one destructive edit most likely to be wanted and most likely to be got wrong by hand.
+- **Save stops needing a reload.** The current controls reload the page to show the result; editing in place means the result is already on screen, and the reload exists only because the form and the rendering are separate things.
+
+Open, and worth deciding before building: whether to offer any formatting controls at all (bold/italic/link, or nothing and rely on the browser's own shortcuts), and whether the subject stays a separate field or becomes an editable heading.
 
 ---
 
