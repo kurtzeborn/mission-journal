@@ -211,6 +211,8 @@ Three consequences follow. **The ingest path itself is safe**, because mail reac
 
 One question this leaves open for [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow): the courtesy auto-reply below is triggered by a DKIM-valid original, which most real forwards will not have. Loosening that trigger would let a prober draw replies with a fabricated attachment, so it stays strict until the claim flow needs otherwise.
 
+The table above is now asserted by `functions/tests/dkim.test.js` rather than left as a research note, so a change in any of these clients' behavior surfaces as a test failure. Those assertions need the pristine captures and a DNS lookup, so they skip when the private repo is absent — which is every CI run.
+
 #### Sender-based routing
 
 Messages to `post@` carry no routing information in the recipient — the address names a verb, not a destination. The target slug is resolved from **the author of the letter**:

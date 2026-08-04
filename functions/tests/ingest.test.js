@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runIngest, MAX_RAW_BYTES } from '../src/lib/ingest.js';
+import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { safeName, msgIdSegment, validSlug } from '../src/lib/paths.js';
 import { memoryStore } from './memory-store.js';
 import { normalizeSubject, bodyHead100, findDuplicate, dedupeKey } from '../src/lib/dedupe.js';
@@ -24,9 +25,26 @@ const READER = [{ email: 'scott@kurtzeborn.org', role: 'reader' }];
 
 const silent = { info() {}, warn() {}, error() {} };
 
+// These fixtures are scrubbed, so their body hashes cannot match the
+// signatures they still carry and DKIM verification stops before it would
+// look up a key. That makes the suite hermetic today -- but by accident, not
+// by design. This resolver turns any future accidental network call into a
+// loud failure instead of a slow, flaky, offline-hostile test.
+const noNetwork = async (name) => {
+    throw new Error(`unit tests must not resolve DNS (asked for ${name})`);
+};
+const offlineDkim = (extracted) => verifyEmbeddedDkim(extracted, { resolver: noNetwork });
+
 async function ingestFixture(store, name, ulid = '01TEST0000000000000000000') {
     store.seed(ulid, await raw(name));
-    return runIngest({ ulid, store, config, log: silent, now: () => new Date('2026-08-03T12:00:00Z') });
+    return runIngest({
+        ulid,
+        store,
+        config,
+        log: silent,
+        now: () => new Date('2026-08-03T12:00:00Z'),
+        verifyDkim: offlineDkim
+    });
 }
 
 // --- normalization ---------------------------------------------------------

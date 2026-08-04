@@ -12,6 +12,7 @@ import { rfc3339InOwnOffset, dayInOwnOffset } from './dates.js';
 import { attachmentPath, msgIdSegment, validSlug } from './paths.js';
 import { sanitizeBody } from './sanitize.js';
 import { linkedPhotoServices } from './photolinks.js';
+import { verifyEmbeddedDkim } from './dkim.js';
 
 // Cloudflare refuses messages over 25 MiB at SMTP time, so anything larger
 // than that in the inbox did not come from the mail path and is not a letter.
@@ -61,7 +62,7 @@ const postIdFor = (day, msgId) => `${day ?? 'undated'}-${msgId.slice(-4)}`;
  * @param {object} input.config        { authservId, missionaryDomains, maxRawBytes? }
  * @param {object} [input.log]         { info, warn, error }
  * @param {function} [input.now]       injectable clock
- * @param {function} [input.verifyDkim] async (extracted) => boolean
+ * @param {function} [input.verifyDkim] async (extracted) => { verified, reason, signatures }
  */
 export async function runIngest({
     ulid,
@@ -69,7 +70,7 @@ export async function runIngest({
     config,
     log = console,
     now = () => new Date(),
-    verifyDkim = async () => false
+    verifyDkim = verifyEmbeddedDkim
 }) {
     const rawName = `${ulid}.raw`;
     const blob = await store.readBlob('inbox', rawName);
@@ -99,12 +100,32 @@ export async function runIngest({
     const aclSlug = aclSlugFor({ extracted, config });
     const acl = aclSlug ? await readAcl(store, aclSlug) : null;
 
+    // Only an embedded original has a signature of its own, and the lookup
+    // costs a DNS round trip, so it is not attempted otherwise.
+    const dkim =
+        extracted.source === 'rfc822'
+            ? await verifyDkim(extracted)
+            : { verified: false, reason: 'no-embedded-original', signatures: [] };
+
+    // Reported every time it was attempted, pass or fail. A held letter is
+    // indistinguishable from a lost one without this, and "held" is the
+    // outcome that needs a human to understand why.
+    if (extracted.source === 'rfc822') {
+        log.info?.('ingest: dkim', {
+            ulid,
+            verified: dkim.verified,
+            reason: dkim.reason,
+            authorDomain: dkim.authorDomain ?? null,
+            signatures: dkim.signatures
+        });
+    }
+
     const verdict = classify({
         extracted,
         headers: extracted.headers,
         config,
         lookupAcl: () => acl,
-        dkimVerified: extracted.source === 'rfc822' ? await verifyDkim(extracted) : false
+        dkimVerified: dkim.verified
     });
 
     if (verdict.class === CLASS.rejected) {

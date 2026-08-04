@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { runIngest } from '../src/lib/ingest.js';
+import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { runRender } from '../src/lib/render.js';
 import { sanitizeBody, photoUrl } from '../src/lib/sanitize.js';
 import { linkedPhotoServices } from '../src/lib/photolinks.js';
@@ -26,6 +27,13 @@ const OWNER = [{ email: 'scott@kurtzeborn.org', role: 'owner' }];
 const SLUG = 'elder.example';
 const silent = { info() {}, warn() {}, error() {} };
 
+// Scrubbed fixtures cannot produce a DKIM pass, and the verifier stops before
+// any key lookup, so nothing here needs the network. Made explicit rather
+// than relied on -- see ingest.test.js.
+const noNetwork = async (name) => {
+    throw new Error(`unit tests must not resolve DNS (asked for ${name})`);
+};
+
 // Ingest a fixture, then render whatever ingest queued for it.
 async function pipeline(name, ulid = '01TEST0000000000000000000') {
     const store = memoryStore();
@@ -37,7 +45,8 @@ async function pipeline(name, ulid = '01TEST0000000000000000000') {
         store,
         config,
         log: silent,
-        now: () => new Date('2026-08-03T12:00:00Z')
+        now: () => new Date('2026-08-03T12:00:00Z'),
+        verifyDkim: (extracted) => verifyEmbeddedDkim(extracted, { resolver: noNetwork })
     });
     assert.equal(ingested.status, 'stored', `${name} did not ingest`);
 
