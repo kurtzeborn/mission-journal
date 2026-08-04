@@ -123,7 +123,7 @@ window.Reader = (function () {
         return album;
     }
 
-    function renderPost(post, photoSrc) {
+    function renderPost(post, photoSrc, admin) {
         const item = document.createElement('li');
         item.className = 'post';
 
@@ -156,7 +156,107 @@ window.Reader = (function () {
             item.append(note);
         }
 
+        if (admin) item.append(renderAdmin(post, admin));
+
         return item;
+    }
+
+    // Owner controls.
+    //
+    // Drawn only when the caller supplied an `admin` object, which the hosted
+    // page does for owners and the downloaded archive never does -- there is no
+    // API behind a folder on a disk, so a Hide button there could only fail.
+    //
+    // Deliberately plain. The reader's layout is due a rework, and this is the
+    // smallest thing that makes the endpoints usable in the meantime.
+    function renderAdmin(post, admin) {
+        const bar = document.createElement('div');
+        bar.className = 'admin';
+
+        const status = document.createElement('span');
+        status.className = 'admin__status';
+        status.setAttribute('role', 'status');
+
+        const button = (label) => {
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'admin__button';
+            el.textContent = label;
+            return el;
+        };
+
+        // A successful action reloads the page, so anything this puts on screen
+        // is a failure the owner needs to read.
+        const run = async (working, action) => {
+            status.textContent = working;
+            status.textContent = (await action()) ?? '';
+        };
+
+        const hide = button(post.hidden ? 'Unhide' : 'Hide');
+        hide.addEventListener('click', () =>
+            run('Saving…', () => admin.patch(post.id, { hidden: !post.hidden }))
+        );
+
+        const edit = button('Edit');
+        const remove = button('Delete');
+
+        const form = document.createElement('form');
+        form.className = 'admin__form';
+        form.hidden = true;
+
+        const subject = document.createElement('input');
+        subject.type = 'text';
+        subject.className = 'admin__field';
+        subject.setAttribute('aria-label', 'Subject');
+
+        const body = document.createElement('textarea');
+        body.className = 'admin__field admin__body';
+        body.rows = 12;
+        body.setAttribute('aria-label', 'Body HTML');
+
+        const reset = () => {
+            subject.value = post.subject ?? '';
+            body.value = post.bodyHtml ?? post.bodyText ?? '';
+        };
+        reset();
+
+        const save = button('Save');
+        save.type = 'submit';
+        const cancel = button('Cancel');
+
+        const close = () => {
+            reset();
+            form.hidden = true;
+            edit.textContent = 'Edit';
+            status.textContent = '';
+        };
+
+        edit.addEventListener('click', () => {
+            if (form.hidden) {
+                form.hidden = false;
+                edit.textContent = 'Close';
+            } else {
+                close();
+            }
+        });
+
+        cancel.addEventListener('click', close);
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            run('Saving…', () =>
+                admin.patch(post.id, { subject: subject.value, bodyHtml: body.value })
+            );
+        });
+
+        remove.addEventListener('click', () => {
+            if (!admin.confirmDelete(post)) return;
+            run('Deleting…', () => admin.remove(post.id));
+        });
+
+        form.append(subject, body, save, cancel);
+        bar.append(hide, edit, remove, status, form);
+        return bar;
     }
 
     // The body is HTML by the time it reaches us. Parsed with the template
@@ -229,8 +329,10 @@ window.Reader = (function () {
      * @param {Array} options.posts   the presented posts, newest first
      * @param {Function} options.photoSrc  (photoId, size) => url
      * @param {object} options.elements    the page's list, state and search nodes
+     * @param {object|null} [options.admin] owner controls, when the caller has
+     *   somewhere to send them. Absent in the downloaded archive.
      */
-    function mount({ posts, photoSrc, elements }) {
+    function mount({ posts, photoSrc, elements, admin = null }) {
         const { list, state } = elements;
 
         if (!posts.length) {
@@ -241,7 +343,7 @@ window.Reader = (function () {
 
         const nodes = new Map();
         for (const post of posts) {
-            const node = renderPost(post, photoSrc);
+            const node = renderPost(post, photoSrc, admin);
             nodes.set(post.id, node);
             list.append(node);
         }

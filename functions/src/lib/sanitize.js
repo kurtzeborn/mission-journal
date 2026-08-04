@@ -38,7 +38,7 @@ const ALLOWED_TAGS = [
 // block's CSS would survive as visible prose in the letter.
 const DROP_CONTENT = ['script', 'style', 'textarea', 'option', 'noscript', 'head', 'title'];
 
-const PHOTO_PREFIX = '/api/photo/';
+export const PHOTO_PREFIX = '/api/photo/';
 
 // The header block a client leaves behind when it flattens a forward into the
 // body. Removing it is a privacy control, not tidying: a missionary's weekly
@@ -114,9 +114,15 @@ const cidKey = (src) => {
  * @param {string|null} [options.letterText] the letter body recovered from the
  *   plain-text part, used to protect real content when dropping the quoted
  *   header block. Absent or too short, no header block is dropped.
+ * @param {string|null} [options.keepPhotoPrefix] a `/api/photo/{slug}/` prefix
+ *   whose images have already been through here once and survive a second
+ *   pass. See the img transform below.
  * @returns {string} sanitized HTML, '' when there was nothing to sanitize
  */
-export function sanitizeBody(html, { cidMap = new Map(), letterText = null } = {}) {
+export function sanitizeBody(
+    html,
+    { cidMap = new Map(), letterText = null, keepPhotoPrefix = null } = {}
+) {
     if (!html) return '';
 
     const probe = squash(letterText).slice(0, PROBE_LENGTH);
@@ -153,11 +159,26 @@ export function sanitizeBody(html, { cidMap = new Map(), letterText = null } = {
             img: (tagName, attribs) => {
                 const key = cidKey(attribs.src);
                 const mapped = key ? cidMap.get(key) : null;
+
+                // Ingest sees cid: references. An owner's edit sees HTML that
+                // has already been through here once, so its photos are
+                // /api/photo/ URLs with no cid: left to map -- and without
+                // this they would lose their src here and then be dropped
+                // outright by exclusiveFilter below, so correcting one typo
+                // would silently delete every picture in the letter. Pinned to
+                // the caller's own slug, so an edit cannot reach for the
+                // photos of a site the editor does not own.
+                const own =
+                    !mapped &&
+                    keepPhotoPrefix &&
+                    String(attribs.src ?? '').startsWith(keepPhotoPrefix)
+                        ? attribs.src
+                        : null;
+
+                const src = mapped ?? own;
                 return {
                     tagName,
-                    attribs: mapped
-                        ? { src: mapped, alt: attribs.alt ?? '' }
-                        : { alt: attribs.alt ?? '' }
+                    attribs: src ? { src, alt: attribs.alt ?? '' } : { alt: attribs.alt ?? '' }
                 };
             },
             // A letter can legitimately link out. Untrusted links get the full

@@ -257,3 +257,78 @@ button:focus-visible {
 .search__input::placeholder {
     color: #a8a29e;
 }
+
+/* --- owner controls --- */
+
+/* Provisional. The reader's layout is due a rework (see the UI backlog in
+   docs/plan.md); this is the smallest treatment that makes the moderation
+   endpoints usable without pretending to be the final design. */
+
+.admin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--rule);
+}
+
+.admin__button {
+    min-height: 44px;
+    padding: 0.4rem 0.9rem;
+    font: inherit;
+    font-size: 0.85rem;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.admin__button:hover {
+    border-color: var(--accent);
+}
+
+.admin__button:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.admin__status {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+/* Full width so it drops below the buttons rather than beside them. */
+.admin__form {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.admin__field {
+    flex-basis: 100%;
+    padding: 0.6rem 0.75rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+}
+
+/* The body is edited as HTML, so it is shown in a face that makes tags legible. */
+.admin__body {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    resize: vertical;
+}
+
+.admin__field:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}

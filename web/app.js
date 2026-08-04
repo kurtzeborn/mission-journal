@@ -32,6 +32,43 @@
     const photoSrc = (photoId, size) =>
         `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(photoId)}/${size}.webp`;
 
+    // One call for both owner actions. Returns null on success -- having
+    // reloaded the page -- and a sentence the owner can read on failure.
+    async function send(method, postId, body) {
+        let response;
+        try {
+            response = await fetch(
+                `/api/posts/${encodeURIComponent(slug)}/${encodeURIComponent(postId)}`,
+                {
+                    method,
+                    redirect: 'manual',
+                    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                    body: body ? JSON.stringify(body) : undefined
+                }
+            );
+        } catch {
+            return 'Could not reach the server. Nothing was changed.';
+        }
+
+        if (response.status === 401 || response.type === 'opaqueredirect') {
+            return 'Your session expired. Reload the page and sign in again.';
+        }
+
+        if (!response.ok) {
+            // The API explains a 400 in its own words -- "not editable:
+            // originalFrom" is more use than "something went wrong".
+            const detail = await response.json().catch(() => null);
+            return detail?.error
+                ? `Refused: ${detail.error}`
+                : `That did not work (${response.status}).`;
+        }
+
+        // Re-reading is what keeps the page honest: the server decides what a
+        // letter now says, including what its sanitizer removed from an edit.
+        window.location.reload();
+        return null;
+    }
+
     async function load() {
         if (!slug) {
             show('No archive was named in this address.');
@@ -79,7 +116,24 @@
             download.hidden = false;
         }
 
-        Reader.mount({ posts: payload.posts, photoSrc, elements });
+        // Only owners get controls, and the API enforces that again on every
+        // call -- this decides what to draw, not who is allowed to do it.
+        const admin =
+            payload.role === 'owner'
+                ? {
+                      patch: (postId, changes) => send('PATCH', postId, changes),
+                      remove: (postId) => send('DELETE', postId),
+                      confirmDelete: (post) =>
+                          window.confirm(
+                              `Remove "${post.subject || 'Untitled'}" from the site?\n\n` +
+                                  'The original letter is kept in the archive, so this can be ' +
+                                  'undone by re-forwarding it. To take a letter out of view ' +
+                                  'while you decide, use Hide instead.'
+                          )
+                  }
+                : null;
+
+        Reader.mount({ posts: payload.posts, photoSrc, elements, admin });
     }
 
     load();

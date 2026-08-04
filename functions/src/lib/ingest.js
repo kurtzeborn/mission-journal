@@ -14,6 +14,7 @@ import { sanitizeBody } from './sanitize.js';
 import { linkedPhotoServices } from './photolinks.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
+import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 
 // Cloudflare refuses messages over 25 MiB at SMTP time, so anything larger
 // than that in the inbox did not come from the mail path and is not a letter.
@@ -21,14 +22,6 @@ import { readAcl } from './acl.js';
 // untrusted input is an attack surface, and the cheapest defence is not
 // running it.
 export const MAX_RAW_BYTES = 26 * 1024 * 1024;
-
-const CONFLICT_RETRIES = 8;
-
-const isConflict = (err) =>
-    err?.statusCode === 412 ||
-    err?.statusCode === 409 ||
-    err?.code === 'ConditionNotMet' ||
-    err?.code === 'BlobAlreadyExists';
 
 const KEPT_HEADERS = new Set([
     'authentication-results',

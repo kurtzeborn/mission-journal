@@ -904,6 +904,15 @@ It is not a read of `raw/` — nobody is handed the `.eml`. It is a *rewrite of 
 - **Hiding does not affect dedup.** A hidden post keeps its slot in `posts.json` and still matches re-forwards of the same letter. Skipping hidden posts in the dedup scan would mean the next aunt to forward that email silently republishes it, undoing the moderation action with nobody aware it happened.
 - **The offline export and the printed book consume the same filtered payload** the reader UI does, so neither needs its own rule and neither can drift from this one.
 
+#### Deleting
+
+**Delete removes the post's record from `rendered/{slug}/posts.json` and nothing else.** The `.eml` in `raw/` and the renditions in `rendered/{slug}/photos/` stay exactly where they are.
+
+- **The photos become unreachable for free.** `/api/photo/` resolves a photo ID by scanning the posts, so dropping the record already makes them un-fetchable — there is no second place to enforce it and therefore no second place to forget. Deleting the blobs as well would be worse than useless: they are content-addressed, so a picture quoted in two letters is *one* blob, and erasing it on behalf of one post would blank it in the other.
+- **It is undoable by re-forwarding**, which is the honest thing to tell an owner and is what the confirmation says. `raw/` still holds the letter; without a record in `posts.json` there is nothing for dedup to match, so the same message ingests again as new.
+- **Hide is the better answer most of the time**, and the confirmation says that too — hiding is reversible in one click and keeps the letter in view for owners, where delete makes it invisible to everyone including them.
+- **Deliberately idempotent.** A repeated `DELETE` reports success rather than `404`. A double-click or a retried request is the overwhelmingly likely cause, and answering the second one with an error would make a deletion that worked look like one that failed.
+
 **Why hiding exists at all, when owners can already edit and delete.** It is the pause between them. Letters [publish immediately by design](#moderation--quarantine), so an owner who spots a problem wants it out of view *now* and wants to decide what to do about it later — when there is time to write a careful edit, or to ask the missionary what they meant. Deleting is the irreversible option and editing is the considered one; hiding lets an owner act immediately without choosing between them under pressure.
 
 ### Moderation / quarantine
@@ -1128,6 +1137,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - **`direct` classification goes live.** Log the full `Authentication-Results` header verbatim for any message whose `From:` domain is in `MISSIONARY_DOMAINS`, and raise a *warning* rather than a silent rejection when such a message fails to classify.
 - **Run the deferred Phase 0 checklist**, which this phase exists to unblock: confirm a genuine DMARC pass on Proofpoint-relayed missionary mail, confirm a threaded reply reaches the inbox rather than spam, and test whether an `@missionary.org` Google account can sign in to a third-party OAuth app.
 - **Still no dedup.** While one person drives both sides of the test, sending the same letter twice is a choice rather than an accident. It becomes unavoidable in Phase 7, where a pending site accumulates from several relatives at once.
+- **Fix the `originalDate` comparison before this ships.** `presentPosts` sorts by comparing `originalDate` as a *string*. That is correct today only by accident: every stored post came from an inline forward, so its date was read off the quoted attribution line and carries no UTC offset. A `direct` message — or a forward-as-attachment — will have a real offset (`-04:00`, `+08:00`), and string-comparing a mix of offset and offset-free values orders letters by local wall clock rather than by instant. The symptom is subtle and plausible: letters mostly in the right order, with occasional neighbours transposed. Compare parsed instants, and decide deliberately what an offset-free value means when one appears next to an offset one.
 - **Verification:** send a `direct` message and confirm it publishes to the same slug that a forward of the same letter reaches.
 
 ### Phase 7 — Onboarding: pending sites and the claim flow
@@ -1156,6 +1166,8 @@ Until this ships, sites are hand-provisioned. This is what makes the service sel
 - **Session handling** completed per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): the `/login` chooser page, and a **Sign in** button on the public root. Verify that SWA's `.referrer` substitution survives the hop through `/login`.
 - **`403` handling** per [Signed in, but not on the list](#signed-in-but-not-on-the-list): a page naming the rejected identity with a sign-out-and-switch-account action, distinct from the Phase 3 `401` path.
 - Owner admin view per [Editing and hiding posts](#editing-and-hiding-posts): edit any post's subject or body with edited HTML passing through the ingest sanitizer, ETag-guarded, dedup-derived fields read-only. Each edit stamps `editedBy` / `editedAt`, surfaced in the admin view and **stripped from the reader payload**. **Hidden posts are stripped server-side** in `/api/content/` and `/api/photo/` for `reader` callers and returned flagged to `owner` callers, rendered dimmed with an **Unhide** action. Hidden posts still participate in dedup.
+  - **Pulled forward to Stage 1 — edit, hide, and delete now ship.** The read half of hiding was already built and enforced in four places, but nothing could *set* `hidden` except the DKIM hold in ingest, so taking a letter down meant editing `posts.json` by hand in Storage Explorer. That left [Moderation / quarantine](#moderation--quarantine) resting its whole hands-off argument — *"equally fixable post-publish through the standard edit/hide/delete tools"* — on tools that did not exist. `PATCH` and `DELETE` on `/api/posts/{slug}/{postId}`, with provisional controls in the reader. **Two things found while building it are worth remembering:** re-sanitizing an already-rendered body stripped every `<img>` (its `src` is an `/api/photo/` URL by then, not a `cid:`), so a one-character typo fix would have silently deleted every photo in the letter — hence `sanitizeBody`'s `keepPhotoPrefix`, pinned to the editor's own slug. And `bodyText` still ships to readers, so anonymizing `bodyHtml` would have published the removed name anyway out of a field the owner is never shown; editing the body now drops it.
+  - **Still outstanding from this bullet:** hidden posts are badged rather than dimmed, and there is no admin surface for `editedBy` / `editedAt` — they are written, and only readable in the blob.
 - **Restore original** per [Restoring the original](#restoring-the-original): owner-only, one post at a time, re-runs render from `raw/` and overwrites the post. Confirmation names whose edits are being discarded; `editedBy` / `editedAt` clear and `hidden` is preserved.
 - **Site deletion** per [Post-mission archive](#post-mission-archive): typed confirmation stating the 30-day erase in plain words, immediate removal from every read path, and a timer that hard-purges blobs and soft-deleted versions at day 30 — **including `books/{slug}/` and the site's `memberships` rows**, which are easy to leave behind. Needs a **custom role** carrying Contributor's data actions plus `blobs/permanentDelete/action`; do not reach for Storage Blob Data Owner. **Re-decide `allowPermanentDelete` here** — it was enabled in Phase 0 to make `reset-slug.ps1` work during development, not because production wants it on. See the deletion notes under [Owner-only actions](#post-mission-archive).
 - **Invitations** per [Invitations](#invitations): bulk paste-and-parse, one signed single-use email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. **Capped per site and per day**, since an uncapped bulk field is an outbound-mail cannon pointed at the sending domain's reputation.
@@ -1183,6 +1195,27 @@ Written last, against what was actually built rather than what was planned. Unti
 - **Takedown and dispute process:** the written policy behind the mechanism [The 60-day cliff](#the-60-day-cliff) already describes — what evidence is required, who decides, and what the outcomes are (add an owner, or delete the site).
 - **Transactional-mail position:** a short statement that claim emails, acks, invitations, and digests are responses to a specific action rather than marketing, and that each carries an opt-out.
 - **Then remove the beta mark.** Publishing this is what ends beta. There is no separate announcement and no other gate.
+
+---
+
+## Reader UI backlog
+
+Raised after reading the first real archive end to end, and recorded here so they are not lost. **None of these are refined yet, and none of them block anything.** They want another pass before friends start using the site — the honest summary of the current reader is that *"it feels less like a blog and more like a massive brain dump."*
+
+The framing matters more than the individual items: the page is one long unbroken column, and length is the problem the three ideas below are each attacking from a different side.
+
+1. **Inline photos with text wrapped around them.** Show the small rendition in the flow of the letter rather than in a block underneath, with the text wrapping, and put a visible affordance on the image saying that clicking it opens the larger one. Today an image is either inline (because the letter placed it there) or relegated to the album strip at the bottom, and neither says it can be enlarged.
+
+2. **Highlight search hits and let the reader step between them.** Search currently hides non-matching letters, which answers "which letters mention this" but not "where in this letter". Wants the matches marked, next/previous navigation, and a **floating search control that does not scroll away** — with the page this long, scrolling back up to the search box is most of the cost of searching.
+
+3. **Collapsible letters, collapsed by default.** All but the most recent start closed. A letter containing a search hit expands when the reader advances to that hit. Explicitly thinking out loud — there may be a better shape than collapse, and the goal is the outcome (a page you can survey at a glance) rather than the mechanism.
+
+Two things not to lose when this is reworked:
+
+- **The offline archive shares `web/reader.js` verbatim** — the byte-equality test in the suite exists to keep the downloaded copy from drifting. Anything added here has to work from `file://`, which rules out `fetch()`, ES modules, and anything that needs a server.
+- **The owner controls added alongside the moderation API are provisional** and were built to be replaced. They render only when `mount()` is given an `admin` object, so the archive never draws them.
+
+A sort-order bug was reported here and then withdrawn — the letters are chronological, newest first, and that was confirmed against the live data independently. See the note on offset-fragile date comparison under [Phase 6](#phase-6--direct-from-the-missionary) before that phase lands.
 
 ---
 

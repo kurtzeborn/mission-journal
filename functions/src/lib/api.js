@@ -29,7 +29,10 @@ export const hardened = (headers = {}) => ({ ...HARDENING, ...headers });
 const DENIED = { status: 404, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
 
 /**
- * @returns {Promise<{denied: object}|{role: string, slug: string, posts: object[]}>}
+ * @returns {Promise<{denied: object}|{role: string, slug: string, posts: object[],
+ *   principal: object, etag: string}>} the ETag is the one a write endpoint has
+ *   to pass back on If-Match, so reading and writing cannot disagree about
+ *   which version of posts.json was examined.
  */
 export async function gate({ store, request }) {
     // 401 rather than 404: this one is safe to distinguish, because it says
@@ -58,5 +61,5 @@ export async function gate({ store, request }) {
     const posts = JSON.parse(Buffer.from(blob.bytes).toString('utf8'));
     if (!Array.isArray(posts)) return { denied: DENIED };
 
-    return { role, slug, posts, principal };
+    return { role, slug, posts, principal, etag: blob.etag };
 }
