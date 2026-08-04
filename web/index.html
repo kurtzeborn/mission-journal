@@ -10,6 +10,8 @@
     <meta name="description" content="A private archive for missionary letters.">
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
 </head>
 
 <body>
@@ -41,12 +43,27 @@
             sent you.
         </p>
 
-        <p><a class="button" href="/login.html?post_login_redirect_uri=/">Sign in</a></p>
+        <!-- Two states. The signed-out one ships in the markup so the page is
+             useful with no JavaScript; home.js swaps it once /.auth/me answers.
+             Telling someone who is already signed in to sign in is a small lie,
+             and this is the page a relative lands on first. -->
+        <p id="signed-out"><a class="button" href="/login.html?post_login_redirect_uri=/">Sign in</a></p>
+
+        <p id="signed-in" class="signed-in" hidden>
+            <span class="account">
+                <i class="account__icon" id="account-icon" aria-hidden="true"></i>
+                <span class="visually-hidden" id="account-provider"></span>
+                <span id="account-email"></span>
+            </span>
+            <a class="button button--quiet button--compact" href="/.auth/logout">Sign out</a>
+        </p>
 
         <p class="note">
             Letters are only ever shown to people the family has added by name.
         </p>
     </main>
+
+    <script src="/home.js"></script>
 </body>
 
 </html>

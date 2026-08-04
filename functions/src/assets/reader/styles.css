@@ -111,6 +111,19 @@ body {
     flex: none;
 }
 
+/* The same chip on the landing page, where there is a whole line to spend and
+   no controls beside it competing for width -- so let the address run. */
+.signed-in {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.signed-in .account {
+    max-width: none;
+}
+
 /* Available to a screen reader, absent from the page. */
 .visually-hidden {
     position: absolute;

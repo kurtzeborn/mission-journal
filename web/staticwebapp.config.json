@@ -23,6 +23,10 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "route": "/home.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/favicon.ico",
       "allowedRoles": ["anonymous", "authenticated"]
     },
