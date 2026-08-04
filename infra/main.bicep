@@ -46,6 +46,15 @@ param inboxRetentionDays int = 30
 // request and appear in the browser's address bar -- so they belong in source
 // where a reader can see which registrations the site actually trusts. The
 // matching secrets do not: those live in Key Vault and are referenced below.
+//
+// WARNING for anyone rebuilding from this file: the Entra registration also
+// needs an implicit ID-token grant, and that property lives in Graph, not ARM,
+// so nothing here can create or restore it. Deploying this template against a
+// fresh registration produces a site where Google sign-in works and Microsoft
+// sign-in dies at /.auth/login/aad/callback with no session. Run:
+//
+//   az ad app update --id <appId> --enable-id-token-issuance true
+//
 @description('Application (client) ID of the Entra app registration used for Microsoft sign-in.')
 param aadClientId string = '3d78e421-0373-4026-be5d-909bc07d455a'
 
