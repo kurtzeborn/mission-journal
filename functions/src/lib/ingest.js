@@ -11,6 +11,7 @@ import { dedupeKey, findDuplicate, bodyHead100, normalizeSubject } from './dedup
 import { rfc3339InOwnOffset, dayInOwnOffset } from './dates.js';
 import { attachmentPath, msgIdSegment, validSlug } from './paths.js';
 import { sanitizeBody } from './sanitize.js';
+import { linkedPhotoServices } from './photolinks.js';
 
 // Cloudflare refuses messages over 25 MiB at SMTP time, so anything larger
 // than that in the inbox did not come from the mail path and is not a letter.
@@ -138,22 +139,32 @@ export async function runIngest({
     });
 
     const receivedAt = now().toISOString();
+
+    // Sanitized here as well as at render, so `rendered/` never holds raw
+    // email HTML even for the seconds between the two. Photos do not exist
+    // yet, so every cid: reference drops out of this pass; render rebuilds
+    // the body from raw/ with the real photo URLs once they do. The quoted
+    // header block is dropped in both passes — it carries the missionary's
+    // whole distribution list, and that must never be published even
+    // briefly.
+    const bodyHtml = original.html
+        ? sanitizeBody(original.html, { letterText: original.text })
+        : null;
+    const bodyText = original.html ? null : (original.text ?? null);
+
     const post = {
         id: postIdFor(day, msgId),
         extractionSource: extracted.source,
         originalDate,
         receivedAt,
         subject: original.subject ?? extracted.outerSubject ?? '',
-        // Sanitized here as well as at render, so `rendered/` never holds raw
-        // email HTML even for the seconds between the two. Photos do not exist
-        // yet, so every cid: reference drops out of this pass; render rebuilds
-        // the body from raw/ with the real photo URLs once they do. The quoted
-        // header block is dropped in both passes — it carries the missionary's
-        // whole distribution list, and that must never be published even
-        // briefly.
-        bodyHtml: original.html ? sanitizeBody(original.html, { letterText: original.text }) : null,
-        bodyText: original.html ? null : (original.text ?? null),
+        bodyHtml,
+        bodyText,
         bodyHead100: candidate.head,
+        // Detection only — see photolinks.js. Recorded from the first write so
+        // a letter is never counted late, and recomputed at render because
+        // that pass rebuilds the body.
+        linkedPhotoServices: linkedPhotoServices(bodyHtml ?? bodyText),
         hidden: verdict.disposition === DISPOSITION.hold,
         heldReason: verdict.reason ?? null,
         editedBy: null,

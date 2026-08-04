@@ -9,6 +9,7 @@ import { extractOriginal } from './extract.js';
 import { sanitizeBody, photoUrl } from './sanitize.js';
 import { transcode, isPhotoType } from './photos.js';
 import { photoId } from './paths.js';
+import { linkedPhotoServices } from './photolinks.js';
 
 const CONFLICT_RETRIES = 8;
 const utf8 = (value) => Buffer.from(JSON.stringify(value, null, 2), 'utf8');
@@ -65,7 +66,15 @@ export async function runRender({ message, store, log = console }) {
         : textToHtml(source.text);
 
     const stored = photos.map(({ id, width, height }) => ({ id, width, height }));
-    return commitRender({ store, slug, postId, bodyHtml, photos: stored, log });
+    return commitRender({
+        store,
+        slug,
+        postId,
+        bodyHtml,
+        photos: stored,
+        linked: linkedPhotoServices(bodyHtml),
+        log
+    });
 }
 
 // Transcodes every image part and writes both renditions. Photos that fail to
@@ -125,7 +134,7 @@ async function renderPhotos({ store, slug, extracted, log }) {
 
 // posts.json is shared by every message on the site, so render contends with
 // ingest for it exactly as two ingests contend with each other.
-async function commitRender({ store, slug, postId, bodyHtml, photos, log }) {
+async function commitRender({ store, slug, postId, bodyHtml, photos, linked, log }) {
     const name = `${slug}/posts.json`;
 
     for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
@@ -136,7 +145,7 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, log }) {
         const index = posts.findIndex((p) => p.id === postId);
         if (index < 0) return { status: 'missing-post' };
 
-        posts[index] = { ...posts[index], bodyHtml, photos };
+        posts[index] = { ...posts[index], bodyHtml, photos, linkedPhotoServices: linked };
 
         // bodyText only ever existed to carry a plain-text letter across the
         // gap between ingest and render. Once bodyHtml is built from it the
