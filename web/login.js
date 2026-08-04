@@ -22,10 +22,16 @@
         'signin-google': '/.auth/login/google'
     };
 
-    // Arriving at the chooser itself, or at the home page, means there is
-    // nowhere in particular to go back to -- and returning to this page after
-    // signing in would be a loop.
-    const NOWHERE = new Set(['/', '/login.html']);
+    // Arriving at the chooser itself means there is nowhere in particular to go
+    // back to. It must not be used as a return address: signing in would land
+    // straight back on the chooser, which looks exactly like a failed sign-in
+    // even though it worked.
+    const NOWHERE = new Set(['/login.html']);
+
+    // Where to go when nothing better is known. The provider link is never left
+    // bare, because with no return address the platform sends people back to
+    // wherever they came from -- and where they came from is this page.
+    const HOME = '/';
 
     /**
      * A return address is only usable if it points back into this site.
@@ -50,14 +56,12 @@
     }
 
     const asked = new URLSearchParams(window.location.search).get('post_login_redirect_uri');
-    const target = safeReturn(asked) ?? safeReturn(window.location.pathname);
+    const target = safeReturn(asked) ?? safeReturn(window.location.pathname) ?? HOME;
 
     for (const [id, path] of Object.entries(PROVIDERS)) {
         const link = document.getElementById(id);
         if (!link) continue;
 
-        link.href = target
-            ? `${path}?post_login_redirect_uri=${encodeURIComponent(target)}`
-            : path;
+        link.href = `${path}?post_login_redirect_uri=${encodeURIComponent(target)}`;
     }
 })();
