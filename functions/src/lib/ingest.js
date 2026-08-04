@@ -147,8 +147,11 @@ export async function runIngest({
         // Sanitized here as well as at render, so `rendered/` never holds raw
         // email HTML even for the seconds between the two. Photos do not exist
         // yet, so every cid: reference drops out of this pass; render rebuilds
-        // the body from raw/ with the real photo URLs once they do.
-        bodyHtml: original.html ? sanitizeBody(original.html) : null,
+        // the body from raw/ with the real photo URLs once they do. The quoted
+        // header block is dropped in both passes — it carries the missionary's
+        // whole distribution list, and that must never be published even
+        // briefly.
+        bodyHtml: original.html ? sanitizeBody(original.html, { letterText: original.text }) : null,
         bodyText: original.html ? null : (original.text ?? null),
         bodyHead100: candidate.head,
         hidden: verdict.disposition === DISPOSITION.hold,

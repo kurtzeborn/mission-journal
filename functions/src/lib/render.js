@@ -61,7 +61,7 @@ export async function runRender({ message, store, log = console }) {
 
     const source = extracted.original ?? {};
     const bodyHtml = source.html
-        ? sanitizeBody(source.html, { cidMap })
+        ? sanitizeBody(source.html, { cidMap, letterText: source.text })
         : textToHtml(source.text);
 
     const stored = photos.map(({ id, width, height }) => ({ id, width, height }));

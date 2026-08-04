@@ -109,6 +109,84 @@ test('angle-bracketed and percent-encoded cids still resolve', () => {
     assert.match(out, /p_1\/large\.webp/);
 });
 
+// --- the quoted header block -----------------------------------------------
+//
+// An inline forward flattens the original's headers into the body, so the
+// missionary's whole distribution list rides along. Measured at 100 and 101
+// distinct third-party addresses on two real letters.
+
+const LETTER = 'A week has come and gone like that. It has been a crazy week.';
+
+test('the forwarded header block is removed and the letter is not', () => {
+    // The Outlook shape: one div holds the header paragraph *and* the letter.
+    // Dropping that div would take the letter with it.
+    const html = [
+        '<div><div>',
+        '<p><b>From:</b> Elder Example &lt;elder.example@missionary.org&gt;<br>',
+        '<b>Sent:</b> Monday, November 10, 2025 5:57 AM<br>',
+        '<b>To:</b> Aunt One &lt;one@example.com&gt;; two@example.net; three@example.org<br>',
+        '<b>Subject:</b> No water</p>',
+        `<p>${LETTER}</p>`,
+        '</div></div>'
+    ].join('');
+
+    const out = sanitizeBody(html, { letterText: LETTER });
+
+    assert.doesNotMatch(out, /one@example\.com/);
+    assert.doesNotMatch(out, /two@example\.net/);
+    assert.doesNotMatch(out, /three@example\.org/);
+    assert.doesNotMatch(out, /Sent:|Subject:/);
+    assert.ok(out.includes(LETTER));
+});
+
+test('the Gmail attribution block goes too, separator and all', () => {
+    const html = [
+        '<div>---------- Forwarded message ---------<br>',
+        'From: <b>Elder Example</b> &lt;elder.example@missionary.org&gt;<br>',
+        'Date: Mon, Nov 10, 2025 at 5:57 AM<br>',
+        'Subject: No water<br>',
+        'To: &lt;one@example.com&gt;, &lt;two@example.net&gt;<br></div>',
+        `<div>${LETTER}</div>`
+    ].join('');
+
+    const out = sanitizeBody(html, { letterText: LETTER });
+
+    assert.doesNotMatch(out, /one@example\.com/);
+    assert.doesNotMatch(out, /Forwarded message/);
+    assert.ok(out.includes(LETTER));
+});
+
+test('an address the missionary wrote into the letter survives', () => {
+    // Only the client-generated header block is a disclosure. An address in
+    // the prose was put there to be read.
+    const letter = 'Write to my mum at mum@example.com if you want the recipe.';
+    const html = [
+        '<p><b>From:</b> Elder Example &lt;elder.example@missionary.org&gt;<br>',
+        '<b>Sent:</b> Monday, November 10, 2025 5:57 AM<br>',
+        '<b>To:</b> list@example.net<br>',
+        '<b>Subject:</b> Hello</p>',
+        `<p>${letter}</p>`
+    ].join('');
+
+    const out = sanitizeBody(html, { letterText: letter });
+
+    assert.doesNotMatch(out, /list@example\.net/);
+    assert.ok(out.includes('mum@example.com'));
+});
+
+test('a header block sharing one element with the letter is left alone', () => {
+    // Ambiguous, so it keeps the headers rather than risking the letter.
+    const html = `<p><b>From:</b> a@x.com<br><b>Sent:</b> Monday<br><b>To:</b> b@y.com<br><b>Subject:</b> Hi<br>${LETTER}</p>`;
+    const out = sanitizeBody(html, { letterText: LETTER });
+    assert.ok(out.includes(LETTER), 'the letter must never be dropped with the headers');
+});
+
+test('nothing is stripped without enough letter text to recognize', () => {
+    const html = '<p><b>From:</b> a@x.com<br><b>Sent:</b> Mon<br><b>To:</b> b@y.com<br><b>Subject:</b> Hi</p>';
+    assert.match(sanitizeBody(html, { letterText: 'Love, Elder' }), /b@y\.com/);
+    assert.match(sanitizeBody(html), /b@y\.com/);
+});
+
 // --- transcoder ------------------------------------------------------------
 
 test('renditions are WebP, bounded, and carry no EXIF', async () => {
@@ -186,6 +264,8 @@ test('the rendered body carries no cid: references and no raw email markup', asy
     assert.doesNotMatch(post.bodyHtml, /cid:/i);
     assert.doesNotMatch(post.bodyHtml, /<script|<style|on[a-z]+=/i);
     assert.doesNotMatch(post.bodyHtml, /\bstyle="/i);
+    // End to end, through a real client's markup: no recipient list survives.
+    assert.doesNotMatch(post.bodyHtml, /\bSent:|\bSubject:/);
 });
 
 test('re-rendering the same message changes nothing', async () => {

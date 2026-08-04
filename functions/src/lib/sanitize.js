@@ -40,6 +40,61 @@ const DROP_CONTENT = ['script', 'style', 'textarea', 'option', 'noscript', 'head
 
 const PHOTO_PREFIX = '/api/photo/';
 
+// The header block a client leaves behind when it flattens a forward into the
+// body. Removing it is a privacy control, not tidying: a missionary's weekly
+// letter goes to their whole distribution list, so the `To:` line carries
+// every recipient's address into the published post. Two real letters
+// measured 100 and 101 distinct third-party addresses each.
+//
+// Addresses the missionary typed into the letter itself are left alone. Those
+// were written to be read, and the site is ACL-gated either way. Only the
+// client-generated header block goes.
+//
+// No word boundary before the label: a <br> contributes no text, so the next
+// label arrives glued to the end of the previous value -- "MondayTo:". A
+// spurious extra label only ever makes a block look *more* like a header run,
+// and the two guards below are what actually decide.
+const HEADER_LABEL = /(from|sent|date|to|cc|bcc|subject|reply-to):/gi;
+const LEADING_SEPARATOR = /^(?:-{3,}\s*forwarded message\s*-{3,}|_{8,})\s*/i;
+
+// From: plus two more labels. Every client emits at least four.
+const MIN_LABELS = 3;
+
+// Below this there is not enough of the letter to recognize it inside a
+// candidate block, so the block is kept. Leaving a header block in place is a
+// disclosure; removing one that turns out to contain the letter is data loss,
+// and the archive in `raw/` is the only other copy.
+const MIN_PROBE = 20;
+const PROBE_LENGTH = 50;
+
+const collapse = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
+
+// All whitespace removed, because the same prose arrives spaced differently in
+// the two MIME parts: the plain-text part wraps at some column, and the HTML
+// part breaks with <br>, which leaves no space behind at all. Comparing the
+// two without this finds no match, and the guard silently stops guarding.
+const squash = (value) => String(value ?? '').replace(/\s+/g, '');
+
+/**
+ * Recognizes the smallest block whose text is the forwarded header run.
+ *
+ * The block has to *start* with `From:`, so a block holding the letter ahead
+ * of the headers can never match, and it must not contain the opening of the
+ * letter, so a block holding the letter after them cannot either. That second
+ * guard is what makes this safe on the common Outlook shape, where one div
+ * wraps the header paragraph and the entire letter beneath it.
+ */
+const isQuotedHeaderBlock = (text, probe) => {
+    const value = collapse(text).replace(LEADING_SEPARATOR, '').trim();
+    if (!/^from:/i.test(value)) return false;
+
+    const labels = new Set();
+    for (const match of value.matchAll(HEADER_LABEL)) labels.add(match[1].toLowerCase());
+    if (labels.size < MIN_LABELS) return false;
+
+    return !squash(value).includes(probe);
+};
+
 const cidKey = (src) => {
     const match = /^cid:(.+)$/i.exec(String(src ?? '').trim());
     if (!match) return null;
@@ -56,10 +111,16 @@ const cidKey = (src) => {
  * @param {string|null} html
  * @param {object} [options]
  * @param {Map<string,string>} [options.cidMap] lowercased Content-ID -> photo URL
+ * @param {string|null} [options.letterText] the letter body recovered from the
+ *   plain-text part, used to protect real content when dropping the quoted
+ *   header block. Absent or too short, no header block is dropped.
  * @returns {string} sanitized HTML, '' when there was nothing to sanitize
  */
-export function sanitizeBody(html, { cidMap = new Map() } = {}) {
+export function sanitizeBody(html, { cidMap = new Map(), letterText = null } = {}) {
     if (!html) return '';
+
+    const probe = squash(letterText).slice(0, PROBE_LENGTH);
+    const dropHeaders = probe.length >= MIN_PROBE;
 
     return sanitizeHtmlLib(String(html), {
         allowedTags: ALLOWED_TAGS,
@@ -115,8 +176,16 @@ export function sanitizeBody(html, { cidMap = new Map() } = {}) {
         // leak every reader's IP address and read time to whatever marketing
         // system the missionary's mail passed through. Real photos are always
         // attachments or cid: parts, so nothing of value is lost.
-        exclusiveFilter: (frame) =>
-            frame.tag === 'img' && !String(frame.attribs?.src ?? '').startsWith(PHOTO_PREFIX)
+        //
+        // The same hook drops the forwarded header block, because it removes
+        // the tag *and its contents* — which is the whole point here, where
+        // the addresses are the content.
+        exclusiveFilter: (frame) => {
+            if (frame.tag === 'img') {
+                return !String(frame.attribs?.src ?? '').startsWith(PHOTO_PREFIX);
+            }
+            return dropHeaders && isQuotedHeaderBlock(frame.text, probe);
+        }
     });
 }
 
