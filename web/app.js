@@ -132,13 +132,20 @@ async function load() {
 
     let response;
     try {
-        response = await fetch(`/api/content/${encodeURIComponent(slug)}/posts.json`);
+        // `manual` because Static Web Apps answers an expired session with a
+        // 302 to the login page, not a 401. Followed automatically, that
+        // redirect lands on Microsoft's cross-origin sign-in page and fetch
+        // reports an opaque failure that is indistinguishable from the network
+        // being down. Left unfollowed, it is unmistakable.
+        response = await fetch(`/api/content/${encodeURIComponent(slug)}/posts.json`, {
+            redirect: 'manual'
+        });
     } catch {
         show('Could not reach the archive. Check your connection and try again.');
         return;
     }
 
-    if (response.status === 401) {
+    if (response.status === 401 || response.type === 'opaqueredirect') {
         // The session expired mid-visit. Send them back through login and
         // return them to the page they were actually reading.
         window.location.assign(
