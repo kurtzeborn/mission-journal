@@ -1230,22 +1230,30 @@ The framing matters more than the individual items: the page is one long unbroke
 Two things not to lose when this is reworked:
 
 - **The offline archive shares `web/reader.js` verbatim** — the byte-equality test in the suite exists to keep the downloaded copy from drifting. Anything added here has to work from `file://`, which rules out `fetch()`, ES modules, and anything that needs a server.
-- **The owner controls added alongside the moderation API are provisional** and were built to be replaced. They render only when `mount()` is given an `admin` object, so the archive never draws them.
+- **The owner controls added alongside the moderation API are provisional** and were built to be replaced. They render only when `mount()` is given an `admin` object, so the archive never draws them. The edit control has since been [rebuilt to edit the letter in place](#the-editor-edits-the-letter-not-its-markup); the surrounding layout has not.
 
 A sort-order bug was reported here and then withdrawn — the letters are chronological, newest first, and that was confirmed against the live data independently. See the note on offset-fragile date comparison under [Phase 6](#phase-6--direct-from-the-missionary) before that phase lands.
 
-### The editor has to stop being a box of HTML
+### The editor edits the letter, not its markup
 
-The provisional edit control is a `<textarea>` holding raw `bodyHtml`. That is workable for someone who reads HTML and unusable for everyone else, and "everyone else" is the entire intended audience — the owner is typically a parent, not a developer. **This is the blocker on letting anyone but us moderate a site.**
-
-The likely shape is **editing the letter in place**, making the already-rendered body `contenteditable` rather than swapping it for a box of markup. Reasons it fits this system specifically:
+The first edit control was a `<textarea>` holding raw `bodyHtml`. That is workable for someone who reads HTML and unusable for everyone else, and "everyone else" is the entire intended audience — the owner is typically a parent, not a developer. It has been replaced by **editing the letter in place**: the already-rendered body becomes `contenteditable`, and the subject becomes a single-line field standing where the heading was. Reasons it fits this system specifically:
 
 - **The server stays the authority regardless.** Whatever HTML a browser produces goes through the same sanitizer and the same allowlist as a stranger's forwarded email, so a rich editor adds no trust and needs no exception. The pasted-from-Word disaster that usually sinks `contenteditable` is already handled: every `style`, `class`, `font` and `id` is stripped, and the [tidying pass](#tidying-the-markup-mail-clients-invent) removes the `<div><br></div>` scaffolding `contenteditable` itself emits.
 - **No dependency and no bundler.** The CSP is `script-src 'self'`, and the archive constraint above rules out anything needing a build step. A vendored rich-text library is possible but is a large amount of surface for what owners actually do: fix a typo, cut a paragraph, remove a name, delete a photo.
 - **Photos become directly manageable.** In the textarea a picture is an `<img>` tag among the prose; in place it is a picture you can select and delete, which is the one destructive edit most likely to be wanted and most likely to be got wrong by hand.
-- **Save stops needing a reload.** The current controls reload the page to show the result; editing in place means the result is already on screen, and the reload exists only because the form and the rendering are separate things.
 
-Open, and worth deciding before building: whether to offer any formatting controls at all (bold/italic/link, or nothing and rely on the browser's own shortcuts), and whether the subject stays a separate field or becomes an editable heading.
+The subject stays a field of its own rather than becoming an editable heading. It has to survive as one line, and an editable `<h2>` invites a paragraph break the data model has nowhere to put.
+
+Two things had to be built rather than inherited from the browser, both because they were measured and found missing, not assumed:
+
+- **The formatting shortcuts are bound explicitly.** The intent was to offer no toolbar and rely on Ctrl/Cmd+B, I and U, which every browser is supposed to handle inside `contenteditable`. Tested against a real letter, the chords produced nothing at all — the keystroke arrived and no editing command ran. `document.execCommand` itself worked fine when called directly, so the binding, not the command, was missing. They are now bound in the reader. That also pins down the *result*: browsers that do handle these have historically emitted `<span style="font-weight:bold">` rather than `<b>`, and the sanitizer strips `style`, so the owner would have pressed the key, seen bold text, saved, and got plain text back with nothing to explain it. `styleWithCSS` is turned off for the same reason.
+- **Clicking a photo selects it.** By default a click near an image only places the caret beside it, so pressing Delete does nothing and the owner is left prodding at a picture that will not go away. The reader now selects the image node on click, which is what the pointer cursor promises.
+
+**Save still reloads the page, deliberately.** Editing in place means the result is already on screen, so this looks removable — but the server is the thing that decides what the letter finally contains, and its answer can differ from what was typed. More importantly the page holds the `ETag` it loaded, which is what stops one owner's save from silently overwriting another's; after a successful write that value is stale, and a second edit in the same session would be rejected as a conflict. The reload refreshes both. Removing it means reading the new `ETag` and the sanitized body out of the response instead, which is worth doing and is not free.
+
+What the browser produces was checked against the server end to end rather than reasoned about: a real letter was edited in place — bold, italic and underline applied by shortcut, a photo deleted, the subject changed — and the exact bytes the page sent were run through `applyEdit`. Both remaining photos, all three formatting tags and the album link survived, no empty blocks were left, `bodyText` was dropped, and a second save changed nothing. The photos matter most: the page displays them through whatever URL its host uses, which in the downloaded archive is a relative path and on the site is `/api/photo/...`, so the editor keeps the stored URL on each image and puts it back before sending. Reading the displayed markup back directly would work on the website today and would delete every picture in a letter the day it stopped matching, because the sanitizer drops an `<img>` whose `src` it does not recognise.
+
+Still open: there are no automated tests over any of this. `reader.js` runs in a browser and the repo has no DOM test harness, so the verification above was done by driving a real page and is not repeatable in CI. Adding one means taking a dependency such as `jsdom` — a decision worth making deliberately rather than in passing, given the photo round-trip is exactly the kind of thing that breaks silently.
 
 ---
 

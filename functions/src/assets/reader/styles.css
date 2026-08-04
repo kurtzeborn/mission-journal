@@ -300,35 +300,48 @@ button:focus-visible {
     color: var(--ink-soft);
 }
 
-/* Full width so it drops below the buttons rather than beside them. */
-.admin__form {
-    flex-basis: 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
+.admin__button--primary {
+    color: #fff;
+    background: var(--accent);
+    border-color: var(--accent);
 }
 
-.admin__field {
-    flex-basis: 100%;
-    padding: 0.6rem 0.75rem;
+/* The subject stands in for the heading while editing, so it is set in the
+   same face and size rather than shrinking to a form control. */
+.admin__subject {
+    display: block;
+    width: 100%;
+    margin: 0 0 0.75rem;
+    padding: 0.3rem 0.5rem;
     font: inherit;
-    font-size: 0.9rem;
+    font-size: 1.15rem;
+    font-weight: 600;
     color: var(--ink);
     background: #fff;
     border: 1px solid var(--rule);
     border-radius: var(--radius);
 }
 
-/* The body is edited as HTML, so it is shown in a face that makes tags legible. */
-.admin__body {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    resize: vertical;
+/* The letter is edited where it sits. The rule down the side is the only
+   thing that says so, which is the point -- the text must not move or reflow
+   when editing starts, or the owner loses their place. Padding is added to
+   the side that gains the border so the total width is unchanged. */
+.post__body--editing {
+    padding-left: 0.75rem;
+    border-left: 3px solid var(--accent);
+    outline: none;
 }
 
-.admin__field:focus-visible {
+.post__body--editing:focus-visible {
+    outline: none;
+}
+
+/* A picture is a thing you can select and delete, so it should look like one. */
+.post__body--editing img {
+    cursor: pointer;
+}
+
+.admin__subject:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 1px;
 }

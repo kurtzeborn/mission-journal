@@ -56,6 +56,15 @@ window.Reader = (function () {
 
             const photoId = decodeURIComponent(parts[1]);
             const size = parts[2].replace(/\.webp$/, '');
+
+            // Kept so an owner's edit can put back exactly what was stored.
+            // On the website the repointed URL happens to be identical to the
+            // stored one, so reading the edited markup straight back would
+            // work today -- and would break silently the day photoSrc returns
+            // anything else, because the server's sanitizer drops an <img>
+            // whose src it does not recognize. That is how an edit deletes
+            // every picture in a letter, and it is not worth risking twice.
+            img.setAttribute('data-photo', raw);
             img.setAttribute('src', photoSrc(photoId, size));
 
             // Set here rather than in the stored markup, because the stored
@@ -69,10 +78,9 @@ window.Reader = (function () {
         }
     }
 
-    function renderBody(post, photoSrc) {
-        const body = document.createElement('div');
-        body.className = 'post__body';
-
+    // Separate from renderBody because cancelling an edit has to redraw the
+    // letter from the copy the page loaded, throwing away whatever was typed.
+    function fillBody(body, post, photoSrc) {
         if (post.bodyHtml) {
             // Assigned as markup on purpose. This HTML was sanitized
             // server-side by sanitize.js before it was ever stored -- scripts,
@@ -86,6 +94,12 @@ window.Reader = (function () {
             // text, so it is escaped by the DOM rather than by us.
             body.textContent = post.bodyText ?? '';
         }
+    }
+
+    function renderBody(post, photoSrc) {
+        const body = document.createElement('div');
+        body.className = 'post__body';
+        fillBody(body, post, photoSrc);
         return body;
     }
 
@@ -144,7 +158,8 @@ window.Reader = (function () {
         subject.className = 'post__subject';
         subject.textContent = post.subject || 'Untitled';
 
-        item.append(date, subject, renderBody(post, photoSrc));
+        const body = renderBody(post, photoSrc);
+        item.append(date, subject, body);
 
         const album = renderAlbum(post, photoSrc);
         if (album) item.append(album);
@@ -156,10 +171,14 @@ window.Reader = (function () {
             item.append(note);
         }
 
-        if (admin) item.append(renderAdmin(post, admin));
+        if (admin) item.append(renderAdmin(post, admin, { subject, body, photoSrc }));
 
         return item;
     }
+
+    // The only formatting on offer. Each produces a tag the sanitizer already
+    // allows, so nothing an owner can type here is thrown away on save.
+    const HOTKEYS = { b: 'bold', i: 'italic', u: 'underline' };
 
     // Owner controls.
     //
@@ -167,9 +186,22 @@ window.Reader = (function () {
     // page does for owners and the downloaded archive never does -- there is no
     // API behind a folder on a disk, so a Hide button there could only fail.
     //
-    // Deliberately plain. The reader's layout is due a rework, and this is the
-    // smallest thing that makes the endpoints usable in the meantime.
-    function renderAdmin(post, admin) {
+    // The letter is edited where it sits rather than in a box of markup
+    // beside it. The audience for these controls is a parent, not someone who
+    // reads HTML, and the only edits anyone actually wants -- fix a typo, cut
+    // a paragraph, take out a name, remove a photo -- are all things you do by
+    // pointing at them. Formatting is left to the browser's own shortcuts
+    // (Ctrl/Cmd+B, I, U); there is no toolbar to learn.
+    //
+    // Nothing here is a security boundary. Whatever the browser produces goes
+    // to the server and through the same sanitizer as a stranger's forwarded
+    // email, which is why a rich editor costs nothing in trust: every style,
+    // class and font it might invent is stripped there, and the empty blocks
+    // contenteditable scaffolds with are removed by the same pass that cleans
+    // up after Outlook.
+    function renderAdmin(post, admin, view) {
+        const { subject: heading, body, photoSrc } = view;
+
         const bar = document.createElement('div');
         bar.className = 'admin';
 
@@ -177,10 +209,10 @@ window.Reader = (function () {
         status.className = 'admin__status';
         status.setAttribute('role', 'status');
 
-        const button = (label) => {
+        const button = (label, extra) => {
             const el = document.createElement('button');
             el.type = 'button';
-            el.className = 'admin__button';
+            el.className = extra ? `admin__button ${extra}` : 'admin__button';
             el.textContent = label;
             return el;
         };
@@ -193,69 +225,148 @@ window.Reader = (function () {
         };
 
         const hide = button(post.hidden ? 'Unhide' : 'Hide');
+        const edit = button('Edit');
+        const remove = button('Delete');
+        const save = button('Save', 'admin__button--primary');
+        const cancel = button('Cancel');
+
+        // The subject stays a field of its own. It is a single line that has
+        // to survive as one, and an editable heading invites a paragraph
+        // break that the data model has nowhere to put.
+        const field = document.createElement('input');
+        field.type = 'text';
+        field.className = 'admin__subject';
+        field.setAttribute('aria-label', 'Subject');
+        heading.insertAdjacentElement('afterend', field);
+
+        const showEditing = (editing) => {
+            for (const el of [hide, edit, remove]) el.hidden = editing;
+            for (const el of [save, cancel]) el.hidden = !editing;
+            heading.hidden = editing;
+            field.hidden = !editing;
+            body.classList.toggle('post__body--editing', editing);
+        };
+
+        const open = () => {
+            field.value = post.subject ?? '';
+            body.setAttribute('contenteditable', 'true');
+            body.setAttribute('role', 'textbox');
+            body.setAttribute('aria-multiline', 'true');
+            body.setAttribute('aria-label', 'Letter');
+            showEditing(true);
+
+            // Ask for <b> and <i> rather than styled spans. The sanitizer
+            // allows the tags and strips every style attribute, so a browser
+            // that ignored this would drop the owner's formatting on save
+            // without saying anything. Deprecated, hence the guard, but it is
+            // the only control over this that exists.
+            try {
+                document.execCommand('styleWithCSS', false, false);
+            } catch {
+                // Not supported here; the browser's default is what we wanted.
+            }
+
+            body.focus();
+        };
+
+        const close = () => {
+            body.removeAttribute('contenteditable');
+            body.removeAttribute('role');
+            body.removeAttribute('aria-multiline');
+            body.removeAttribute('aria-label');
+            showEditing(false);
+            status.textContent = '';
+        };
+
+        const discard = () => {
+            // Redrawn from the copy the page loaded rather than left as typed,
+            // so Cancel means cancel.
+            fillBody(body, post, photoSrc);
+            close();
+        };
+
+        // What to send. Read from a clone so restoring the stored photo URLs
+        // does not disturb what the owner is looking at, and so a failed save
+        // leaves the page exactly as it was.
+        const markup = () => {
+            const scratch = body.cloneNode(true);
+            for (const img of scratch.querySelectorAll('img[data-photo]')) {
+                img.setAttribute('src', img.getAttribute('data-photo'));
+                img.removeAttribute('data-photo');
+                img.removeAttribute('loading');
+                img.removeAttribute('decoding');
+            }
+            return scratch.innerHTML;
+        };
+
+        const commit = () =>
+            run('Saving…', () =>
+                admin.patch(post.id, { subject: field.value, bodyHtml: markup() })
+            );
+
         hide.addEventListener('click', () =>
             run('Saving…', () => admin.patch(post.id, { hidden: !post.hidden }))
         );
 
-        const edit = button('Edit');
-        const remove = button('Delete');
-
-        const form = document.createElement('form');
-        form.className = 'admin__form';
-        form.hidden = true;
-
-        const subject = document.createElement('input');
-        subject.type = 'text';
-        subject.className = 'admin__field';
-        subject.setAttribute('aria-label', 'Subject');
-
-        const body = document.createElement('textarea');
-        body.className = 'admin__field admin__body';
-        body.rows = 12;
-        body.setAttribute('aria-label', 'Body HTML');
-
-        const reset = () => {
-            subject.value = post.subject ?? '';
-            body.value = post.bodyHtml ?? post.bodyText ?? '';
-        };
-        reset();
-
-        const save = button('Save');
-        save.type = 'submit';
-        const cancel = button('Cancel');
-
-        const close = () => {
-            reset();
-            form.hidden = true;
-            edit.textContent = 'Edit';
-            status.textContent = '';
-        };
-
-        edit.addEventListener('click', () => {
-            if (form.hidden) {
-                form.hidden = false;
-                edit.textContent = 'Close';
-            } else {
-                close();
-            }
-        });
-
-        cancel.addEventListener('click', close);
-
-        form.addEventListener('submit', (event) => {
-            event.preventDefault();
-            run('Saving…', () =>
-                admin.patch(post.id, { subject: subject.value, bodyHtml: body.value })
-            );
-        });
+        edit.addEventListener('click', open);
+        cancel.addEventListener('click', discard);
+        save.addEventListener('click', commit);
 
         remove.addEventListener('click', () => {
             if (!admin.confirmDelete(post)) return;
             run('Deleting…', () => admin.remove(post.id));
         });
 
-        form.append(subject, body, save, cancel);
-        bar.append(hide, edit, remove, status, form);
+        // Escape backs out of an edit begun by accident. Enter commits from
+        // the subject line, where a newline has no meaning anyway; inside the
+        // letter it starts a paragraph, as it should.
+        field.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                commit();
+            }
+        });
+
+        for (const el of [field, body]) {
+            el.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') discard();
+            });
+        }
+
+        // Formatting is bound here rather than left to the browser, which
+        // sounds like the same thing and is not. Some environments never fire
+        // their own editing command for these chords at all -- measured, not
+        // assumed -- and the ones that do have historically produced styled
+        // spans instead of tags, which the sanitizer strips on the way in. In
+        // both cases the owner presses the key, sees nothing wrong, saves, and
+        // finds the formatting gone with nothing to explain it. Doing it
+        // ourselves makes the result the same everywhere, and it is still the
+        // shortcut people already know rather than a toolbar to learn.
+        body.addEventListener('keydown', (event) => {
+            if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+            const command = HOTKEYS[event.key.toLowerCase()];
+            if (!command) return;
+            event.preventDefault();
+            document.execCommand(command);
+        });
+
+        // Clicking a picture only puts the caret beside it -- measured, not
+        // assumed -- so Delete does nothing and the owner is left prodding at
+        // a photo that will not go away. Select the image itself instead. That
+        // is what the pointer cursor promises, and taking a photo out is one
+        // of the few edits anyone actually asks for.
+        body.addEventListener('click', (event) => {
+            if (event.target.tagName !== 'IMG') return;
+            if (body.getAttribute('contenteditable') !== 'true') return;
+            const range = document.createRange();
+            range.selectNode(event.target);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        });
+
+        showEditing(false);
+        bar.append(hide, edit, remove, save, cancel, status);
         return bar;
     }
 
