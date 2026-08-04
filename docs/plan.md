@@ -462,6 +462,7 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
   "photos": [
     { "id": "p_9a2c3f81b447", "width": 4032, "height": 3024 }
   ],
+  "linkedPhotoServices": ["googlePhotos"],   // body links an album we can't archive; [] when none
   "sourceRawPath": "raw/elder.smith/{msgId}/message.eml"
 }
 ```
@@ -469,6 +470,8 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
 The original `Date:` header keeps its offset rather than being normalized to UTC. Missionaries write from all over the world, and the local calendar day is both the value the dedup gate keys on and the one readers actually mean when they say "the letter from the 6th."
 
 **No `ingestDomain` field.** An acknowledgment email could name the address the sender wrote to, but acks are composed at ingest time when that value is already in hand, so storing it on the post buys nothing. It's logged to App Insights instead, matching how client type and DKIM results are handled.
+
+**`linkedPhotoServices` is a list rather than a bool**, because the two services it distinguishes have opposite prospects: a Google Drive link is fetchable in principle and a Google Photos album is not, so collapsing them would erase the only part of the observation worth recording. See [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments).
 
 **No full `bodyText` field either.** Carrying both `bodyHtml` and a plain-text twin put every letter in the reader payload twice, and nothing needed the second copy: [search](#search) can strip tags in the browser, dedup only ever read the first hundred characters, and the offline export and printed book both render from `bodyHtml`. So the plain-text body is dropped and `bodyHead100` — the one slice with a real consumer — is stored on its own. Roughly a 40% cut to `posts.json`, which is also the search index and the offline bundle.
 
@@ -517,6 +520,41 @@ All blob containers are private, with public access disabled at the account leve
 - Because raw is preserved, we can always reprocess (different sizes, HEIC → WebP, face detection later) without asking the missionary for anything.
 
 **Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip ([Phase 5](#phase-5--offline-archive-export) — a 2-year mission's ~1000 photos, ~400–500 MB as WebP against ~600–700 MB as JPEG), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint and by the photo-book PDF generator in Phase 11.
+
+#### Photos that arrive as links, not attachments
+
+Missionaries with more photos than an email will carry link a shared album instead of attaching them. **Both of the first two real letters ingested did exactly this**, carrying the same `photos.app.goo.gl` album link alongside their attached photos — so this is ordinary behavior, not an edge case, and it will recur.
+
+**Nothing about it is dangerous, and nothing about it works.** The link renders as an `<a>`, never an `<img>`: a remote image cannot survive [sanitization](#content-sanitization), so no third party ever serves bytes into a letters page and no reader's IP leaks to anyone. What the reader gets is a working hyperlink to photos **we do not hold**. That is the actual problem, and it is a quiet one — the link dies whenever the album owner deletes it, changes its sharing, or abandons the account, leaving link rot inside an archive whose central promise is permanence.
+
+**Fetching a Google Photos album is not possible, at any price** (verified August 2026). This is worth recording precisely, because the obvious remedy — give the service its own Google account and have families share the album with it — sounds reasonable and cannot work:
+
+- **The shared-album API was removed on 31 March 2025.** `sharedAlbums.get`, `.join`, `.leave`, `.list`, `albums.share`, and `albums.unshare` now return `403 PERMISSION_DENIED`, and Google's own migration table lists them with **"Scopes remaining: None."** There is no permission anyone can grant, because there is no API left to call.
+- **What remains of the Library API reads app-created data only** (`photoslibrary.readonly.appcreateddata`). Media we did not upload ourselves is invisible to us.
+- **"The Google Photos APIs don't support service accounts."** Every call requires a token from an interactively-consented human, which rules out unattended ingest independently of the point above.
+- **The Picker API — the only surviving read path — is interactive by construction.** Create a session, hand a `pickerUri` to a person, poll until they finish selecting. It cannot be framed, cannot be pointed at an existing album link, and picks from the signed-in user's own library rather than from a share. Any app touching these APIs must also pass OAuth verification review.
+
+**Google Drive is a different product with a different answer, and the naive idea works there.** A Drive URL contains the resource's own API identifier — `drive.google.com/file/d/{FILE_ID}/view`, the legacy `open?id={FILE_ID}`, or `drive/folders/{FOLDER_ID}` enumerated through `files.list` — so a regex recovers the ID and `GET /drive/v3/files/{id}?alt=media` returns bytes straight into the existing transcoder. Drive **does** support service accounts, so sharing a file or folder with `…@project.iam.gserviceaccount.com` grants unattended access with no human in the loop. The contrast is exactly this: a Drive link addresses a *resource*; `photos.app.goo.gl/…` addresses a *share*, and the API that resolved shares is the one Google deleted.
+
+**Photos is not a view onto Drive, so Drive access does not reach a Photos album.** This is worth stating because it is the obvious next hope, and because it *used to be true* — the two products cross-synced until Google separated them on 10 July 2019. Three things establish the separation, in ascending order of how hard they are to argue with:
+
+- Google's own [change notice](https://support.google.com/photos/answer/9316089): *"When you upload or delete photos in Google Drive or Google Photos, changes won't reflect in the other product,"* and *"Once items are copied into Photos, items aren't connected between the two products."*
+- The Drive v3 [`files.list`](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/list) `spaces` parameter now accepts only `drive` and `appDataFolder`. It previously accepted `photos` — that removed value *was* the mapping, and it is gone. (A vestigial `drive.photos.readonly` scope is still listed on that page; with the space removed there is nothing left for it to address.)
+- **Storage is double-counted.** Copying an original-quality item from Drive into Photos makes it *"count towards your storage in both products."* Google bills the same photo twice because it is stored twice, which no shared-backing-store arrangement would do.
+
+**Confirmed directly against the real account** rather than inferred: the album from Isaac's letters is not visible anywhere in `drive.google.com` and is reachable only from `photos.google.com`. Even setting storage aside, the link would not decode — `photos.app.goo.gl/{key}` is an identifier in Photos' *share* namespace, not a Drive file ID, and no documented function maps one to the other.
+
+**It is still not built, for three reasons in descending order of weight:**
+
+1. **No evidence the problem exists.** Every observed link so far is Photos, and zero are Drive. Building the Drive path today would be speculation with a credential attached.
+2. **It adds a third vendor**, in the form of a Google Cloud project and a service-account key in Key Vault. That is [a cost to weigh, not a veto](#azure-resource-plan) — but this particular dependency clears the bar badly, because the vendor being depended on is the one that just deleted the API this section exists to document.
+3. **The compliance question is unresolved.** `drive.readonly` is a restricted scope; a service account acting as itself shows no consent screen and so probably escapes OAuth verification review, but that is unverified and must be confirmed before anything is built on it.
+
+**What is built instead is detection, which is cheap and generates the missing evidence.** Ingest flags a published post whose body links `photos.app.goo.gl`, `drive.google.com`, or a bare `photos.google.com` album, and records which. That is already the same signal that identifies an oversized send stripped of its photos, so it costs one regex and earns a real answer to *how often does this happen, and to which service* — the input this decision actually lacks.
+
+**The cheapest fix is not code at all.** Onboarding text should ask for photos attached to the email rather than linked, because attachments are archived permanently and links are not. Gmail's Drive-insert dialog even offers **"send as attachment"**, which converts a link into a real attachment we already handle perfectly. One sentence of guidance solves this at the source for most people.
+
+**Scraping the public share page is rejected.** The `photos.app.goo.gl` URL resolves without authentication, so it is technically reachable — but it is automated access outside the API and against Google's terms, it rests on markup that can change without notice, and it is an indefensible way for a service built around careful handling of other families' data to obtain that data.
 
 ### Search
 
@@ -982,7 +1020,9 @@ If a user specifically wants Shutterfly, the manual path is always available to 
 
 **Rough total: ~$12/month through Stage 1**, rising to **~$17/month** once outbound mail (Workers Paid, $5) goes live in Phase 8. Standard was pulled forward from Phase 3 to Phase 0 deliberately: the alternative was a storage connection string sitting in application settings for the whole of Stage 1, and paying $9/month to keep a real credential out of configuration is the right trade on a service holding other families' letters. The mail provider is still deferred to the phase that needs it.
 
-**Only two vendors.** Everything is Azure or Cloudflare, and Cloudflare would be in the picture for DNS regardless — so inbound mail costs no additional relationship, no additional bill, and no additional account to secure. That was a deciding factor alongside the uncapped inbound quota.
+**Only two vendors — a preference, not a rule.** Everything today is Azure or Cloudflare, and Cloudflare would be in the picture for DNS regardless, so inbound mail cost no additional relationship, no additional bill, and no additional account to secure. That was a deciding factor alongside the uncapped inbound quota.
+
+A third vendor is worth adding when it buys a capability the existing two genuinely cannot, and when losing it would be survivable. Each addition costs an account to secure, a credential to rotate and eventually to hand over, a second console to check when something breaks, and a set of terms that can change without consulting us. **That last cost is not hypothetical:** Google deleted the entire Google Photos shared-album API in March 2025 (see [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments)), which is exactly the shape of failure this scrutiny exists to anticipate. So the test is whether the capability is worth the dependency, not whether the count stays at two.
 
 **GRS rather than LRS on storage.** LRS keeps three copies in a single datacenter, which does not survive a regional loss — an awkward fit for a service whose central promise is that these letters are preserved permanently and are, for many families, the only surviving copy. The delta is roughly a dollar a month at this scale. If the cost ever matters, the right narrowing is GRS on `raw/` only (the irreplaceable data) with LRS on `rendered/`, which is fully reconstructible from `raw/`.
 
@@ -1040,6 +1080,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
   - Original-message extractor over `postal-mime`: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators). Size-cap the message before parsing.
   - Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/` with sanitized path segments. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
 - **`posts.json` is ETag-guarded from the first write**, per [Concurrency](#extracting-and-de-duplicating-forwards) — `If-None-Match: *` on creation, `If-Match` on append, retry on `412`. This is separate from dedup and cannot wait for it: bulk-forwarding a stack of letters in one sitting is the very first thing that will happen, and unguarded concurrent appends lose posts silently.
+- **Flag posts whose photos arrived as links.** A regex over the sanitized body for `photos.app.goo.gl`, `photos.google.com`, and `drive.google.com`, recorded on the post as which service was seen. Detection only — nothing is fetched, and see [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments) for why fetching a Google Photos album is impossible rather than merely unbuilt. Both of the first two real letters carried such a link, and this counts how often it happens and to which service, which is the evidence any later decision needs. It doubles as the signal for an oversized send that was stripped of its attachments in transit.
 - **No dedup.** One forwarder cannot duplicate their own letters, and the reset script is the cleanup path. Dedup arrives in [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow), where pending-site promotion is the first thing that genuinely cannot work without it.
 - **Verification is Storage Explorer.** No `/manage/last-received` page — it would need an authorization model that doesn't exist until Phase 3, and inspecting blobs directly is adequate for two phases. The operator view arrives in Phase 9 with the role it belongs to.
 
