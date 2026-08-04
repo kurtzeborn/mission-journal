@@ -1068,11 +1068,15 @@ Stage 1's development loop is *forward a real letter → look at the result → 
 
 See [docs/email-options.md](email-options.md) for the vendor / pricing comparison behind the email decisions in Phase 0.
 
+**Each phase carries a status line.** Written when the phase changes state, not in a sweep, because a status that is only ever correct on the day someone audited it is worse than none. Three values: **Shipped**, **Partly shipped** with the split named, and **Not started**. A phase that cannot start for a reason outside the code says so instead.
+
 ---
 
 ## Stage 1 — Vertical slice
 
 ### Phase 0 — Foundation
+**Shipped.** Running in production on `pdayletters.com`.
+
 - Create the Azure resource group.
 - Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `inbox/` blobs at 30 days. Set `allowPermanentDelete` on the blob service delete-retention policy — without it no version can ever be removed on demand, only aged out. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
 - App Insights instance (for rejection logging and general telemetry).
@@ -1091,6 +1095,8 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - **A reset script.** Wiping a slug must be one command — `raw/{slug}/`, `rendered/{slug}/`, and the `inbox` residue, **including soft-deleted versions and blob versions**, or every iteration of the loop silently accretes storage that soft-delete is designed to keep. It is also the honest first draft of the deletion purge in Phase 9, and building it early is what surfaced how [purging a version actually works](#post-mission-archive) — three REST passes, an ARM-only account flag, and a data action missing from the role the Functions run as. `infra/reset-slug.ps1` does it; `infra/probe-reset.ps1` proves it by seeding a throwaway slug, resetting it, and asserting the containers come back empty. Keep `config/{slug}/` by default: wiping the hand-seeded ACL turns a re-ingest test into a re-seed.
 
 ### Phase 1 — Inbound forward pipeline
+**Shipped.** 25 real letters ingested; 13 fixtures in the corpus.
+
 **Forward-only.** `direct` exists as a classifier branch and is covered by fixtures, but nothing exercises it until [Phase 6](#phase-6--direct-ingest).
 
 - **Build an `.eml` fixture corpus first.** Collect real forwards of the same message from Gmail web, Gmail iOS/Android, Outlook desktop/web, and Apple Mail — both "forward inline" and "forward as attachment" — plus a BCC'd original and a message carrying `cid:` inline images. Check them into the repo as test fixtures. Nearly every hard bug in this system lives in MIME parsing, and this corpus is the only way to find them without waiting on live mail. The `direct` path is covered by a real `@missionary.org` send; hand-written `Authentication-Results` headers cover the fail and absent cases that a genuine account cannot produce on demand.
@@ -1120,6 +1126,8 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - **Verification is Storage Explorer.** No `/manage/last-received` page — it would need an authorization model that doesn't exist until Phase 3, and inspecting blobs directly is adequate for two phases. The operator view arrives in Phase 9 with the role it belongs to.
 
 ### Phase 2 — Render pipeline
+**Shipped.** 24 posts, 49 photos rendered.
+
 - Queue-triggered render Function: parse raw `.eml` → **sanitize HTML** per [Content sanitization](#content-sanitization) (allowlist, `cid:` rewriting, remote-image stripping) → resize photos to WebP + strip EXIF → write photos to `rendered/{slug}/photos/{p_sha256[:12]}/*` and fill in the target post's `photos` array in `posts.json` (ETag-guarded, same as ingest).
 - **HEIC decoding is a defensive branch, not the common path.** Mission-issued phones are Android, which does not emit HEIC by default: Pixel offers no such setting at all, and Samsung ships the option off. It still arrives occasionally — a family member on an iPhone attaching a photo to a forward — so decode it and fall back to dropping that photo rather than the post. Cover it with a synthetic `.heic` file.
 - Guard against oversized messages: cap decoded attachment bytes **and decoded pixel dimensions** per message, and stream rather than buffer, so neither a 25 MB email nor a small file that decodes to a gigapixel image exhausts a Consumption instance. A decode failure drops that photo and publishes the post, rather than failing the ingest.
@@ -1127,6 +1135,8 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - **Verification:** run the Phase 1 fixture corpus through and diff the rendered output. Confirm posts sort by `originalDate` and that photo arrays fill in shortly after ingest.
 
 ### Phase 3 — Auth and private content delivery
+**Shipped**, including Google. Microsoft work and personal accounts both verified through the one button.
+
 - SWA authentication enabled. **Microsoft alone is enough to unblock the loop**; add Google before any content is shown to someone who isn't you, since the eventual audience is Google-native.
 - **Adding Google is what buys the Standard plan**, and it is not just a second button. Custom authentication is Standard-only, and **any custom registration disables every preconfigured provider** — so Microsoft has to be re-declared as a custom provider with our own Entra app registration at the same time. Budget for the tier change and the Entra app together.
 - **The Entra registration needs `enableIdTokenIssuance`, and Bicep cannot say so.** SWA custom auth asks for `response_type=id_token`; `az ad app create` leaves that grant off, so Entra answers 700054 and returns the visitor to `/.auth/login/aad/callback` with no session. Set it with `az ad app update --id <appId> --enable-id-token-issuance true` and treat it as part of *creating* the registration — a rebuild from `main.bicep` will not restore it, because the property lives in Graph rather than ARM. It cost most of a day here, and the reason it did is worth recording: **Google worked throughout**, so the evidence pointed at the Microsoft configuration rather than at the registration, and five plausible-but-wrong causes got shipped before anyone looked at the grant. When one provider works and another doesn't, compare how the two are *registered* before theorising about how they're *configured*.
@@ -1137,6 +1147,8 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - SWA route rules gating `/{missionary-slug}/*`, plus the **`401` deep-link override** — cheap, and the difference between a bookmark that works and a bare error. The `/login` chooser, the `403` page, and the site switcher are Phase 9.
 
 ### Phase 4 — Reader UI and search
+**Shipped.** See the [Reader UI backlog](#reader-ui-backlog) for what a first real read-through exposed — the phase is built, not finished.
+
 - **Public landing page at `/`** — what the service is and the `post@pdayletters.com` address. Unauthenticated, entirely generic, no per-site information. `claim@` instructions arrive with the claim flow in Phase 7.
 - **Subtle `beta` mark** beside the product name wherever it appears. Removed in Phase 12 and not before. See [The service is in beta](#the-service-is-in-beta-until-the-privacy-policy-ships).
 - Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch index built client-side from `posts.json`, with search text derived by stripping tags from `bodyHtml`.
@@ -1144,6 +1156,8 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - **Base the type scale, contrast, and touch targets on the actual audience.** Grandparents are the primary readers, and this is far cheaper to decide here than to retrofit.
 
 ### Phase 5 — Offline archive export
+**Shipped**, and redesigned in the building — the zip is staged in blob storage and handed back as a SAS link rather than streamed through the Function.
+
 - "Download my letters" Function bundles `index.html` + `posts.json` + `photos/` into a self-contained zip, built from the **same ACL-filtered payload the reader UI receives**, so there is never a second filtering rule to keep in sync. **`raw/` is never bundled** — see [Storage layout](#storage-layout).
 - Packaged reader HTML reads local JSON and builds the search index in-browser — identical code path to the hosted reader, so search works with zero backend.
 - **Measure the full-mission case early even though Stage 1 won't hit it.** The cost is not compression: the renditions are already entropy-coded, so photo entries are **stored rather than deflated** and only `index.html` and `posts.json` are worth compressing. The real constraint was never building the zip — those are bytes we already hold — but holding an HTTP response open for the length of the *client's* download, which a slow connection can stretch past the SWA response timeout with no way to resume.
@@ -1155,12 +1169,20 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 
 **Stage 1 is done when:** a real letter forwarded from a personal mailbox appears at `/{slug}` signed in as the ACL's one owner, with its photos, findable by searching a word from its body — and the downloaded zip does the same thing offline.
 
+**Met**, against 24 real letters.
+
 ---
 
 ## Stage 2 — Widening
 
 ### Phase 6 — Direct ingest
+**Not started, and the window to start it is measured in hours.** Access to the `@missionary.org` account is temporary and nearly spent, with one or two sends left in it.
+
 **Gated on access to a real `@missionary.org` account**, which is what makes everything here testable rather than inferred. See [Building blind](#building-blind).
+
+- **Send before building, not after.** The Worker streams every message to `inbox/{ulid}.raw` before anything inspects it, so a message arriving today can be replayed against the `direct` branch indefinitely — the classifier not yet knowing what to do with it costs nothing. Code can be written any day; the account cannot send on any day. Treat the send as a *capture* operation and get the raw blob out to the private repo the same day, ahead of the 30-day `inbox/` lifecycle rule.
+- **Capture the `missionary.org` DKIM public key alongside the message.** The selector is in the message headers, and the key it names is a plain DNS lookup — but only while you know the selector, and only until it rotates. This plan leans on re-verifying signatures on letters forwarded *years* after they were sent, so the pass path becomes permanently untestable the moment that key rolls and no copy was kept. Store the record with the fixture.
+- **The OAuth question costs no email.** Whether an `@missionary.org` Google account can sign in to a third-party app is answered by trying it, and it decides how much of [the 60-day window](#ownership-and-the-60-day-window) is real.
 
 - **`direct` classification goes live.** Log the full `Authentication-Results` header verbatim for any message whose `From:` domain is in `MISSIONARY_DOMAINS`, and raise a *warning* rather than a silent rejection when such a message fails to classify.
 - **Run the deferred Phase 0 checklist**, which this phase exists to unblock: confirm a genuine DMARC pass on Proofpoint-relayed missionary mail, confirm a threaded reply reaches the inbox rather than spam, and test whether an `@missionary.org` Google account can sign in to a third-party OAuth app.
@@ -1169,6 +1191,8 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 - **Verification:** send a `direct` message and confirm it publishes to the same slug that a forward of the same letter reaches.
 
 ### Phase 7 — Onboarding: pending sites and the claim flow
+**Not started.** The largest phase in this document, and the one that ends hand-provisioning.
+
 Until this ships, sites are hand-provisioned. This is what makes the service self-serve.
 
 - Create the `pending/` container and the `users` table. Add the HMAC token-signing service (key from Key Vault).
@@ -1182,6 +1206,8 @@ Until this ships, sites are hand-provisioned. This is what makes the service sel
 - The "a site already exists" reply for DKIM-verified non-ACL senders, including `claim@` instructions.
 
 ### Phase 8 — Outbound mail and preferences
+**Not started.** No provider chosen yet, so the service currently cannot send anything at all.
+
 - Ack emails: post-published ack and dedupe ack, honoring `postAckEmails` / `dedupeAckEmails` on the recipient's `users` row, with `Auto-Submitted: auto-replied` and the loop guards. Both suppressed on the pending-promotion path. Replies to inbound mail set `From:` to the address written to and carry `In-Reply-To`/`References` threading headers.
 - **An ACL member whose message is rejected always gets told why.** Silence is correct for strangers and wrong for someone who can already read the site — a reader who forwarded inline, or anyone whose DKIM re-verification failed, otherwise concludes it worked and loses the letter.
 - Per-user settings page at **`/settings`**, not `/{slug}/settings` — these are columns on one `users` row, and a per-site URL implies a per-site scope that doesn't exist.
@@ -1189,6 +1215,8 @@ Until this ships, sites are hand-provisioned. This is what makes the service sel
 - Per-slug daily ingest cap with alerting, so a mail loop or a forwarding rule gone wrong can't quietly generate thousands of posts and a matching storage bill.
 
 ### Phase 9 — Owner admin, invitations, and operators
+**Partly shipped, out of order.** Edit, hide and delete, the `/login` chooser, the `401` deep link, and the signed-in state on the root page were all pulled forward into Stage 1 — each because something already built was resting on it. **Everything else is untouched:** no `memberships` index, no site switcher or root redirect, no `403` page, no restore-original, no site deletion, no invitations, no profile editing, no operator role.
+
 - **`memberships` table** maintained alongside `acl.json`, plus a rebuild-from-`config/*` utility for drift recovery. Deferred this far deliberately — it is a derived index whose only consumers are the switcher and the root redirect, and scanning `config/*/acl.json` answers the same question until there are enough sites for it to matter.
 - **Site switcher** and **signed-in root redirect**, with the no-memberships explanation for an address that isn't on any ACL. See [Switching between sites](#switching-between-sites).
 - **Session handling** completed per [Sessions expire](#sessions-expire-and-re-authenticating-must-be-invisible): the `/login` chooser page, and a **Sign in** button on the public root. Verify that SWA's `.referrer` substitution survives the hop through `/login`.
@@ -1209,6 +1237,8 @@ Until this ships, sites are hand-provisioned. This is what makes the service sel
   - **`google-client-secret` deliberately carries no date**, because Google OAuth client secrets do not expire. Setting one to look tidy would manufacture a false alarm.
 
 ### Phase 10 — New-letter notifications
+**Not started.** Blocked behind Phase 8 — nothing can be notified until something can send.
+
 - **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, and the existing one-click HMAC opt-out. Carries `List-Unsubscribe` and `List-Unsubscribe-Post` headers, which bulk mail now needs for inbox placement.
 - **`digestFrequency` is collected, not defaulted** — add the monthly/weekly/never question to the invitation-acceptance and claim flows from Phases 7 and 9, with `monthly` preselected, plus a control on `/settings`. Rows created by ingest are set `off` and never prompted.
 - **Empty digests are never sent.** Verify by letting a test site sit through a full cycle with nothing published and confirming no mail leaves.
@@ -1216,11 +1246,15 @@ Until this ships, sites are hand-provisioned. This is what makes the service sel
 - **Stretch — SMS.** Not started until the digest ships and the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch) have answers. Per-post rather than digested, default off, number confirmed by a round-trip code.
 
 ### Phase 11 — Journal Publish
+**Not started.**
+
 - Assemble a hardcover photo book from a missionary's posts + photos and place the print order via the Lulu Print API.
 - Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
 - Full design in [Journal Publish](#journal-publish), including why Shutterfly + Rakuten was ruled out.
 
 ### Phase 12 — Terms, privacy, and leaving beta
+**Not started**, deliberately — it is written last, and the [beta mark](#the-service-is-in-beta-until-the-privacy-policy-ships) stays until it is.
+
 Written last, against what was actually built rather than what was planned. Until it ships the product carries the [beta mark](#the-service-is-in-beta-until-the-privacy-policy-ships).
 
 - **Terms of use:** who owns the content (the missionary and their family, never the service), what the service may do with it (store, render, print on request — nothing else), and the acceptable-use line.
