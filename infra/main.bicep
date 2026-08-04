@@ -114,11 +114,17 @@ resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01'
 // SAS can only be scoped to a container or a single blob — prefix scoping
 // needs a hierarchical namespace. Keeping the landing zone separate means the
 // Worker's credential cannot touch the permanent archive even if it leaks.
+//
+// `exports` holds staged download archives, which are derived data: every byte
+// in one can be rebuilt from `rendered/`. Separate so that losing it costs
+// nothing, and so a lifecycle rule can be aimed at it without any chance of
+// catching the originals.
 var containerNames = [
   'inbox'
   'raw'
   'rendered'
   'config'
+  'exports'
 ]
 
 resource containers 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [

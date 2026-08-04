@@ -137,9 +137,10 @@ export function buildArchive({ store, slug, posts, exportedAt, log }) {
             }
 
             // A missing rendition is not worth failing the download over. The
-            // status line is long gone by now -- the only alternatives are a
-            // truncated zip or an archive with one photo short, and the second
-            // is plainly better for the person waiting on it.
+            // alternatives are no archive at all or an archive one photo
+            // short, and the second is plainly better for the person waiting
+            // on it. It is also the rarer half of the problem: the photo is
+            // still in `raw/`, so a re-render fixes it later.
             if (!blob) continue;
 
             zip.addBuffer(Buffer.from(blob.bytes), `photos/${entry.name}`, {

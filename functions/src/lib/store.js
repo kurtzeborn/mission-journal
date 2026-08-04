@@ -4,8 +4,20 @@
 // and is tested against an in-memory fake. What is left here is the part that
 // can only be checked by running it against real storage.
 
-import { BlobServiceClient } from '@azure/storage-blob';
+import {
+    BlobServiceClient,
+    BlobSASPermissions,
+    SASProtocol,
+    generateBlobSASQueryParameters
+} from '@azure/storage-blob';
 import { DefaultAzureCredential } from '@azure/identity';
+
+// A user delegation key is signed by Entra ID rather than by an account key,
+// which is what lets this run on a storage account that has no keys worth
+// stealing. Keys are valid for up to seven days and cost a round trip, so one
+// is kept until shortly before it expires rather than fetched per download.
+const KEY_LIFETIME_MINUTES = 60;
+const KEY_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
 // Access is by managed identity. No connection string, no account key, and
 // nothing in app settings that would be worth stealing.
@@ -17,6 +29,25 @@ export function createBlobStore({ accountName, credential = new DefaultAzureCred
 
     const blob = (container, name) =>
         service.getContainerClient(container).getBlockBlobClient(name);
+
+    let delegation = null;
+
+    const delegationKey = async () => {
+        const now = Date.now();
+        if (delegation && delegation.expiresAt - KEY_REFRESH_MARGIN_MS > now) {
+            return delegation.key;
+        }
+        const expiresAt = now + KEY_LIFETIME_MINUTES * 60 * 1000;
+        const key = await service.getUserDelegationKey(
+            // Backdated, because the clock here and the clock at storage are
+            // not the same clock. Without the skew a key can be rejected as
+            // not-yet-valid for the first few seconds of its life.
+            new Date(now - 5 * 60 * 1000),
+            new Date(expiresAt)
+        );
+        delegation = { key, expiresAt };
+        return key;
+    };
 
     return {
         async readBlob(container, name) {
@@ -48,6 +79,53 @@ export function createBlobStore({ accountName, credential = new DefaultAzureCred
                 }
             });
             return { etag: result.etag };
+        },
+
+        /**
+         * Upload a stream, without ever holding all of it.
+         *
+         * The archive is assembled and sent to storage at the same time, so
+         * peak memory is the buffer below rather than the finished zip. That
+         * matters at full-mission size, where the zip is larger than the
+         * instance's entire memory allowance.
+         */
+        async uploadStream(container, name, stream, options = {}) {
+            const BUFFER_BYTES = 4 * 1024 * 1024;
+            const CONCURRENCY = 4;
+            await blob(container, name).uploadStream(stream, BUFFER_BYTES, CONCURRENCY, {
+                blobHTTPHeaders: {
+                    blobContentType: options.contentType,
+                    blobContentDisposition: options.contentDisposition
+                }
+            });
+        },
+
+        /**
+         * A short-lived, read-only, single-blob URL.
+         *
+         * Scoped to one blob and one verb because it is handed to a browser:
+         * whatever it can do is what an attacker who obtains the URL can do.
+         * It carries no identity, so the authorization decision has already
+         * been made by the time this is called -- never call it before the
+         * gate.
+         */
+        async readUrl(container, name, { minutes = 15 } = {}) {
+            const key = await delegationKey();
+            const now = Date.now();
+            const query = generateBlobSASQueryParameters(
+                {
+                    containerName: container,
+                    blobName: name,
+                    permissions: BlobSASPermissions.parse('r'),
+                    protocol: SASProtocol.Https,
+                    startsOn: new Date(now - 5 * 60 * 1000),
+                    expiresOn: new Date(now + minutes * 60 * 1000)
+                },
+                key,
+                accountName
+            ).toString();
+
+            return `${blob(container, name).url}?${query}`;
         }
     };
 }
