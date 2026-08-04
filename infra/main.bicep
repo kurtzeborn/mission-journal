@@ -312,11 +312,23 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
 // declaring them here is what stops a later deployment from silently removing
 // them and locking every reader out of the site.
 //
-// The `*_APP_SETTING_NAME` entries hold the *name* of another setting rather
-// than a value. That indirection is what lets the secret itself be a Key Vault
-// reference: Static Web Apps resolves the reference when it reads the setting,
-// so the secret never exists in this template, in the resource, or in a
-// deployment history.
+// Settings for managed functions -- of which there are none, because the API
+// is the linked Function App below, which carries its own settings and does
+// not inherit these. They are still load-bearing for a second reason: this is
+// where custom authentication reads its client IDs and secrets from, and
+// declaring them here is what stops a later deployment from silently removing
+// them and locking every reader out of the site.
+//
+// `clientSecretSettingName` in staticwebapp.config.json names the setting that
+// holds the secret itself -- there is no indirection, despite the name in the
+// documentation sample reading like there is. Point it at a setting holding
+// another setting's name and the platform faithfully sends that name to the
+// identity provider as the secret, the token exchange fails, and sign-in dies
+// at the callback with a 401 long after the user has finished authenticating.
+//
+// The value is a Key Vault reference, resolved by Static Web Apps when it
+// reads the setting, so the secret never exists in this template, in the
+// resource, or in a deployment history.
 resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
   parent: staticWebApp
   name: 'appsettings'
@@ -328,10 +340,8 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
     AZURE_CLIENT_ID: aadClientId
     AZURE_CLIENT_SECRET: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${aadClientSecretName}/)'
-    AZURE_CLIENT_SECRET_APP_SETTING_NAME: 'AZURE_CLIENT_SECRET'
     GOOGLE_CLIENT_ID: googleClientId
     GOOGLE_CLIENT_SECRET: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${googleClientSecretName}/)'
-    GOOGLE_CLIENT_SECRET_APP_SETTING_NAME: 'GOOGLE_CLIENT_SECRET'
   }
 }
 

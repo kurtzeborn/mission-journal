@@ -63,13 +63,13 @@
         "registration": {
           "openIdIssuer": "https://login.microsoftonline.com/common/v2.0",
           "clientIdSettingName": "AZURE_CLIENT_ID",
-          "clientSecretSettingName": "AZURE_CLIENT_SECRET_APP_SETTING_NAME"
+          "clientSecretSettingName": "AZURE_CLIENT_SECRET"
         }
       },
       "google": {
         "registration": {
           "clientIdSettingName": "GOOGLE_CLIENT_ID",
-          "clientSecretSettingName": "GOOGLE_CLIENT_SECRET_APP_SETTING_NAME"
+          "clientSecretSettingName": "GOOGLE_CLIENT_SECRET"
         }
       }
     }
