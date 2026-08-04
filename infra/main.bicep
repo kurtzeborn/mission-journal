@@ -226,10 +226,17 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 // ---------------------------------------------------------------------------
 // Key Vault
 //
-// Purge protection is deliberately OFF and soft-delete is at the 7-day
-// minimum. Stage 1's loop involves tearing this resource group down and
-// rebuilding it, and purge protection makes that irreversible for 90 days.
-// Turn both on before real family data exists.
+// Purge protection is ON as of the first real letters. It was off through
+// Stage 1's build loop, when tearing the resource group down and rebuilding
+// it was the development cycle and an unpurgeable vault would have blocked
+// that. Real family letters now depend on the auth secrets this vault holds,
+// so the trade inverted: a deleted vault is recoverable for the retention
+// window and cannot be purged early by anyone, including us.
+//
+// This is a one-way switch -- Azure does not allow turning it back off. The
+// practical cost is that the vault name is now reserved for seven days after
+// any delete, so a full teardown-and-rebuild of this resource group has to
+// use a new suffix rather than reusing this one.
 // ---------------------------------------------------------------------------
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
@@ -244,7 +251,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
-    enablePurgeProtection: null
+    enablePurgeProtection: true
     publicNetworkAccess: 'Enabled'
   }
 }
