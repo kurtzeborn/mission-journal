@@ -1,0 +1,40 @@
+name: Deploy web
+
+# The static site only. The API is a separately deployed Function App linked as
+# a backend, which is why `api_location` is empty below -- Static Web Apps
+# refuses to proxy to a linked backend if it also thinks it owns managed
+# functions.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+# The deployment token is a write credential for the whole site, so no job here
+# may run from a fork.
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: web
+          # No build step by design: the reader is plain HTML, CSS and ESM, so
+          # there is nothing to compile and nothing to keep patched.
+          skip_app_build: true
+          output_location: ''
+          api_location: ''
