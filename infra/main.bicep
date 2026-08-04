@@ -19,15 +19,16 @@ param staticWebAppLocation string = 'centralus'
 param namePrefix string = 'mj'
 
 @description('''
-Static Web App plan. Free through Phase 2. Standard from Phase 3, when Google
-(a custom identity provider) is added. Managed identity is Standard-only, so on
-Free the managed Functions reach storage with a connection string instead.
+Static Web App plan. Standard only, from Phase 3 onward: linking a Function App
+as the /api backend requires it, and so does the custom Google provider. The
+Free branch is removed rather than left unused -- it produced a template that
+deployed successfully and then could not serve the API at all, which is a worse
+failure than refusing the value up front.
 ''')
 @allowed([
-  'Free'
   'Standard'
 ])
-param staticWebAppSku string = 'Free'
+param staticWebAppSku string = 'Standard'
 
 @description('Comma-separated domains this service accepts inbound mail on. Recipient-side, not sender-side.')
 param acceptedIngestDomains string
@@ -50,7 +51,6 @@ var staticWebAppName = '${namePrefix}-swa-${suffix}'
 var workerPlanName = '${namePrefix}-plan-${suffix}'
 var workerAppName = '${namePrefix}-fn-${suffix}'
 
-var storageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var storageBlobDataOwner = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
 var storageQueueDataContributor = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributor = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
@@ -252,17 +252,15 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 // ---------------------------------------------------------------------------
 // Static Web App
 //
-// Free through Phase 2. Phase 3 adds Google, which is a custom identity
-// provider and forces Standard. The custom domain is not declared here:
-// binding it requires the DNS records to already resolve, and they must be
-// grey-cloud / DNS-only at Cloudflare or validation never completes.
+// The custom domain is not declared here: binding it requires the DNS records
+// to already resolve, and they must be grey-cloud / DNS-only at Cloudflare or
+// validation never completes.
 //
-// Managed identity is a Standard-only feature. The identity property must be
-// absent entirely on Free — ARM rejects even `type: 'None'` with the
-// misleading "SkuCode 'Free' is invalid". Bicep omits a null-valued property.
+// The managed identity exists for exactly one purpose. Static Web Apps uses it
+// to read identity-provider secrets out of Key Vault and for nothing else --
+// it is not an identity the API runs as, because the API does not run here at
+// all. See the linked backend below.
 // ---------------------------------------------------------------------------
-
-var useManagedIdentity = staticWebAppSku == 'Standard'
 
 resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   name: staticWebAppName
@@ -271,68 +269,45 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
     name: staticWebAppSku
     tier: staticWebAppSku
   }
-  identity: useManagedIdentity ? { type: 'SystemAssigned' } : null
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     allowConfigFileUpdates: true
     stagingEnvironmentPolicy: 'Enabled'
   }
 }
 
-var baseAppSettings = {
-  ACCEPTED_INGEST_DOMAINS: acceptedIngestDomains
-  MISSIONARY_DOMAINS: missionaryDomains
-  STORAGE_ACCOUNT_NAME: storage.name
-  KEY_VAULT_URI: keyVault.properties.vaultUri
-  APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
-}
-
-// On Free there is no identity to authorize, so the managed Functions need a
-// connection string. This is a real secret sitting in app settings, and it is
-// the price of deferring Standard. It disappears at Phase 3.
-var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storage.name};AccountKey=${storage.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
-
+// Settings for managed functions. There are none today -- the API is the
+// linked Function App below, which carries its own settings and does not
+// inherit these. Kept because the values are the same ones any future managed
+// function would need, and empty is not more honest than unused.
 resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
   parent: staticWebApp
   name: 'appsettings'
-  properties: useManagedIdentity
-    ? baseAppSettings
-    : union(baseAppSettings, {
-        STORAGE_CONNECTION_STRING: storageConnectionString
-      })
-}
-
-// ---------------------------------------------------------------------------
-// Role assignments — Standard only. The managed Functions reach storage and
-// Key Vault by managed identity once the plan supports one.
-// ---------------------------------------------------------------------------
-
-resource blobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useManagedIdentity) {
-  scope: storage
-  name: guid(storage.id, staticWebApp.id, storageBlobDataContributor)
   properties: {
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      storageBlobDataContributor
-    )
-    principalId: staticWebApp.identity.principalId
-    principalType: 'ServicePrincipal'
+    ACCEPTED_INGEST_DOMAINS: acceptedIngestDomains
+    MISSIONARY_DOMAINS: missionaryDomains
+    STORAGE_ACCOUNT_NAME: storage.name
+    KEY_VAULT_URI: keyVault.properties.vaultUri
+    APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
   }
 }
 
-resource queueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useManagedIdentity) {
-  scope: storage
-  name: guid(storage.id, staticWebApp.id, storageQueueDataContributor)
-  properties: {
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      storageQueueDataContributor
-    )
-    principalId: staticWebApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
+// ---------------------------------------------------------------------------
+// The one role the Static Web App identity actually uses.
+//
+// There were blob and queue role assignments here once, on the theory that the
+// managed Functions would reach storage by identity. They never could:
+// managed functions get no managed identity on any plan, which is why the
+// background work moved to its own Function App in the first place. Microsoft's
+// own FAQ is explicit -- "if you need managed identity or Key Vault references
+// in your API, use the bring your own Functions app feature." Two data-plane
+// grants on a principal that cannot use them is not harmless; it is a standing
+// misstatement of who can read the archive.
+// ---------------------------------------------------------------------------
 
-resource secretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useManagedIdentity) {
+resource secretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
   name: guid(keyVault.id, staticWebApp.id, keyVaultSecretsUser)
   properties: {
@@ -508,6 +483,116 @@ resource workerSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' 
     )
     principalId: workerApp.identity.principalId
     principalType: 'ServicePrincipal'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The Function App is also the site's /api backend.
+//
+// One app rather than two. The reader API therefore runs with the ingest
+// identity's blob write rights, which is more authority than reading letters
+// needs; a separate read-only app would be least-privilege but would mean
+// splitting or packaging the shared lib/ code, and Static Web Apps permits
+// only one linked Functions app per site in any case.
+//
+// Flex Consumption works here despite the documentation listing only
+// Consumption, Premium, and Dedicated as supported plans for bring-your-own
+// Functions. Verified against this resource, not inferred.
+//
+// The backend must keep the default `api` route prefix -- host.json must not
+// override routePrefix, or every route arrives somewhere the site cannot
+// reach.
+// ---------------------------------------------------------------------------
+
+resource linkedBackend 'Microsoft.Web/staticSites/linkedBackends@2023-12-01' = {
+  parent: staticWebApp
+  name: workerApp.name
+  properties: {
+    backendResourceId: workerApp.id
+    region: location
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Easy Auth on the Function App -- the only thing standing between the letters
+// and the open internet.
+//
+// The API validates no tokens of its own. It trusts the x-ms-client-principal
+// header, which is sound only while nothing but Static Web Apps can reach the
+// app. That property comes from this config and nowhere else.
+//
+// Linking a backend does NOT establish it. `az staticwebapp backends link`
+// writes the azureStaticWebApps provider but leaves apple, azureActiveDirectory,
+// facebook, gitHub, google, and legacyMicrosoftAccount enabled with empty
+// registrations. Easy Auth then fails to initialize: before a restart it
+// enforces nothing at all and a hand-forged header grants full access to every
+// letter; after one, every request returns 400 "Login not supported for
+// provider azureStaticWebApps". Both were observed on this resource. Every
+// provider is therefore disabled explicitly -- including legacyMicrosoftAccount,
+// which is absent from the default payload shape and silently re-materializes
+// as enabled if it is not named.
+//
+// Auth settings do not take effect until the app restarts, and a successful
+// deployment is not evidence that they took. Verify by calling the Function
+// App's own *.azurewebsites.net hostname with a forged x-ms-client-principal
+// and expecting 401.
+// ---------------------------------------------------------------------------
+
+resource workerAuth 'Microsoft.Web/sites/config@2023-12-01' = {
+  parent: workerApp
+  name: 'authsettingsV2'
+  properties: {
+    platform: {
+      enabled: true
+      runtimeVersion: '~1'
+    }
+    globalValidation: {
+      requireAuthentication: true
+      // Return401 rather than a redirect. This app has no human visitors --
+      // the only caller is the site's edge, and a redirect would turn an
+      // authorization failure into an HTML login page arriving where JSON was
+      // expected.
+      unauthenticatedClientAction: 'Return401'
+      redirectToProvider: 'azureStaticWebApps'
+    }
+    httpSettings: {
+      requireHttps: true
+      routes: {
+        apiPrefix: '/.auth'
+      }
+      forwardProxy: {
+        convention: 'NoProxy'
+      }
+    }
+    identityProviders: {
+      azureStaticWebApps: {
+        enabled: true
+        registration: {
+          clientId: staticWebApp.properties.defaultHostname
+        }
+      }
+      azureActiveDirectory: {
+        enabled: false
+      }
+      apple: {
+        enabled: false
+      }
+      facebook: {
+        enabled: false
+      }
+      gitHub: {
+        enabled: false
+      }
+      google: {
+        enabled: false
+      }
+      twitter: {
+        enabled: false
+      }
+      legacyMicrosoftAccount: {
+        enabled: false
+      }
+    }
   }
 }
 
