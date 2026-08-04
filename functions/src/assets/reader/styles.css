@@ -96,11 +96,11 @@ body {
     align-items: center;
     gap: 0.35rem;
     font-family: system-ui, sans-serif;
-    font-size: 0.72rem;
+    font-size: 0.7rem;
     color: var(--ink-soft);
     /* Long addresses must not shove the buttons off the masthead. */
     min-width: 0;
-    max-width: 15rem;
+    max-width: 11rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -148,6 +148,20 @@ a {
     background: transparent;
     color: var(--accent);
     border: 1px solid var(--rule);
+}
+
+/* The 44px rule above is for controls a reader has to find and hit. These two
+   sit in the masthead beside an email address, and at full size they wrapped
+   onto their own line on a phone and pushed the letters below the fold. They
+   are deliberately smaller; the sign-in buttons, which a first-time visitor
+   must hit, are not. */
+.button--compact {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
 }
 
 /* Visible focus everywhere. Removing it is not an option for this audience. */
