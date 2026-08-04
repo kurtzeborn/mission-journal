@@ -17,6 +17,10 @@
     "mailauth": "^4.8.0",
     "postal-mime": "^2.4.0",
     "sanitize-html": "^2.17.6",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "yazl": "^3.3.1"
+  },
+  "devDependencies": {
+    "yauzl": "^3.4.0"
   }
 }

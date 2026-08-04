@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<!--
+    The downloaded reader.
+
+    This file is opened from a folder, not served, so everything it needs is
+    beside it and nothing is fetched. Two consequences shape it:
+
+      * Classic scripts, never modules. Browsers apply CORS to module loading
+        and a file:// document has no origin, so <script type="module"> fails
+        outright.
+      * The letters arrive as archive.js, a script that assigns a global,
+        rather than being read from posts.json with fetch(). fetch() on a
+        file:// URL is blocked for the same reason. posts.json is in the zip
+        anyway, because it is the portable copy of the data and someone will
+        eventually want it.
+
+    reader.js, styles.css and minisearch.js are the site's own files, copied in
+    unchanged.
+-->
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Letters</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <span class="wordmark">P-Day Letters</span>
+            <span class="beta">offline copy</span>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <h1 id="site-title" class="post__subject">&nbsp;</h1>
+
+        <form id="search" class="search" role="search" hidden>
+            <label class="search__label" for="q">Search these letters</label>
+            <input id="q" class="search__input" type="search" name="q" autocomplete="off"
+                placeholder="A word, a name, a place&hellip;">
+            <p id="search-count" class="note" aria-live="polite"></p>
+        </form>
+
+        <div id="state" class="state">Loading letters&hellip;</div>
+        <ol id="posts" class="posts"></ol>
+
+        <p class="note" id="colophon"></p>
+    </main>
+
+    <script src="minisearch.js"></script>
+    <script src="reader.js"></script>
+    <script src="archive.js"></script>
+    <script src="offline.js"></script>
+</body>
+
+</html>

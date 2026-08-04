@@ -15,6 +15,7 @@
             <a class="wordmark" href="/">P-Day Letters</a>
             <span class="beta">beta</span>
             <span class="masthead__spacer"></span>
+            <a class="button button--quiet" id="download" href="#" hidden>Download</a>
             <a class="button button--quiet" href="/.auth/logout">Sign out</a>
         </div>
     </header>
@@ -33,7 +34,13 @@
         <ol id="posts" class="posts"></ol>
     </main>
 
-    <script type="module" src="/app.js"></script>
+    <!--
+        Classic scripts, not modules. The same reader has to run from a file://
+        URL inside the downloaded zip, where module loading is blocked by CORS.
+    -->
+    <script src="/vendor/minisearch.js"></script>
+    <script src="/reader.js"></script>
+    <script src="/app.js"></script>
 </body>
 
 </html>
