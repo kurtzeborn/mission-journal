@@ -41,7 +41,16 @@
   ],
   "navigationFallback": {
     "rewrite": "/site.html",
-    "exclude": ["/api/*", "/*.css", "/*.js", "/*.ico", "/*.svg", "/*.png", "/*.webp"]
+    "exclude": [
+      "/.auth/*",
+      "/api/*",
+      "/*.css",
+      "/*.js",
+      "/*.ico",
+      "/*.svg",
+      "/*.png",
+      "/*.webp"
+    ]
   },
   "responseOverrides": {
     "401": {

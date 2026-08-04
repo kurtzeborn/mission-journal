@@ -50,6 +50,14 @@
         // `//evil.test` and `/\evil.test` are both read as a different origin
         // by browsers, despite starting with a slash.
         if (value.startsWith('//') || value.startsWith('/\\')) return null;
+
+        // The platform's own auth endpoints answer 401 when their short-lived
+        // context cookie is missing, and a 401 is exactly what puts this page
+        // on screen. Returning to one would 401 again and redraw this page
+        // again -- a loop that looks precisely like a sign-in that silently
+        // refuses to work.
+        if (value.startsWith('/.auth/')) return null;
+
         if (NOWHERE.has(value)) return null;
 
         return value;
