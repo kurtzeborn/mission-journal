@@ -42,6 +42,20 @@ param authservId string = 'mx.cloudflare.net'
 @description('Days before inbox blobs are deleted by lifecycle policy.')
 param inboxRetentionDays int = 30
 
+// Client IDs are public identifiers -- they travel in every authorization
+// request and appear in the browser's address bar -- so they belong in source
+// where a reader can see which registrations the site actually trusts. The
+// matching secrets do not: those live in Key Vault and are referenced below.
+@description('Application (client) ID of the Entra app registration used for Microsoft sign-in.')
+param aadClientId string = '3d78e421-0373-4026-be5d-909bc07d455a'
+
+@description('OAuth client ID of the Google Cloud client used for Google sign-in.')
+param googleClientId string = '708556118044-3fmn941npk65g8pbkivsg15l0bs4o4ap.apps.googleusercontent.com'
+
+@description('Key Vault secret names holding the two OAuth client secrets.')
+param aadClientSecretName string = 'aad-client-secret'
+param googleClientSecretName string = 'google-client-secret'
+
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower('${namePrefix}st${suffix}')
 var keyVaultName = toLower('${namePrefix}-kv-${suffix}')
@@ -291,10 +305,18 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   }
 }
 
-// Settings for managed functions. There are none today -- the API is the
-// linked Function App below, which carries its own settings and does not
-// inherit these. Kept because the values are the same ones any future managed
-// function would need, and empty is not more honest than unused.
+// Settings for managed functions -- of which there are none, because the API
+// is the linked Function App below, which carries its own settings and does
+// not inherit these. They are still load-bearing for a second reason: this is
+// where custom authentication reads its client IDs and secrets from, and
+// declaring them here is what stops a later deployment from silently removing
+// them and locking every reader out of the site.
+//
+// The `*_APP_SETTING_NAME` entries hold the *name* of another setting rather
+// than a value. That indirection is what lets the secret itself be a Key Vault
+// reference: Static Web Apps resolves the reference when it reads the setting,
+// so the secret never exists in this template, in the resource, or in a
+// deployment history.
 resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
   parent: staticWebApp
   name: 'appsettings'
@@ -304,6 +326,12 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     STORAGE_ACCOUNT_NAME: storage.name
     KEY_VAULT_URI: keyVault.properties.vaultUri
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
+    AZURE_CLIENT_ID: aadClientId
+    AZURE_CLIENT_SECRET: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${aadClientSecretName}/)'
+    AZURE_CLIENT_SECRET_APP_SETTING_NAME: 'AZURE_CLIENT_SECRET'
+    GOOGLE_CLIENT_ID: googleClientId
+    GOOGLE_CLIENT_SECRET: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${googleClientSecretName}/)'
+    GOOGLE_CLIENT_SECRET_APP_SETTING_NAME: 'GOOGLE_CLIENT_SECRET'
   }
 }
 

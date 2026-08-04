@@ -110,8 +110,12 @@
         if (response.status === 401 || response.type === 'opaqueredirect') {
             // The session expired mid-visit. Send them back through login and
             // return them to the page they were actually reading.
+            //
+            // Via the chooser, not straight at a provider: there are two now,
+            // and guessing means occasionally offering someone the wrong one
+            // and stranding them on an account no archive has ever heard of.
             window.location.assign(
-                `/.auth/login/aad?post_login_redirect_uri=${encodeURIComponent(window.location.pathname)}`
+                `/login.html?post_login_redirect_uri=${encodeURIComponent(window.location.pathname)}`
             );
             return;
         }

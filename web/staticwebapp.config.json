@@ -15,6 +15,14 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "route": "/login.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/login.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/favicon.ico",
       "allowedRoles": ["anonymous", "authenticated"]
     },
@@ -38,7 +46,24 @@
   "responseOverrides": {
     "401": {
       "statusCode": 302,
-      "redirect": "/.auth/login/aad?post_login_redirect_uri=.referrer"
+      "redirect": "/login.html?post_login_redirect_uri=.referrer"
+    }
+  },
+  "auth": {
+    "identityProviders": {
+      "azureActiveDirectory": {
+        "registration": {
+          "openIdIssuer": "https://login.microsoftonline.com/common/v2.0",
+          "clientIdSettingName": "AZURE_CLIENT_ID",
+          "clientSecretSettingName": "AZURE_CLIENT_SECRET_APP_SETTING_NAME"
+        }
+      },
+      "google": {
+        "registration": {
+          "clientIdSettingName": "GOOGLE_CLIENT_ID",
+          "clientSecretSettingName": "GOOGLE_CLIENT_SECRET_APP_SETTING_NAME"
+        }
+      }
     }
   },
   "globalHeaders": {
