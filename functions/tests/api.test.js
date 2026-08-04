@@ -211,6 +211,59 @@ describe('what an owner receives', () => {
     });
 });
 
+// Ordering is by the local wall clock the sender wrote, never by the instant
+// it refers to. Untested until now, and correct only by accident before that:
+// the offset happened to sort after a fixed-width stamp.
+describe('the order letters are listed in', () => {
+    const ids = (posts) => presentPosts(posts, 'reader').map((p) => p.id);
+
+    test('a later written date wins even when its instant is earlier', () => {
+        // The transfer case. Manila's morning of the 2nd happens two hours
+        // *before* Utah's evening of the 1st, so comparing instants would
+        // list the letter headed August 2 underneath the one headed
+        // August 1, directly contradicting the dates printed beside them.
+        const posts = [
+            { id: '2026-08-01-UTAH', originalDate: '2026-08-01T20:00:00-07:00' },
+            { id: '2026-08-02-MNLA', originalDate: '2026-08-02T09:00:00+08:00' }
+        ];
+        assert.deepEqual(ids(posts), ['2026-08-02-MNLA', '2026-08-01-UTAH']);
+    });
+
+    test('offset-free dates interleave with offset ones by what they say', () => {
+        // Every inline forward lands here: the client rendered the quoted
+        // header with no zone, so there is no instant to compare without
+        // inventing one.
+        const posts = [
+            { id: '2026-08-01-EVEN', originalDate: '2026-08-01T19:45:18-07:00' },
+            { id: '2026-08-03-NONE', originalDate: '2026-08-03T08:15:00' },
+            { id: '2026-08-02-MORN', originalDate: '2026-08-02T09:00:00+08:00' }
+        ];
+        assert.deepEqual(ids(posts), ['2026-08-03-NONE', '2026-08-02-MORN', '2026-08-01-EVEN']);
+    });
+
+    test('letters sharing a timestamp keep one fixed order', () => {
+        // A client that renders no seconds puts a whole evening at :00.
+        // Without a tiebreak these come back in whatever order the engine's
+        // sort left them, which need not match between two requests.
+        const posts = [
+            { id: '2026-08-01-BBBB', originalDate: '2026-08-01T20:00:00' },
+            { id: '2026-08-01-AAAA', originalDate: '2026-08-01T20:00:00' },
+            { id: '2026-08-01-CCCC', originalDate: '2026-08-01T20:00:00' }
+        ];
+        const once = ids(posts);
+        assert.deepEqual(once, ['2026-08-01-CCCC', '2026-08-01-BBBB', '2026-08-01-AAAA']);
+        assert.deepEqual(ids([...posts].reverse()), once, 'input order changed the output');
+    });
+
+    test('an undated letter sorts last rather than vanishing', () => {
+        const posts = [
+            { id: '2026-08-01-DATE', originalDate: '2026-08-01T20:00:00' },
+            { id: '0000-00-00-NULL', originalDate: null }
+        ];
+        assert.deepEqual(ids(posts), ['2026-08-01-DATE', '0000-00-00-NULL']);
+    });
+});
+
 describe('photo visibility', () => {
     test('a photo of a published letter is served', () => {
         assert.equal(photoIsVisible(POSTS, 'p_0eade5b54243', 'reader'), true);
