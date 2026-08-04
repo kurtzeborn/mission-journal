@@ -4,12 +4,17 @@
 // the dedupe gate and the path construction can all be exercised with real
 // fixture mail and no cloud.
 
-import { test } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runIngest, MAX_RAW_BYTES } from '../src/lib/ingest.js';
+import {
+    runIngest,
+    MAX_RAW_BYTES,
+    acceptedRecipient,
+    recipientDomains
+} from '../src/lib/ingest.js';
 import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { safeName, msgIdSegment, validSlug } from '../src/lib/paths.js';
 import { memoryStore } from './memory-store.js';
@@ -253,6 +258,87 @@ test('an oversized message is refused before the parser sees it', async () => {
     assert.equal(result.reason, 'oversize');
 });
 
+// --- accepted recipient domains --------------------------------------------
+//
+// Defence in depth behind Cloudflare's routing. The tests that matter most
+// here are the ones asserting it stays out of the way: this check guards
+// against a hypothetical second domain, and it sits in front of every real
+// letter, so being wrong in the cautious direction costs mail.
+
+describe('accepted recipient domains', () => {
+    const accepting = { ...config, acceptedIngestDomains: ['pdayletters.com'] };
+
+    test('an unset list accepts everything, so a missing setting cannot start rejecting', () => {
+        assert.equal(acceptedRecipient('anyone@wherever.test', []), true);
+        assert.equal(acceptedRecipient('anyone@wherever.test', undefined), true);
+    });
+
+    test('an unreadable recipient is accepted rather than dropped', () => {
+        // Losing a real letter over a metadata field is far worse than
+        // publishing one from an unexpected domain, which is visible and
+        // reversible.
+        assert.equal(acceptedRecipient(null, ['pdayletters.com']), true);
+        assert.equal(acceptedRecipient('', ['pdayletters.com']), true);
+        assert.equal(acceptedRecipient('not-an-address', ['pdayletters.com']), true);
+    });
+
+    test('a listed domain is accepted whatever the mailbox or case', () => {
+        assert.equal(acceptedRecipient('post@pdayletters.com', ['pdayletters.com']), true);
+        assert.equal(acceptedRecipient('probe@PDayLetters.com', ['pdayletters.com']), true);
+    });
+
+    test('an unlisted domain is refused, including a lookalike suffix', () => {
+        assert.equal(acceptedRecipient('post@example.com', ['pdayletters.com']), false);
+        assert.equal(acceptedRecipient('post@evilpdayletters.com', ['pdayletters.com']), false);
+        assert.equal(acceptedRecipient('post@pdayletters.com.evil.test', ['pdayletters.com']), false);
+    });
+
+    test('one listed recipient among several is enough', () => {
+        const to = 'someone@example.com, post@pdayletters.com';
+        assert.equal(acceptedRecipient(to, ['pdayletters.com']), true);
+        assert.deepEqual(recipientDomains(to), ['example.com', 'pdayletters.com']);
+    });
+
+    test('a real letter to the configured domain still ingests', async () => {
+        const store = memoryStore();
+        store.acl('elder.example', READER);
+        store.seed('01OK', await raw('outlook-web-attached'), { to: 'post@pdayletters.com' });
+
+        const result = await runIngest({
+            ulid: '01OK',
+            store,
+            config: accepting,
+            log: silent,
+            now: () => new Date('2026-08-03T12:00:00Z'),
+            verifyDkim: offlineDkim
+        });
+
+        assert.equal(result.status, 'stored');
+    });
+
+    test('a letter addressed to another domain is refused before it is parsed', async () => {
+        const store = memoryStore();
+        store.acl('elder.example', READER);
+        store.seed('01BAD', await raw('outlook-web-attached'), { to: 'post@somewhere-else.test' });
+
+        const result = await runIngest({
+            ulid: '01BAD',
+            store,
+            config: accepting,
+            log: silent,
+            now: () => new Date('2026-08-03T12:00:00Z'),
+            verifyDkim: offlineDkim
+        });
+
+        assert.equal(result.status, 'rejected');
+        assert.equal(result.reason, 'recipient-domain');
+        // Nothing written and nothing queued: a refused message must not leave
+        // a partial trace behind.
+        assert.equal(store.json('rendered', 'elder.example/posts.json'), null);
+        assert.equal(store.queues.get('render'), undefined);
+    });
+});
+
 // --- dedupe gate -----------------------------------------------------------
 
 test('an empty normalized field never matches another empty one', () => {
@@ -303,3 +389,4 @@ test('the text gate needs author, day, subject and body to all agree', () => {
     const otherBody = { ...base, text: 'We taught a lesson today.' };
     assert.equal(findDuplicate(dedupeKey(otherBody), existing), null);
 });
+

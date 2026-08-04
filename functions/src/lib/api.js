@@ -18,10 +18,45 @@ const HARDENING = {
     'Referrer-Policy': 'no-referrer',
     // Private, because a shared cache holding one family's letters and serving
     // them to the next requester is the exact failure this service cannot have.
+    // Photos and archives are content-addressed and safe to hold for an hour;
+    // `posts.json` overrides this, because it changes.
     'Cache-Control': 'private, max-age=3600'
 };
 
 export const hardened = (headers = {}) => ({ ...HARDENING, ...headers });
+
+/**
+ * The validator for a `posts.json` response.
+ *
+ * Weak, and salted with the role, because the bytes on the wire are a
+ * projection of the blob rather than the blob itself: one version of the file
+ * is a different response to an owner than to a reader, and a validator that
+ * ignored that would let a demoted owner keep reading hidden posts out of
+ * their own cache.
+ */
+export const contentEtag = (blobEtag, role) =>
+    `W/"${String(blobEtag ?? '').replace(/[^A-Za-z0-9]/g, '')}.${role}"`;
+
+// Browsers echo back exactly what was sent, but proxies have been known to drop
+// the weak marker, so neither side's punctuation is trusted.
+const sameEtag = (a, b) => {
+    const bare = (v) =>
+        String(v ?? '')
+            .trim()
+            .replace(/^W\//i, '')
+            .replace(/"/g, '');
+    return Boolean(a) && bare(a) === bare(b);
+};
+
+export const matchesEtag = sameEtag;
+
+export const notModified = (candidate, etag) =>
+    sameEtag(candidate, etag)
+        ? {
+              status: 304,
+              headers: hardened({ ETag: etag, 'Cache-Control': 'private, no-cache' })
+          }
+        : null;
 
 // Deliberately indistinguishable from each other. A caller who is signed in
 // but not entitled learns nothing about whether a slug exists, which keeps

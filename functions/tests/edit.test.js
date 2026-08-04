@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 
 import { memoryStore } from './memory-store.js';
 import { applyEdit, commitPosts } from '../src/lib/edit.js';
+import { contentEtag, matchesEtag, notModified } from '../src/lib/api.js';
 
 const SLUG = 'isaac.backman';
 const EDITOR = 'scott@kurtzeborn.org';
@@ -192,5 +193,65 @@ describe('committing the change', () => {
 
         assert.match(outcome.error, /not editable/);
         assert.equal(store.blobs.get(`rendered/${SLUG}/posts.json`).etag, before);
+    });
+
+    test('the mutation is told which version it is looking at', async () => {
+        const store = seeded();
+        let seen = null;
+
+        await commitPosts({
+            store,
+            slug: SLUG,
+            log: { info() {} },
+            mutate: (posts, blobEtag) => {
+                seen = blobEtag;
+                return hide(posts);
+            }
+        });
+
+        // Without this a caller cannot tell whether the version its user was
+        // looking at is still the current one.
+        assert.equal(seen, 'e1');
+    });
+});
+
+// The bug these exist for: `posts.json` was served with a one-hour lifetime,
+// so an owner's saved edit came back looking like it had not happened, and the
+// next edit -- composed in a form filled from that stale copy -- silently put
+// back what the first one had removed.
+describe('content validators', () => {
+    test('the same file is a different response to an owner and a reader', () => {
+        assert.notEqual(contentEtag('"0x8DD1"', 'owner'), contentEtag('"0x8DD1"', 'reader'));
+    });
+
+    test('a new version of the file is a new validator', () => {
+        assert.notEqual(contentEtag('"0x8DD1"', 'owner'), contentEtag('"0x8DD2"', 'owner'));
+    });
+
+    test('the validator survives a proxy stripping its punctuation', () => {
+        const etag = contentEtag('"0x8DD1"', 'owner');
+        assert.ok(matchesEtag(etag, etag));
+        assert.ok(matchesEtag(etag.replace(/^W\//, ''), etag));
+        assert.ok(matchesEtag(etag.replace(/["]/g, ''), etag));
+    });
+
+    test('a missing or different validator does not match', () => {
+        const etag = contentEtag('"0x8DD1"', 'owner');
+        assert.ok(!matchesEtag(null, etag));
+        assert.ok(!matchesEtag('', etag));
+        assert.ok(!matchesEtag(contentEtag('"0x8DD2"', 'owner'), etag));
+    });
+
+    test('an unchanged archive is answered without its bytes', () => {
+        const etag = contentEtag('"0x8DD1"', 'reader');
+        const response = notModified(etag, etag);
+        assert.equal(response.status, 304);
+        assert.equal(response.headers.ETag, etag);
+        assert.match(response.headers['Cache-Control'], /no-cache/);
+        assert.equal(response.body, undefined);
+    });
+
+    test('a changed archive is not answered with a 304', () => {
+        assert.equal(notModified(contentEtag('"0x8DD1"', 'reader'), contentEtag('"0x8DD2"', 'reader')), null);
     });
 });

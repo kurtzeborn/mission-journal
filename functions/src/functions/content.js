@@ -1,6 +1,6 @@
 import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
-import { gate, hardened } from '../lib/api.js';
+import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
 
 let cachedStore = null;
@@ -14,9 +14,21 @@ async function handler(request) {
     const result = await gate({ store: blobStore(), request });
     if (result.denied) return result.denied;
 
+    const etag = contentEtag(result.etag, result.role);
+
+    // `no-cache` rather than a lifetime. This file is the one thing here that
+    // changes -- a letter arrives, an owner hides or edits one -- and a stale
+    // copy is worse than merely out of date: it is what the owner's edit form
+    // is filled from, so holding it made a second edit silently reinstate what
+    // the first had removed. Revalidating costs a round trip and usually a 304.
+    const fresh = { ETag: etag, 'Cache-Control': 'private, no-cache' };
+
+    const unchanged = notModified(request.headers.get('if-none-match'), etag);
+    if (unchanged) return unchanged;
+
     return {
         status: 200,
-        headers: hardened({ 'Content-Type': 'application/json; charset=utf-8' }),
+        headers: hardened({ 'Content-Type': 'application/json; charset=utf-8', ...fresh }),
         jsonBody: {
             slug: result.slug,
             role: result.role,

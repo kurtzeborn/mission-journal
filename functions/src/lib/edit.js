@@ -114,7 +114,9 @@ export function applyEdit(post, changes, { editor, slug, now = new Date() }) {
  * The mutation runs inside the loop rather than against a copy read outside
  * it, so a retry re-examines what the winning writer actually left behind.
  *
- * @param {Function} mutate (posts) => {error} | {posts, ...rest}
+ * @param {Function} mutate (posts, blobEtag) => {error} | {posts, ...rest}
+ *   The ETag is handed over so a caller can refuse to write on top of a
+ *   version its user never saw.
  */
 export async function commitPosts({ store, slug, mutate, log = console }) {
     const name = `${slug}/posts.json`;
@@ -124,7 +126,7 @@ export async function commitPosts({ store, slug, mutate, log = console }) {
         if (!current) return { error: 'not found' };
 
         const posts = JSON.parse(Buffer.from(current.bytes).toString('utf8'));
-        const outcome = mutate(posts);
+        const outcome = mutate(posts, current.etag);
         if (outcome.error) return outcome;
 
         try {

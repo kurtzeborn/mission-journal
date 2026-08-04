@@ -32,9 +32,17 @@
     const photoSrc = (photoId, size) =>
         `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(photoId)}/${size}.webp`;
 
+    // The version of the archive this page was drawn from. Sent back on every
+    // write so the server can refuse one composed against a stale copy.
+    let loadedEtag = null;
+
     // One call for both owner actions. Returns null on success -- having
     // reloaded the page -- and a sentence the owner can read on failure.
     async function send(method, postId, body) {
+        const headers = {};
+        if (body) headers['Content-Type'] = 'application/json';
+        if (loadedEtag) headers['If-Match'] = loadedEtag;
+
         let response;
         try {
             response = await fetch(
@@ -42,7 +50,7 @@
                 {
                     method,
                     redirect: 'manual',
-                    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                    headers,
                     body: body ? JSON.stringify(body) : undefined
                 }
             );
@@ -52,6 +60,10 @@
 
         if (response.status === 401 || response.type === 'opaqueredirect') {
             return 'Your session expired. Reload the page and sign in again.';
+        }
+
+        if (response.status === 412) {
+            return 'This page is out of date — someone changed these letters after it loaded. Reload and try again; nothing was changed.';
         }
 
         if (!response.ok) {
@@ -83,7 +95,12 @@
             // reports an opaque failure that is indistinguishable from the
             // network being down. Left unfollowed, it is unmistakable.
             response = await fetch(`/api/content/${encodeURIComponent(slug)}/posts.json`, {
-                redirect: 'manual'
+                redirect: 'manual',
+                // A normal reload revalidates the document but is happy to take
+                // subresources from cache, which is how an owner's saved edit
+                // came back looking like it had not happened. The response is
+                // ETagged, so this is a 304 in the ordinary case.
+                cache: 'no-cache'
             });
         } catch {
             show('Could not reach the archive. Check your connection and try again.');
@@ -107,6 +124,7 @@
         }
 
         const payload = await response.json();
+        loadedEtag = response.headers.get('ETag');
         title.textContent = payload.slug;
         document.title = `${payload.slug} — P-Day Letters`;
 

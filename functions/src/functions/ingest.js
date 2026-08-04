@@ -30,6 +30,13 @@ async function handler(message, context) {
         missionaryDomains: setting('MISSIONARY_DOMAINS', 'missionary.org')
             .split(',')
             .map((d) => d.trim().toLowerCase())
+            .filter(Boolean),
+        // No fallback. An empty list means "accept anything", which is what
+        // this did before the setting was read at all, so a missing app setting
+        // cannot quietly start rejecting mail.
+        acceptedIngestDomains: setting('ACCEPTED_INGEST_DOMAINS', '')
+            .split(',')
+            .map((d) => d.trim().toLowerCase())
             .filter(Boolean)
     };
 

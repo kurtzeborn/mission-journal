@@ -15,6 +15,7 @@ import { linkedPhotoServices } from './photolinks.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
+import { domainOf } from './authresults.js';
 
 // Cloudflare refuses messages over 25 MiB at SMTP time, so anything larger
 // than that in the inbox did not come from the mail path and is not a letter.
@@ -22,6 +23,44 @@ import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 // untrusted input is an attack surface, and the cheapest defence is not
 // running it.
 export const MAX_RAW_BYTES = 26 * 1024 * 1024;
+
+/**
+ * The envelope recipients, as domains.
+ *
+ * Cloudflare hands one recipient per event, but the metadata is a header value
+ * and a header can carry a list, so this reads a list and happens to cope with
+ * one.
+ */
+export const recipientDomains = (to) =>
+    String(to ?? '')
+        .split(',')
+        .map((address) => domainOf(address.trim()))
+        .filter(Boolean);
+
+/**
+ * Whether a message was addressed to a domain this service ingests for.
+ *
+ * Defence in depth, not the primary control: what actually reaches the Worker
+ * is decided by Cloudflare's routing rules, and today exactly one zone points
+ * at it. This exists so that pointing a second domain at the same Worker — by
+ * accident, or by someone else — is a rejection rather than a publication.
+ *
+ * **Fails open in both directions**, deliberately. An unset list accepts
+ * everything, so the check cannot switch itself on through a missing app
+ * setting. An unreadable recipient also accepts, because the alternative is
+ * dropping a real letter over a metadata field that has never been load-bearing
+ * before, and the cost of those two failures is not remotely symmetrical: a
+ * letter published from an unexpected domain is visible and reversible, and a
+ * letter silently discarded is gone.
+ */
+export const acceptedRecipient = (to, accepted) => {
+    if (!accepted?.length) return true;
+
+    const domains = recipientDomains(to);
+    if (!domains.length) return true;
+
+    return domains.some((domain) => accepted.includes(domain));
+};
 
 const KEPT_HEADERS = new Set([
     'authentication-results',
@@ -88,6 +127,15 @@ export async function runIngest({
         to: decodeMeta(blob.metadata?.envelopeto),
         from: decodeMeta(blob.metadata?.envelopefrom)
     };
+
+    if (!acceptedRecipient(envelope.to, config.acceptedIngestDomains)) {
+        log.warn?.('ingest: rejected', {
+            ulid,
+            reason: 'recipient-domain',
+            domains: recipientDomains(envelope.to)
+        });
+        return { status: 'rejected', ulid, reason: 'recipient-domain' };
+    }
 
     const extracted = await extractOriginal(raw);
 

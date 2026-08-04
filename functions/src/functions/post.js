@@ -1,6 +1,6 @@
 import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
-import { gate, hardened } from '../lib/api.js';
+import { gate, hardened, contentEtag, matchesEtag } from '../lib/api.js';
 import { ROLE } from '../lib/acl.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
 
@@ -43,6 +43,23 @@ async function ownerOnly(request) {
     return result;
 }
 
+// What the caller is asserting they were looking at when they decided to write.
+//
+// The ETag on `posts.json` already stops two writes from interleaving on the
+// server, but it cannot see the older problem: a browser filling an edit form
+// from a copy of the site that has since moved on, then saving it back whole
+// and undoing whatever happened in between. That is not a race, it is a
+// perfectly orderly write of stale data, and only the client knows it is stale.
+const stale = (request, blobEtag) => {
+    const expected = request.headers.get('if-match');
+    // Absent means the caller is not making the claim -- older clients, and
+    // curl. Enforcing it only when offered keeps this from being a new way for
+    // a write to fail mysteriously.
+    return expected ? !matchesEtag(expected, contentEtag(blobEtag, ROLE.owner)) : false;
+};
+
+const STALE = 'the page you edited is out of date';
+
 async function edit(request, context) {
     const gated = await ownerOnly(request);
     if (gated.denied) return gated.denied;
@@ -61,7 +78,9 @@ async function edit(request, context) {
         store: blobStore(),
         slug: gated.slug,
         log: context,
-        mutate: (posts) => {
+        mutate: (posts, blobEtag) => {
+            if (stale(request, blobEtag)) return { error: STALE };
+
             const index = posts.findIndex((post) => post.id === postId);
             if (index < 0) return { error: 'not found' };
 
@@ -79,9 +98,9 @@ async function edit(request, context) {
     });
 
     if (outcome.error) {
-        return outcome.error === 'not found'
-            ? problem(404, 'no such post')
-            : problem(400, outcome.error);
+        if (outcome.error === 'not found') return problem(404, 'no such post');
+        if (outcome.error === STALE) return problem(412, STALE);
+        return problem(400, outcome.error);
     }
 
     context.log('post.edited', { slug: gated.slug, postId, changed });
