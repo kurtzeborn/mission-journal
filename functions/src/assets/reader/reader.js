@@ -57,6 +57,15 @@ window.Reader = (function () {
             const photoId = decodeURIComponent(parts[1]);
             const size = parts[2].replace(/\.webp$/, '');
             img.setAttribute('src', photoSrc(photoId, size));
+
+            // Set here rather than in the stored markup, because the stored
+            // markup for letters already in the archive would not get it
+            // without a re-render. Two dozen letters carry roughly thirteen
+            // megabytes of full-size WebP between them, and without this the
+            // browser reaches for all of it before the reader can show a
+            // single word. Images near the top still load immediately.
+            img.setAttribute('loading', 'lazy');
+            img.setAttribute('decoding', 'async');
         }
     }
 
@@ -98,6 +107,8 @@ window.Reader = (function () {
             const img = document.createElement('img');
             img.src = photoSrc(photo.id, 'thumb');
             img.alt = '';
+            img.loading = 'lazy';
+            img.decoding = 'async';
             img.loading = 'lazy';
             // Reserving the space stops the page from jumping as photos arrive.
             if (photo.width && photo.height) {
