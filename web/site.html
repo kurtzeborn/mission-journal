@@ -7,6 +7,8 @@
     <title>P-Day Letters</title>
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
 </head>
 
 <body>
@@ -15,6 +17,14 @@
             <a class="wordmark" href="/">P-Day Letters</a>
             <span class="beta">beta</span>
             <span class="masthead__spacer"></span>
+            <!-- Filled in by app.js from /.auth/me. Plenty of people keep more
+                 than one account, and the archive answers for exactly one of
+                 them, so say which one rather than making them guess. -->
+            <span class="account" id="account" hidden>
+                <i class="account__icon" id="account-icon" aria-hidden="true"></i>
+                <span class="visually-hidden" id="account-provider"></span>
+                <span id="account-email"></span>
+            </span>
             <a class="button button--quiet" id="download" href="#" hidden>Download</a>
             <a class="button button--quiet" href="/.auth/logout">Sign out</a>
         </div>

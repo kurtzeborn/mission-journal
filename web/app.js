@@ -158,5 +158,43 @@
         Reader.mount({ posts: payload.posts, photoSrc, elements, admin });
     }
 
+    // Which account is this page answering for. Worth saying out loud: the
+    // archive is matched on email address, so someone signed in with the wrong
+    // one of their accounts sees a refusal with no clue why.
+    //
+    // Cosmetic, and deliberately silent on failure -- the letters are the point
+    // and they have already loaded by the time anyone reads the masthead.
+    const PROVIDER_ICONS = {
+        aad: { glyph: 'fa-microsoft', name: 'Microsoft' },
+        google: { glyph: 'fa-google', name: 'Google' }
+    };
+
+    async function showAccount() {
+        const box = document.getElementById('account');
+        if (!box) return;
+
+        let principal;
+        try {
+            const response = await fetch('/.auth/me', { cache: 'no-store' });
+            if (!response.ok) return;
+            principal = (await response.json()).clientPrincipal;
+        } catch {
+            return;
+        }
+
+        if (!principal) return;
+
+        // An unrecognised provider still gets the address, just without a mark.
+        const provider = PROVIDER_ICONS[principal.identityProvider];
+        if (provider) {
+            document.getElementById('account-icon').classList.add('fa-brands', provider.glyph);
+            document.getElementById('account-provider').textContent = `Signed in with ${provider.name}: `;
+        }
+
+        document.getElementById('account-email').textContent = principal.userDetails;
+        box.hidden = false;
+    }
+
     load();
+    showAccount();
 })();

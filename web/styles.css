@@ -89,6 +89,41 @@ body {
     flex: 1 1 auto;
 }
 
+/* Who is signed in. Subordinate to the wordmark and the controls on purpose:
+   it answers a question rather than inviting an action. */
+.account {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    /* Long addresses must not shove the buttons off the masthead. */
+    min-width: 0;
+    max-width: 15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account__icon {
+    font-size: 0.85rem;
+    flex: none;
+}
+
+/* Available to a screen reader, absent from the page. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
 /* --- links and controls --- */
 
 a {

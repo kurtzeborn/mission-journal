@@ -12,6 +12,8 @@
     <meta name="description" content="Sign in to a private archive for missionary letters.">
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
 </head>
 
 <body>
@@ -33,12 +35,14 @@
              archive if the family has already added its address by name. The
              links start out plain so that they still work with no JavaScript;
              login.js only adds the return address. -->
-        <p><a class="button" id="signin-aad" href="/.auth/login/aad">Continue with Microsoft</a></p>
-        <p><a class="button" id="signin-google" href="/.auth/login/google">Continue with Google</a></p>
+        <p><a class="button" id="signin-aad" href="/.auth/login/aad"><i class="fa-brands fa-microsoft"
+                    aria-hidden="true"></i> Continue with Microsoft</a></p>
+        <p><a class="button" id="signin-google" href="/.auth/login/google"><i class="fa-brands fa-google"
+                    aria-hidden="true"></i> Continue with Google</a></p>
 
         <p class="note">
-            Signing in does not request access to your email, contacts, or photos —
-            only your name and address, so we can tell which archive is yours.
+            Signing in does not request access to your email, contacts, or photos &mdash;
+            only your name and email address, so we can tell which archive is yours.
         </p>
     </main>
 

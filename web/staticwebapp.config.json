@@ -27,6 +27,11 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The sign-in chooser is anonymous and shows a provider icon, so the icon font has to be reachable without a session. It carries no archive data.",
+      "route": "/vendor/fontawesome/*",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/.auth/*",
       "allowedRoles": ["anonymous", "authenticated"]
     },
@@ -49,7 +54,8 @@
       "/*.ico",
       "/*.svg",
       "/*.png",
-      "/*.webp"
+      "/*.webp",
+      "/*.woff2"
     ]
   },
   "responseOverrides": {
