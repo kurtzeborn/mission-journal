@@ -222,3 +222,38 @@ button:focus-visible {
     text-align: center;
     color: var(--ink-soft);
 }
+
+/* --- search --- */
+
+.search {
+    margin: 1.5rem 0 0;
+}
+
+.search__label {
+    display: block;
+    font-family: system-ui, sans-serif;
+    font-size: 0.9rem;
+    color: var(--ink-soft);
+    margin-bottom: 0.35rem;
+}
+
+.search__input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0.6rem 0.8rem;
+    font-family: inherit;
+    font-size: 1.05rem;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+}
+
+.search__input:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.search__input::placeholder {
+    color: #a8a29e;
+}

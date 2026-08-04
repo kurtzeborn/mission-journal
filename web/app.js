@@ -1,12 +1,17 @@
 // The reader.
 //
-// Deliberately small and dependency-free: no framework, no build step, no
-// bundler. The whole archive arrives in one request and everything below is
-// rendering. Search comes later and will be added the same way.
+// Deliberately small and dependency-free apart from the vendored search index:
+// no framework, no build step, no bundler. The whole archive arrives in one
+// request and everything below is rendering.
+
+import MiniSearch from '/vendor/minisearch.js';
 
 const state = document.getElementById('state');
 const list = document.getElementById('posts');
 const title = document.getElementById('site-title');
+const searchForm = document.getElementById('search');
+const searchInput = document.getElementById('q');
+const searchCount = document.getElementById('search-count');
 
 // The slug is the first path segment. Everything else about the site --
 // including whether it exists at all -- is decided by the API.
@@ -172,6 +177,62 @@ async function load() {
 
     list.append(...payload.posts.map(renderPost));
     state.hidden = true;
+    setUpSearch(payload.posts);
+}
+
+// Search runs entirely in the browser over the payload already in memory.
+// Nothing is sent back, which means a half-typed search for a grandchild's
+// name never leaves the device and there is no query log to protect.
+function setUpSearch(posts) {
+    // The body is HTML by the time it reaches us. Parsed with the template
+    // element rather than a regex, because a regex over markup would index
+    // tag names and attribute values as if they were words in the letter.
+    const textOf = (post) => {
+        if (!post.bodyHtml) return post.bodyText ?? '';
+        const scratch = document.createElement('template');
+        scratch.innerHTML = post.bodyHtml;
+        return scratch.content.textContent ?? '';
+    };
+
+    const index = new MiniSearch({
+        fields: ['subject', 'body'],
+        storeFields: ['id']
+    });
+
+    index.addAll(
+        posts.map((post) => ({ id: post.id, subject: post.subject ?? '', body: textOf(post) }))
+    );
+
+    const nodes = new Map();
+    for (const [i, post] of posts.entries()) nodes.set(post.id, list.children[i]);
+
+    const apply = () => {
+        const query = searchInput.value.trim();
+
+        if (!query) {
+            for (const node of nodes.values()) node.hidden = false;
+            searchCount.textContent = '';
+            return;
+        }
+
+        // Prefix and fuzzy matching both on: the audience types partial words
+        // and misspells place names, and an archive this small can afford a
+        // generous match far better than it can afford an empty result.
+        const hits = new Set(
+            index.search(query, { prefix: true, fuzzy: 0.2 }).map((hit) => hit.id)
+        );
+
+        for (const [id, node] of nodes) node.hidden = !hits.has(id);
+
+        searchCount.textContent =
+            hits.size === 0
+                ? 'No letters match that.'
+                : `${hits.size} of ${posts.length} letters match.`;
+    };
+
+    searchInput.addEventListener('input', apply);
+    searchForm.addEventListener('submit', (event) => event.preventDefault());
+    searchForm.hidden = false;
 }
 
 load();
