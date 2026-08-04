@@ -19,6 +19,16 @@
     box-sizing: border-box;
 }
 
+/* The browser's own `[hidden] { display: none }` lives in its default
+   stylesheet, and any author rule beats it no matter how specific -- so the
+   moment something toggled with `hidden` is also given a `display`, `hidden`
+   quietly stops working. That is not hypothetical: it put an empty subject
+   box under every letter on the live site. Restated here at author level, and
+   with `!important`, because this has to outrank the rule that broke it. */
+[hidden] {
+    display: none !important;
+}
+
 html {
     /* Never suppress the reader's own zoom. */
     -webkit-text-size-adjust: 100%;
