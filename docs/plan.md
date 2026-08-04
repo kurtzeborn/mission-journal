@@ -1176,7 +1176,7 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 ## Stage 2 — Widening
 
 ### Phase 6 — Direct ingest
-**Not started, and the window to start it is measured in hours.** Access to the `@missionary.org` account is temporary and nearly spent, with one or two sends left in it.
+**Partly shipped, and further along than it looked.** The classifier's `direct` branch is implemented and returns `publish`; the corpus carries three direct captures — `direct-missionary`, `direct-bcc-inline-via-cloudflare`, `direct-bcc-inline-via-exchange` — and a real `@missionary.org` send is on record passing DMARC at our edge. **What is genuinely outstanding is small and needs no missionary account:** the `originalDate` comparison below, the warning-not-silent-rejection logging, the unknown-slug decision below, and one live end-to-end run.
 
 **Gated on access to a real `@missionary.org` account**, which is what makes everything here testable rather than inferred. See [Building blind](#building-blind).
 
