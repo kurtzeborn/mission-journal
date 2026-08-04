@@ -148,6 +148,10 @@ var containerNames = [
   'rendered'
   'config'
   'exports'
+  // Letters for a slug nobody has claimed yet. Held, never rendered, and
+  // never served -- a pending site has no ACL, so there is nobody it could
+  // be served to. Promotion into raw/ arrives with the claim flow.
+  'pending'
 ]
 
 resource containers 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [

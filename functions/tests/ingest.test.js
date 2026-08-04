@@ -123,6 +123,9 @@ test('slugs that could reach outside their container are refused', () => {
 
 test('a direct message becomes a post, an archive and a render job', async () => {
     const store = memoryStore();
+    // The site has to exist. A direct send naming a slug with no ACL is held
+    // as pending rather than published -- see the pending suite below.
+    store.acl('elder.example', OWNER);
     const result = await ingestFixture(store, 'direct-missionary');
 
     assert.equal(result.status, 'stored');
@@ -147,6 +150,7 @@ test('a direct message becomes a post, an archive and a render job', async () =>
 
 test('the post body survives extraction', async () => {
     const store = memoryStore();
+    store.acl('elder.example', OWNER);
     const result = await ingestFixture(store, 'direct-missionary');
     const post = store.json('rendered', 'elder.example/posts.json')[0];
     assert.ok(post.bodyHtml || post.bodyText, 'a post with no body is not a letter');
@@ -156,6 +160,7 @@ test('the post body survives extraction', async () => {
 
 test('the same message ingested twice yields one post', async () => {
     const store = memoryStore();
+    store.acl('elder.example', OWNER);
     const first = await ingestFixture(store, 'direct-missionary', '01FIRST000000000000000000');
     const second = await ingestFixture(store, 'direct-missionary', '01SECOND00000000000000000');
 
@@ -237,6 +242,7 @@ test('the ACL that seed-config.ps1 writes is the ACL the classifier reads', asyn
 
 test('a lost write race is retried, not lost', async () => {
     const store = memoryStore();
+    store.acl('elder.example', OWNER);
     store.conflictOnce = 'rendered/elder.example/posts.json';
     const result = await ingestFixture(store, 'direct-missionary');
 
@@ -248,6 +254,80 @@ test('a queue message whose blob has expired is not a failure', async () => {
     const store = memoryStore();
     const result = await runIngest({ ulid: '01GONE', store, config, log: silent });
     assert.equal(result.status, 'missing');
+});
+
+// --- pending sites ---------------------------------------------------------
+//
+// A missionary who BCCs post@ before anyone has set up their site. Before
+// this existed the letter published to a slug with no ACL: stored, rendered,
+// readable by nobody, and reported to nobody.
+
+describe('a direct send naming a site that does not exist', () => {
+    const held = async (store, ulid) => ingestFixture(store, 'direct-missionary', ulid);
+
+    test('is held rather than published to a site nobody can read', async () => {
+        const store = memoryStore();
+        const result = await held(store);
+
+        assert.equal(result.status, 'pending');
+        assert.equal(result.slug, 'elder.example');
+
+        // The letter itself is kept.
+        assert.ok(
+            store.blobs.has('pending/elder.example/01TEST0000000000000000000.eml'),
+            'the raw message must survive'
+        );
+
+        // And nothing is published, rendered or queued.
+        assert.equal(store.json('rendered', 'elder.example/posts.json'), null);
+        assert.equal(store.queues.get('render'), undefined);
+        assert.equal(
+            [...store.blobs.keys()].some((k) => k.startsWith('raw/')),
+            false,
+            'raw/ is for claimed sites only'
+        );
+    });
+
+    test('records a rolling sixty-day window, because the missionary wrote to us', async () => {
+        const store = memoryStore();
+        await held(store);
+
+        const claim = store.json('pending', 'elder.example/claim.json');
+        assert.equal(claim.slug, 'elder.example');
+        assert.equal(claim.hasDirect, true);
+        assert.equal(claim.messageCount, 1);
+        assert.equal(claim.createdAt, '2026-08-03T12:00:00.000Z');
+        assert.equal(claim.expiresAt, '2026-10-02T12:00:00.000Z');
+    });
+
+    test('a second letter extends the window instead of starting a second site', async () => {
+        const store = memoryStore();
+        await held(store, '01FIRST000000000000000000');
+        await held(store, '01SECOND00000000000000000');
+
+        const claim = store.json('pending', 'elder.example/claim.json');
+        assert.equal(claim.messageCount, 2);
+        assert.equal(claim.createdAt, '2026-08-03T12:00:00.000Z');
+        assert.ok(store.blobs.has('pending/elder.example/01FIRST000000000000000000.eml'));
+        assert.ok(store.blobs.has('pending/elder.example/01SECOND00000000000000000.eml'));
+    });
+
+    test('two letters racing each other do not lose the manifest', async () => {
+        const store = memoryStore();
+        store.conflictOnce = 'pending/elder.example/claim.json';
+        await held(store);
+
+        assert.equal(store.json('pending', 'elder.example/claim.json').messageCount, 1);
+    });
+
+    test('once the site exists the same letter publishes normally', async () => {
+        const store = memoryStore();
+        store.acl('elder.example', OWNER);
+        const result = await held(store);
+
+        assert.equal(result.status, 'stored');
+        assert.equal(store.json('pending', 'elder.example/claim.json'), null);
+    });
 });
 
 test('an oversized message is refused before the parser sees it', async () => {

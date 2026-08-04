@@ -14,6 +14,7 @@ import { sanitizeBody } from './sanitize.js';
 import { linkedPhotoServices } from './photolinks.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
+import { holdPending } from './pending.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { domainOf } from './authresults.js';
 
@@ -181,6 +182,25 @@ export async function runIngest({
     if (!slug) {
         log.warn?.('ingest: rejected', { ulid, reason: 'invalid-slug', slug: verdict.slug });
         return { status: 'rejected', ulid, reason: 'invalid-slug' };
+    }
+
+    // A direct send resolves its slug from the missionary's own address and
+    // consults no ACL, so it can name a site that does not exist. Publishing
+    // it anyway would write a letter nobody is entitled to read and nobody
+    // knows is there; the message is held instead until someone claims the
+    // site. Forwards cannot reach this point -- `classify` rejects an unknown
+    // slug there, because a forwarder has to already be on an ACL.
+    if (verdict.class === CLASS.direct && !(await readAcl(store, slug))) {
+        await holdPending({
+            store,
+            slug,
+            ulid,
+            raw,
+            hasDirect: true,
+            now,
+            log
+        });
+        return { status: 'pending', ulid, slug };
     }
 
     const original = extracted.original ?? {};
