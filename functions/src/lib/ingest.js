@@ -203,7 +203,28 @@ export async function runIngest({
             raw,
             envelope,
             subject: extracted.original?.subject ?? extracted.outerSubject ?? '',
-            sender: extracted.original?.from ?? '',
+            // `verdict.author`, not `extracted.original.from`. On this path
+            // they are meant to be the same address, and they diverge on a
+            // letter whose *body* contains a line beginning `From:` --
+            // ordinary enough, since a missionary quoting a message from home
+            // writes one. `extractOriginal` reads that as the quoted header
+            // block a client leaves behind when it flattens a forward and
+            // reports the quoted address as the author.
+            //
+            // `classify` is unaffected, because the direct branch keys off the
+            // authenticated envelope sender and never consults the
+            // extraction. This did not. The address recorded here is the one
+            // the claim link is emailed to, so the effect was a credential
+            // for the site delivered to an address chosen by body text. The
+            // allowlist happened to block it, which is the sort of luck that
+            // stops being available the moment the allowlist opens.
+            //
+            // The rule this restores: on a direct send there is no forward to
+            // see past, so nothing about who sent it may come from the
+            // message body. `subject` above still can, and is left as it is --
+            // a wrong subject is a cosmetic error on a held letter, not a
+            // misdirected credential.
+            sender: verdict.author ?? '',
             messageId: extracted.original?.messageId ?? '',
             hasDirect: true,
             now,

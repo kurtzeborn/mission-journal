@@ -300,6 +300,54 @@ describe('a direct send naming a site that does not exist', () => {
         assert.equal(claim.expiresAt, '2026-10-02T12:00:00.000Z');
     });
 
+    // The address recorded here is the one the claim link gets emailed to, so
+    // it is a credential-routing decision wearing the clothes of a metadata
+    // field. A missionary quoting a message from home writes a line beginning
+    // `From:`, which is indistinguishable from the header block a mail client
+    // leaves behind when it flattens a forward -- and the extractor, whose
+    // whole job is to see past a forward, duly reports the quoted address.
+    test('a quoted From: line in the body cannot redirect the claim link', async () => {
+        const store = memoryStore();
+        const letter = [
+            'Authentication-Results: mx.cloudflare.net; dmarc=pass header.from=missionary.org',
+            'From: Elder Example <elder.example@missionary.org>',
+            'To: post@pdayletters.com',
+            'Subject: Week 14',
+            'Message-ID: <week14@missionary.org>',
+            'Date: Sat, 1 Aug 2026 19:45:32 -0700',
+            'MIME-Version: 1.0',
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            'Mum sent me this and I thought you would all like it:',
+            '',
+            'From: Mum <mum@example.com>',
+            'Subject: the dog',
+            '',
+            'The dog is fine.',
+            ''
+        ].join('\r\n');
+
+        store.seed('01TEST0000000000000000000', Buffer.from(letter, 'utf8'));
+        const result = await runIngest({
+            ulid: '01TEST0000000000000000000',
+            store,
+            config,
+            log: silent,
+            now: () => new Date('2026-08-03T12:00:00Z'),
+            verifyDkim: offlineDkim
+        });
+
+        assert.equal(result.status, 'pending');
+        assert.equal(result.slug, 'elder.example');
+
+        const claim = store.json('pending', 'elder.example/claim.json');
+        assert.equal(
+            claim.sender,
+            'elder.example@missionary.org',
+            'the authenticated sender writes the letter, not a line in its body'
+        );
+    });
+
     test('a second letter extends the window instead of starting a second site', async () => {
         const store = memoryStore();
         await held(store, '01FIRST000000000000000000');
