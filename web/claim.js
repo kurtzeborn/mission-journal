@@ -97,9 +97,24 @@ function fail(status) {
 }
 
 function renderReady(described, principal) {
-    const count = described.messageCount ?? 0;
-    $('ready-count').textContent = count === 1 ? '1 letter' : `${count} letters`;
-    $('ready-sender').textContent = described.sender || 'a missionary';
+    // Two different links land here. The pending one goes to somebody who did
+    // not ask for it and has to be convinced the letters are real -- hence the
+    // count and the sample subjects. The `claim@` one answers a request its
+    // recipient made minutes ago, and the site may already be running under a
+    // parent, in which case "letters are waiting" and "makes you its owner"
+    // are both simply untrue.
+    if (described.kind === 'missionary') {
+        $('ready-title').textContent = 'Your archive';
+        $('ready-lede').textContent =
+            'You asked for access to your letters. Signing in below links this archive to the account you choose.';
+        $('ready-owner-note').textContent =
+            'Use a personal account rather than your missionary one, which stops working 60 days ' +
+            'after you come home. If somebody is already looking after this archive, they stay.';
+    } else {
+        const count = described.messageCount ?? 0;
+        $('ready-count').textContent = count === 1 ? '1 letter' : `${count} letters`;
+        $('ready-sender').textContent = described.sender || 'a missionary';
+    }
 
     const subjects = described.sampleSubjects ?? [];
     if (subjects.length) {
@@ -115,7 +130,10 @@ function renderReady(described, principal) {
 
     if (principal) {
         $('claim-form').hidden = false;
-        $('claim-as').textContent = `You are signed in as ${principal}. This address will own the archive.`;
+        $('claim-as').textContent =
+            described.kind === 'missionary'
+                ? `You are signed in as ${principal}. This address will be added as an owner.`
+                : `You are signed in as ${principal}. This address will own the archive.`;
     } else {
         // Come back to this page after signing in. The token is already in
         // sessionStorage, so it does not need to survive the redirect itself.

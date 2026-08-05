@@ -21,7 +21,11 @@ export const DISPOSITION = {
     hold: 'hold'
 };
 
-const localPartOf = (address) => {
+// Exported because `ingest` reads the *recipient's* local-part to select a
+// verb, and two functions that both mean "the bit before the @" must not be
+// allowed to disagree about it. `domainOf` in authresults.js carries a note
+// about exactly that having happened once already.
+export const localPartOf = (address) => {
     const at = String(address ?? '').lastIndexOf('@');
     return at < 0 ? null : address.slice(0, at).toLowerCase();
 };

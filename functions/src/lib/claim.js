@@ -32,6 +32,7 @@ import { promotePending } from './promote.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { ROLE } from './acl.js';
 import { validSlug } from './paths.js';
+import { MISSIONARY_CLAIM } from './claimverb.js';
 
 const CLAIM = 'claim.json';
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
@@ -43,6 +44,37 @@ async function readClaimBlob(store, slug) {
     const blob = await store.readBlob('pending', `${safe}/${CLAIM}`);
     if (!blob) return null;
     return { manifest: JSON.parse(Buffer.from(blob.bytes).toString('utf8')), etag: blob.etag };
+}
+
+async function readMissionaryBlob(store, slug) {
+    const safe = validSlug(slug);
+    if (!safe) return null;
+    const blob = await store.readBlob('config', `${safe}/${MISSIONARY_CLAIM}`);
+    if (!blob) return null;
+    return { record: JSON.parse(Buffer.from(blob.bytes).toString('utf8')), etag: blob.etag };
+}
+
+/**
+ * Which grant is this token for?
+ *
+ * The two kinds are deliberately indistinguishable from the token itself --
+ * both are `issueClaimToken({ slug, key, expiresAt })`, and putting the kind in
+ * the payload would mean a signed assertion about its own privilege level
+ * travelling through a stranger's mailbox. The stored hash is what decides,
+ * which keeps the answer server-side and unforgeable.
+ *
+ * The missionary record is checked first. If a slug somehow has a live hash in
+ * both, the one that proves control of the missionary mailbox is the stronger
+ * evidence and should win.
+ */
+async function grantFor({ store, slug, hash }) {
+    const missionary = await readMissionaryBlob(store, slug);
+    if (missionary && missionary.record.claimTokenHash === hash) {
+        return { kind: 'missionary', ...missionary };
+    }
+    const pending = await readClaimBlob(store, slug);
+    if (pending) return { kind: 'pending', ...pending };
+    return missionary ? { kind: 'missionary', ...missionary } : null;
 }
 
 /**
@@ -137,13 +169,19 @@ export async function describeClaim({ store, token, key, now = () => new Date() 
     const verified = verifyClaimToken({ token, key, now });
     if (!verified.valid && verified.reason !== 'expired') return { status: 'invalid' };
 
-    const found = await readClaimBlob(store, verified.slug);
+    const grant = await grantFor({ store, slug: verified.slug, hash: verified.hash });
 
     // The token is well-formed but the site is gone -- purged after expiry, or
     // already claimed and promoted. Both look the same from here and both are
     // told the same thing, because distinguishing them would let a stale link
     // report whether a given slug now exists.
-    if (!found) return { status: 'gone', slug: verified.slug };
+    if (!grant) return { status: 'gone', slug: verified.slug };
+
+    if (grant.kind === 'missionary') {
+        return describeMissionaryGrant({ grant, verified });
+    }
+
+    const found = grant;
 
     if (found.manifest.claimedAt) return { status: 'claimed', slug: verified.slug };
     if (verified.reason === 'expired') return { status: 'expired', slug: verified.slug };
@@ -156,11 +194,44 @@ export async function describeClaim({ store, token, key, now = () => new Date() 
 
     return {
         status: 'ready',
+        kind: 'pending',
         slug: verified.slug,
         sender: found.manifest.sender ?? '',
         messageCount: found.manifest.messageCount ?? 0,
         sampleSubjects: found.manifest.sampleSubjects ?? [],
         expiresAt: found.manifest.expiresAt
+    };
+}
+
+/**
+ * The same questions asked of a verified-missionary grant, which answers two
+ * of them differently.
+ *
+ * A spent grant is `ready`, not `claimed`. The pending path treats redemption
+ * as final because the first person through the link becomes the sole owner
+ * and a second one would be an eviction. Here redemption is additive and the
+ * redeemer has already proved control of the mailbox, so their own retry --
+ * or a second personal account -- is a reasonable thing to want, and refusing
+ * it would strand somebody who closed the tab at the wrong moment.
+ *
+ * Nothing about the letters is returned. The pending description exists to let
+ * a recipient recognise mail they were not expecting; this recipient asked for
+ * the link and needs no convincing, so the safest payload is the smallest one.
+ */
+function describeMissionaryGrant({ grant, verified }) {
+    if (grant.record.claimTokenHash !== verified.hash) {
+        return { status: 'superseded', slug: verified.slug };
+    }
+    if (verified.reason === 'expired') return { status: 'expired', slug: verified.slug };
+
+    return {
+        status: 'ready',
+        kind: 'missionary',
+        slug: verified.slug,
+        sender: grant.record.sender ?? '',
+        messageCount: 0,
+        sampleSubjects: [],
+        expiresAt: grant.record.expiresAt
     };
 }
 
@@ -192,6 +263,10 @@ export async function redeemClaim({
 
     const slug = validSlug(described.slug);
     if (!slug) return { status: 'invalid' };
+
+    if (described.kind === 'missionary') {
+        return redeemMissionaryGrant({ store, tables, token, key, email, displayName, slug, now, log });
+    }
 
     const at = now().toISOString();
 
@@ -297,4 +372,149 @@ export async function redeemClaim({
     });
 
     return { status: 'ok', slug, promoted };
+}
+
+/**
+ * Redeem a verified-missionary grant.
+ *
+ * Separate from the pending path rather than a flag inside it, because the
+ * central write is the opposite one. There, `acl.json` is created with
+ * `If-None-Match: *` and an ACL that already exists means somebody got there
+ * first. Here an ACL that already exists is the *expected* case -- a parent has
+ * been running the site for months -- and the job is to join it.
+ *
+ * **Claiming never demotes anyone.** The existing members are read, the
+ * missionary is added or upgraded in place, and nobody is removed. That is a
+ * policy decision from the plan and not merely an implementation detail: in the
+ * overwhelmingly common case the missionary wants access to their own letters
+ * while a parent continues to run the site, and evicting the parent would be
+ * hostile.
+ */
+async function redeemMissionaryGrant({ store, tables, token, key, email, displayName, slug, now, log }) {
+    const verified = verifyClaimToken({ token, key, now });
+    const at = now().toISOString();
+
+    // --- 1. spend --------------------------------------------------------
+    // Before granting, on the same reasoning as the pending path: a crash
+    // between the two costs the missionary a fresh email, while granting first
+    // would leave a live link against a site that is already theirs.
+    let record = null;
+    for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
+        const found = await readMissionaryBlob(store, slug);
+        if (!found) return { status: 'gone', slug };
+        if (found.record.claimTokenHash !== verified.hash) return { status: 'superseded', slug };
+
+        // Unlike a pending claim, a redeemed grant is not refused -- see
+        // `describeMissionaryGrant`. It is simply redeemed again, and the
+        // redeemer list grows.
+        const redeemedBy = new Set(found.record.redeemedBy ?? []);
+        redeemedBy.add(email);
+
+        const next = {
+            ...found.record,
+            claimTokenHash: null,
+            redeemedAt: at,
+            redeemedBy: [...redeemedBy]
+        };
+
+        try {
+            await store.writeBlob('config', `${slug}/${MISSIONARY_CLAIM}`, utf8(next), {
+                contentType: 'application/json',
+                ifMatch: found.etag
+            });
+            record = next;
+            break;
+        } catch (error) {
+            if (!isConflict(error) || attempt === CONFLICT_RETRIES - 1) throw error;
+        }
+    }
+    if (!record) return { status: 'superseded', slug };
+
+    // --- 2. grant --------------------------------------------------------
+    const member = {
+        email,
+        role: ROLE.owner,
+        // The one place in the system permitted to set this true. It confers
+        // removal protection, so the evidence behind it has to be control of
+        // the missionary mailbox itself -- which is exactly what reaching this
+        // function proves, and what following a forwarded link does not.
+        verifiedMissionary: true,
+        addedAt: at
+    };
+
+    let created = false;
+    for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
+        const existing = await store.readBlob('config', `${slug}/acl.json`);
+
+        if (!existing) {
+            try {
+                await store.writeBlob('config', `${slug}/acl.json`, utf8({ slug, members: [member] }), {
+                    contentType: 'application/json',
+                    ifNoneMatch: '*'
+                });
+                created = true;
+                break;
+            } catch (error) {
+                if (!isConflict(error) || attempt === CONFLICT_RETRIES - 1) throw error;
+                continue;
+            }
+        }
+
+        const acl = JSON.parse(Buffer.from(existing.bytes).toString('utf8'));
+        const members = acl.members ?? [];
+        const mine = members.findIndex((m) => lower(m.email) === email);
+
+        // Already an owner, already verified: this is a retry, and rewriting
+        // the blob would only move `addedAt` backwards.
+        if (mine >= 0 && members[mine].verifiedMissionary && members[mine].role === ROLE.owner) break;
+
+        const next = [...members];
+        if (mine >= 0) {
+            // Upgrade in place. `addedAt` is kept, because they have been on
+            // this site since whenever a family member added them and the flag
+            // does not restart that.
+            next[mine] = { ...next[mine], role: ROLE.owner, verifiedMissionary: true };
+        } else {
+            next.push(member);
+        }
+
+        try {
+            await store.writeBlob('config', `${slug}/acl.json`, utf8({ ...acl, slug, members: next }), {
+                contentType: 'application/json',
+                ifMatch: existing.etag
+            });
+            break;
+        } catch (error) {
+            if (!isConflict(error) || attempt === CONFLICT_RETRIES - 1) throw error;
+        }
+    }
+
+    // --- 3. index --------------------------------------------------------
+    await recordMembership({ tables, email, slug, role: ROLE.owner, now });
+
+    // Only when this call is what brought the site into existence. On a site
+    // somebody else has been running, the name on it is theirs to change and
+    // overwriting it from a claim form would rename a live archive under its
+    // owner without asking.
+    if (created && displayName) {
+        try {
+            await setSiteName({ tables, slug, missionaryDisplayName: displayName });
+        } catch (error) {
+            log.error?.('claim: site name write failed', { slug, error: error.message });
+        }
+    }
+
+    // --- 4. publish ------------------------------------------------------
+    // Harmless when there is nothing held: a site that was already live has an
+    // empty backlog, and `promotePending` reports zero.
+    const promoted = await promotePending({ store, tables, slug, now, log });
+
+    log.info?.('claim: missionary grant redeemed', {
+        slug,
+        created,
+        promoted: promoted.promoted,
+        failed: promoted.failed.length
+    });
+
+    return { status: 'ok', slug, verifiedMissionary: true, promoted };
 }

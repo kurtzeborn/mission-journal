@@ -16,6 +16,7 @@ import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
 import { offerClaim } from './offer.js';
+import { isClaimVerb, runClaimVerb } from './claimverb.js';
 import { touchSiteActivity } from './sites.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { domainOf } from './authresults.js';
@@ -141,6 +142,23 @@ export async function runIngest({
             domains: recipientDomains(envelope.to)
         });
         return { status: 'rejected', ulid, reason: 'recipient-domain' };
+    }
+
+    // The verb, read before anything is parsed.
+    //
+    // `claim@` and `post@` are routed to the same Worker and arrive through the
+    // same queue, and until this branch existed the recipient's local-part was
+    // never looked at: `acceptedRecipient` checks only the domain. So a
+    // missionary emailing `claim@` to ask for control of their site had that
+    // message classified `direct` and published to their own archive.
+    //
+    // This has to happen here rather than inside `classify`, which is the
+    // natural-looking home for it. `classify` runs on the output of
+    // `extractOriginal`, and the whole point of the claim path is that the
+    // parser never runs. Deciding the verb after extraction would preserve the
+    // exposure it exists to remove.
+    if (isClaimVerb(envelope.to)) {
+        return runClaimVerb({ ulid, raw, store, mailer, config, now, log });
     }
 
     const extracted = await extractOriginal(raw);

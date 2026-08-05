@@ -100,3 +100,79 @@ export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt }) 
 
     return { subject, text, html, link };
 }
+
+/**
+ * The reply to a message sent to `claim@`.
+ *
+ * A different message from the one above, not a variant of it, because the
+ * recipient is in a different situation in every way that matters. They asked
+ * for this seconds ago, so nothing needs to explain what the service is. They
+ * have proved who they are, so the link confers `verifiedMissionary` and the
+ * "only works for whoever uses it first" warning would be actively wrong. And
+ * the site may already have an owner — a parent running it perfectly happily —
+ * in which case the one thing this must not imply is that anyone is being
+ * displaced.
+ *
+ * The subject may say more than the pending one does, on the same reasoning
+ * that governs it: that message goes to someone who has not asked for
+ * anything, while this answers a request its recipient just made. It still
+ * names nobody.
+ *
+ * @param {object} input
+ * @param {string} input.baseUrl
+ * @param {string} input.token
+ * @param {string} input.expiresAt
+ * @param {boolean} [input.alreadyOwned]  is there already an `acl.json`?
+ */
+export function missionaryClaimEmail({ baseUrl, token, expiresAt, alreadyOwned = false }) {
+    const link = `${baseUrl.replace(/\/$/, '')}/claim#${token}`;
+    const deadline = readableDate(expiresAt);
+
+    const subject = 'Your P-Day Letters access link';
+
+    // Said in both versions, because it is the single most consequential
+    // sentence in the message: an owner entry keyed on the missionary address
+    // dies with the mailbox 60 days after they come home, and this is the last
+    // moment anyone can act on that.
+    const personal = [
+        'Use a personal Google or Microsoft account, not your missionary one.',
+        'Your missionary address stops working 60 days after you come home, and',
+        'the archive is meant to outlast it.'
+    ];
+
+    const situation = alreadyOwned
+        ? [
+              'This site already has someone looking after it, and that does not',
+              'change. You will be added alongside them, not in place of them.'
+          ]
+        : ['Following the link sets the archive up and makes you its owner.'];
+
+    const text = [
+        'Here is your link:',
+        link,
+        '',
+        ...situation,
+        '',
+        ...personal,
+        '',
+        `The link stops working on ${deadline}. Email ${'claim@pdayletters.com'} again for a new one.`,
+        '',
+        'If you did not ask for this, ignore it — the link does nothing until',
+        'someone signs in with it.',
+        '',
+        SIGNATURE
+    ].join('\n');
+
+    const html = [
+        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+        `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Open your archive</a></p>`,
+        `<p>${escape(situation.join(' '))}</p>`,
+        `<p>Use a <strong>personal</strong> Google or Microsoft account, not your missionary one. Your missionary address stops working 60 days after you come home, and the archive is meant to outlast it.</p>`,
+        `<p>The link stops working on <strong>${escape(deadline)}</strong>. Email claim@pdayletters.com again for a new one.</p>`,
+        '<p>If you did not ask for this, ignore it &mdash; the link does nothing until someone signs in with it.</p>',
+        `<p>&mdash; ${SIGNATURE}</p>`,
+        '</div>'
+    ].join('');
+
+    return { subject, text, html, link };
+}
