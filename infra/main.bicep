@@ -210,6 +210,11 @@ var tableNames = [
   // their mail client quoted a letter instead of attaching it. It exists so
   // that advice cannot be sent twice.
   'nudges'
+  // Also not an index, and the only table that is authoritative: an unaccepted
+  // invitation exists nowhere else. It is kept out of `acl.json` deliberately,
+  // so that nothing `resolveRole` reads can confuse an offer of access with
+  // access.
+  'invites'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [

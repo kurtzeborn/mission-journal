@@ -33,6 +33,7 @@
 
 import { TABLES } from './tables.js';
 import { POST_ADDRESS } from './offer.js';
+import { mailFrom } from './mail.js';
 
 const SIGNATURE = 'P-Day Letters';
 
@@ -144,7 +145,7 @@ export async function nudgeOnce({ tables, mailer, to, author, slug, now = () => 
 
     const body = nudgeEmail({ author });
     const result = await mailer.send({
-        from: POST_ADDRESS,
+        from: mailFrom(POST_ADDRESS),
         to: recipient,
         subject: body.subject,
         text: body.text,

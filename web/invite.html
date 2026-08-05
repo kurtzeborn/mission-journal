@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>An invitation — P-Day Letters</title>
+    <!-- Reached anonymously, exactly like the claim page, and under the same
+         rule: the static markup names nobody. Who invited whom is filled in by
+         invite.js after it has presented the token, and the token lives in the
+         URL fragment, which is never sent to a server. -->
+    <meta name="description" content="Accept an invitation to read a private archive of missionary letters.">
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/">P-Day Letters</a>
+            <span class="beta">beta</span>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <section id="loading">
+            <h2>Checking your invitation&hellip;</h2>
+        </section>
+
+        <section id="ready" hidden>
+            <h2>You have been invited</h2>
+            <p class="lede" id="ready-lede"></p>
+
+            <p id="ready-role"></p>
+
+            <div id="signin-block" hidden>
+                <p><a class="button" id="signin-aad" href="#"><i class="fa-brands fa-microsoft"
+                            aria-hidden="true"></i> Continue with Microsoft</a></p>
+                <p><a class="button" id="signin-google" href="#"><i class="fa-brands fa-google"
+                            aria-hidden="true"></i> Continue with Google</a></p>
+                <p class="note">
+                    Use a personal account. Whichever one you sign in with is the one that gets
+                    access &mdash; it does not have to be the address this invitation was sent to.
+                </p>
+                <p class="note">
+                    Signing in does not request access to your email, contacts, or photos &mdash;
+                    only your name and email address.
+                </p>
+            </div>
+
+            <!-- A button rather than a link that acts on GET, for the reason
+                 the claim page gives: mail providers fetch links before their
+                 recipients read them, and an invitation spent by a scanner is
+                 an invitation nobody can use. -->
+            <form id="accept-form" hidden>
+                <p><button class="button" type="submit" id="accept-submit">Accept</button></p>
+                <p class="note" id="accept-as"></p>
+            </form>
+        </section>
+
+        <section id="working" hidden>
+            <h2>Adding you&hellip;</h2>
+            <p class="note">This only takes a moment.</p>
+        </section>
+
+        <section id="done" hidden>
+            <h2>You are in</h2>
+            <p class="lede" id="done-summary"></p>
+            <p><a class="button" id="done-link" href="/">Read the letters</a></p>
+        </section>
+
+        <section id="failed" hidden>
+            <h2 id="failed-title">This invitation cannot be used</h2>
+            <p class="lede" id="failed-detail"></p>
+            <p class="note" id="failed-help"></p>
+        </section>
+    </main>
+
+    <script src="/invite.js"></script>
+</body>
+
+</html>

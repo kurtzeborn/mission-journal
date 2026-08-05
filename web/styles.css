@@ -323,6 +323,42 @@ button:focus-visible {
     font-size: 0.95rem;
 }
 
+/* --- who can read an archive --- */
+
+.people {
+    list-style: none;
+    margin: 0 0 2rem;
+    padding: 0;
+}
+
+.people__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--rule);
+}
+
+/* Takes the slack so the controls sit right, and wraps rather than truncating:
+   the whole point of the row is the address, and an address elided in the
+   middle is one somebody cannot check before pressing Remove. */
+.people__who {
+    flex: 1 1 12rem;
+    overflow-wrap: anywhere;
+}
+
+.people__what {
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+}
+
+.people__controls {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .state {
     padding: 3rem 0;
     text-align: center;

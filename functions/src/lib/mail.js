@@ -51,6 +51,24 @@ const ENDPOINT = (accountId) =>
  */
 export const HUMAN_ADDRESS = 'hello@pdayletters.com';
 
+/**
+ * The name on our mail, and how to put it there.
+ *
+ * Kept separate from the address constants rather than folded into them,
+ * because those constants are also identity: `POST_ADDRESS` and
+ * `CLAIM_ADDRESS` name inboxes this service reads, and the day something
+ * compares an incoming recipient against one of them, a display name baked
+ * into the constant is a bug that only shows up in the comparison. `from:`
+ * is the one place a name belongs, so `sender()` is applied at the one place
+ * `from:` is written.
+ *
+ * `P-Day Letters` needs no quoting -- RFC 5322 atext admits `-`, and the
+ * rendering was checked against a real client rather than assumed.
+ */
+export const SENDER_NAME = 'P-Day Letters';
+
+export const mailFrom = (address) => `${SENDER_NAME} <${address}>`;
+
 // A recipient reduced to something safe to write down: enough to tell two
 // failures apart in a log, not enough to be an address.
 export const maskAddress = (address) => {

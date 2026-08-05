@@ -20,7 +20,7 @@
 
 import { attachClaimToken, recordClaimEmailSent } from './claim.js';
 import { claimEmail } from './claimemail.js';
-import { HUMAN_ADDRESS } from './mail.js';
+import { HUMAN_ADDRESS, mailFrom } from './mail.js';
 
 // Replies to inbound mail come from the address that was written to, to
 // preserve the recipient's prior-correspondence signal -- see the Domains
@@ -81,7 +81,7 @@ export async function offerClaim({ store, mailer, slug, key, baseUrl, to = '', f
         : {};
 
     const result = await mailer.send({
-        from: POST_ADDRESS,
+        from: mailFrom(POST_ADDRESS),
         to: recipient,
         subject: body.subject,
         text: body.text,

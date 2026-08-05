@@ -20,7 +20,16 @@
 import { TableClient, odata } from '@azure/data-tables';
 import { DefaultAzureCredential } from '@azure/identity';
 
-export const TABLES = { memberships: 'memberships', users: 'users', sites: 'sites', nudges: 'nudges' };
+export const TABLES = {
+    memberships: 'memberships',
+    users: 'users',
+    sites: 'sites',
+    nudges: 'nudges',
+    // PartitionKey = slug, RowKey = the invitation token's hash. Never the
+    // token: an owner listing invitations is shown the hash, which is a handle
+    // for revoking one and not a credential for accepting it.
+    invites: 'invites'
+};
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {
     const url = `https://${accountName}.table.core.windows.net`;

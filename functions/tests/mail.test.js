@@ -9,7 +9,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createMailer, parseAllowlist, maskAddress } from '../src/lib/mail.js';
-import { offerClaim, POST_ADDRESS } from '../src/lib/offer.js';
+import { offerClaim } from '../src/lib/offer.js';
 import { holdPending } from '../src/lib/pending.js';
 import { memoryStore } from './memory-store.js';
 
@@ -204,7 +204,10 @@ describe('offering a pending site', () => {
 
         assert.equal(result.status, 'sent');
         assert.equal(calls[0].body.to, SENDER);
-        assert.equal(calls[0].body.from, POST_ADDRESS);
+        // The literal rather than `mailFrom(POST_ADDRESS)`: this is the string a
+        // mail client actually parses, and restating the implementation would
+        // let a broken one pass.
+        assert.equal(calls[0].body.from, 'P-Day Letters <post@pdayletters.com>');
         assert.equal(calls[0].body.headers['In-Reply-To'], '<first@missionary.org>');
         // RFC 3834: this is a response to a specific message, not mail that
         // nothing triggered.

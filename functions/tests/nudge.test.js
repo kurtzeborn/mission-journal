@@ -50,6 +50,10 @@ describe('advising a forwarder who quoted instead of attaching', () => {
         assert.equal(result.reason, 'bootstrap-not-attached');
         assert.equal(mailer.sent.length, 1, 'the forwarder was told nothing');
         assert.match(mailer.sent[0].text, /forward as attachment/i);
+        // A stranger's mail arriving from a bare address reads as spam. The
+        // name is the difference between "who is this" and "this is the thing
+        // I just wrote to".
+        assert.equal(mailer.sent[0].from, 'P-Day Letters <post@pdayletters.com>');
     });
 
     test('says nothing at all the second time', async () => {

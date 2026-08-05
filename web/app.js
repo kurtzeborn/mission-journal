@@ -138,6 +138,15 @@
             download.hidden = false;
         }
 
+        // Owners only, and hidden rather than disabled for everyone else: a
+        // reader has no use for a page that would refuse them, and the API
+        // refuses them again regardless.
+        const people = document.getElementById('people');
+        if (people && payload.role === 'owner') {
+            people.href = `/people/${encodeURIComponent(payload.slug)}`;
+            people.hidden = false;
+        }
+
         // Only owners get controls, and the API enforces that again on every
         // call -- this decides what to draw, not who is allowed to do it.
         const admin =

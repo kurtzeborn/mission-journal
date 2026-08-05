@@ -41,6 +41,26 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The invitation page is reached the same way the claim page is -- out of an email, by somebody who may have no account. Same anonymous treatment, for the same reason.",
+      "route": "/invite",
+      "rewrite": "/invite.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/invite.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/invite.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "Managing an archive's audience. Authenticated, and the API refuses anyone who is not an owner of the named slug -- this rule only decides who may load the markup.",
+      "route": "/people/*",
+      "rewrite": "/people.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
       "comment": "Help pages, read by people with no account and often before they have decided whether to have one. Anonymous for the same reason the front page is: `/*` below is authenticated, so anything omitted here disappears behind a sign-in.",
       "route": "/start",
       "rewrite": "/start.html",
@@ -75,6 +95,12 @@
     {
       "comment": "Describing a claim changes nothing and has to answer someone who has not signed in yet -- that is the whole point of the page. It must precede the /api/* rule, which matches first-wins. Redemption is deliberately not listed, so it falls through to authenticated.",
       "route": "/api/claim/describe",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "Same as claim/describe: the invitation page has to say who invited whom before anybody signs in. Accepting is not listed, so it falls through to authenticated.",
+      "route": "/api/invite/describe",
       "methods": ["POST"],
       "allowedRoles": ["anonymous", "authenticated"]
     },

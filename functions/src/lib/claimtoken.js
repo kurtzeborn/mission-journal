@@ -39,6 +39,23 @@ const unb64url = (text) => Buffer.from(String(text), 'base64url');
 const NONCE_BYTES = 24;
 
 /**
+ * What a token is for.
+ *
+ * Two kinds of link now exist, both signed with the same key, and without
+ * this they would be separated only by which record their hash is looked up
+ * in. That works today by accident of storage layout, which is a thin thing
+ * to rest on: it means an invitation presented to the claim endpoint is
+ * refused for the reason "no such claim" rather than "that is not a claim
+ * link", and the day a third kind of link appears the separation has to be
+ * re-derived rather than read.
+ *
+ * Signed, so cross-use fails arithmetically. Defaulted on the way *out* of
+ * verification rather than required in the payload, because tokens minted
+ * before this existed are in real mailboxes right now and they are claims.
+ */
+export const PURPOSE = { claim: 'claim', invite: 'invite' };
+
+/**
  * The value stored in `claim.json`, never the token itself.
  *
  * SHA-256 with no salt and no stretching is right here and would be wrong for
@@ -59,14 +76,15 @@ const sign = (payloadText, key) =>
  * @param {string} input.slug
  * @param {string|Buffer} input.key       HMAC key, from Key Vault
  * @param {string} input.expiresAt        RFC3339; normally the pending site's own rolling expiry
+ * @param {string} [input.purpose]        a PURPOSE value; omitted means a claim
  * @returns {{token: string, hash: string, expiresAt: string}}
  */
-export function issueClaimToken({ slug, key, expiresAt }) {
+export function issueClaimToken({ slug, key, expiresAt, purpose = PURPOSE.claim }) {
     if (!slug) throw new Error('claim token: slug is required');
     if (!key) throw new Error('claim token: signing key is required');
     if (!expiresAt) throw new Error('claim token: expiresAt is required');
 
-    const payload = { slug, exp: expiresAt, n: b64url(randomBytes(NONCE_BYTES)) };
+    const payload = { slug, exp: expiresAt, p: purpose, n: b64url(randomBytes(NONCE_BYTES)) };
     const payloadText = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
     const token = `${payloadText}.${b64url(sign(payloadText, key))}`;
 
@@ -83,7 +101,7 @@ export function issueClaimToken({ slug, key, expiresAt }) {
  *
  * @returns {{valid: boolean, slug?: string, expiresAt?: string, hash?: string, reason?: string}}
  */
-export function verifyClaimToken({ token, key, now = () => new Date() }) {
+export function verifyClaimToken({ token, key, purpose = PURPOSE.claim, now = () => new Date() }) {
     const text = String(token ?? '');
     const dot = text.indexOf('.');
     if (dot <= 0 || dot === text.length - 1) return { valid: false, reason: 'malformed' };
@@ -109,6 +127,11 @@ export function verifyClaimToken({ token, key, now = () => new Date() }) {
     }
 
     if (!payload?.slug || !payload?.exp) return { valid: false, reason: 'malformed' };
+
+    // Checked before expiry. A link used at the wrong endpoint is the wrong
+    // link whether or not it has run out, and "expired" would send its holder
+    // off to ask for a fresh one of the kind they are already holding.
+    if ((payload.p ?? PURPOSE.claim) !== purpose) return { valid: false, reason: 'wrong-purpose' };
 
     if (Date.parse(payload.exp) <= now().getTime()) {
         // The slug comes back anyway. An expired link is a real link that was

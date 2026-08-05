@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>People — P-Day Letters</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/">P-Day Letters</a>
+            <span class="beta">beta</span>
+            <span class="masthead__spacer"></span>
+            <a class="button button--quiet button--compact" id="back" href="/">Back to the letters</a>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <h1>Who can read this archive</h1>
+
+        <div id="state" class="state">Loading&hellip;</div>
+
+        <section id="everything" hidden>
+            <ul class="people" id="people"></ul>
+
+            <h2>Invite someone</h2>
+            <form id="invite">
+                <p>
+                    <label for="email">Their email address</label><br>
+                    <input type="email" id="email" name="email" autocomplete="off" required
+                        placeholder="grandma@example.com">
+                </p>
+                <p>
+                    <label for="role">They can</label><br>
+                    <select id="role" name="role">
+                        <option value="reader">Read the letters</option>
+                        <option value="owner">Read, edit, and invite others</option>
+                    </select>
+                </p>
+                <p><button class="button" type="submit" id="invite-submit">Send the invitation</button></p>
+                <p class="note">
+                    We email them a link. Nothing changes until they follow it, and the account they
+                    sign in with is the one that gets access &mdash; it does not have to be the
+                    address you type here.
+                </p>
+                <p class="note" id="invite-said" role="status" aria-live="polite"></p>
+            </form>
+        </section>
+    </main>
+
+    <script src="/people.js"></script>
+</body>
+
+</html>

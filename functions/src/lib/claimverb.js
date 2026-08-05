@@ -24,7 +24,7 @@ import { validSlug } from './paths.js';
 import { issueClaimToken } from './claimtoken.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { missionaryClaimEmail } from './claimemail.js';
-import { HUMAN_ADDRESS } from './mail.js';
+import { HUMAN_ADDRESS, mailFrom } from './mail.js';
 
 export const CLAIM_ADDRESS = 'claim@pdayletters.com';
 
@@ -307,7 +307,7 @@ export async function runClaimVerb({
     const threading = inboundId ? { 'In-Reply-To': inboundId, References: inboundId } : {};
 
     const result = await mailer.send({
-        from: CLAIM_ADDRESS,
+        from: mailFrom(CLAIM_ADDRESS),
         to: sender,
         subject: body.subject,
         text: body.text,
