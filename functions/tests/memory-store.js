@@ -7,11 +7,18 @@
 export function memoryStore() {
     const blobs = new Map();
     const queues = new Map();
+    const tables = new Map();
     let seq = 0;
+
+    const rows = (table) => {
+        if (!tables.has(table)) tables.set(table, new Map());
+        return tables.get(table);
+    };
 
     return {
         blobs,
         queues,
+        tables,
         conflictOnce: null,
         async readBlob(container, name) {
             const found = blobs.get(`${container}/${name}`);
@@ -50,9 +57,40 @@ export function memoryStore() {
             });
             return { etag };
         },
+        // Sorted, because the real listing is sorted and promotion depends on
+        // that ordering being stable rather than on insertion order.
+        async listBlobs(container, prefix = '') {
+            const head = `${container}/`;
+            return [...blobs.keys()]
+                .filter((key) => key.startsWith(head + prefix))
+                .map((key) => key.slice(head.length))
+                .sort();
+        },
+        async deleteBlob(container, name) {
+            blobs.delete(`${container}/${name}`);
+        },
         async enqueue(queue, text) {
             if (!queues.has(queue)) queues.set(queue, []);
             queues.get(queue).push(text);
+        },
+
+        // --- tables -------------------------------------------------------
+        async getEntity(table, partitionKey, rowKey) {
+            return rows(table).get(`${partitionKey}/${rowKey}`) ?? null;
+        },
+        // Merge, matching the real upsert mode: a partial entity updates the
+        // fields it names and leaves the rest alone.
+        async upsertEntity(table, entity) {
+            const key = `${entity.partitionKey}/${entity.rowKey}`;
+            rows(table).set(key, { ...(rows(table).get(key) ?? {}), ...entity });
+        },
+        async listEntities(table, { partitionKey } = {}) {
+            return [...rows(table).values()].filter(
+                (row) => !partitionKey || row.partitionKey === partitionKey
+            );
+        },
+        async deleteEntity(table, partitionKey, rowKey) {
+            rows(table).delete(`${partitionKey}/${rowKey}`);
         },
         json(container, name) {
             const blob = blobs.get(`${container}/${name}`);

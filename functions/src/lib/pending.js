@@ -29,6 +29,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // fourteen while the site is forward-only.
 export const PENDING_DAYS = { direct: 60, forwardOnly: 14 };
 
+// How many letter subjects the claim page gets to show. Enough for someone to
+// recognise their missionary's voice and believe the link is real; few enough
+// that a stolen link does not hand over a summary of the whole archive.
+export const SAMPLE_SUBJECTS = 3;
+
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 
 export const pendingRawName = (ulid) => `${ulid}.eml`;
@@ -50,12 +55,20 @@ export const pendingRawName = (ulid) => `${ulid}.eml`;
  * @param {function} input.now
  * @param {object} [input.log]
  */
-export async function holdPending({ store, slug, ulid, raw, hasDirect = false, now, log }) {
+export async function holdPending({ store, slug, ulid, raw, envelope = {}, subject = '', sender = '', hasDirect = false, now, log }) {
+    // The envelope rides along with the bytes. It is not recoverable from the
+    // message -- it is what the sending server said, not what the message
+    // claims -- and promotion writes it into the archive months later, so
+    // losing it here would mean losing it permanently.
     await store.writeBlob('pending', `${slug}/${pendingRawName(ulid)}`, raw, {
-        contentType: 'message/rfc822'
+        contentType: 'message/rfc822',
+        metadata: {
+            envelopeto: encodeURIComponent(envelope.to ?? ''),
+            envelopefrom: encodeURIComponent(envelope.from ?? '')
+        }
     });
 
-    const manifest = await touchClaim({ store, slug, hasDirect, now });
+    const manifest = await touchClaim({ store, slug, hasDirect, subject, sender, now });
 
     log?.info?.('ingest: held pending', {
         ulid,
@@ -72,7 +85,7 @@ export async function holdPending({ store, slug, ulid, raw, hasDirect = false, n
 // missionary forwarding a backlog in one sitting produces several messages
 // racing each other, and an unguarded write would lose all but one -- taking
 // the message count and, worse, the rolling expiry with it.
-async function touchClaim({ store, slug, hasDirect, now }) {
+async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', now }) {
     const name = `${slug}/claim.json`;
     const at = now().toISOString();
 
@@ -88,16 +101,33 @@ async function touchClaim({ store, slug, hasDirect, now }) {
         const direct = Boolean(existing?.hasDirect) || hasDirect;
         const days = direct ? PENDING_DAYS.direct : PENDING_DAYS.forwardOnly;
 
+        // The earliest subjects, not the latest. Someone deciding whether a
+        // claim link is genuine is best served by the letters they are most
+        // likely to have already seen forwarded around the family.
+        const sampleSubjects = [...(existing?.sampleSubjects ?? [])];
+        if (subject && sampleSubjects.length < SAMPLE_SUBJECTS) sampleSubjects.push(subject);
+
         const manifest = {
             slug,
             createdAt: existing?.createdAt ?? at,
             lastMessageAt: at,
             expiresAt: new Date(Date.parse(at) + days * DAY_MS).toISOString(),
             hasDirect: direct,
-            messageCount: (existing?.messageCount ?? 0) + 1
-            // Phase 7 adds the claim token hash and the list of addresses
-            // already emailed. Only a hash is ever stored, so read access to
-            // this blob will not confer the ability to claim the site.
+            messageCount: (existing?.messageCount ?? 0) + 1,
+            sampleSubjects,
+            // The address the letters came from, shown on the claim page so a
+            // recipient can tell whose archive they are being offered.
+            sender: existing?.sender ?? sender,
+            // Written by the claim flow, declared here so the whole shape of
+            // the record is visible in one place. Only ever a hash: read
+            // access to this blob must not confer the ability to claim the
+            // site it describes.
+            claimTokenHash: existing?.claimTokenHash ?? null,
+            claimEmailSentAt: existing?.claimEmailSentAt ?? null,
+            claimEmailCount: existing?.claimEmailCount ?? 0,
+            emailedAddresses: existing?.emailedAddresses ?? [],
+            claimedAt: existing?.claimedAt ?? null,
+            claimedBy: existing?.claimedBy ?? null
         };
 
         try {

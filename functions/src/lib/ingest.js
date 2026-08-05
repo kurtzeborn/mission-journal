@@ -196,6 +196,9 @@ export async function runIngest({
             slug,
             ulid,
             raw,
+            envelope,
+            subject: extracted.original?.subject ?? extracted.outerSubject ?? '',
+            sender: extracted.original?.from ?? '',
             hasDirect: true,
             now,
             log
@@ -203,7 +206,26 @@ export async function runIngest({
         return { status: 'pending', ulid, slug };
     }
 
-    const original = extracted.original ?? {};
+    return commitLetter({ store, slug, ulid, raw, extracted, envelope, verdict, now, log });
+}
+
+/**
+ * Turn a classified letter into a post, an archive entry and a render job.
+ *
+ * Split out of `runIngest` so that promoting a claimed site's backlog can
+ * reuse it. Everything above this point decides *whether* a letter may be
+ * published; everything below assumes that decision has been made and is
+ * concerned only with writing it down consistently.
+ *
+ * It deliberately takes a verdict rather than computing one. A promoted
+ * letter was classified when it arrived, possibly months earlier, and
+ * re-classifying it then would mean re-verifying its DKIM signature against
+ * whatever key the sending domain publishes *now*. Domains rotate keys. A
+ * letter that verified on arrival can fail verification later through no
+ * fault of anyone's, and the cost of that would be discarding the letter the
+ * whole pending mechanism exists to preserve.
+ */
+export async function commitLetter({ store, slug, ulid, raw, extracted, envelope, verdict, now, log }) {    const original = extracted.original ?? {};
     const msgId = msgIdSegment(original.messageId, ulid);
 
     // An inline forward has only what the client rendered — no offset, often

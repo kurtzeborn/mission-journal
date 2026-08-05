@@ -82,6 +82,30 @@ export function createBlobStore({ accountName, credential = new DefaultAzureCred
         },
 
         /**
+         * Every blob name under a prefix, sorted.
+         *
+         * Storage returns these in lexicographic order already; the sort is
+         * restated rather than assumed, because promotion replays a pending
+         * site's letters and the order it replays them in decides the order
+         * they end up in when two letters share a timestamp.
+         *
+         * No paging. The only caller is a pending site's backlog, which is
+         * bounded by the rolling expiry at a few months of one family's mail.
+         * A caller that could exceed a page needs a different method, not a
+         * larger page size.
+         */
+        async listBlobs(container, prefix = '') {
+            const names = [];
+            const iterator = service.getContainerClient(container).listBlobsFlat({ prefix });
+            for await (const item of iterator) names.push(item.name);
+            return names.sort();
+        },
+
+        async deleteBlob(container, name) {
+            await blob(container, name).deleteIfExists();
+        },
+
+        /**
          * Upload a stream, without ever holding all of it.
          *
          * The archive is assembled and sent to storage at the same time, so
