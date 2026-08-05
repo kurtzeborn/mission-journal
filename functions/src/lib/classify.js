@@ -138,8 +138,23 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
     // does, and no header distinguishes them. That residual risk is the
     // reason a verified missionary must be able to remove an owner.
     if (!members) {
-        if (extracted.source !== 'rfc822' || !dkimVerified) {
-            return reject('unknown-slug', { sender, author, slug });
+        // Two different failures, and only one of them has a remedy the sender
+        // can act on. Inline text can be re-sent as an attachment, so that one
+        // is worth a reply. An embedded original whose signature did not
+        // re-verify was already forwarded correctly -- telling that sender to
+        // "forward as an attachment" is advice they have followed, and would
+        // send them round the same loop indefinitely. The causes there are a
+        // client that rewrote the body, a signature stripped in transit, or a
+        // key rotated since the letter was sent, and none of them are fixable
+        // from the sender's chair.
+        if (extracted.source === 'inline') {
+            return reject('bootstrap-not-attached', { sender, author, slug });
+        }
+        if (extracted.source !== 'rfc822') {
+            return reject('no-recoverable-original', { sender, author, slug });
+        }
+        if (!dkimVerified) {
+            return reject('bootstrap-unverified', { sender, author, slug });
         }
 
         return {

@@ -222,8 +222,10 @@ test('forwarder who is not on the ACL is rejected', async () => {
 
 // Was `an unknown slug is rejected rather than provisioned`, and the rename is
 // the point: an unknown slug is now provisioned, but only on evidence. What is
-// still rejected is an unknown slug with nothing behind it.
-test('an unknown slug is rejected when the original cannot be verified', async () => {
+// still rejected is an unknown slug with nothing behind it -- and the two ways
+// of having nothing behind it are told apart, because only one of them is
+// something the sender can fix.
+test('an attachment that does not re-verify cannot bootstrap, and gets no advice', async () => {
     const extracted = await load('outlook-web-attached');
     const result = classify({
         extracted,
@@ -233,7 +235,7 @@ test('an unknown slug is rejected when the original cannot be verified', async (
     });
 
     assert.equal(result.class, CLASS.rejected);
-    assert.equal(result.reason, 'unknown-slug');
+    assert.equal(result.reason, 'bootstrap-unverified');
 });
 
 test('an unknown slug is bootstrapped when the embedded original re-verifies', async () => {
@@ -273,7 +275,9 @@ test('inline forwarded text cannot bootstrap a site', async () => {
     });
 
     assert.equal(result.class, CLASS.rejected);
-    assert.equal(result.reason, 'unknown-slug');
+    // Distinguished from the unverifiable-attachment case because this is the
+    // one the sender can do something about, and so the only one we answer.
+    assert.equal(result.reason, 'bootstrap-not-attached');
 });
 
 test('the missionary domain is configuration, not a constant', async () => {

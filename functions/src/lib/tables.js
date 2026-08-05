@@ -20,7 +20,7 @@
 import { TableClient, odata } from '@azure/data-tables';
 import { DefaultAzureCredential } from '@azure/identity';
 
-export const TABLES = { memberships: 'memberships', users: 'users', sites: 'sites' };
+export const TABLES = { memberships: 'memberships', users: 'users', sites: 'sites', nudges: 'nudges' };
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {
     const url = `https://${accountName}.table.core.windows.net`;
@@ -51,6 +51,24 @@ export function createTableStore({ accountName, credential = new DefaultAzureCre
         // both be safe to do twice.
         async upsertEntity(table, entity) {
             await client(table).upsertEntity(entity, 'Merge');
+        },
+
+        // The exception to the rule above: a caller that needs to know whether
+        // it was first. Returns false if the row already existed.
+        //
+        // Read-then-write would not do here. The one situation this exists to
+        // handle -- somebody forwarding a stack of old letters in one sitting
+        // -- arrives as a batch of queue messages the host runs concurrently,
+        // so a check and a later write straddle exactly the window that
+        // matters. The 409 is the whole point of the method.
+        async insertEntity(table, entity) {
+            try {
+                await client(table).createEntity(entity);
+                return true;
+            } catch (err) {
+                if (err?.statusCode === 409) return false;
+                throw err;
+            }
         },
 
         async listEntities(table, { partitionKey } = {}) {

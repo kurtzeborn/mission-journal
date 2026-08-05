@@ -34,8 +34,13 @@ const mailer = createMailer({
 
 // `auto-generated` rather than `auto-replied`: RFC 3834 reserves that value
 // for mail no incoming message provoked, which is precisely this.
+//
+// `MAIL_FROM` overrides the sending identity, because "can we send as this
+// address" is a question about Cloudflare's configuration that no amount of
+// reading the documentation settles as well as one send does.
+const from = process.env.MAIL_FROM || 'post@pdayletters.com';
 const result = await mailer.send({
-    from: 'post@pdayletters.com',
+    from,
     to,
     subject: 'pdayletters sending test',
     text: 'This is a test of the sending path. No letter was published and nothing was claimed.',

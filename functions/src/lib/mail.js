@@ -28,6 +28,29 @@
 const ENDPOINT = (accountId) =>
     `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/email/sending/send`;
 
+/**
+ * Where a reply to our mail should land.
+ *
+ * Every address this service sends *from* is also an address it ingests: mail
+ * to `post@` becomes a letter, mail to `claim@` becomes a claim. That is not
+ * an accident -- both replies deliberately come from the address their
+ * recipient wrote to, because Gmail weighs prior correspondence and a reply
+ * arriving from somewhere else reads as an unrelated stranger. The cost was
+ * that pressing Reply put a human's question into the classifier, where the
+ * best case is a silent rejection and the worst case is publication: a copy
+ * of our own claim email reached `post@` once and was published to the
+ * archive it granted access to.
+ *
+ * `Reply-To` separates the two concerns that were fighting. `From` stays the
+ * address they wrote to, so the deliverability argument holds untouched, and
+ * the reply goes somewhere a person reads.
+ *
+ * Deliberately not used on the nudge: that message asks its recipient to send
+ * the letter again, and its `From` is already the address it should go back
+ * to.
+ */
+export const HUMAN_ADDRESS = 'hello@pdayletters.com';
+
 // A recipient reduced to something safe to write down: enough to tell two
 // failures apart in a log, not enough to be an address.
 export const maskAddress = (address) => {

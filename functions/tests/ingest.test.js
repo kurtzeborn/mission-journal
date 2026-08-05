@@ -468,7 +468,7 @@ describe('a forward naming a site that does not exist', () => {
         });
 
         assert.equal(result.status, 'rejected');
-        assert.equal(result.reason, 'unknown-slug');
+        assert.equal(result.reason, 'bootstrap-unverified');
         assert.equal(store.json('pending', 'elder.example/claim.json'), null);
     });
 });

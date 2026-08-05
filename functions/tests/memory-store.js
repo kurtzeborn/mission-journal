@@ -84,6 +84,16 @@ export function memoryStore() {
             const key = `${entity.partitionKey}/${entity.rowKey}`;
             rows(table).set(key, { ...(rows(table).get(key) ?? {}), ...entity });
         },
+        // Returns false when the row exists, matching the real store's 409.
+        // Single-threaded here, so this cannot reproduce the race it was
+        // written for -- what it can check is that the caller respects the
+        // answer.
+        async insertEntity(table, entity) {
+            const key = `${entity.partitionKey}/${entity.rowKey}`;
+            if (rows(table).has(key)) return false;
+            rows(table).set(key, { ...entity });
+            return true;
+        },
         async listEntities(table, { partitionKey } = {}) {
             return [...rows(table).values()].filter(
                 (row) => !partitionKey || row.partitionKey === partitionKey

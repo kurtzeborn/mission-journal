@@ -206,6 +206,10 @@ var tableNames = [
   'memberships'
   'users'
   'sites'
+  // Not an index of anything: a record of who has already been told once that
+  // their mail client quoted a letter instead of attaching it. It exists so
+  // that advice cannot be sent twice.
+  'nudges'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [

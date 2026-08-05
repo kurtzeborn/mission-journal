@@ -16,6 +16,7 @@ import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
 import { offerClaim } from './offer.js';
+import { nudgeOnce } from './nudge.js';
 import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
 import { touchSiteActivity } from './sites.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
@@ -209,6 +210,32 @@ export async function runIngest({
 
     if (verdict.class === CLASS.rejected) {
         logRejection({ log, config, ulid, extracted, verdict, now });
+
+        // The one rejection that gets an answer. See nudge.js for why this is
+        // not the backscatter it looks like, and why the other unverifiable
+        // shape -- an attachment whose signature did not re-verify -- is left
+        // in silence: that sender already did the thing this would advise.
+        if (verdict.reason === 'bootstrap-not-attached') {
+            const slug = validSlug(verdict.slug);
+            if (slug) {
+                try {
+                    await nudgeOnce({
+                        tables,
+                        mailer,
+                        to: verdict.sender,
+                        author: verdict.author,
+                        slug,
+                        now,
+                        log
+                    });
+                } catch (error) {
+                    // The letter is already refused and nothing is being kept.
+                    // A failure here costs advice, not mail.
+                    log.error?.('ingest: could not advise the forwarder', { slug, error: error.message });
+                }
+            }
+        }
+
         return { status: 'rejected', ulid, reason: verdict.reason };
     }
 
@@ -337,7 +364,8 @@ export async function runIngest({
  * fault of anyone's, and the cost of that would be discarding the letter the
  * whole pending mechanism exists to preserve.
  */
-export async function commitLetter({ store, tables = null, slug, ulid, raw, extracted, envelope, verdict, now, log }) {    const original = extracted.original ?? {};
+export async function commitLetter({ store, tables = null, slug, ulid, raw, extracted, envelope, verdict, now, log }) {
+    const original = extracted.original ?? {};
     const msgId = msgIdSegment(original.messageId, ulid);
 
     // An inline forward has only what the client rendered — no offset, often

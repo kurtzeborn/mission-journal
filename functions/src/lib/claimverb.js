@@ -24,6 +24,7 @@ import { validSlug } from './paths.js';
 import { issueClaimToken } from './claimtoken.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { missionaryClaimEmail } from './claimemail.js';
+import { HUMAN_ADDRESS } from './mail.js';
 
 export const CLAIM_ADDRESS = 'claim@pdayletters.com';
 
@@ -311,7 +312,7 @@ export async function runClaimVerb({
         subject: body.subject,
         text: body.text,
         html: body.html,
-        headers: { ...threading, 'Auto-Submitted': 'auto-replied' },
+        headers: { ...threading, 'Reply-To': HUMAN_ADDRESS, 'Auto-Submitted': 'auto-replied' },
         log
     });
 
