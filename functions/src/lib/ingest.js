@@ -15,6 +15,7 @@ import { linkedPhotoServices } from './photolinks.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
+import { offerClaim } from './offer.js';
 import { touchSiteActivity } from './sites.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { domainOf } from './authresults.js';
@@ -94,6 +95,7 @@ const postIdFor = (day, msgId) => `${day ?? 'undated'}-${msgId.slice(-4)}`;
  * @param {object} input
  * @param {string} input.ulid          the inbox blob the queue message named
  * @param {object} input.store         see store.js for the required shape
+ * @param {object} [input.mailer]      from mail.js; omitted means nothing is offered
  * @param {object} input.config        { authservId, missionaryDomains, maxRawBytes? }
  * @param {object} [input.log]         { info, warn, error }
  * @param {function} [input.now]       injectable clock
@@ -103,6 +105,7 @@ export async function runIngest({
     ulid,
     store,
     tables = null,
+    mailer = null,
     config,
     log = console,
     now = () => new Date(),
@@ -193,7 +196,7 @@ export async function runIngest({
     // site. Forwards cannot reach this point -- `classify` rejects an unknown
     // slug there, because a forwarder has to already be on an ACL.
     if (verdict.class === CLASS.direct && !(await readAcl(store, slug))) {
-        await holdPending({
+        const manifest = await holdPending({
             store,
             slug,
             ulid,
@@ -201,10 +204,40 @@ export async function runIngest({
             envelope,
             subject: extracted.original?.subject ?? extracted.outerSubject ?? '',
             sender: extracted.original?.from ?? '',
+            messageId: extracted.original?.messageId ?? '',
             hasDirect: true,
             now,
             log
         });
+
+        // Offered once, on the letter that created the site. Later letters do
+        // not re-offer: a second link invalidates the first, so somebody
+        // writing weekly would be handed a fresh credential every week and
+        // find that the one they had finally got round to clicking had just
+        // stopped working. Chasing an unclaimed site is the reminder series'
+        // job, on its own schedule.
+        //
+        // The count is the condition rather than a flag, which makes a failed
+        // send self-healing: nothing was recorded, so the next letter tries
+        // again. Swallowed for the same reason the site-activity write is --
+        // the letter is already held, and no mail failure justifies making
+        // the sender's server redeliver it.
+        if (mailer && (manifest.claimEmailCount ?? 0) === 0) {
+            try {
+                await offerClaim({
+                    store,
+                    mailer,
+                    slug,
+                    key: config.claimTokenKey,
+                    baseUrl: config.baseUrl,
+                    now,
+                    log
+                });
+            } catch (error) {
+                log.error?.('ingest: could not offer the pending site', { slug, error: error.message });
+            }
+        }
+
         return { status: 'pending', ulid, slug };
     }
 

@@ -68,6 +68,26 @@ param googleClientSecretName string = 'google-client-secret'
 @description('Key Vault secret holding the HMAC key that signs claim links.')
 param claimTokenKeyName string = 'claim-token-key'
 
+@description('Cloudflare account that owns the sending domain, and the Key Vault secret holding its API token.')
+param cloudflareAccountId string = ''
+param cloudflareTokenName string = 'cloudflare-api-token'
+
+@description('''
+Comma-separated addresses the service may send to. Empty means nobody, and
+that is the default on purpose: every recipient in this system is computed
+from headers a stranger wrote, so the failure mode of a bug here is mailing
+a stranger. `*` disables the gate and has to be typed deliberately.
+''')
+param mailAllowlist string = ''
+
+@description('''
+The origin claim links point at. Deliberately a parameter rather than the
+Static Web App's generated hostname: a link in somebody's inbox outlives the
+deployment that sent it, and the custom domain is the only name a recipient
+will recognise as the one they were told about.
+''')
+param publicBaseUrl string = 'https://pdayletters.com'
+
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower('${namePrefix}st${suffix}')
 var keyVaultName = toLower('${namePrefix}-kv-${suffix}')
@@ -524,6 +544,32 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'CLAIM_TOKEN_KEY'
           value: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${claimTokenKeyName}/)'
+        }
+        // Outbound mail. The token is a Key Vault reference for the same
+        // reason the claim key is; the account id is not a secret and is
+        // inert without it.
+        {
+          name: 'CLOUDFLARE_ACCOUNT_ID'
+          value: cloudflareAccountId
+        }
+        {
+          name: 'CLOUDFLARE_API_TOKEN'
+          value: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${cloudflareTokenName}/)'
+        }
+        // Who the service is allowed to write to. Empty means nobody, which
+        // is the safe direction while the recipient of every claim email is
+        // computed from a stranger's mail headers. `*` opens it, and has to
+        // be typed on purpose.
+        {
+          name: 'MAIL_ALLOWLIST'
+          value: mailAllowlist
+        }
+        // Where claim links point. Not derived from the Static Web App's
+        // generated hostname: links in email outlive deployments, and the
+        // custom domain is the only name a recipient will recognise.
+        {
+          name: 'PUBLIC_BASE_URL'
+          value: publicBaseUrl
         }
       ]
     }

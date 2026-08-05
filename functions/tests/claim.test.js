@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { runIngest } from '../src/lib/ingest.js';
 import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { memoryStore } from './memory-store.js';
-import { attachClaimToken, describeClaim, redeemClaim } from '../src/lib/claim.js';
+import { attachClaimToken, recordClaimEmailSent, describeClaim, redeemClaim } from '../src/lib/claim.js';
 import { promotePending } from '../src/lib/promote.js';
 import { membershipsFor, recordMembership, rebuildMemberships } from '../src/lib/memberships.js';
 import { touchSiteActivity, setSiteName } from '../src/lib/sites.js';
@@ -120,12 +120,26 @@ describe('issuing a claim link', () => {
 
     test('records who it was sent to, lowercased, and counts the sends', async () => {
         const store = await pendingSite(1);
-        await attachClaimToken({ store, slug: SLUG, key: KEY, emailTo: CLAIMANT, now: NOW });
-        await attachClaimToken({ store, slug: SLUG, key: KEY, emailTo: 'other@example.com', now: NOW });
+        await recordClaimEmailSent({ store, slug: SLUG, emailTo: CLAIMANT, now: NOW });
+        await recordClaimEmailSent({ store, slug: SLUG, emailTo: 'Other@Example.com', now: NOW });
 
         const claim = claimOf(store);
         assert.equal(claim.claimEmailCount, 2);
         assert.deepEqual(claim.emailedAddresses, ['parent@example.com', 'other@example.com']);
+    });
+
+    test('minting a token does not claim anybody was told about it', async () => {
+        const store = await pendingSite(1);
+        await attachClaimToken({ store, slug: SLUG, key: KEY, now: NOW });
+
+        // The purge timer deletes expired letters and shouts only when the
+        // manifest says nobody was ever offered them. If minting counted as
+        // offering, a send that failed would silence that alarm permanently.
+        const claim = claimOf(store);
+        assert.equal(claim.claimEmailCount, 0);
+        assert.equal(claim.claimEmailSentAt, null);
+        assert.deepEqual(claim.emailedAddresses, []);
+        assert.ok(claim.claimTokenHash, 'but the token itself is recorded');
     });
 
     test('re-issuing invalidates the previous link', async () => {

@@ -55,7 +55,7 @@ export const pendingRawName = (ulid) => `${ulid}.eml`;
  * @param {function} input.now
  * @param {object} [input.log]
  */
-export async function holdPending({ store, slug, ulid, raw, envelope = {}, subject = '', sender = '', hasDirect = false, now, log }) {
+export async function holdPending({ store, slug, ulid, raw, envelope = {}, subject = '', sender = '', messageId = '', hasDirect = false, now, log }) {
     // The envelope rides along with the bytes. It is not recoverable from the
     // message -- it is what the sending server said, not what the message
     // claims -- and promotion writes it into the archive months later, so
@@ -68,7 +68,7 @@ export async function holdPending({ store, slug, ulid, raw, envelope = {}, subje
         }
     });
 
-    const manifest = await touchClaim({ store, slug, hasDirect, subject, sender, now });
+    const manifest = await touchClaim({ store, slug, hasDirect, subject, sender, messageId, now });
 
     log?.info?.('ingest: held pending', {
         ulid,
@@ -85,7 +85,7 @@ export async function holdPending({ store, slug, ulid, raw, envelope = {}, subje
 // missionary forwarding a backlog in one sitting produces several messages
 // racing each other, and an unguarded write would lose all but one -- taking
 // the message count and, worse, the rolling expiry with it.
-async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', now }) {
+async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', messageId = '', now }) {
     const name = `${slug}/claim.json`;
     const at = now().toISOString();
 
@@ -118,6 +118,13 @@ async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', n
             // The address the letters came from, shown on the claim page so a
             // recipient can tell whose archive they are being offered.
             sender: existing?.sender ?? sender,
+            // The newest held letter's own `Message-ID`, kept so the claim
+            // email can thread as a reply to it. The newest rather than the
+            // first: the recipient wrote it most recently, so it is the one
+            // their mail client still has open in a thread rather than one
+            // they have to go looking for. Null when the sender's client
+            // omitted the header, which threads nothing and breaks nothing.
+            lastMessageId: messageId || existing?.lastMessageId || null,
             // Written by the claim flow, declared here so the whole shape of
             // the record is visible in one place. Only ever a hash: read
             // access to this blob must not confer the ability to claim the

@@ -56,8 +56,16 @@ async function readClaimBlob(store, slug) {
  * link. That is deliberate -- "send me a new link" has to mean the old one
  * stops working, or a reminder email doubles the number of live credentials
  * every time it is sent.
+ *
+ * **This records only that a token exists, never that anyone was told.** The
+ * two used to happen in one write, and that was wrong in a way that only
+ * showed up once the purge timer was built: `claimEmailCount` is the evidence
+ * behind "expired without ever being offered", and incrementing it before the
+ * send meant a failed send left a manifest claiming the offer had been made.
+ * The letters would then be deleted on schedule, silently, by the very job
+ * written to shout about that exact case. See `recordClaimEmailSent`.
  */
-export async function attachClaimToken({ store, slug, key, emailTo, now = () => new Date() }) {
+export async function attachClaimToken({ store, slug, key, now = () => new Date() }) {
     for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
         const found = await readClaimBlob(store, slug);
         if (!found) return null;
@@ -65,16 +73,7 @@ export async function attachClaimToken({ store, slug, key, emailTo, now = () => 
 
         const issued = issueClaimToken({ slug, key, expiresAt: found.manifest.expiresAt });
 
-        const emailed = new Set(found.manifest.emailedAddresses ?? []);
-        if (emailTo) emailed.add(lower(emailTo));
-
-        const manifest = {
-            ...found.manifest,
-            claimTokenHash: issued.hash,
-            claimEmailSentAt: now().toISOString(),
-            claimEmailCount: (found.manifest.claimEmailCount ?? 0) + 1,
-            emailedAddresses: [...emailed]
-        };
+        const manifest = { ...found.manifest, claimTokenHash: issued.hash };
 
         try {
             await store.writeBlob('pending', `${slug}/${CLAIM}`, utf8(manifest), {
@@ -87,6 +86,42 @@ export async function attachClaimToken({ store, slug, key, emailTo, now = () => 
         }
     }
     throw new Error(`claim: could not attach a token for ${slug}`);
+}
+
+/**
+ * Record that a claim email actually went out.
+ *
+ * Called only after the provider has accepted the message. Everything here is
+ * bookkeeping -- nobody's access depends on it -- so the caller is expected to
+ * treat a failure as loggable rather than fatal. The one thing it must never
+ * do is run when nothing was sent.
+ */
+export async function recordClaimEmailSent({ store, slug, emailTo, now = () => new Date() }) {
+    for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
+        const found = await readClaimBlob(store, slug);
+        if (!found) return null;
+
+        const emailed = new Set(found.manifest.emailedAddresses ?? []);
+        if (emailTo) emailed.add(lower(emailTo));
+
+        const manifest = {
+            ...found.manifest,
+            claimEmailSentAt: now().toISOString(),
+            claimEmailCount: (found.manifest.claimEmailCount ?? 0) + 1,
+            emailedAddresses: [...emailed]
+        };
+
+        try {
+            await store.writeBlob('pending', `${slug}/${CLAIM}`, utf8(manifest), {
+                contentType: 'application/json',
+                ifMatch: found.etag
+            });
+            return manifest;
+        } catch (error) {
+            if (!isConflict(error) || attempt === CONFLICT_RETRIES - 1) throw error;
+        }
+    }
+    throw new Error(`claim: could not record a claim email for ${slug}`);
 }
 
 /**
