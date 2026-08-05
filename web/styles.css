@@ -302,6 +302,27 @@ button:focus-visible {
     font-size: 0.95rem;
 }
 
+/* The numbered instructions on the getting-started page. Each step is a bold
+   sentence with its explanation underneath, so the list reads as a sequence at
+   a glance and as prose when someone stops to actually follow it. */
+.steps {
+    padding-left: 1.4rem;
+}
+
+.steps>li {
+    margin-bottom: 1.5rem;
+}
+
+.steps>li>.note:last-child {
+    margin-bottom: 0;
+}
+
+.steps ul {
+    padding-left: 1.2rem;
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+}
+
 .state {
     padding: 3rem 0;
     text-align: center;

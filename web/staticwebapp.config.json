@@ -41,6 +41,25 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "Help pages, read by people with no account and often before they have decided whether to have one. Anonymous for the same reason the front page is: `/*` below is authenticated, so anything omitted here disappears behind a sign-in.",
+      "route": "/start",
+      "rewrite": "/start.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/start.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/faq",
+      "rewrite": "/faq.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/faq.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/favicon.ico",
       "allowedRoles": ["anonymous", "authenticated"]
     },
