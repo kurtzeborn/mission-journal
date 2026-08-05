@@ -18,6 +18,7 @@
 import { createBlobStore } from '../src/lib/store.js';
 import { createTableStore } from '../src/lib/tables.js';
 import { rebuildMemberships } from '../src/lib/memberships.js';
+import { touchSiteActivity, setSiteName } from '../src/lib/sites.js';
 
 const accountName = process.env.STORAGE_ACCOUNT_NAME ?? 'mjstutfe5uagkbz7q';
 
@@ -57,7 +58,16 @@ for (const slug of slugs) {
     const acl = JSON.parse(Buffer.from(blob.bytes).toString('utf8'));
     const lastPostAt = await newestPostDate(slug);
 
-    await rebuildMemberships({ tables, slug, acl, lastPostAt });
+    await rebuildMemberships({ tables, slug, acl });
+    await touchSiteActivity({ tables, slug, lastPostAt });
+
+    // The name comes from `profile.json`, which is what the reader already
+    // shows. Taking it from anywhere else would let the two disagree.
+    const profileBlob = await blobs.readBlob('config', `${slug}/profile.json`);
+    if (profileBlob) {
+        const profile = JSON.parse(Buffer.from(profileBlob.bytes).toString('utf8'));
+        await setSiteName({ tables, slug, missionaryDisplayName: profile.displayName ?? '' });
+    }
 
     console.log(`${slug}: ${acl.members?.length ?? 0} member(s), lastPostAt=${lastPostAt || 'none'}`);
 }

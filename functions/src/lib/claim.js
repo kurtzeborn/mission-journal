@@ -27,6 +27,7 @@
 
 import { verifyClaimToken, issueClaimToken } from './claimtoken.js';
 import { recordMembership } from './memberships.js';
+import { setSiteName } from './sites.js';
 import { promotePending } from './promote.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { ROLE } from './acl.js';
@@ -229,12 +230,29 @@ export async function redeemClaim({
         email,
         slug,
         role: ROLE.owner,
-        missionaryDisplayName: spent.missionaryDisplayName ?? displayName ?? '',
         now
     });
 
+    // The name the claimant typed belongs to the site, not to their
+    // membership of it: everyone added later should see the same name, and
+    // changing it later should not mean rewriting one row per reader.
+    //
+    // Guarded, because by this point the ACL exists and the person is already
+    // the owner. Failing the whole claim over a display name would hand them
+    // an error for a site they have in fact just been given, and the name is
+    // the one thing here that costs nothing to fix afterwards.
+    try {
+        await setSiteName({
+            tables,
+            slug,
+            missionaryDisplayName: spent.missionaryDisplayName ?? displayName ?? ''
+        });
+    } catch (error) {
+        log.error?.('claim: site name write failed', { slug, error: error.message });
+    }
+
     // --- 4. publish ------------------------------------------------------
-    const promoted = await promotePending({ store, slug, now, log });
+    const promoted = await promotePending({ store, tables, slug, now, log });
 
     log.info?.('claim: redeemed', {
         slug,

@@ -47,7 +47,7 @@ const ulidOf = (name) => name.split('/').pop().replace(/\.eml$/, '');
  *
  * @returns {{promoted: number, duplicates: number, failed: Array, postIds: string[]}}
  */
-export async function promotePending({ store, slug, now = () => new Date(), log = console }) {
+export async function promotePending({ store, tables = null, slug, now = () => new Date(), log = console }) {
     const names = (await store.listBlobs('pending', `${slug}/`)).filter((n) => n.endsWith('.eml'));
 
     const result = { promoted: 0, duplicates: 0, failed: [], postIds: [] };
@@ -77,6 +77,7 @@ export async function promotePending({ store, slug, now = () => new Date(), log 
 
             const committed = await commitLetter({
                 store,
+                tables,
                 slug,
                 ulid,
                 raw: blob.bytes,

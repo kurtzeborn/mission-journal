@@ -14,6 +14,7 @@
 // trusted one would cost a stranger's letters.
 
 import { TABLES } from './tables.js';
+import { sitesBySlug } from './sites.js';
 
 const lower = (email) => String(email ?? '').trim().toLowerCase();
 
@@ -24,14 +25,17 @@ const lower = (email) => String(email ?? '').trim().toLowerCase();
  * process dies between the two, the ACL is the one that survived and the
  * person can still reach the site by its URL -- they just will not be
  * redirected there. `rebuildMemberships` repairs that.
+ *
+ * The row holds the relationship and nothing else. What the site is called
+ * and when it last received a letter belong to the site, not to each of its
+ * members -- see sites.js for why keeping them here meant never updating
+ * them at all.
  */
 export async function recordMembership({
     tables,
     email,
     slug,
     role,
-    missionaryDisplayName = '',
-    lastPostAt = '',
     now = () => new Date()
 }) {
     const partitionKey = lower(email);
@@ -41,9 +45,7 @@ export async function recordMembership({
         partitionKey,
         rowKey: slug,
         role,
-        missionaryDisplayName,
-        addedAt: now().toISOString(),
-        lastPostAt
+        addedAt: now().toISOString()
     });
 }
 
@@ -54,22 +56,30 @@ export async function forgetMembership({ tables, email, slug }) {
 /**
  * Every site an address belongs to, newest activity first.
  *
- * The sort is what makes the root redirect land somewhere sensible for a
- * relative who follows two missionaries. A site with no posts yet sorts last
- * rather than first, because an empty archive is the least useful place to
- * put someone who just signed in.
+ * The sort is what makes the root list land somewhere sensible for a relative
+ * who follows two missionaries. A site with no posts yet sorts last rather
+ * than first, because an empty archive is the least useful place to put
+ * someone who just signed in.
+ *
+ * The name and the timestamp are joined in from the site rows rather than
+ * stored here, so they are whatever they are *now* rather than whatever they
+ * were on the day this person was added.
  */
 export async function membershipsFor({ tables, email }) {
     const rows = await tables.listEntities(TABLES.memberships, { partitionKey: lower(email) });
+    const sites = await sitesBySlug({ tables, slugs: rows.map((row) => row.rowKey) });
 
     return rows
-        .map((row) => ({
-            slug: row.rowKey,
-            role: row.role,
-            missionaryDisplayName: row.missionaryDisplayName ?? '',
-            addedAt: row.addedAt ?? '',
-            lastPostAt: row.lastPostAt ?? ''
-        }))
+        .map((row) => {
+            const site = sites.get(row.rowKey) ?? {};
+            return {
+                slug: row.rowKey,
+                role: row.role,
+                missionaryDisplayName: site.missionaryDisplayName ?? '',
+                addedAt: row.addedAt ?? '',
+                lastPostAt: site.lastPostAt ?? ''
+            };
+        })
         .sort((a, b) => {
             if (a.lastPostAt !== b.lastPostAt) return a.lastPostAt < b.lastPostAt ? 1 : -1;
             return a.slug < b.slug ? -1 : 1;
@@ -86,7 +96,7 @@ export async function membershipsFor({ tables, email }) {
  * membership that outlives its ACL entry is exactly the stale redirect this
  * module promises not to leave behind.
  */
-export async function rebuildMemberships({ tables, slug, acl, missionaryDisplayName = '', lastPostAt = '', now }) {
+export async function rebuildMemberships({ tables, slug, acl, now }) {
     const members = acl?.members ?? [];
     const wanted = new Set(members.map((m) => lower(m.email)));
 
@@ -96,8 +106,6 @@ export async function rebuildMemberships({ tables, slug, acl, missionaryDisplayN
             email: member.email,
             slug,
             role: member.role,
-            missionaryDisplayName,
-            lastPostAt,
             now
         });
     }

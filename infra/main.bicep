@@ -185,6 +185,7 @@ resource tableService 'Microsoft.Storage/storageAccounts/tableServices@2023-05-0
 var tableNames = [
   'memberships'
   'users'
+  'sites'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [

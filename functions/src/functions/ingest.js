@@ -1,5 +1,6 @@
 import { app, output } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
+import { createTableStore } from '../lib/tables.js';
 import { runIngest } from '../lib/ingest.js';
 
 // The render job is emitted through an output binding rather than a queue
@@ -19,6 +20,10 @@ const setting = (name, fallback) => process.env[name] ?? fallback;
 let cachedStore = null;
 const blobStore = () =>
     (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
+
+let cachedTables = null;
+const tableStore = () =>
+    (cachedTables ??= createTableStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
 
 async function handler(message, context) {
     // The Worker enqueues the ULID as plain text, but the host will hand back
@@ -49,7 +54,7 @@ async function handler(message, context) {
         }
     };
 
-    return runIngest({ ulid, store, config, log: context });
+    return runIngest({ ulid, store, tables: tableStore(), config, log: context });
 }
 
 app.storageQueue('ingest', {

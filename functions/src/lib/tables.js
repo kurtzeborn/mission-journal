@@ -20,7 +20,7 @@
 import { TableClient, odata } from '@azure/data-tables';
 import { DefaultAzureCredential } from '@azure/identity';
 
-export const TABLES = { memberships: 'memberships', users: 'users' };
+export const TABLES = { memberships: 'memberships', users: 'users', sites: 'sites' };
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {
     const url = `https://${accountName}.table.core.windows.net`;

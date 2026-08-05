@@ -16,6 +16,7 @@ import { memoryStore } from './memory-store.js';
 import { attachClaimToken, describeClaim, redeemClaim } from '../src/lib/claim.js';
 import { promotePending } from '../src/lib/promote.js';
 import { membershipsFor, recordMembership, rebuildMemberships } from '../src/lib/memberships.js';
+import { touchSiteActivity, setSiteName } from '../src/lib/sites.js';
 import { issueClaimToken } from '../src/lib/claimtoken.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
@@ -332,6 +333,44 @@ describe('redeeming a claim', () => {
 // --- promotion on its own --------------------------------------------------
 
 describe('promoting a backlog', () => {
+    test('stamps the site with the newest letter it published', async () => {
+        const { store, token } = await readyToClaim(3);
+
+        await redeemClaim({
+            store, tables: store, token, key: KEY,
+            principal: CLAIMANT, displayName: 'Elder Example', now: NOW, log: silent
+        });
+
+        const mine = await membershipsFor({ tables: store, email: CLAIMANT });
+        const posts = JSON.parse(store.blobs.get(`rendered/${SLUG}/posts.json`).bytes.toString('utf8'));
+        const newest = posts.reduce((latest, post) => (post.originalDate > latest ? post.originalDate : latest), '');
+
+        // Without this the archive would sort as though it had never received
+        // anything, which is the exact bug that moving the field off the
+        // membership rows was meant to end.
+        assert.notEqual(mine[0].lastPostAt, '');
+        assert.equal(mine[0].lastPostAt, newest);
+    });
+
+    test('a failed index write does not cost the letter', async () => {
+        const { store, token } = await readyToClaim(1);
+        const errors = [];
+
+        // Tables are a sort order; letters are the product.
+        store.upsertEntity = async (table) => {
+            if (table === 'sites') throw new Error('table unavailable');
+        };
+
+        const result = await redeemClaim({
+            store, tables: store, token, key: KEY, principal: CLAIMANT,
+            now: NOW, log: { ...silent, error: (m) => errors.push(m) }
+        });
+
+        assert.equal(result.status, 'ok');
+        assert.equal(result.promoted.promoted, 1);
+        assert.ok(store.blobs.has(`rendered/${SLUG}/posts.json`));
+        assert.ok(errors.some((m) => m.includes('site activity write failed')));
+    });
     test('publishes every held letter and archives its raw copy', async () => {
         const store = await pendingSite(3);
         const result = await promotePending({ store, slug: SLUG, now: NOW, log: silent });
@@ -420,12 +459,35 @@ describe('the membership index', () => {
     test('sorts the sites someone belongs to by most recent activity', async () => {
         const store = memoryStore();
         const tables = store;
-        await recordMembership({ tables, email: 'a@example.com', slug: 'quiet', role: 'reader', lastPostAt: '2026-01-01', now: NOW });
-        await recordMembership({ tables, email: 'a@example.com', slug: 'busy', role: 'reader', lastPostAt: '2026-08-01', now: NOW });
+        await recordMembership({ tables, email: 'a@example.com', slug: 'quiet', role: 'reader', now: NOW });
+        await recordMembership({ tables, email: 'a@example.com', slug: 'busy', role: 'reader', now: NOW });
         await recordMembership({ tables, email: 'a@example.com', slug: 'empty', role: 'reader', now: NOW });
+
+        // Activity lives on the site, not on the membership -- so it is set
+        // once per site here rather than once per person.
+        await touchSiteActivity({ tables, slug: 'quiet', lastPostAt: '2026-01-01' });
+        await touchSiteActivity({ tables, slug: 'busy', lastPostAt: '2026-08-01' });
 
         const mine = await membershipsFor({ tables, email: 'a@example.com' });
         assert.deepEqual(mine.map((m) => m.slug), ['busy', 'quiet', 'empty']);
+    });
+
+    test('shows every member the site`s current name, not the one they joined under', async () => {
+        const store = memoryStore();
+        const tables = store;
+        await recordMembership({ tables, email: 'first@example.com', slug: SLUG, role: 'owner', now: NOW });
+        await setSiteName({ tables, slug: SLUG, missionaryDisplayName: 'Elder Exmaple' });
+
+        // A typo fixed after a second reader was added. One write, and both
+        // of them see it -- which is the whole reason the name is not copied
+        // onto each membership row.
+        await recordMembership({ tables, email: 'second@example.com', slug: SLUG, role: 'reader', now: NOW });
+        await setSiteName({ tables, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+
+        for (const who of ['first@example.com', 'second@example.com']) {
+            const mine = await membershipsFor({ tables, email: who });
+            assert.equal(mine[0].missionaryDisplayName, 'Elder Example');
+        }
     });
 
     test('does not leak one person`s sites to another', async () => {

@@ -15,6 +15,7 @@ import { linkedPhotoServices } from './photolinks.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
+import { touchSiteActivity } from './sites.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { domainOf } from './authresults.js';
 
@@ -101,6 +102,7 @@ const postIdFor = (day, msgId) => `${day ?? 'undated'}-${msgId.slice(-4)}`;
 export async function runIngest({
     ulid,
     store,
+    tables = null,
     config,
     log = console,
     now = () => new Date(),
@@ -206,7 +208,7 @@ export async function runIngest({
         return { status: 'pending', ulid, slug };
     }
 
-    return commitLetter({ store, slug, ulid, raw, extracted, envelope, verdict, now, log });
+    return commitLetter({ store, tables, slug, ulid, raw, extracted, envelope, verdict, now, log });
 }
 
 /**
@@ -225,7 +227,7 @@ export async function runIngest({
  * fault of anyone's, and the cost of that would be discarding the letter the
  * whole pending mechanism exists to preserve.
  */
-export async function commitLetter({ store, slug, ulid, raw, extracted, envelope, verdict, now, log }) {    const original = extracted.original ?? {};
+export async function commitLetter({ store, tables = null, slug, ulid, raw, extracted, envelope, verdict, now, log }) {    const original = extracted.original ?? {};
     const msgId = msgIdSegment(original.messageId, ulid);
 
     // An inline forward has only what the client rendered — no offset, often
@@ -285,6 +287,19 @@ export async function commitLetter({ store, slug, ulid, raw, extracted, envelope
     if (committed.status !== 'stored') return { ...committed, ulid, slug };
 
     await writeRaw({ store, slug, msgId, raw, extracted, envelope, ulid, receivedAt, verdict });
+
+    // The site's "last letter" stamp, used only to order somebody's archives
+    // on the landing page. Deliberately swallowed on failure: this is a sort
+    // key, the letter is already committed and archived, and there is no
+    // version of "the index write failed" that justifies making the sender's
+    // mail server retry and deliver the letter a second time.
+    if (tables) {
+        try {
+            await touchSiteActivity({ tables, slug, lastPostAt: post.originalDate ?? receivedAt });
+        } catch (error) {
+            log.error?.('ingest: site activity write failed', { slug, error: error.message });
+        }
+    }
 
     // Render is enqueued only after the archive exists, so a render can never
     // reference bytes that were never written.
