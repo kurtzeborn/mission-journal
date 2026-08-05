@@ -10,6 +10,7 @@ import {
     SASProtocol,
     generateBlobSASQueryParameters
 } from '@azure/storage-blob';
+import { QueueServiceClient } from '@azure/storage-queue';
 import { DefaultAzureCredential } from '@azure/identity';
 
 // A user delegation key is signed by Entra ID rather than by an account key,
@@ -26,6 +27,15 @@ export function createBlobStore({ accountName, credential = new DefaultAzureCred
         `https://${accountName}.blob.core.windows.net`,
         credential
     );
+
+    // Built lazily. Most callers never enqueue, and a queue client that is
+    // never used should not cost a handshake.
+    let queues = null;
+    const queueService = () =>
+        (queues ??= new QueueServiceClient(
+            `https://${accountName}.queue.core.windows.net`,
+            credential
+        ));
 
     const blob = (container, name) =>
         service.getContainerClient(container).getBlockBlobClient(name);
@@ -150,6 +160,26 @@ export function createBlobStore({ accountName, credential = new DefaultAzureCred
             ).toString();
 
             return `${blob(container, name).url}?${query}`;
+        },
+
+        /**
+         * Put a message on a queue.
+         *
+         * A queue-triggered function can do this with an output binding
+         * instead, and ingest.js does, because a binding is written only when
+         * the invocation succeeds. Nothing else has that option: an HTTP
+         * handler's output binding is written *after* the handler returns,
+         * which is too late for `promotePending`, whose whole safety argument
+         * is that a pending letter is deleted only once its render job
+         * exists. So this sends immediately and throws if it cannot.
+         *
+         * No base64. `host.json` sets `messageEncoding: none`, and the client
+         * sends the string as given, so the two agree -- but they agree by
+         * configuration rather than by default, so changing either one alone
+         * would break every trigger silently.
+         */
+        async enqueue(queue, text) {
+            await queueService().getQueueClient(queue).sendMessage(text);
         }
     };
 }

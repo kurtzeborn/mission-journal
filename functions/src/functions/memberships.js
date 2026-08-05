@@ -27,7 +27,10 @@ async function handler(request, context) {
 
     const memberships = await membershipsFor({
         tables: tableStore(),
-        email: principal.userDetails
+        // `email`, not `userDetails` -- see the note in claim.js. Here the same
+        // mistake is silent rather than loud: an undefined email matches no
+        // membership row, so the caller is told they belong to nothing.
+        email: principal.email
     });
 
     return {

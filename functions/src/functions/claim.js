@@ -88,7 +88,13 @@ async function redeemHandler(request, context) {
         tables: tableStore(),
         token,
         key,
-        principal: principal.userDetails,
+        // `email`, not `userDetails`. `userDetails` is the field name on the raw
+        // Static Web Apps header; `readPrincipal` returns the lowercased address
+        // as `email`. Asking for the header's name here yielded `undefined`, which
+        // `redeemClaim` correctly reported as `unauthenticated` -- a status the
+        // claim page has no copy for, so it fell back to telling the claimant
+        // their link was broken.
+        principal: principal.email,
         // Trimmed and bounded here rather than trusted: it is the one piece of
         // attacker-supplied text that ends up on the site's own pages.
         displayName: String(displayName ?? '').trim().slice(0, 80),

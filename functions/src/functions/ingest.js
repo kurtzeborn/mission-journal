@@ -60,6 +60,11 @@ async function handler(message, context) {
 
     const store = {
         ...blobStore(),
+        // Deliberately shadows the store's own `enqueue`. Both work here; the
+        // binding is preferred because the host writes it only if this
+        // invocation succeeds, so a letter that fails after publishing does
+        // not leave a render job for a post that was rolled back.
+        //
         // Only a stored message reaches this, so an invocation that rejects or
         // dedupes simply never sets the binding and emits nothing.
         async enqueue(_queue, text) {
