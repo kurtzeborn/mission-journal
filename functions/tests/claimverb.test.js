@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { runIngest } from '../src/lib/ingest.js';
 import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { memoryStore } from './memory-store.js';
-import { readHeaderBlock, authenticateClaim, isClaimVerb, recipientVerbs } from '../src/lib/claimverb.js';
+import { readHeaderBlock, authenticateClaim, isClaimVerb, recipientVerbs, addressedToClaim } from '../src/lib/claimverb.js';
 import { describeClaim, redeemClaim } from '../src/lib/claim.js';
 import { membershipsFor } from '../src/lib/memberships.js';
 import { setSiteName, sitesBySlug } from '../src/lib/sites.js';
@@ -132,10 +132,101 @@ describe('mail addressed to claim@', () => {
         assert.equal(isClaimVerb('claim@pdayletters.com'), true);
         assert.equal(isClaimVerb('post@pdayletters.com'), false);
         assert.equal(isClaimVerb('CLAIM@PDayLetters.com'), true);
-        // Both verbs on one envelope takes the path that publishes nothing.
-        assert.equal(isClaimVerb('post@pdayletters.com, claim@pdayletters.com'), true);
         assert.deepEqual(recipientVerbs('post@pdayletters.com, claim@pdayletters.com'), ['post', 'claim']);
         assert.deepEqual(recipientVerbs(''), []);
+    });
+});
+
+// --- the fan-out -----------------------------------------------------------
+//
+// Cloudflare Email Routing does not hand us one message with two recipients.
+// It invokes the Worker once per matching rule, each with a single address in
+// `envelope.to`. The original guard here asked `isClaimVerb(envelope.to)` and
+// was tested by passing it a comma-separated list -- a shape the fake would
+// accept and the real Worker has never produced. It could not fire on the copy
+// that needed stopping, and did not: a live message `To: claim@, Cc: post@`
+// was published to the sender's own archive with an ownership-granting access
+// link quoted in the body.
+describe('a message copied to both verbs', () => {
+    // The same message, as the two deliveries Cloudflare actually makes: same
+    // bytes, same headers, one envelope recipient each.
+    const bothVerbs = () =>
+        Buffer.from(
+            [
+                `Authentication-Results: mx.cloudflare.net; dkim=pass header.d=missionary.org; spf=pass smtp.mailfrom=missionary.org; dmarc=pass header.from=missionary.org`,
+                'Message-ID: <ask-both@missionary.org>',
+                `From: Elder Example <${SLUG}@missionary.org>`,
+                'To: claim@pdayletters.com',
+                'Cc: post@pdayletters.com',
+                'Subject: Re: Your P-Day Letters access link',
+                'Content-Type: text/plain; charset=utf-8',
+                '',
+                'test',
+                '',
+                '> https://pdayletters.com/claim#a.token-that-must-never-be-published',
+                ''
+            ].join('\r\n'),
+            'utf8'
+        );
+
+    const deliver = (store, mailer, envelopeTo, ulid) => {
+        store.seed(ulid, bothVerbs(), { to: envelopeTo, from: `${SLUG}@missionary.org` });
+        return runIngest({ ulid, store, mailer, config, log: silent, now: NOW, verifyDkim: offlineDkim });
+    };
+
+    test('publishes nothing from the post@ copy', async () => {
+        const store = memoryStore();
+        store.acl(SLUG, [{ email: 'parent@example.com', role: 'owner' }]);
+        const mailer = fakeMailer();
+
+        const result = await deliver(store, mailer, 'post@pdayletters.com', '01CLAIM000000000000000010');
+
+        assert.equal(result.status, 'suppressed');
+        assert.equal(
+            [...store.blobs.keys()].some((k) => k.startsWith('raw/')),
+            false,
+            'an access link was published into the archive it grants ownership of'
+        );
+    });
+
+    test('answers exactly once across both deliveries', async () => {
+        // Both copies replying would be its own bug: the second link supersedes
+        // the first, so the missionary would receive two mails of which the
+        // older one is already dead.
+        const store = memoryStore();
+        store.acl(SLUG, [{ email: 'parent@example.com', role: 'owner' }]);
+        const mailer = fakeMailer();
+
+        await deliver(store, mailer, 'claim@pdayletters.com', '01CLAIM000000000000000011');
+        await deliver(store, mailer, 'post@pdayletters.com', '01CLAIM000000000000000012');
+
+        assert.equal(mailer.sent.length, 1);
+        assert.equal(mailer.sent[0].to, `${SLUG}@missionary.org`);
+    });
+
+    test('reads the verb from the headers when the envelope has lost it', () => {
+        const raw = bothVerbs();
+        assert.equal(isClaimVerb('post@pdayletters.com'), false, 'the envelope alone cannot see it');
+        assert.equal(addressedToClaim({ envelopeTo: 'post@pdayletters.com', raw }), true);
+        assert.equal(addressedToClaim({ envelopeTo: 'claim@pdayletters.com', raw }), true);
+    });
+
+    test('leaves an ordinary letter alone', async () => {
+        // The header check must not turn every message into a claim request.
+        // A real letter to post@ has no claim@ anywhere in To or Cc.
+        const store = memoryStore();
+        store.seed('01TEST0000000000000000000', await raw('direct-missionary'));
+        const result = await runIngest({
+            ulid: '01TEST0000000000000000000',
+            store,
+            config: { ...config, acceptedIngestDomains: [] },
+            log: silent,
+            now: NOW,
+            verifyDkim: offlineDkim
+        });
+
+        assert.notEqual(result.status, 'suppressed');
+        assert.ok(store.json('pending', `${SLUG}/claim.json`), 'an ordinary letter was swallowed by the verb check');
     });
 });
 

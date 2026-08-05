@@ -16,7 +16,7 @@ import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
 import { offerClaim } from './offer.js';
-import { isClaimVerb, runClaimVerb } from './claimverb.js';
+import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
 import { touchSiteActivity } from './sites.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { domainOf } from './authresults.js';
@@ -157,7 +157,18 @@ export async function runIngest({
     // `extractOriginal`, and the whole point of the claim path is that the
     // parser never runs. Deciding the verb after extraction would preserve the
     // exposure it exists to remove.
-    if (isClaimVerb(envelope.to)) {
+    //
+    // The question is asked of the *headers*, not the envelope, because
+    // Cloudflare fans a multi-recipient message out into one delivery per
+    // rule -- see `addressedToClaim`. Only one of those copies replies: the
+    // one whose own envelope is `claim@`. The others are dropped here, which
+    // is what stops a `Cc: post@` from publishing an access link into the
+    // archive it grants ownership of.
+    if (addressedToClaim({ envelopeTo: envelope.to, raw })) {
+        if (!isClaimVerb(envelope.to)) {
+            log.info?.('claim-verb: suppressed a copy', { ulid, verbs: recipientVerbs(envelope.to) });
+            return { status: 'suppressed', ulid, reason: 'claim-copy' };
+        }
         return runClaimVerb({ ulid, raw, store, mailer, config, now, log });
     }
 

@@ -72,6 +72,33 @@ export const recipientVerbs = (to) =>
  */
 export const isClaimVerb = (to) => recipientVerbs(to).includes('claim');
 
+/**
+ * Does this message ask for a claim, whichever copy of it we are holding?
+ *
+ * Cloudflare Email Routing does not deliver one message with two recipients.
+ * It **fans out**: one Worker invocation per matching rule, each carrying a
+ * single address in `envelope.to`. So a message addressed to `claim@` and
+ * copied to `post@` arrives as two separate ingests, and the `post@` copy's
+ * envelope says nothing whatsoever about the claim.
+ *
+ * `isClaimVerb(envelope.to)` therefore could not ever fire on the copy that
+ * needed stopping, and the guarantee above was worth nothing. The first real
+ * message to do this was published to the sender's own archive with our own
+ * access link quoted in the body -- a token that grants `verifiedMissionary`
+ * ownership, rendered as a clickable link, visible to every reader of the
+ * site.
+ *
+ * The header block is the only place both recipients survive the fan-out, so
+ * that is what decides. `Bcc` is deliberately absent: it does not appear in
+ * delivered headers, and the envelope covers it.
+ */
+export function addressedToClaim({ envelopeTo, raw }) {
+    if (isClaimVerb(envelopeTo)) return true;
+
+    const headers = readHeaderBlock(raw);
+    return headers.some((h) => (h.key === 'to' || h.key === 'cc') && isClaimVerb(h.value));
+}
+
 // A generous ceiling on the header block alone. ARC seals and DKIM signatures
 // push `From:` a long way down — as far as byte 12,103 in the Gmail captures
 // behind `extract.js` — but a header block larger than this is not a header
