@@ -38,11 +38,12 @@ export const POST_ADDRESS = 'post@pdayletters.com';
  * @param {string} input.key        claim-token signing key
  * @param {string} input.baseUrl    e.g. https://pdayletters.com
  * @param {string} [input.to]       defaults to the manifest's sender
+ * @param {boolean} [input.forwarded] was the site bootstrapped by a forward?
  * @param {function} [input.now]
  * @param {object} [input.log]
  * @returns {Promise<{status: string, sent?: boolean}>}
  */
-export async function offerClaim({ store, mailer, slug, key, baseUrl, to = '', now = () => new Date(), log = console }) {
+export async function offerClaim({ store, mailer, slug, key, baseUrl, to = '', forwarded = false, now = () => new Date(), log = console }) {
     const issued = await attachClaimToken({ store, slug, key, now });
 
     if (!issued) return { status: 'missing' };
@@ -65,7 +66,8 @@ export async function offerClaim({ store, mailer, slug, key, baseUrl, to = '', n
         token: issued.token,
         messageCount: manifest.messageCount,
         sender: manifest.sender,
-        expiresAt: manifest.expiresAt
+        expiresAt: manifest.expiresAt,
+        forwarded
     });
 
     // Threading is header-driven, which is what makes sending this from a

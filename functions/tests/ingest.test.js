@@ -378,6 +378,101 @@ describe('a direct send naming a site that does not exist', () => {
     });
 });
 
+// --- bootstrapping from a forward ------------------------------------------
+//
+// The flow the plan calls the one we advertise, and which had been dead since
+// Phase 6: a parent forwards the first letter home before any site exists, and
+// is offered the site. Phase 6 rejected it because there was no claim email
+// yet to tell anybody anything had happened -- a reason that stopped applying
+// the moment Phase 7 shipped one, and which nobody revisited.
+//
+// These tests need DKIM to *pass*, which the offline stub never does, so the
+// verifier is replaced outright. That is the honest thing to stub here: the
+// question this path turns on is "did the embedded original re-verify", and
+// re-verifying it for real needs DNS.
+describe('a forward naming a site that does not exist', () => {
+    const verified = async () => ({ verified: true, reason: null, signatures: [] });
+
+    const bootstrap = async (store, { mailer, name = 'outlook-web-attached' } = {}) => {
+        store.seed('01TEST0000000000000000000', await raw(name));
+        return runIngest({
+            ulid: '01TEST0000000000000000000',
+            store,
+            mailer,
+            config: { ...config, claimTokenKey: 'a-signing-key', baseUrl: 'https://pdayletters.com' },
+            log: silent,
+            now: () => new Date('2026-08-03T12:00:00Z'),
+            verifyDkim: verified
+        });
+    };
+
+    test('is held rather than rejected, now that there is a way to tell anyone', async () => {
+        const store = memoryStore();
+        const result = await bootstrap(store);
+
+        assert.equal(result.status, 'pending');
+        assert.equal(result.slug, 'elder.example');
+        assert.ok(store.json('pending', 'elder.example/claim.json'), 'no pending site was created');
+        assert.equal(
+            [...store.blobs.keys()].some((k) => k.startsWith('raw/')),
+            false,
+            'a forward published to a site with no ACL'
+        );
+    });
+
+    test('takes the shorter window, because the missionary never wrote to us', async () => {
+        const store = memoryStore();
+        await bootstrap(store);
+
+        const claim = store.json('pending', 'elder.example/claim.json');
+        assert.equal(claim.hasDirect, false);
+        // `PENDING_DAYS.forwardOnly` has existed in pending.js since Phase 6
+        // and has been unreachable that whole time.
+        assert.notEqual(claim.expiresAt, '2026-10-02T12:00:00.000Z');
+    });
+
+    test('offers the site to the forwarder, not the missionary', async () => {
+        // Mailing the missionary here would interrupt someone who asked for
+        // nothing, which is the entire thing this flow exists to avoid.
+        const store = memoryStore();
+        const mailer = { sent: [], send: async (m) => (mailer.sent.push(m), { status: 'sent' }) };
+        await bootstrap(store, { mailer });
+
+        assert.equal(mailer.sent.length, 1);
+        assert.notEqual(mailer.sent[0].to, 'elder.example@missionary.org');
+        assert.match(mailer.sent[0].text, /you forwarded/i);
+    });
+
+    test('records the missionary as the sender even though a parent sent it', async () => {
+        // The claim page shows this so a recipient can tell whose archive they
+        // are being offered, and the answer is the author's, not their own.
+        const store = memoryStore();
+        await bootstrap(store);
+
+        assert.equal(
+            store.json('pending', 'elder.example/claim.json').sender,
+            'elder.example@missionary.org'
+        );
+    });
+
+    test('an unverifiable forward is still rejected', async () => {
+        const store = memoryStore();
+        store.seed('01TEST0000000000000000000', await raw('outlook-web-attached'));
+        const result = await runIngest({
+            ulid: '01TEST0000000000000000000',
+            store,
+            config,
+            log: silent,
+            now: () => new Date('2026-08-03T12:00:00Z'),
+            verifyDkim: offlineDkim
+        });
+
+        assert.equal(result.status, 'rejected');
+        assert.equal(result.reason, 'unknown-slug');
+        assert.equal(store.json('pending', 'elder.example/claim.json'), null);
+    });
+});
+
 test('an oversized message is refused before the parser sees it', async () => {
     const store = memoryStore();
     store.seed('01BIG', Buffer.alloc(MAX_RAW_BYTES + 1));

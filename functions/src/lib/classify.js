@@ -10,6 +10,10 @@ import { selectAuthResults, dmarcAligned, domainOf } from './authresults.js';
 export const CLASS = {
     direct: 'direct',
     forward: 'forward',
+    // A forward for a slug that has no site yet. Not a post -- it is held in
+    // `pending/` and the forwarder is offered the site -- but not a rejection
+    // either, which is what it used to be. See the `!members` branch below.
+    bootstrap: 'bootstrap',
     rejected: 'rejected'
 };
 
@@ -109,7 +113,47 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
 
     const slug = localPartOf(author);
     const members = lookupAcl(slug);
-    if (!members) return reject('unknown-slug', { sender, author, slug });
+
+    // No site for this missionary yet, and a forwarder cannot be on an ACL
+    // that does not exist. This used to reject outright, and the reason given
+    // was that "accepting forwards into a pending site is what needs the claim
+    // email to exist" -- true when it was written, because nothing could tell
+    // the forwarder anything had happened. The claim email exists now, so the
+    // condition that decision rested on has expired, and rejecting here kills
+    // the path the plan calls the one we advertise: a parent forwards the
+    // first letter home and is offered the site.
+    //
+    // What makes it safe to accept is evidence, not intent. The forwarder's
+    // own DMARC already passed above, so we know who is asking. The question
+    // that remains is whether the letter they are holding is genuinely from
+    // the missionary whose site they would be given -- and only a re-verified
+    // signature on an embedded original answers it. Inline forwarded text is
+    // forwarder-controlled and proves nothing, which is why it is refused here
+    // even though an owner may use it: an owner has already been vouched for,
+    // and this is the branch where nobody has.
+    //
+    // So a stranger cannot conjure a site for a missionary they have never
+    // received mail from. They can, however, claim one for a missionary they
+    // *have* -- a friend on a mass mailing holds the same evidence a parent
+    // does, and no header distinguishes them. That residual risk is the
+    // reason a verified missionary must be able to remove an owner.
+    if (!members) {
+        if (extracted.source !== 'rfc822' || !dkimVerified) {
+            return reject('unknown-slug', { sender, author, slug });
+        }
+
+        return {
+            class: CLASS.bootstrap,
+            disposition: DISPOSITION.hold,
+            slug,
+            author,
+            forwarder: sender,
+            role: null,
+            extractionSource: extracted.source,
+            dkimVerified,
+            reason: null
+        };
+    }
 
     // Access implies forwarding rights: there is no separate allowed-forwarder
     // list to drift out of sync with the ACL. Keyed on `email`, which is the

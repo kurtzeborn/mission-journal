@@ -220,13 +220,56 @@ test('forwarder who is not on the ACL is rejected', async () => {
     assert.equal(result.reason, 'forwarder-not-on-acl');
 });
 
-test('an unknown slug is rejected rather than provisioned', async () => {
+// Was `an unknown slug is rejected rather than provisioned`, and the rename is
+// the point: an unknown slug is now provisioned, but only on evidence. What is
+// still rejected is an unknown slug with nothing behind it.
+test('an unknown slug is rejected when the original cannot be verified', async () => {
     const extracted = await load('outlook-web-attached');
     const result = classify({
         extracted,
         headers: extracted.headers,
         config,
         lookupAcl: () => null
+    });
+
+    assert.equal(result.class, CLASS.rejected);
+    assert.equal(result.reason, 'unknown-slug');
+});
+
+test('an unknown slug is bootstrapped when the embedded original re-verifies', async () => {
+    // The path the plan calls the one we advertise: a parent forwards the
+    // first letter home before any site exists. Phase 6 rejected this because
+    // there was no claim email yet to tell them anything had happened. There
+    // is one now.
+    const extracted = await load('outlook-web-attached');
+    const result = classify({
+        extracted,
+        headers: extracted.headers,
+        config,
+        lookupAcl: () => null,
+        dkimVerified: true
+    });
+
+    assert.equal(result.class, CLASS.bootstrap);
+    assert.equal(result.slug, 'elder.example');
+    // Who wrote it and who sent it are different people here, and the
+    // difference decides who gets offered the site.
+    assert.equal(result.author, 'elder.example@missionary.org');
+    assert.ok(result.forwarder);
+    assert.notEqual(result.forwarder, result.author);
+});
+
+test('inline forwarded text cannot bootstrap a site', async () => {
+    // Inline text is forwarder-controlled and proves no authorship. An owner
+    // may use it because an owner has already been vouched for; on this branch
+    // nobody has, so there is nothing to weigh against a fabricated letter.
+    const extracted = await load('outlook-web-inline');
+    const result = classify({
+        extracted,
+        headers: extracted.headers,
+        config,
+        lookupAcl: () => null,
+        dkimVerified: true
     });
 
     assert.equal(result.class, CLASS.rejected);

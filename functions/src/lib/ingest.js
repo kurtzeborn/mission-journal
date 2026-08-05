@@ -86,6 +86,8 @@ const headerSubset = (headers) =>
         .filter((h) => KEPT_HEADERS.has(h.key))
         .map((h) => ({ key: h.key, value: h.value }));
 
+const headerValue = (headers, key) => (headers ?? []).find((h) => h.key === key)?.value ?? '';
+
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 
 // The identifier a reader sees in a URL. The date makes it legible and sorts
@@ -218,13 +220,24 @@ export async function runIngest({
         return { status: 'rejected', ulid, reason: 'invalid-slug' };
     }
 
+    // A site that does not exist yet, reached two ways.
+    //
     // A direct send resolves its slug from the missionary's own address and
-    // consults no ACL, so it can name a site that does not exist. Publishing
-    // it anyway would write a letter nobody is entitled to read and nobody
-    // knows is there; the message is held instead until someone claims the
-    // site. Forwards cannot reach this point -- `classify` rejects an unknown
-    // slug there, because a forwarder has to already be on an ACL.
-    if (verdict.class === CLASS.direct && !(await readAcl(store, slug))) {
+    // consults no ACL, so it can name a site nobody has. A `bootstrap` forward
+    // is a parent sending the first letter home before anyone has set anything
+    // up -- the path the plan calls the one we advertise. Publishing either
+    // would write a letter nobody is entitled to read and nobody knows is
+    // there, so both are held until somebody claims the site.
+    //
+    // They differ in exactly one respect, and it is the important one: who is
+    // offered the site. A direct send can only be offered back to the
+    // missionary, because they are the only authenticated party. A bootstrap
+    // forward must be offered to the *forwarder* -- offering it to the
+    // missionary instead would mail a stranger's parent's request to a
+    // missionary who never asked for anything, which is precisely the
+    // interruption this flow exists to avoid.
+    const bootstrapping = verdict.class === CLASS.bootstrap;
+    if ((bootstrapping || verdict.class === CLASS.direct) && !(await readAcl(store, slug))) {
         const manifest = await holdPending({
             store,
             slug,
@@ -254,8 +267,16 @@ export async function runIngest({
             // a wrong subject is a cosmetic error on a held letter, not a
             // misdirected credential.
             sender: verdict.author ?? '',
-            messageId: extracted.original?.messageId ?? '',
-            hasDirect: true,
+            // Threading follows whoever is going to be written to. A direct
+            // send is answered to the missionary, so the reply threads onto
+            // the letter they sent. A bootstrap forward is answered to the
+            // parent, and the message still open in *their* client is the
+            // forward they just sent -- not the missionary's original, which
+            // they may never have had as a thread at all.
+            messageId: bootstrapping
+                ? headerValue(extracted.headers, 'message-id')
+                : (extracted.original?.messageId ?? ''),
+            hasDirect: !bootstrapping,
             now,
             log
         });
@@ -280,6 +301,12 @@ export async function runIngest({
                     slug,
                     key: config.claimTokenKey,
                     baseUrl: config.baseUrl,
+                    // Defaults to the manifest's sender, which is the
+                    // missionary. Overridden here because a bootstrap forward
+                    // was sent by somebody else, and they are the one waiting
+                    // to hear back.
+                    to: bootstrapping ? verdict.forwarder : '',
+                    forwarded: bootstrapping,
                     now,
                     log
                 });

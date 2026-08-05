@@ -55,18 +55,30 @@ const escape = (text) =>
  * @param {number} input.messageCount
  * @param {string} input.sender         the missionary's address
  * @param {string} input.expiresAt
+ * @param {boolean} [input.forwarded]   did the recipient forward it themselves?
  */
-export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt }) {
+export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt, forwarded = false }) {
     const link = `${baseUrl.replace(/\/$/, '')}/claim#${token}`;
     const count = plural(messageCount, 'letter', 'letters');
     const deadline = readableDate(expiresAt);
+
+    // A variant rather than a separate function, unlike the `claim@` reply:
+    // everything after this first line is identical, because the situation is
+    // identical -- a pending site, a first-come link, a hold that expires. All
+    // that differs is whether the recipient already knows why they are hearing
+    // from us. A parent who forwarded a letter thirty seconds ago does; being
+    // told letters "have arrived" reads like a notice about someone else's
+    // mail.
+    const opening = forwarded
+        ? `You forwarded ${messageCount === 1 ? 'a letter' : `${messageCount} letters`} from ${sender} to ${SIGNATURE}.`
+        : `${count} sent from ${sender} have arrived at ${SIGNATURE}.`;
 
     // No name, no slug, no count. This line is visible without unlocking a
     // phone, and it is forwarded more often than the body is read.
     const subject = 'Your missionary letters are being saved';
 
     const text = [
-        `${count} sent from ${sender} have arrived at ${SIGNATURE}.`,
+        opening,
         '',
         'They are being held, not published. Nobody can read them, including us,',
         'until someone sets up the archive and chooses who to share it with.',
@@ -88,7 +100,9 @@ export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt }) 
 
     const html = [
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
-        `<p>${escape(count)} sent from <strong>${escape(sender)}</strong> have arrived at ${SIGNATURE}.</p>`,
+        forwarded
+            ? `<p>${escape(opening)}</p>`
+            : `<p>${escape(count)} sent from <strong>${escape(sender)}</strong> have arrived at ${SIGNATURE}.</p>`,
         '<p>They are being held, not published. Nobody can read them, including us, until someone sets up the archive and chooses who to share it with.</p>',
         `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Set up the archive</a></p>`,
         '<p>Please use a <strong>personal</strong> account rather than a work or school one. This archive is meant to outlast the job you have today.</p>',
