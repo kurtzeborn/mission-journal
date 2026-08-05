@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
 import { ROLE, resolveRole } from '../src/lib/acl.js';
 import { listMembers, removeMember, setMemberRole, validEmail } from '../src/lib/members.js';
-import { acceptInvite, describeInvite, inviteMember, listInvites, revokeInvite } from '../src/lib/invite.js';
+import { acceptInvite, describeInvite, inviteMember, INVITES_PER_DAY, listInvites, revokeInvite } from '../src/lib/invite.js';
 import { membershipsFor, recordMembership } from '../src/lib/memberships.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../src/lib/claimtoken.js';
 
@@ -521,6 +521,116 @@ describe('inviting somebody who has never signed in', () => {
         await acceptInvite({ store, tables: store, token, key: KEY, principal: OTHER, now: NOW, log: silent });
 
         assert.equal(aclOf(store).find((m) => m.email === OTHER).verifiedMissionary, false);
+    });
+});
+
+// --- the daily cap --------------------------------------------------------
+
+// An owner can already mail these people themselves, so this is not about
+// access. It is about what an owner's session -- borrowed, scripted, or just
+// pasted into with a list far longer than intended -- can do to the sending
+// domain's reputation before anybody notices.
+describe('one site cannot mail the world in an afternoon', () => {
+    const invite = (store, mailer, email, now = NOW) =>
+        inviteMember({
+            store, tables: store, mailer, slug: SLUG, actor: OWNER,
+            email, key: KEY, baseUrl: BASE, now, log: silent
+        });
+
+    const fill = async (store, mailer, count, now = NOW) => {
+        for (let i = 0; i < count; i++) await invite(store, mailer, `relative${i}@example.com`, now);
+    };
+
+    test('a real family fits inside the cap', async () => {
+        // The failure worth caring about is not the attacker; it is the person
+        // with a genuinely large family being told no. Twenty has to clear one
+        // sitting, so the cap is asserted from below as well as above.
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await fill(store, mailer, INVITES_PER_DAY);
+
+        assert.equal(mailer.sent.length, INVITES_PER_DAY);
+    });
+
+    test('the next one is refused, and no mail leaves', async () => {
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await fill(store, mailer, INVITES_PER_DAY);
+        const over = await invite(store, mailer, 'one.too.many@example.com');
+
+        assert.equal(over.error, 'too many invitations today, try again tomorrow');
+        assert.equal(mailer.sent.length, INVITES_PER_DAY, 'the refusal is before the send, not after');
+    });
+
+    test('revoking does not buy another send', async () => {
+        // The reason `revokeInvite` leaves a tombstone. If the cap counted
+        // only surviving rows, invite/revoke/invite would be a loop with no
+        // upper bound and the revoke button would be the exploit.
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await fill(store, mailer, INVITES_PER_DAY);
+        for (const pending of await listInvites({ tables: store, slug: SLUG, now: NOW })) {
+            await revokeInvite({ tables: store, slug: SLUG, id: pending.id, now: NOW });
+        }
+
+        assert.deepEqual(await listInvites({ tables: store, slug: SLUG, now: NOW }), [], 'the owner sees them gone');
+
+        const after = await invite(store, mailer, 'again@example.com');
+        assert.equal(after.error, 'too many invitations today, try again tomorrow');
+        assert.equal(mailer.sent.length, INVITES_PER_DAY);
+    });
+
+    test('tomorrow the allowance is back', async () => {
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await fill(store, mailer, INVITES_PER_DAY);
+        const tomorrow = () => new Date('2026-08-06T09:00:00Z');
+        const next = await invite(store, mailer, 'tomorrow@example.com', tomorrow);
+
+        assert.equal(next.ok, true);
+        assert.equal(mailer.sent.length, INVITES_PER_DAY + 1);
+    });
+
+    test('a refusal that costs nothing does not spend the allowance', async () => {
+        // Checked after the cheap refusals on purpose: a typo, or inviting
+        // somebody who is already on the list, sends no mail and so has no
+        // reputation cost to charge for.
+        const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);
+        const mailer = recorder();
+
+        for (let i = 0; i < 30; i++) {
+            assert.equal((await invite(store, mailer, READER)).error, 'already a member');
+            assert.equal((await invite(store, mailer, 'not-an-address')).error, 'not an email address');
+        }
+
+        assert.equal(mailer.sent.length, 0);
+        assert.equal((await invite(store, mailer, OTHER)).ok, true);
+    });
+
+    test('the cap is per site, not per service', async () => {
+        // Two families sharing one number would mean the quietest archive
+        // being switched off by the busiest, which is a shared-fate failure
+        // nobody could see the cause of.
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+        await store.writeBlob(
+            'config',
+            'sister.other/acl.json',
+            Buffer.from(JSON.stringify({ slug: 'sister.other', members: [member(OWNER, ROLE.owner)] }), 'utf8'),
+            { contentType: 'application/json' }
+        );
+
+        await fill(store, mailer, INVITES_PER_DAY);
+        const elsewhere = await inviteMember({
+            store, tables: store, mailer, slug: 'sister.other', actor: OWNER,
+            email: OTHER, key: KEY, baseUrl: BASE, now: NOW, log: silent
+        });
+
+        assert.equal(elsewhere.ok, true);
     });
 });
 

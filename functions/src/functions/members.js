@@ -71,7 +71,11 @@ const STATUS = {
     'no such invitation': 404,
     'not an email address': 400,
     'unknown role': 400,
-    'owners only': 403
+    'owners only': 403,
+    // Not a 403: the caller is allowed to do this and will be allowed again
+    // tomorrow. 429 is the answer that says so, and the one an owner's client
+    // could sensibly act on.
+    'too many invitations today, try again tomorrow': 429
 };
 
 const refuse = (error) => json(STATUS[error] ?? 409, { error });

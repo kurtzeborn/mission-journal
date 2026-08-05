@@ -44,8 +44,38 @@ const lower = (value) => String(value ?? '').trim().toLowerCase();
 // signed in, so the cheap thing is to let it lapse.
 export const INVITE_DAYS = 14;
 
+// Invitations one site may issue in a UTC day.
+//
+// This is a reputation control, not an access control -- the person hitting it
+// is already an owner and could mail these people themselves. What it stops is
+// an owner's session, borrowed or scripted, turning our sending domain into an
+// open relay pointed at strangers. The arithmetic is the reason for the number:
+// the sending plan includes 3,000 messages a month, so one site sustaining
+// twenty a day would consume a fifth of it and be visible in the logs long
+// before it was expensive. A hundred a day from one site would eat the lot.
+//
+// Twenty also has to clear a real family in one sitting, which is the failure
+// worth caring about. The largest plausible list is a few dozen relatives, and
+// somebody who genuinely has more can finish tomorrow.
+export const INVITES_PER_DAY = 20;
+
 const expiryFrom = (now) =>
     new Date(now().getTime() + INVITE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+const utcDay = (value) => String(value ?? '').slice(0, 10);
+
+// Counted across every row the day produced, including the revoked ones.
+//
+// That is the whole reason `revokeInvite` leaves a tombstone instead of
+// deleting: a cap that counted only surviving rows would be reset by the
+// revoke button, and invite/revoke/invite is a loop with no upper bound. The
+// accepted and expired ones count too, for the same reason -- every row here
+// represents a message that was already handed to the mail provider, and the
+// provider does not care what happened to it afterwards.
+const issuedToday = (rows, now) => {
+    const today = utcDay(now().toISOString());
+    return rows.filter((row) => utcDay(row.createdAt) === today).length;
+};
 
 /**
  * Mint an invitation and mail it.
@@ -83,6 +113,21 @@ export async function inviteMember({
     // address to have access, and it does. Saying so is more useful than
     // sending a link that would do nothing.
     if (members.some((m) => lower(m.email) === them)) return { error: 'already a member' };
+
+    // Checked after the cheap refusals, so a typo or a duplicate does not
+    // spend somebody's daily allowance.
+    //
+    // Two requests in flight at once can each read the same count and both
+    // pass, so the cap is an upper bound plus the concurrency, not an exact
+    // one. Making it exact needs an atomic counter, and the thing being
+    // defended -- a sending domain's reputation over a day -- is not sensitive
+    // to being off by the handful of requests one person's browser can have
+    // open. Stated rather than left for someone to discover.
+    const issued = await tables.listEntities(TABLES.invites, { partitionKey: safe });
+    if (issuedToday(issued, now) >= INVITES_PER_DAY) {
+        log.warn?.('invite: daily cap reached', { slug: safe, cap: INVITES_PER_DAY });
+        return { error: 'too many invitations today, try again tomorrow' };
+    }
 
     const expiresAt = expiryFrom(now);
     const { token, hash } = issueClaimToken({
@@ -149,7 +194,7 @@ export async function listInvites({ tables, slug, now = () => new Date() }) {
     const rows = await tables.listEntities(TABLES.invites, { partitionKey: safe });
 
     return rows
-        .filter((row) => !row.acceptedAt && Date.parse(row.expiresAt) > at)
+        .filter((row) => !row.acceptedAt && !row.revokedAt && Date.parse(row.expiresAt) > at)
         .map((row) => ({
             id: row.rowKey,
             email: row.email,
@@ -161,10 +206,29 @@ export async function listInvites({ tables, slug, now = () => new Date() }) {
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-export async function revokeInvite({ tables, slug, id }) {
+/**
+ * Withdraw an invitation before anybody uses it.
+ *
+ * A tombstone rather than a delete. Two things rest on the row surviving: the
+ * daily cap counts it, so revoking cannot buy another send; and the token stays
+ * explicitly refused rather than merely unrecognised, which closes the gap
+ * where a later row at the same hash could make a withdrawn link work again.
+ *
+ * The owner still sees it vanish -- `listInvites` filters tombstones out -- and
+ * its holder still gets the same answer as for a link that never existed.
+ */
+export async function revokeInvite({ tables, slug, id, now = () => new Date() }) {
     const safe = validSlug(slug);
     if (!safe || !id) return { error: 'no such invitation' };
-    await tables.deleteEntity(TABLES.invites, safe, String(id));
+
+    const row = await tables.getEntity(TABLES.invites, safe, String(id));
+    if (!row) return { error: 'no such invitation' };
+
+    await tables.upsertEntity(TABLES.invites, {
+        partitionKey: safe,
+        rowKey: String(id),
+        revokedAt: now().toISOString()
+    });
     return { ok: true };
 }
 
@@ -188,8 +252,9 @@ export async function describeInvite({ tables, token, key, now = () => new Date(
     const row = await tables.getEntity(TABLES.invites, slug, claimTokenHash(token));
     // Revoked and never-existed are the same answer on purpose: an owner who
     // withdraws an invitation should not thereby confirm to its holder that it
-    // was ever real.
-    if (!row) return { status: 'invalid' };
+    // was ever real. Checked before expiry for the same reason -- `expired`
+    // offers the holder a reason to ask for another one.
+    if (!row || row.revokedAt) return { status: 'invalid' };
 
     if (row.acceptedAt) return { status: 'accepted', slug };
     if (verified.reason === 'expired') return { status: 'expired', slug };
@@ -242,7 +307,9 @@ export async function acceptInvite({
 
     // --- 1. spend --------------------------------------------------------
     const row = await tables.getEntity(TABLES.invites, slug, hash);
-    if (!row) return { status: 'invalid' };
+    // Re-read rather than trusting the describe above, because the two are
+    // separate round trips and an owner may have revoked it in between.
+    if (!row || row.revokedAt) return { status: 'invalid' };
     if (row.acceptedAt && lower(row.acceptedBy) !== email) return { status: 'accepted', slug };
 
     if (!row.acceptedAt) {
