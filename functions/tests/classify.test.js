@@ -14,7 +14,8 @@ import {
     parseAuthenticationResults,
     selectAuthResults,
     resultOf,
-    dmarcAligned
+    dmarcAligned,
+    domainOf
 } from '../src/lib/authresults.js';
 import { classify, CLASS, DISPOSITION } from '../src/lib/classify.js';
 
@@ -22,6 +23,16 @@ const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'test
 const load = async (name) => extractOriginal(await readFile(join(fixtures, `${name}.eml`)));
 
 const config = { authservId: 'mx.cloudflare.net', missionaryDomains: ['missionary.org'] };
+
+// A fully-qualified name ends in a dot and is the same domain without it.
+// There were two `domainOf` implementations for a while, one of which stripped
+// it and one of which did not, so a trailing dot decided whether a missionary
+// was recognised depending on which module happened to ask.
+test('a trailing dot does not change which domain an address is on', () => {
+    assert.equal(domainOf('elder.smith@missionary.org.'), 'missionary.org');
+    assert.equal(domainOf('elder.smith@MISSIONARY.ORG'), 'missionary.org');
+    assert.equal(domainOf('not-an-address'), null);
+});
 
 // The forward-path tests use both providers, because the captures differ in
 // what they prove: the Outlook ones carry a custom forwarding domain, the

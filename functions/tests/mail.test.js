@@ -206,7 +206,9 @@ describe('offering a pending site', () => {
         assert.equal(calls[0].body.to, SENDER);
         assert.equal(calls[0].body.from, POST_ADDRESS);
         assert.equal(calls[0].body.headers['In-Reply-To'], '<first@missionary.org>');
-        assert.equal(calls[0].body.headers['Auto-Submitted'], 'auto-generated');
+        // RFC 3834: this is a response to a specific message, not mail that
+        // nothing triggered.
+        assert.equal(calls[0].body.headers['Auto-Submitted'], 'auto-replied');
         assert.match(calls[0].body.text, /\/claim#/);
     });
 

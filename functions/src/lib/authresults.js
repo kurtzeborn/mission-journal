@@ -144,7 +144,13 @@ export function resultOf(parsed, method, property) {
 
 export const domainOf = (address) => {
     const at = String(address ?? '').lastIndexOf('@');
-    return at < 0 ? null : address.slice(at + 1).toLowerCase();
+    if (at < 0) return null;
+    // The trailing dot of a fully-qualified name is stripped, because
+    // `missionary.org.` and `missionary.org` are the same domain and only one
+    // of them will ever be typed into a config setting. This was previously
+    // done here one way and in dkim.js another, which left two functions with
+    // the same name quietly disagreeing about what a domain is.
+    return address.slice(at + 1).toLowerCase().replace(/\.$/, '');
 };
 
 /**

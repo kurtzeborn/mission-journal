@@ -85,12 +85,14 @@ export async function offerClaim({ store, mailer, slug, key, baseUrl, to = '', n
         html: body.html,
         headers: {
             ...threading,
-            // RFC 3834. We reply to essentially every inbound message, so a
-            // vacation responder on the other end is a loop waiting to
-            // happen -- and this particular message goes to a missionary
-            // account, which is exactly the sort of place an out-of-office
-            // lives.
-            'Auto-Submitted': 'auto-generated'
+            // RFC 3834. `auto-replied` rather than `auto-generated` because
+            // this goes out in direct response to a specific message; the
+            // latter is for mail nothing triggered, like a periodic digest.
+            // The distinction matters to the receiving side's own loop
+            // suppression, and we reply to essentially every inbound message
+            // -- to a missionary account, which is exactly where an
+            // out-of-office responder lives.
+            'Auto-Submitted': 'auto-replied'
         },
         log
     });

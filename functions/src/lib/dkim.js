@@ -13,16 +13,12 @@
 
 import dns from 'node:dns';
 import { createRequire } from 'node:module';
+import { domainOf } from './authresults.js';
 
 // mailauth is CommonJS and publishes no exports map, so the subpath is
 // required rather than imported.
 const require = createRequire(import.meta.url);
 const { dkimVerify } = require('mailauth/lib/dkim/verify');
-
-const domainOf = (address) => {
-    const at = String(address ?? '').lastIndexOf('@');
-    return at < 0 ? null : address.slice(at + 1).toLowerCase().replace(/\.$/, '');
-};
 
 // The signature has to be the author's own. A forward is frequently signed by
 // the forwarder's provider as well, and that signature verifies perfectly
