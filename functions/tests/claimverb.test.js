@@ -24,6 +24,7 @@ import { memoryStore } from './memory-store.js';
 import { readHeaderBlock, authenticateClaim, isClaimVerb, recipientVerbs } from '../src/lib/claimverb.js';
 import { describeClaim, redeemClaim } from '../src/lib/claim.js';
 import { membershipsFor } from '../src/lib/memberships.js';
+import { setSiteName, sitesBySlug } from '../src/lib/sites.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
 const raw = (name) => readFile(join(fixtures, `${name}.eml`));
@@ -234,7 +235,7 @@ describe('a verified missionary', () => {
         assert.equal(message.headers['In-Reply-To'], '<ask-1@missionary.org>');
 
         const token = message.text.match(/#([\w.-]+)/)[1];
-        const described = await describeClaim({ store, token, key: KEY, now: NOW });
+        const described = await describeClaim({ store, tables: store, token, key: KEY, now: NOW });
         assert.equal(described.status, 'ready');
         assert.equal(described.kind, 'missionary');
 
@@ -315,8 +316,8 @@ describe('a verified missionary', () => {
         const second = mailer.sent[1].text.match(/#([\w.-]+)/)[1];
 
         assert.notEqual(first, second);
-        assert.equal((await describeClaim({ store, token: first, key: KEY, now: NOW })).status, 'superseded');
-        assert.equal((await describeClaim({ store, token: second, key: KEY, now: NOW })).status, 'ready');
+        assert.equal((await describeClaim({ store, tables: store, token: first, key: KEY, now: NOW })).status, 'superseded');
+        assert.equal((await describeClaim({ store, tables: store, token: second, key: KEY, now: NOW })).status, 'ready');
     });
 
     test('cannot be granted by a link that was merely forwarded', async () => {
@@ -381,5 +382,152 @@ describe('a verified missionary', () => {
         assert.equal(redeemed.promoted.promoted, 1);
         const members = store.json('config', `${SLUG}/acl.json`).members;
         assert.equal(members[0].verifiedMissionary, true);
+    });
+});
+
+// The claim page has one form and two jobs, and it cannot tell them apart on
+// its own. Everything below is the difference between "set this archive up"
+// and "let me into the archive my mother has been running since March" --
+// which is a copy problem right up until the form asks for a name the site
+// already has and quietly overwrites it.
+describe('the description of a missionary grant', () => {
+    const tokenFrom = (mailer) => mailer.sent[0].text.match(/#([\w.-]+)/)[1];
+
+    test('says the archive already exists and what it is called', async () => {
+        const store = memoryStore();
+        store.acl(SLUG, [{ email: 'parent@example.com', role: 'owner' }]);
+        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+
+        const { mailer } = await runClaim(store);
+        const described = await describeClaim({
+            store, tables: store, token: tokenFrom(mailer), key: KEY, now: NOW
+        });
+
+        assert.equal(described.alreadyOwned, true);
+        // Without this the form asks a question the site answered months ago,
+        // and any answer at all replaces what is already there.
+        assert.equal(described.displayName, 'Elder Example');
+    });
+
+    test('says the archive does not exist yet when only letters are held', async () => {
+        const store = memoryStore();
+        store.seed('01TEST0000000000000000000', await raw('direct-missionary'));
+        await runIngest({
+            ulid: '01TEST0000000000000000000',
+            store,
+            config: { ...config, acceptedIngestDomains: [] },
+            log: silent,
+            now: NOW,
+            verifyDkim: offlineDkim
+        });
+
+        const { mailer } = await runClaim(store);
+        const described = await describeClaim({
+            store, tables: store, token: tokenFrom(mailer), key: KEY, now: NOW
+        });
+
+        assert.equal(described.alreadyOwned, false);
+        assert.equal(described.displayName, '');
+    });
+
+    test('never names the site on the pending path', async () => {
+        // The pending link goes to whoever a missionary happened to write to.
+        // They are told a count and some subjects so they can recognise the
+        // mail; the archive has no name yet and there is nothing to prefill.
+        const store = memoryStore();
+        store.seed('01TEST0000000000000000000', await raw('direct-missionary'));
+        await runIngest({
+            ulid: '01TEST0000000000000000000',
+            store,
+            config: { ...config, acceptedIngestDomains: [] },
+            log: silent,
+            now: NOW,
+            verifyDkim: offlineDkim
+        });
+
+        const { attachClaimToken } = await import('../src/lib/claim.js');
+        const issued = await attachClaimToken({ store, slug: SLUG, key: KEY, now: NOW });
+        const described = await describeClaim({
+            store, tables: store, token: issued.token, key: KEY, now: NOW
+        });
+
+        assert.equal(described.kind, 'pending');
+        assert.equal(described.displayName, undefined);
+        assert.equal(described.alreadyOwned, undefined);
+    });
+});
+
+describe('the name a verified missionary submits', () => {
+    const nameOf = async (store) =>
+        (await sitesBySlug({ tables: store, slugs: [SLUG] })).get(SLUG).missionaryDisplayName;
+
+    const liveSite = async (existingName) => {
+        const store = memoryStore();
+        store.acl(SLUG, [{ email: 'parent@example.com', role: 'owner' }]);
+        if (existingName) {
+            await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: existingName });
+        }
+        const { mailer } = await runClaim(store);
+        return { store, token: mailer.sent[0].text.match(/#([\w.-]+)/)[1] };
+    };
+
+    const redeem = (store, token, displayName) =>
+        redeemClaim({
+            store, tables: store, token, key: KEY,
+            principal: 'personal@gmail.com', displayName, now: NOW, log: silent
+        });
+
+    test('renames the archive when they change it', async () => {
+        // The form shows them the current name, so an edit is a deliberate act
+        // by the one person who has proved control of the mailbox the letters
+        // come from. Refusing it would make the field a lie.
+        const { store, token } = await liveSite('Elder Example');
+        const result = await redeem(store, token, 'Elder Declan Example');
+
+        assert.equal(result.status, 'ok');
+        assert.equal(await nameOf(store), 'Elder Declan Example');
+    });
+
+    test('leaves it alone when they submit what they were shown', async () => {
+        const { store, token } = await liveSite('Elder Example');
+        await redeem(store, token, 'Elder Example');
+
+        assert.equal(await nameOf(store), 'Elder Example');
+    });
+
+    test('does not blank a live archive from an emptied box', async () => {
+        // Nothing on the page offers clearing as an action, so a blank arriving
+        // here is far likelier to be a stray keystroke than an intention.
+        const { store, token } = await liveSite('Elder Example');
+        await redeem(store, token, '   ');
+
+        assert.equal(await nameOf(store), 'Elder Example');
+    });
+
+    test('names the archive when the claim is what created it', async () => {
+        const store = memoryStore();
+        store.seed('01TEST0000000000000000000', await raw('direct-missionary'));
+        await runIngest({
+            ulid: '01TEST0000000000000000000',
+            store,
+            config: { ...config, acceptedIngestDomains: [] },
+            log: silent,
+            now: NOW,
+            verifyDkim: offlineDkim
+        });
+
+        const { mailer } = await runClaim(store);
+        const result = await redeem(store, mailer.sent[0].text.match(/#([\w.-]+)/)[1], 'Elder Example');
+
+        assert.equal(result.created, true, 'the page needs this to know which ending to show');
+        assert.equal(await nameOf(store), 'Elder Example');
+    });
+
+    test('reports that it joined an archive it did not create', async () => {
+        const { store, token } = await liveSite('Elder Example');
+        const result = await redeem(store, token, 'Elder Example');
+
+        assert.equal(result.created, false);
+        assert.equal(result.promoted.promoted, 0, 'a live site has no backlog to publish');
     });
 });

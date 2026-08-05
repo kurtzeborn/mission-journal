@@ -27,7 +27,7 @@
 
 import { verifyClaimToken, issueClaimToken } from './claimtoken.js';
 import { recordMembership } from './memberships.js';
-import { setSiteName } from './sites.js';
+import { setSiteName, sitesBySlug } from './sites.js';
 import { promotePending } from './promote.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { ROLE } from './acl.js';
@@ -165,7 +165,7 @@ export async function recordClaimEmailSent({ store, slug, emailTo, now = () => n
  * recognise. Not the letters themselves, and never the addresses the claim
  * email was sent to.
  */
-export async function describeClaim({ store, token, key, now = () => new Date() }) {
+export async function describeClaim({ store, tables, token, key, now = () => new Date() }) {
     const verified = verifyClaimToken({ token, key, now });
     if (!verified.valid && verified.reason !== 'expired') return { status: 'invalid' };
 
@@ -178,7 +178,7 @@ export async function describeClaim({ store, token, key, now = () => new Date() 
     if (!grant) return { status: 'gone', slug: verified.slug };
 
     if (grant.kind === 'missionary') {
-        return describeMissionaryGrant({ grant, verified });
+        return describeMissionaryGrant({ store, tables, grant, verified });
     }
 
     const found = grant;
@@ -217,18 +217,37 @@ export async function describeClaim({ store, token, key, now = () => new Date() 
  * Nothing about the letters is returned. The pending description exists to let
  * a recipient recognise mail they were not expecting; this recipient asked for
  * the link and needs no convincing, so the safest payload is the smallest one.
+ *
+ * Two facts are returned that the pending description has no use for, because
+ * this link lands on a site that may already be running and the page cannot
+ * tell the truth without them. `alreadyOwned` is the difference between
+ * setting an archive up and being let into one, which the button, the heading
+ * and the closing summary all get wrong when they assume the former.
+ * `displayName` is whatever the site is currently called, so the form can
+ * offer it back rather than asking a question that has already been answered.
+ *
+ * Neither is a new disclosure of consequence: the holder of this token is
+ * already told the missionary's full address, which identifies the site far
+ * more sharply than the name on it or the fact that somebody is looking after
+ * it.
  */
-function describeMissionaryGrant({ grant, verified }) {
+async function describeMissionaryGrant({ store, tables, grant, verified }) {
     if (grant.record.claimTokenHash !== verified.hash) {
         return { status: 'superseded', slug: verified.slug };
     }
     if (verified.reason === 'expired') return { status: 'expired', slug: verified.slug };
 
+    const slug = verified.slug;
+    const acl = await store.readBlob('config', `${slug}/acl.json`);
+    const sites = await sitesBySlug({ tables, slugs: [slug] });
+
     return {
         status: 'ready',
         kind: 'missionary',
-        slug: verified.slug,
+        slug,
         sender: grant.record.sender ?? '',
+        alreadyOwned: Boolean(acl),
+        displayName: sites.get(slug)?.missionaryDisplayName ?? '',
         messageCount: 0,
         sampleSubjects: [],
         expiresAt: grant.record.expiresAt
@@ -255,7 +274,7 @@ export async function redeemClaim({
     const email = lower(principal);
     if (!email) return { status: 'unauthenticated' };
 
-    const described = await describeClaim({ store, token, key, now });
+    const described = await describeClaim({ store, tables, token, key, now });
 
     // `claimed` is not necessarily a refusal: it is also what the claimant's
     // own retry looks like. Everything else here is final.
@@ -265,7 +284,17 @@ export async function redeemClaim({
     if (!slug) return { status: 'invalid' };
 
     if (described.kind === 'missionary') {
-        return redeemMissionaryGrant({ store, tables, token, key, email, displayName, slug, now, log });
+        // `currentName` comes from the description rather than a second read of
+        // the sites table: it is the same value the form was prefilled with, so
+        // comparing against it answers the question that actually matters --
+        // did they change what they were shown -- rather than the question a
+        // fresh read would answer, which is whether anything moved underneath
+        // them in the seconds since.
+        return redeemMissionaryGrant({
+            store, tables, token, key, email, displayName,
+            currentName: described.displayName ?? '',
+            slug, now, log
+        });
     }
 
     const at = now().toISOString();
@@ -390,7 +419,7 @@ export async function redeemClaim({
  * while a parent continues to run the site, and evicting the parent would be
  * hostile.
  */
-async function redeemMissionaryGrant({ store, tables, token, key, email, displayName, slug, now, log }) {
+async function redeemMissionaryGrant({ store, tables, token, key, email, displayName, currentName, slug, now, log }) {
     const verified = verifyClaimToken({ token, key, now });
     const at = now().toISOString();
 
@@ -492,13 +521,23 @@ async function redeemMissionaryGrant({ store, tables, token, key, email, display
     // --- 3. index --------------------------------------------------------
     await recordMembership({ tables, email, slug, role: ROLE.owner, now });
 
-    // Only when this call is what brought the site into existence. On a site
-    // somebody else has been running, the name on it is theirs to change and
-    // overwriting it from a claim form would rename a live archive under its
-    // owner without asking.
-    if (created && displayName) {
+    // This used to fire only when the claim created the site, on the grounds
+    // that the name on an archive somebody else had been running was theirs to
+    // change. That reasoning was written for a stranger holding a forwarded
+    // link. It does not survive contact with the person who reaches *this*
+    // function, who proved control of the missionary mailbox and, of everyone
+    // involved, has the strongest claim to what they are called.
+    //
+    // So the form shows a verified missionary the current name, prefilled, and
+    // an edit is honoured. Submitting the prefilled value writes nothing,
+    // because it is not a change. An emptied box is ignored rather than read as
+    // "erase the name": nothing on the page offers clearing as an action, so a
+    // blank arriving here is far likelier to be a stray keystroke than an
+    // intention, and blanking a live archive is the more expensive mistake.
+    const wanted = String(displayName ?? '').trim();
+    if (wanted && wanted !== (currentName ?? '')) {
         try {
-            await setSiteName({ tables, slug, missionaryDisplayName: displayName });
+            await setSiteName({ tables, slug, missionaryDisplayName: wanted });
         } catch (error) {
             log.error?.('claim: site name write failed', { slug, error: error.message });
         }
@@ -516,5 +555,9 @@ async function redeemMissionaryGrant({ store, tables, token, key, email, display
         failed: promoted.failed.length
     });
 
-    return { status: 'ok', slug, verifiedMissionary: true, promoted };
+    // `created` goes back to the page. Without it the closing screen announces
+    // that an archive has been set up and that zero letters were published,
+    // which is a strange thing to tell someone who was just let into an archive
+    // that has been running for months.
+    return { status: 'ok', slug, verifiedMissionary: true, created, promoted };
 }

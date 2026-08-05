@@ -10,9 +10,12 @@ import { describeClaim, redeemClaim } from '../lib/claim.js';
 // Two things read URLs that must not be allowed to read this one. App Insights
 // records the path of every request, so a token in the route would be copied
 // into telemetry that is retained for months and readable by anyone with
-// access to the workspace. And `missionary.org` sits behind Proofpoint, whose
-// URL Defense fetches links out of mail to inspect them -- a `GET` that spends
-// a token would be spent by the scanner before the recipient ever clicked.
+// access to the workspace. And `missionary.org` sits behind a link scanner
+// that fetches links out of mail to inspect them -- a `GET` that spends a
+// token would be spent by the scanner before the recipient ever clicked. The
+// first real message to a missionary mailbox confirmed this is not
+// hypothetical: it was relayed through `checkpointcloudsec.com` on its way in,
+// and the token was still unspent when the recipient followed it.
 //
 // So the link in the email carries the token in a *fragment*
 // (`/claim#<token>`), which browsers never transmit, and the page POSTs it in
@@ -63,13 +66,13 @@ async function body(request) {
 // this is reachable from a test. The wrapper below is the only thing that knows
 // where a real store comes from, and it is kept free of decisions for the same
 // reason: whatever it does cannot be checked by anything.
-export async function describe({ request, context, store, key }) {
+export async function describe({ request, context, store, tables, key }) {
     if (!key) return json(503, { status: 'unavailable' });
 
     const { token } = await body(request);
     if (!token) return json(400, { status: 'invalid' });
 
-    const described = await describeClaim({ store, token, key });
+    const described = await describeClaim({ store, tables, token, key });
 
     // Always 200. The status in the body says what happened, and an HTTP code
     // that varied with it would let a scanner distinguish a live token from a
@@ -108,7 +111,7 @@ export async function redeem({ request, context, store, tables, key }) {
 }
 
 const describeHandler = (request, context) =>
-    describe({ request, context, store: blobStore(), key: signingKey(context) });
+    describe({ request, context, store: blobStore(), tables: tableStore(), key: signingKey(context) });
 
 const redeemHandler = (request, context) =>
     redeem({

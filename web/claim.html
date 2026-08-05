@@ -69,7 +69,8 @@
                  mail before anyone reads them. -->
             <form id="claim-form" hidden>
                 <p>
-                    <label for="display-name">What should the missionary be called on the site?</label><br>
+                    <label for="display-name" id="display-name-label">What should the missionary be called on the
+                        site?</label><br>
                     <input type="text" id="display-name" name="display-name" maxlength="80"
                         autocomplete="off" placeholder="Elder Example">
                 </p>
@@ -79,12 +80,12 @@
         </section>
 
         <section id="working" hidden>
-            <h2>Setting up the archive&hellip;</h2>
-            <p class="note">Publishing the letters that were waiting. This can take a moment.</p>
+            <h2 id="working-title">Setting up the archive&hellip;</h2>
+            <p class="note" id="working-note">Publishing the letters that were waiting. This can take a moment.</p>
         </section>
 
         <section id="done" hidden>
-            <h2>The archive is ready</h2>
+            <h2 id="done-title">The archive is ready</h2>
             <p class="lede" id="done-summary"></p>
             <p><a class="button" id="done-link" href="/">Read the letters</a></p>
         </section>

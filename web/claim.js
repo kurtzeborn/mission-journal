@@ -110,19 +110,28 @@ function fail(status) {
 }
 
 function renderReady(described, principal) {
-    // Two different links land here. The pending one goes to somebody who did
-    // not ask for it and has to be convinced the letters are real -- hence the
-    // count and the sample subjects. The `claim@` one answers a request its
-    // recipient made minutes ago, and the site may already be running under a
-    // parent, in which case "letters are waiting" and "makes you its owner"
-    // are both simply untrue.
-    if (described.kind === 'missionary') {
+    // Two different links land here, and the `claim@` one lands in two
+    // different situations. The pending link goes to somebody who did not ask
+    // for it and has to be convinced the letters are real -- hence the count
+    // and the sample subjects. The `claim@` link answers a request its
+    // recipient made minutes ago, and the site is usually already running
+    // under a parent, in which case "letters are waiting", "set up the
+    // archive" and "makes you its owner" are all simply untrue.
+    const missionary = described.kind === 'missionary';
+    // Joining an archive that exists, rather than bringing one into being. The
+    // server knows which, so the page does not have to hedge.
+    const joining = missionary && Boolean(described.alreadyOwned);
+
+    if (missionary) {
         $('ready-title').textContent = 'Your archive';
-        $('ready-lede').textContent =
-            'You asked for access to your letters. Signing in below links this archive to the account you choose.';
-        $('ready-owner-note').textContent =
-            'Use a personal account rather than your missionary one, which stops working 60 days ' +
-            'after you come home. If somebody is already looking after this archive, they stay.';
+        $('ready-lede').textContent = joining
+            ? 'You asked for access to your letters. Signing in below adds this archive to the account you choose.'
+            : 'You asked for access to your letters. Signing in below sets the archive up under the account you choose.';
+        $('ready-owner-note').textContent = joining
+            ? 'Use a personal account rather than your missionary one, which stops working 60 days ' +
+              'after you come home. Whoever looks after this archive today stays, and you are added alongside them.'
+            : 'Use a personal account rather than your missionary one, which stops working 60 days ' +
+              'after you come home. Setting the archive up makes you its owner.';
     } else {
         const count = described.messageCount ?? 0;
         $('ready-count').textContent = count === 1 ? '1 letter' : `${count} letters`;
@@ -143,10 +152,21 @@ function renderReady(described, principal) {
 
     if (principal) {
         $('claim-form').hidden = false;
-        $('claim-as').textContent =
-            described.kind === 'missionary'
-                ? `You are signed in as ${principal}. This address will be added as an owner.`
-                : `You are signed in as ${principal}. This address will own the archive.`;
+
+        // A site that has been running for months already has a name, and
+        // asking for one from scratch invites an answer that quietly replaces
+        // it. Showing the current value turns the question into one that can be
+        // left alone -- and leaving it alone writes nothing, because the server
+        // compares what comes back against what it sent.
+        if (described.displayName) {
+            $('display-name').value = described.displayName;
+            $('display-name-label').textContent = 'The missionary is shown on the site as:';
+        }
+
+        $('claim-submit').textContent = joining ? 'Get access' : 'Set up the archive';
+        $('claim-as').textContent = missionary
+            ? `You are signed in as ${principal}. This address will be added as an owner.`
+            : `You are signed in as ${principal}. This address will own the archive.`;
     } else {
         // Come back to this page after signing in. The token is already in
         // sessionStorage, so it does not need to survive the redirect itself.
@@ -159,9 +179,14 @@ function renderReady(described, principal) {
     show('ready');
 }
 
-async function submit(event, token) {
+async function submit(event, token, described) {
     event.preventDefault();
     $('claim-submit').disabled = true;
+
+    if (described.alreadyOwned) {
+        $('working-title').textContent = 'Getting you access\u2026';
+        $('working-note').textContent = 'This only takes a moment.';
+    }
     show('working');
 
     const result = await post('/api/claim/redeem', {
@@ -182,10 +207,20 @@ async function submit(event, token) {
 
     const promoted = result.body.promoted ?? {};
     const published = promoted.promoted ?? 0;
-    $('done-summary').textContent =
-        published === 1
-            ? 'One letter has been published, and new ones will appear as they arrive.'
-            : `${published} letters have been published, and new ones will appear as they arrive.`;
+
+    // A missionary joining a live archive has no backlog to publish, and "0
+    // letters have been published" describes a failure that did not happen.
+    if (published === 0) {
+        $('done-title').textContent = 'You are in';
+        $('done-summary').textContent =
+            'This archive is linked to your account now, and new letters will appear as they arrive.';
+    } else {
+        $('done-summary').textContent =
+            published === 1
+                ? 'One letter has been published, and new ones will appear as they arrive.'
+                : `${published} letters have been published, and new ones will appear as they arrive.`;
+    }
+
     $('done-link').href = `/${result.body.slug}/`;
     show('done');
 }
@@ -201,7 +236,7 @@ async function start() {
     const principal = await signedInAs();
     renderReady(described.body, principal);
 
-    $('claim-form').addEventListener('submit', (event) => submit(event, token));
+    $('claim-form').addEventListener('submit', (event) => submit(event, token, described.body));
 }
 
 start();
