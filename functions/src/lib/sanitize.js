@@ -40,6 +40,44 @@ const DROP_CONTENT = ['script', 'style', 'textarea', 'option', 'noscript', 'head
 
 export const PHOTO_PREFIX = '/api/photo/';
 
+// Our own access links, removed from anything on its way into `rendered/`.
+//
+// A claim link and an invitation link are bearer credentials: possession is
+// the whole authentication. They are mailed to people who then do what people
+// do with mail, which here includes forwarding it to `post@` -- and that
+// publishes the link into the archive, where it is readable by everyone the
+// archive is shared with. An invitation can carry the owner role, so a reader
+// who found one in a letter could promote themselves.
+//
+// Not host-bound on purpose. Matching only `PUBLIC_BASE_URL` would make the
+// single most security-critical module in the system depend on an app setting,
+// where getting the setting wrong disables the control silently. Any host is
+// matched instead, so the failure mode is a dead link in somebody's letter
+// rather than a live credential in the archive.
+//
+// The match stops at whitespace, which is what a mail client's line wrapping
+// inserts into a token this long. That is sufficient rather than sloppy: the
+// part before the wrap is the base64url payload, so removing it leaves a
+// remainder that cannot be verified and is not reassemblable from what
+// survives. Redacting the beginning of a token destroys the token.
+const ACCESS_LINK = /https?:\/\/[^\s"'<>]*\/(?:claim|invite)#[^\s"'<>]*/gi;
+
+// No angle brackets, quotes or ampersand, so this is inert wherever it lands
+// -- including inside an unquoted href, where it splits into junk attributes
+// the allowlist then drops.
+const REDACTED = '[link removed]';
+
+/**
+ * Strip our own claim and invitation links out of letter text.
+ *
+ * Exported because a plain-text letter never reaches `sanitizeBody` -- ingest
+ * stores it as `bodyText` and render turns it into paragraphs itself -- and a
+ * control that only covered the HTML path would be one forwarded plain-text
+ * mail away from useless.
+ */
+export const redactAccessLinks = (value) =>
+    value == null ? value : String(value).replace(ACCESS_LINK, REDACTED);
+
 // The header block a client leaves behind when it flattens a forward into the
 // body. Removing it is a privacy control, not tidying: a missionary's weekly
 // letter goes to their whole distribution list, so the `To:` line carries
@@ -136,7 +174,16 @@ export function sanitizeBody(
 ) {
     if (!html) return '';
 
-    const probe = squash(letterText).slice(0, PROBE_LENGTH);
+    // Before anything is parsed, so the token is gone from the href and from
+    // the visible text in one pass -- a mail client writes it in both places.
+    const source = redactAccessLinks(String(html));
+
+    // Redacted on both sides, so the two stay comparable. The probe is matched
+    // against the sanitized HTML's text; redacting one and not the other could
+    // turn a match into a miss for a letter that opens with a link, and a miss
+    // there means a block holding the letter is mistaken for a header block
+    // and dropped.
+    const probe = squash(redactAccessLinks(letterText)).slice(0, PROBE_LENGTH);
     const dropHeaders = probe.length >= MIN_PROBE;
 
     // Output positions of horizontal rules that survived. `exclusiveFilter`
@@ -153,7 +200,7 @@ export function sanitizeBody(
     // the ones this filter removed.
     const rules = [];
 
-    const clean = sanitizeHtmlLib(String(html), {
+    const clean = sanitizeHtmlLib(source, {
         allowedTags: ALLOWED_TAGS,
         nonTextTags: DROP_CONTENT,
 

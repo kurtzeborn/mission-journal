@@ -10,7 +10,8 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { sanitizeBody, PHOTO_PREFIX } from '../src/lib/sanitize.js';
+import { sanitizeBody, redactAccessLinks, PHOTO_PREFIX } from '../src/lib/sanitize.js';
+import { issueClaimToken, PURPOSE } from '../src/lib/claimtoken.js';
 
 const SLUG = 'elder.example';
 const keep = { keepPhotoPrefix: `${PHOTO_PREFIX}${SLUG}/` };
@@ -102,5 +103,100 @@ describe('tidying does not weaken the security rules', () => {
             }),
             /<img/
         );
+    });
+});
+
+// Our own claim and invitation links are bearer credentials. A relative
+// forwarding one of our emails to post@ publishes it into the archive, where
+// an invitation carrying the owner role would let a reader promote themselves.
+//
+// The token is minted by the real issuer rather than written out by hand, so
+// these cannot keep passing against a token shape that has changed.
+describe('our own access links never reach the archive', () => {
+    const token = () =>
+        issueClaimToken({
+            slug: SLUG,
+            key: 'test-key',
+            expiresAt: '2026-12-01T00:00:00.000Z',
+            purpose: PURPOSE.invite
+        }).token;
+
+    // Enough of the token to be worth having. Asserting on the whole string
+    // would pass for a redaction that removed one character.
+    const head = (value) => value.slice(0, 40);
+
+    test('a claim link in an anchor loses both the href and the visible text', () => {
+        const link = `https://pdayletters.com/claim#${token()}`;
+        const out = sanitizeBody(`<p>Here you go: <a href="${link}">${link}</a></p>`);
+
+        assert.doesNotMatch(out, /\/claim#/);
+        assert.equal(out.includes(head(link.split('#')[1])), false);
+        assert.match(out, /Here you go/);
+    });
+
+    test('an invitation link pasted as bare text goes too', () => {
+        const link = `https://pdayletters.com/invite#${token()}`;
+        const out = sanitizeBody(`<p>${link}</p>`);
+
+        assert.doesNotMatch(out, /\/invite#/);
+        assert.match(out, /\[link removed\]/);
+    });
+
+    test('a link wrapped across lines is still destroyed', () => {
+        // A token is far longer than a mail client's wrap column, so this is
+        // the shape a plain-text forward actually produces. Only the first
+        // chunk matches -- which is the point: it holds the payload, and what
+        // is left cannot be verified or reassembled.
+        const raw = token();
+        const link = `https://pdayletters.com/invite#${raw}`;
+        const wrapped = `${link.slice(0, 80)}\n${link.slice(80)}`;
+        const out = sanitizeBody(`<p>${wrapped}</p>`);
+
+        assert.equal(out.includes(head(raw)), false);
+        assert.doesNotMatch(out, /\/invite#/);
+    });
+
+    test('the same scrub is available to the plain-text path', () => {
+        // Ingest stores a text-only letter as bodyText and render builds its
+        // own HTML from it; neither goes through sanitizeBody, and readers are
+        // served bodyText whenever render has not run.
+        const raw = token();
+        const out = redactAccessLinks(`Sign in here: https://pdayletters.com/claim#${raw}\nLove, Mum`);
+
+        assert.equal(out.includes(head(raw)), false);
+        assert.equal(out, 'Sign in here: [link removed]\nLove, Mum');
+    });
+
+    test('null and undefined pass through rather than becoming the string "null"', () => {
+        // bodyText is null for every letter that had an HTML part, and that
+        // null is stored.
+        assert.equal(redactAccessLinks(null), null);
+        assert.equal(redactAccessLinks(undefined), undefined);
+    });
+
+    test('an ordinary link in a letter is left alone', () => {
+        // The scrub is host-agnostic, so this is the boundary worth pinning:
+        // it keys on the path and the fragment, not on any URL we recognise.
+        const html = '<p>Read <a href="https://churchofjesuschrist.org/study">this</a>.</p>';
+        assert.match(sanitizeBody(html), /churchofjesuschrist\.org\/study/);
+        assert.match(sanitizeBody('<p>See https://example.com/claims for more.</p>'), /\/claims/);
+    });
+
+    test('a letter that opens with a link does not lose its first paragraph', () => {
+        // The header-block guard compares the plain-text letter against the
+        // sanitized HTML. Redacting one side and not the other would turn a
+        // match into a miss, and a miss there drops the block holding the
+        // letter -- data loss, from a control that exists to prevent a leak.
+        const link = `https://pdayletters.com/claim#${token()}`;
+        const text = `${link}\n\nDear family, this week we walked to Cusco and it rained the whole way.`;
+        const html =
+            '<div><p>From: elder.example@missionary.org<br>Sent: Monday<br>' +
+            'To: family@example.com<br>Subject: Week 12</p>' +
+            `<p>${link}</p><p>Dear family, this week we walked to Cusco and it rained the whole way.</p></div>`;
+
+        const out = sanitizeBody(html, { letterText: text });
+
+        assert.match(out, /walked to Cusco/);
+        assert.doesNotMatch(out, /family@example\.com/);
     });
 });

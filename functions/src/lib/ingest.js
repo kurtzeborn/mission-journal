@@ -10,7 +10,7 @@ import { classify, aclSlugFor, CLASS, DISPOSITION } from './classify.js';
 import { dedupeKey, findDuplicate, bodyHead100, normalizeSubject } from './dedupe.js';
 import { rfc3339InOwnOffset, dayInOwnOffset } from './dates.js';
 import { attachmentPath, msgIdSegment, validSlug } from './paths.js';
-import { sanitizeBody } from './sanitize.js';
+import { redactAccessLinks, sanitizeBody } from './sanitize.js';
 import { linkedPhotoServices } from './photolinks.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
@@ -395,7 +395,10 @@ export async function commitLetter({ store, tables = null, slug, ulid, raw, extr
     const bodyHtml = original.html
         ? sanitizeBody(original.html, { letterText: original.text })
         : null;
-    const bodyText = original.html ? null : (original.text ?? null);
+    // A text-only letter never reaches the sanitizer, so the access-link scrub
+    // has to be applied here as well. `bodyText` is served to readers whenever
+    // render has not run yet or never succeeded.
+    const bodyText = original.html ? null : redactAccessLinks(original.text ?? null);
 
     const post = {
         id: postIdFor(day, msgId),

@@ -6,7 +6,7 @@
 // rather than a counter.
 
 import { extractOriginal } from './extract.js';
-import { sanitizeBody, photoUrl } from './sanitize.js';
+import { redactAccessLinks, sanitizeBody, photoUrl } from './sanitize.js';
 import { transcode, isPhotoType } from './photos.js';
 import { photoId } from './paths.js';
 import { linkedPhotoServices } from './photolinks.js';
@@ -63,7 +63,10 @@ export async function runRender({ message, store, log = console }) {
     const source = extracted.original ?? {};
     const bodyHtml = source.html
         ? sanitizeBody(source.html, { cidMap, letterText: source.text })
-        : textToHtml(source.text);
+        // The text path builds its own HTML and never passes through the
+        // sanitizer, so the access-link scrub is applied explicitly. Before
+        // escaping, so a wrapped or entity-mangled URL cannot slip past it.
+        : textToHtml(redactAccessLinks(source.text));
 
     const stored = photos.map(({ id, width, height }) => ({ id, width, height }));
     return commitRender({
