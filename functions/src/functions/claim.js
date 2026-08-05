@@ -58,14 +58,18 @@ async function body(request) {
 }
 
 // What the landing page shows before anyone signs in. Changes nothing.
-async function describeHandler(request, context) {
-    const key = signingKey(context);
+//
+// The store and the signing key are arguments rather than module state so that
+// this is reachable from a test. The wrapper below is the only thing that knows
+// where a real store comes from, and it is kept free of decisions for the same
+// reason: whatever it does cannot be checked by anything.
+export async function describe({ request, context, store, key }) {
     if (!key) return json(503, { status: 'unavailable' });
 
     const { token } = await body(request);
     if (!token) return json(400, { status: 'invalid' });
 
-    const described = await describeClaim({ store: blobStore(), token, key });
+    const described = await describeClaim({ store, token, key });
 
     // Always 200. The status in the body says what happened, and an HTTP code
     // that varied with it would let a scanner distinguish a live token from a
@@ -73,8 +77,7 @@ async function describeHandler(request, context) {
     return json(200, described);
 }
 
-async function redeemHandler(request, context) {
-    const key = signingKey(context);
+export async function redeem({ request, context, store, tables, key }) {
     if (!key) return json(503, { status: 'unavailable' });
 
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
@@ -84,8 +87,8 @@ async function redeemHandler(request, context) {
     if (!token) return json(400, { status: 'invalid' });
 
     const result = await redeemClaim({
-        store: blobStore(),
-        tables: tableStore(),
+        store,
+        tables,
         token,
         key,
         // `email`, not `userDetails`. `userDetails` is the field name on the raw
@@ -103,6 +106,18 @@ async function redeemHandler(request, context) {
 
     return json(result.status === 'ok' ? 200 : 409, result);
 }
+
+const describeHandler = (request, context) =>
+    describe({ request, context, store: blobStore(), key: signingKey(context) });
+
+const redeemHandler = (request, context) =>
+    redeem({
+        request,
+        context,
+        store: blobStore(),
+        tables: tableStore(),
+        key: signingKey(context)
+    });
 
 app.http('claim-describe', {
     authLevel: 'anonymous',

@@ -19,14 +19,17 @@ let cachedTables = null;
 const tableStore = () =>
     (cachedTables ??= createTableStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
-async function handler(request, context) {
+// The store is an argument rather than module state so that this is reachable
+// from a test; the wrapper below is the only part that knows where a real one
+// comes from.
+export async function memberships({ request, tables }) {
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     if (!principal) {
         return { status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
     }
 
     const memberships = await membershipsFor({
-        tables: tableStore(),
+        tables,
         // `email`, not `userDetails` -- see the note in claim.js. Here the same
         // mistake is silent rather than loud: an undefined email matches no
         // membership row, so the caller is told they belong to nothing.
@@ -45,6 +48,8 @@ async function handler(request, context) {
         jsonBody: { memberships }
     };
 }
+
+const handler = (request) => memberships({ request, tables: tableStore() });
 
 app.http('memberships', {
     authLevel: 'anonymous',
