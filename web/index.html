@@ -58,6 +58,15 @@
             <a class="button button--quiet button--compact" href="/.auth/logout">Sign out</a>
         </p>
 
+        <!-- Filled in by home.js from /api/memberships. Hidden until it has an
+             answer: a heading promising archives above an empty list is worse
+             than saying nothing, and it is the failure mode for exactly the
+             people with no archives to show. -->
+        <div id="my-sites" hidden>
+            <h3 id="my-sites-title">Your archive</h3>
+            <ul id="my-sites-list" class="site-list"></ul>
+        </div>
+
         <p class="note">
             Letters are only ever shown to people the family has added by name.
         </p>
