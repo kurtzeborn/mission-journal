@@ -85,11 +85,24 @@ const FAILURES = {
         title: 'Something is wrong on our end',
         detail: 'We cannot check links at the moment. This is not a problem with your link.',
         help: 'Please try again shortly.'
+    },
+    unauthenticated: {
+        title: 'You are not signed in',
+        detail: 'The sign-in did not carry through to us, so we could not tell who to give the archive to.',
+        help: 'Sign in again from this page. Your link is still good.'
     }
 };
 
+// The fallback is `unavailable`, not `invalid`, and the difference is not
+// cosmetic. An unmapped status is by definition one this page did not
+// anticipate -- which makes it far likelier to be our fault than theirs -- and
+// `invalid` tells the claimant their link is broken and suggests they re-copy
+// it out of the email. That is a dead end dressed up as an instruction, and it
+// is what a real claimant was actually shown when `unauthenticated` fell
+// through this branch. `unavailable` says the true thing in that situation:
+// something is wrong here, your link is fine, try again.
 function fail(status) {
-    const copy = FAILURES[status] ?? FAILURES.invalid;
+    const copy = FAILURES[status] ?? FAILURES.unavailable;
     $('failed-title').textContent = copy.title;
     $('failed-detail').textContent = copy.detail;
     $('failed-help').textContent = copy.help;
