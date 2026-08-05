@@ -1309,13 +1309,19 @@ Phase 12 is [Leaving beta](#phase-12--leaving-beta), and it is deliberately the 
 
 Raised after reading the first real archive end to end, and recorded here so they are not lost. **None of these are refined yet, and none of them block anything.** They want another pass before friends start using the site — the honest summary of the current reader is that *"it feels less like a blog and more like a massive brain dump."*
 
-The framing matters more than the individual items: the page is one long unbroken column, and length is the problem the three ideas below are each attacking from a different side.
+The framing matters more than the individual items: the page is one long unbroken column, and length is the problem the ideas below are each attacking from a different side.
 
 1. **Inline photos with text wrapped around them.** Show the small rendition in the flow of the letter rather than in a block underneath, with the text wrapping, and put a visible affordance on the image saying that clicking it opens the larger one. Today an image is either inline (because the letter placed it there) or relegated to the album strip at the bottom, and neither says it can be enlarged.
+
+   **The split itself is confirmed working.** A letter carrying one pasted inline image and two attachments rendered exactly that way end to end — the pasted one in the flow, the other two in the album. So nothing here is about *which* pictures go where; it is entirely about how the inline one is presented. It currently sits at full width, breaking the column and pushing the text apart, when it should be small, wrapped, and obviously clickable.
 
 2. **Highlight search hits and let the reader step between them.** Search currently hides non-matching letters, which answers "which letters mention this" but not "where in this letter". Wants the matches marked, next/previous navigation, and a **floating search control that does not scroll away** — with the page this long, scrolling back up to the search box is most of the cost of searching.
 
 3. **Collapsible letters, collapsed by default.** All but the most recent start closed. A letter containing a search hit expands when the reader advances to that hit. Explicitly thinking out loud — there may be a better shape than collapse, and the goal is the outcome (a page you can survey at a glance) rather than the mechanism.
+
+4. **Rework the per-letter album into a flatter carousel.** The album is a vertical strip under each letter, so every photo a missionary sends adds directly to the length of a page that is already too long — a letter with eight pictures buries the next letter under them. Wanted instead: a low, horizontally scrollable row that occupies roughly fixed height whatever the photo count, with the same click-to-enlarge behaviour item 1 asks for. This pulls in the same direction as items 1 and 3 — the album is one of the two things making a single letter tall, and the only one that grows without bound.
+
+   Two constraints it has to respect. It must work from `file://` with no `fetch`, no modules and no build step, like everything else in the reader. And it must stay usable by touch and by keyboard, because a horizontal strip is the control most likely to end up mouse-only by accident.
 
 Two things not to lose when this is reworked:
 
