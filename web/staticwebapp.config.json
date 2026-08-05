@@ -27,6 +27,20 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The claim page is reached by someone with no account at all, following a link out of an email. It must render before there is any session to check.",
+      "route": "/claim",
+      "rewrite": "/claim.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/claim.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/claim.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/favicon.ico",
       "allowedRoles": ["anonymous", "authenticated"]
     },
@@ -37,6 +51,12 @@
     },
     {
       "route": "/.auth/*",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "Describing a claim changes nothing and has to answer someone who has not signed in yet -- that is the whole point of the page. It must precede the /api/* rule, which matches first-wins. Redemption is deliberately not listed, so it falls through to authenticated.",
+      "route": "/api/claim/describe",
+      "methods": ["POST"],
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {

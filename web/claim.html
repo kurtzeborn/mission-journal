@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Claim an archive — P-Day Letters</title>
+    <!-- Reached anonymously by someone who has never heard of this service, so
+         the static markup must not name a missionary or a family. Everything
+         specific is filled in by claim.js after it has presented the token,
+         and the token itself lives in the URL fragment, which is never sent to
+         a server. -->
+    <meta name="description" content="Claim a private archive for missionary letters.">
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/">P-Day Letters</a>
+            <span class="beta">beta</span>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <!-- Every state below is hidden until claim.js decides which one
+             applies. Doing it this way rather than by fetching a fragment
+             keeps the page working as a single static file, which is what
+             lets it be served anonymously without an API call to render. -->
+
+        <section id="loading">
+            <h2>Checking your link&hellip;</h2>
+        </section>
+
+        <section id="ready" hidden>
+            <h2>Letters are waiting</h2>
+            <p class="lede">
+                <strong id="ready-count"></strong> from <strong id="ready-sender"></strong>
+                have arrived and are being held. They have not been published anywhere yet.
+            </p>
+
+            <div id="ready-subjects-block" hidden>
+                <p class="note">Recent subjects, so you can check these are the letters you expect:</p>
+                <ul id="ready-subjects"></ul>
+            </div>
+
+            <p>
+                Setting up the archive makes you its owner. You choose who else can read it,
+                and nobody can see it until you add them.
+            </p>
+
+            <div id="signin-block" hidden>
+                <p><a class="button" id="signin-aad" href="#"><i class="fa-brands fa-microsoft"
+                            aria-hidden="true"></i> Continue with Microsoft</a></p>
+                <p><a class="button" id="signin-google" href="#"><i class="fa-brands fa-google"
+                            aria-hidden="true"></i> Continue with Google</a></p>
+                <p class="note">
+                    Signing in does not request access to your email, contacts, or photos &mdash;
+                    only your name and email address.
+                </p>
+            </div>
+
+            <!-- The button is the whole point of this page being a page. A
+                 signed link must never change anything on GET, because
+                 missionary.org sits behind a scanner that fetches links out of
+                 mail before anyone reads them. -->
+            <form id="claim-form" hidden>
+                <p>
+                    <label for="display-name">What should the missionary be called on the site?</label><br>
+                    <input type="text" id="display-name" name="display-name" maxlength="80"
+                        autocomplete="off" placeholder="Elder Example">
+                </p>
+                <p><button class="button" type="submit" id="claim-submit">Set up the archive</button></p>
+                <p class="note" id="claim-as"></p>
+            </form>
+        </section>
+
+        <section id="working" hidden>
+            <h2>Setting up the archive&hellip;</h2>
+            <p class="note">Publishing the letters that were waiting. This can take a moment.</p>
+        </section>
+
+        <section id="done" hidden>
+            <h2>The archive is ready</h2>
+            <p class="lede" id="done-summary"></p>
+            <p><a class="button" id="done-link" href="/">Read the letters</a></p>
+        </section>
+
+        <section id="failed" hidden>
+            <h2 id="failed-title">This link cannot be used</h2>
+            <p class="lede" id="failed-detail"></p>
+            <p class="note" id="failed-help"></p>
+        </section>
+    </main>
+
+    <script src="/claim.js"></script>
+</body>
+
+</html>

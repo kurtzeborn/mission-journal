@@ -65,6 +65,9 @@ param googleClientId string = '708556118044-3fmn941npk65g8pbkivsg15l0bs4o4ap.app
 param aadClientSecretName string = 'aad-client-secret'
 param googleClientSecretName string = 'google-client-secret'
 
+@description('Key Vault secret holding the HMAC key that signs claim links.')
+param claimTokenKeyName string = 'claim-token-key'
+
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower('${namePrefix}st${suffix}')
 var keyVaultName = toLower('${namePrefix}-kv-${suffix}')
@@ -168,6 +171,28 @@ resource queueService 'Microsoft.Storage/storageAccounts/queueServices@2023-05-0
   parent: storage
   name: 'default'
 }
+
+resource tableService 'Microsoft.Storage/storageAccounts/tableServices@2023-05-01' = {
+  parent: storage
+  name: 'default'
+}
+
+// Both of these are derived indexes, never the authority. `acl.json` remains
+// the source of truth for who may read a site, and the content API keeps
+// checking it on every request; `memberships` exists only to answer the
+// reverse question -- which sites does this address belong to -- which a blob
+// layout cannot answer without scanning every ACL in the account.
+var tableNames = [
+  'memberships'
+  'users'
+]
+
+resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [
+  for name in tableNames: {
+    parent: tableService
+    name: name
+  }
+]
 
 var queueNames = [
   'ingest'
@@ -490,6 +515,14 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'KEY_VAULT_URI'
           value: keyVault.properties.vaultUri
+        }
+        // Signs and verifies claim links. There is deliberately no default in
+        // the code: a hard-coded fallback would make every claim token in the
+        // system forgeable by anyone who read the source, and would do it
+        // silently, because the flow would carry on working.
+        {
+          name: 'CLAIM_TOKEN_KEY'
+          value: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${claimTokenKeyName}/)'
         }
       ]
     }
