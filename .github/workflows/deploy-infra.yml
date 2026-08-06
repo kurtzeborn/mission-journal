@@ -1,0 +1,125 @@
+name: Deploy infrastructure
+
+# main.bicep described this resource group for months without ever deploying
+# it, and drifted from the live account in ways nobody could see. This workflow
+# is what stops that recurring: every change to the template is applied, so the
+# file is either true or the run is red.
+#
+# Authentication is federated — GitHub mints a short-lived OIDC token and Entra
+# exchanges it. There is no Azure credential stored in this repository and none
+# to rotate.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/deploy-infra.yml'
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/deploy-infra.yml'
+  workflow_dispatch:
+
+permissions:
+  # Required to request the OIDC token. Without it `azure/login` fails with an
+  # unhelpful message about a missing ACTIONS_ID_TOKEN_REQUEST_URL.
+  id-token: write
+  contents: read
+
+# Two deployments racing each other against one resource group is a way to
+# discover ARM's conflict handling in production. Queue instead.
+concurrency:
+  group: deploy-infra
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The federated credential's subject is pinned to `refs/heads/main`, so a
+      # pull request cannot authenticate at all and this step fails by design
+      # on forks. The what-if job below is therefore push-only in practice; the
+      # pull_request trigger exists so a template that does not compile is
+      # caught before merge.
+      - name: Compile the template
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+
+      - name: Sign in to Azure
+        if: github.event_name != 'pull_request'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Recorded in the run log before anything is applied. `what-if` is not a
+      # gate here and cannot be one: it reports a standing set of phantom
+      # changes even against a converged group — server-populated defaults,
+      # read-only properties, and reference() expressions it cannot resolve —
+      # so a non-empty result means nothing on its own. It is here to be read
+      # by a human when a deployment surprises them.
+      #
+      # It is also blind to siteConfig.appSettings, which a GET on
+      # Microsoft.Web/sites does not return. Changing an app setting's value in
+      # this template produces a silent diff. See docs/plan.md, Phase 0.
+      - name: What-if
+        if: github.event_name != 'pull_request'
+        run: |
+          az deployment group what-if \
+            --resource-group mission-journal \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --no-pretty-print > whatif.json || true
+          python3 -c "
+          import json, sys
+          # 'A new Bicep release is available' has been observed on stdout, not
+          # stderr, which puts prose in front of the JSON. Start at the first
+          # brace rather than trusting the stream to be clean.
+          raw = open('whatif.json').read()
+          i = raw.find('{')
+          if i < 0:
+              print('what-if produced no JSON; skipping the summary')
+              sys.exit(0)
+          d = json.loads(raw[i:])
+          counts = {}
+          for c in d['changes']:
+              counts[c['changeType']] = counts.get(c['changeType'], 0) + 1
+          print('change types:', counts)
+          for c in d['changes']:
+              if c['changeType'] in ('Create', 'Delete', 'Deploy'):
+                  print(c['changeType'], c['resourceId'])
+          "
+
+      - name: Deploy
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          az deployment group create \
+            --resource-group mission-journal \
+            --name "gh-${{ github.run_id }}" \
+            --template-file infra/main.bicep \
+            --parameters infra/main.bicepparam \
+            --query "properties.provisioningState" \
+            --output tsv
+
+      # A deployment that reports Succeeded has told you ARM accepted the
+      # template, not that the service still works. These three routes each
+      # require the Function App to have started, read its app settings, and
+      # resolved a Key Vault reference — which is precisely the chain a bad
+      # parameter breaks while ARM reports success.
+      - name: Check the service still answers
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          for path in optout/describe claim/describe invite/describe; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -X POST "https://pdayletters.com/api/$path" \
+              -H 'content-type: application/json' \
+              -d '{"token":"x"}')
+            echo "$path -> $code"
+            if [ "$code" != "200" ]; then
+              echo "::error::$path returned $code after deployment"
+              exit 1
+            fi
+          done

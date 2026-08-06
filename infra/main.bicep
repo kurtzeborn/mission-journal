@@ -88,6 +88,14 @@ will recognise as the one they were told about.
 ''')
 param publicBaseUrl string = 'https://pdayletters.com'
 
+@description('''
+The `owner/repo` GitHub Actions deploys this template from. It appears in the
+federated credential's subject, which is the only thing standing between this
+resource group and anyone else's workflow, so it is spelled out rather than
+derived.
+''')
+param githubRepository string = 'kurtzeborn/mission-journal'
+
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower('${namePrefix}st${suffix}')
 var keyVaultName = toLower('${namePrefix}-kv-${suffix}')
@@ -722,6 +730,72 @@ resource purgeRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
     }
   }
 ]
+
+// ---------------------------------------------------------------------------
+// The identity GitHub Actions deploys this template as.
+//
+// Federated, not secret-bearing. GitHub mints a short-lived OIDC token
+// asserting which repository and ref is running; the credential below says
+// which of those assertions Entra will exchange for a real token. Nothing is
+// stored on the GitHub side, so there is no deploy credential to rotate and
+// nothing to add to the expiry table in todos.md.
+//
+// A user-assigned identity rather than an app registration for one reason
+// that matters later: an app registration can have a client secret added to
+// it, and this cannot. The safer option stays the only option.
+//
+// **The subject is pinned to one ref.** `ref:refs/heads/main` will not match a
+// pull request, a tag, or another branch, which matters because this identity
+// can write to every resource in the group. A wildcard subject here would let
+// any fork's pull request deploy.
+// ---------------------------------------------------------------------------
+
+resource deployIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: '${namePrefix}-id-deploy'
+  location: location
+}
+
+resource deployFederation 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = {
+  parent: deployIdentity
+  name: 'github-main'
+  properties: {
+    issuer: 'https://token.actions.githubusercontent.com'
+    subject: 'repo:${githubRepository}:ref:refs/heads/main'
+    audiences: [
+      'api://AzureADTokenExchange'
+    ]
+  }
+}
+
+// Its two role assignments are deliberately NOT declared here, and this is the
+// one place in this file where leaving something out of the template is the
+// safer choice.
+//
+// The identity needs `Contributor` to write the resources, and
+// `Role Based Access Control Administrator` because this template creates role
+// assignments and Contributor cannot. Declaring those two grants here would
+// mean the deployment re-asserts them on every run — which in turn means the
+// constraint on them has to permit granting Contributor and RBAC
+// Administrator, and a workflow that can grant Contributor to anything is not
+// meaningfully constrained at all.
+//
+// Held outside the template instead, the RBAC Administrator grant carries an
+// ABAC condition restricting it to exactly the six roles assigned above, so a
+// push to `main` cannot grant Owner, Contributor, or User Access
+// Administrator to anything. Created once with:
+//
+//   az role assignment create --assignee-object-id <principalId> \
+//     --assignee-principal-type ServicePrincipal --role Contributor --scope <rg>
+//
+//   az role assignment create --assignee-object-id <principalId> \
+//     --assignee-principal-type ServicePrincipal \
+//     --role 'Role Based Access Control Administrator' --scope <rg> \
+//     --condition-version 2.0 --condition <see docs/plan.md>
+//
+// The credential that runs a deployment should not be grantable by that
+// deployment. Its limit is that a condition can name roles but not scopes, so
+// it constrains *which* role can be granted and not *where* — re-granting
+// Storage Blob Data Owner account-wide is still expressible.
 
 resource workerTableRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storage
