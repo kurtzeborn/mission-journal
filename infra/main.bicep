@@ -385,16 +385,19 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-12-01' = {
   properties: {
     allowConfigFileUpdates: true
     stagingEnvironmentPolicy: 'Enabled'
+    // Declared only so that a deployment does not propose removing them.
+    // The repository link is metadata here rather than machinery -- the site
+    // is built by a hand-written workflow authenticating with a deployment
+    // token, not by one Azure generated -- but a template that omits these
+    // asks ARM to clear them, and `what-if` reports exactly that. No
+    // repository token is set or needed: it is required to *create* a
+    // workflow, and this deployment does not.
+    repositoryUrl: 'https://github.com/kurtzeborn/mission-journal'
+    branch: 'main'
+    provider: 'GitHub'
   }
 }
 
-// Settings for managed functions -- of which there are none, because the API
-// is the linked Function App below, which carries its own settings and does
-// not inherit these. They are still load-bearing for a second reason: this is
-// where custom authentication reads its client IDs and secrets from, and
-// declaring them here is what stops a later deployment from silently removing
-// them and locking every reader out of the site.
-//
 // Settings for managed functions -- of which there are none, because the API
 // is the linked Function App below, which carries its own settings and does
 // not inherit these. They are still load-bearing for a second reason: this is

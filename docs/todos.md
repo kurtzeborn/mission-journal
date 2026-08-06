@@ -15,11 +15,11 @@ The organising principle: **a task nobody is reminded of is a task that fails si
 | `aad-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Microsoft sign-in (Entra app registration) | **2028-08-04** |
 | `cloudflare-api-token` | Key Vault `mj-kv-utfe5uagkbz7q` | Function App outbound mail (`Email Sending: Edit`) | **2027-08-31** |
 | `claim-token-key` | Key Vault `mj-kv-utfe5uagkbz7q` | HMAC for claim links | *none* — see below |
-| `google-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Google sign-in | *none set* — see below |
+| `google-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Google sign-in | *none* — checked 2026-08-05, see below |
 | `CLOUDFLARE_API_TOKEN` | GitHub Actions secret | Worker deploy (`Workers Scripts`, `Account Settings`) | **2027-08-01** |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions secret | Worker deploy | not a secret, does not expire |
 | `AZURE_STATIC_WEB_APPS_API_TOKEN` | GitHub Actions secret | Static Web App deploy | no expiry; rotates if the SWA is recreated |
-| `pdayletters.com` | Registrar | Everything | **⚠️ unverified — fill in from the registrar** |
+| `pdayletters.com` | Registrar (Namecheap) | Everything | **auto-renew on** — no date to track |
 
 **⚠️ Two different credentials are called `CLOUDFLARE_API_TOKEN`.** The one in GitHub deploys the Worker; the one in Key Vault sends mail. They are deliberately separate — the deploy token can rewrite the code that receives every inbound letter, and the sending token must never be able to — but the shared name means a rotation done by name rather than by location will update the wrong one and appear to work. Rotating either is a two-place operation: reissue in Cloudflare, then store in *one* named destination.
 
@@ -32,7 +32,7 @@ The organising principle: **a task nobody is reminded of is a task that fails si
 **Two secrets have no expiry at all, and that is a decision, not an oversight — but it should be a recorded one:**
 
 - **`claim-token-key`** is ours, not a provider's, so nothing forces a date. Rotating it **invalidates every outstanding claim link**, including ones sitting unread in a missionary's inbox with days left on a 60-day window. That makes rotation a user-visible event rather than a maintenance task, and the right cadence is *never, unless compromised*. Worth writing down so a future tidying pass does not rotate it for symmetry.
-- **`google-client-secret`** — Google OAuth client secrets historically did not expire. **⚠️ Unverified whether that is still true**; newer clients may be issued with one. Confirm in the Google Cloud console and record the answer here either way, because "we checked and there is no date" and "we never checked" look identical in a table.
+- **`google-client-secret`** — **checked in the Google Cloud console on 2026-08-05: no expiry is set.** Google OAuth client secrets historically did not expire, and this one was not issued with a date. Recorded as a checked fact rather than an assumption, because "we checked and there is no date" and "we never checked" look identical in a table. Worth re-checking if the client is ever recreated, since Google has been tightening this area.
 
 ### Automating the reminder
 
@@ -64,6 +64,6 @@ Three things already measured that shape what is worth building:
 
 ### Annually
 
-- **Domain renewal** and registrar auto-renew still enabled.
+- **Domain renewal** — auto-renew is on at Namecheap, so the annual check is that it is *still* on, and that the card behind it has not expired. Auto-renew failing for want of a payment method is the failure this check exists for; the renewal date itself is not the risk.
 - **Confirm blob soft delete is still 30 days**, container delete retention 30 days, versioning on, `allowPermanentDelete` true.
 - **Review who has access** — the ACLs, the Azure RBAC assignments on the storage account and vault, and the Cloudflare account.
