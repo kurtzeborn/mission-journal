@@ -74,3 +74,23 @@ for (const name of names) {
         assert.deepEqual(got.inlineCids.sort(), [...expected.inlineCids].sort(), 'inlineCids');
     });
 }
+
+// postal-mime normalises line endings as it decodes, which silently cost a
+// 200KB original some 2,700 bytes. Nothing downstream noticed, because relaxed
+// canonicalization normalises line endings before hashing, so every signature
+// verdict stayed the same while the stored bytes were no longer the sent ones.
+test('an extracted original carries CRLF line endings', async () => {
+    let checked = 0;
+
+    for (const name of names) {
+        const got = await extractOriginal(await readFile(join(fixtures, name)));
+        if (got.source !== 'rfc822') continue;
+
+        checked += 1;
+        const text = Buffer.from(got.embeddedBytes).toString('latin1');
+        assert.equal(text.match(/(?<!\r)\n/g), null, `${name} has a bare LF`);
+    }
+
+    assert.ok(checked > 0, 'no attached fixtures to check');
+});
+

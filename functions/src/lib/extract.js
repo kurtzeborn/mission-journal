@@ -65,11 +65,27 @@ function toBytes(content) {
     return new Uint8Array(content);
 }
 
+// postal-mime normalises line endings as it decodes, which costs a 200KB
+// original some 2,700 bytes: every CRLF the wire carried arrives as a bare LF.
+// No signature verdict changes, because relaxed canonicalization normalises
+// line endings before hashing either way, but what gets stored should be what
+// was sent. Only ever applied to bytes already recognised as a message, where
+// CRLF is the wire form — never to an arbitrary binary attachment.
+function restoreCrlf(bytes) {
+    const out = Buffer.alloc(bytes.length * 2);
+    let length = 0;
+    for (let i = 0; i < bytes.length; i++) {
+        if (bytes[i] === 0x0a && bytes[i - 1] !== 0x0d) out[length++] = 0x0d;
+        out[length++] = bytes[i];
+    }
+    return new Uint8Array(out.subarray(0, length));
+}
+
 export function findEmbeddedMessage(parsed) {
     for (const attachment of parsed.attachments ?? []) {
         const bytes = toBytes(attachment.content);
         if (bytes.length && looksLikeMessage(bytes)) {
-            return { bytes, declaredType: (attachment.mimeType || '').toLowerCase() };
+            return { bytes: restoreCrlf(bytes), declaredType: (attachment.mimeType || '').toLowerCase() };
         }
     }
     return null;
