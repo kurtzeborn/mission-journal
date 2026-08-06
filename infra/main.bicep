@@ -89,12 +89,19 @@ will recognise as the one they were told about.
 param publicBaseUrl string = 'https://pdayletters.com'
 
 @description('''
-The `owner/repo` GitHub Actions deploys this template from. It appears in the
-federated credential's subject, which is the only thing standing between this
-resource group and anyone else's workflow, so it is spelled out rather than
-derived.
+GitHub's `sub_claim_prefix` for this repository, which the federated credential
+below must match exactly. **It is not `repo:owner/name`**, despite nearly every
+example showing that: GitHub's current default subject embeds the numeric owner
+and repository IDs, so a credential written the documented way fails with
+AADSTS700213 and an error naming a subject nobody wrote down. The IDs are the
+point -- they survive a rename, and they cannot be inherited by whoever
+registers the name after a repository is deleted.
+
+Read the live value rather than assembling it:
+
+  gh api repos/kurtzeborn/mission-journal/actions/oidc/customization/sub
 ''')
-param githubRepository string = 'kurtzeborn/mission-journal'
+param githubSubjectPrefix string = 'repo:kurtzeborn@22382549/mission-journal@1311226429'
 
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower('${namePrefix}st${suffix}')
@@ -760,7 +767,7 @@ resource deployFederation 'Microsoft.ManagedIdentity/userAssignedIdentities/fede
   name: 'github-main'
   properties: {
     issuer: 'https://token.actions.githubusercontent.com'
-    subject: 'repo:${githubRepository}:ref:refs/heads/main'
+    subject: '${githubSubjectPrefix}:ref:refs/heads/main'
     audiences: [
       'api://AzureADTokenExchange'
     ]
