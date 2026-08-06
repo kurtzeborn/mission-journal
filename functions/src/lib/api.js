@@ -90,8 +90,20 @@ export async function gate({ store, request }) {
     const role = await resolveRole({ store, slug, principal });
     if (!role) return { denied: DENIED };
 
+    // An archive with no letters in it yet is not a refusal. Everything the
+    // 404 above protects has already been decided by this point -- the caller
+    // holds a role on this slug, so they know it exists -- and the only thing
+    // a missing `posts.json` tells them is that the first letter has not
+    // arrived. Answering DENIED here sent a family who had just been granted
+    // their own archive to a page saying it was not available to them, on the
+    // one visit where they had done nothing wrong.
+    //
+    // The empty ETag is deliberate rather than absent: it gives the empty
+    // state a validator of its own, so the browser stops re-fetching nothing,
+    // and it necessarily differs from any real blob's, so the first letter
+    // to arrive invalidates it.
     const blob = await store.readBlob('rendered', `${slug}/posts.json`);
-    if (!blob) return { denied: DENIED };
+    if (!blob) return { role, slug, posts: [], principal, etag: '' };
 
     const posts = JSON.parse(Buffer.from(blob.bytes).toString('utf8'));
     if (!Array.isArray(posts)) return { denied: DENIED };

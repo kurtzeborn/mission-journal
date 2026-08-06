@@ -151,6 +151,32 @@ describe('the gate', () => {
         assert.equal(result.role, 'reader');
         assert.equal(result.slug, SLUG);
     });
+
+    test('an archive with no letters yet is empty, not forbidden', async () => {
+        // A site claimed a minute ago has an ACL and no posts.json, and the
+        // person looking at it is the person who just claimed it. Refusing
+        // them told a family the archive they had been granted was not theirs.
+        const store = seeded({ members: [{ email: 'gran@example.com', role: 'owner' }] });
+        store.blobs.delete(`rendered/${SLUG}/posts.json`);
+        const result = await gate({
+            store,
+            request: request({ auth: header('gran@example.com') })
+        });
+        assert.equal(result.denied, undefined);
+        assert.equal(result.role, 'owner');
+        assert.deepEqual(result.posts, []);
+    });
+
+    test('an empty archive is still closed to a stranger', async () => {
+        // The concession above is to entitlement, not to existence.
+        const store = seeded();
+        store.blobs.delete(`rendered/${SLUG}/posts.json`);
+        const result = await gate({
+            store,
+            request: request({ auth: header('stranger@example.com') })
+        });
+        assert.equal(result.denied.status, 404);
+    });
 });
 
 describe('what a reader receives', () => {
