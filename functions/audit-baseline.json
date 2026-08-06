@@ -1,0 +1,36 @@
+{
+  "_comment": [
+    "Advisories checked by hand and found unreachable. `functions/tools/audit-check.js`",
+    "fails the build on any advisory ID absent from this file, so adding an entry is",
+    "a decision, not a formality: it says someone traced the code path and it is not",
+    "there. Delete an entry the moment the reason stops holding.",
+    "",
+    "Both packages arrive through `mailauth`, which we use for exactly one thing --",
+    "`require('mailauth/lib/dkim/verify')` in src/lib/dkim.js. Requiring it loads 109",
+    "modules. `undici` accounts for none of them and `nodemailer` for one file,",
+    "`lib/addressparser/index.js`, a string parser.",
+    "",
+    "Re-measure with:",
+    "  node -e \"const {createRequire}=require('module');const r=createRequire(process.cwd()+'/x.js');r('mailauth/lib/dkim/verify');console.log(Object.keys(require.cache).filter(p=>/node_modules[\\\\/](nodemailer|undici)[\\\\/]/.test(p)))\""
+  ],
+  "reviewed": "2026-08-05",
+  "acknowledged": {
+    "1120795": "nodemailer — CRLF injection in List-* header comments. Not loaded; we never build or send a message with nodemailer.",
+    "1120796": "nodemailer — jsonTransport bypasses disableFileAccess. Transport code is not loaded.",
+    "1120797": "nodemailer — TLS validation in OAuth2 token fetch. No OAuth2, no SMTP.",
+    "1121191": "nodemailer — message-level raw option enables file read and SSRF. Requires calling sendMail; nothing does.",
+
+    "1121187": "undici — SOCKS5 ProxyAgent TLS bypass. undici is not loaded on the dkim path.",
+    "1121241": "undici — Set-Cookie percent-decoding header injection. Not loaded.",
+    "1121244": "undici — WebSocket fragment-count DoS. Not loaded.",
+    "1121247": "undici — cross-origin routing via SOCKS5 pool reuse. Not loaded.",
+    "1121254": "undici — SameSite downgrade via substring matching. Not loaded.",
+    "1121428": "undici — shared cache whitespace bypass. Not loaded.",
+    "1130715": "undici — response desynchronization via retry interceptor. Not loaded.",
+    "1130718": "undici — degenerate private cache directives. Not loaded.",
+    "1130726": "undici — CRLF injection via blob-like body type. Not loaded.",
+    "1130729": "undici — whitespace around equals in Cache-Control. Not loaded.",
+    "1130731": "undici — cookie attribute injection via unsanitized domain. Not loaded.",
+    "1137242": "undici — response queue poisoning via keep-alive socket reuse. Not loaded."
+  }
+}

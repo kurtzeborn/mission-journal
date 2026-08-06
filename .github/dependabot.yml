@@ -1,0 +1,61 @@
+version: 2
+
+# Every install path in this repo is `npm ci` or an Oryx build that reads
+# package-lock.json, so no dependency can change without a commit. That is the
+# property we want, and it is also the problem: nothing floats, so nothing
+# updates, and an advisory against something we ship would arrive as nothing at
+# all. Dependabot exists here to turn "no news" into a pull request.
+#
+# Monthly and grouped on purpose. The risk being managed is going years without
+# noticing, not being a week behind, and a weekly stream of single-package PRs
+# is the reliable way to train yourself to stop reading them.
+
+updates:
+  # The Function App. The only place a dependency reaches production code.
+  - package-ecosystem: npm
+    directory: /functions
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      azure-sdk:
+        patterns:
+          - '@azure/*'
+      # Everything else together, minor and patch only. A major version of
+      # sharp, mailauth, or postal-mime changes parsing or image behaviour,
+      # which is a change to what subscribers receive -- that deserves its own
+      # pull request and its own reading of the changelog.
+      minor-and-patch:
+        patterns:
+          - '*'
+        exclude-patterns:
+          - '@azure/*'
+        update-types:
+          - minor
+          - patch
+
+  # The Worker. wrangler is a build-time tool, so an advisory here is a CI
+  # supply-chain question rather than a runtime one -- still worth seeing.
+  - package-ecosystem: npm
+    directory: /worker
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      wrangler:
+        patterns:
+          - '*'
+
+  # Actions are referenced by moving tag, not by commit SHA, which is a
+  # deliberate choice made elsewhere. Given that, the useful thing Dependabot
+  # can do is tell us when a major version is superseded -- `actions/checkout@v4`
+  # and `azure/login@v2` already draw a Node 20 deprecation warning on every run.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns:
+          - '*'

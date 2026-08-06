@@ -8,7 +8,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "test": "node --test \"tests/**/*.test.js\""
+    "test": "node --test \"tests/**/*.test.js\"",
+    "audit": "npm audit --json | node tools/audit-check.js"
   },
   "dependencies": {
     "@azure/data-tables": "^13.3.2",
