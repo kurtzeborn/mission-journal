@@ -350,7 +350,17 @@ export async function acceptInvite({
                 // control of the mission mailbox and by nothing else.
                 verifiedMissionary: false,
                 addedAt: at,
-                invitedBy: row.invitedBy ?? ''
+                invitedBy: row.invitedBy ?? '',
+                // The address the owner typed, kept next to the identity that
+                // actually walked through the link.
+                //
+                // Without it the owner's list is a puzzle: they invite
+                // grandma@aol.com and a fortnight later an unfamiliar
+                // gmail address appears with nothing connecting the two.
+                // That is the very confusion invitations exist to absorb,
+                // and dropping this would only move it off the invitee and
+                // onto the person deciding who to remove.
+                invitedEmail: row.email ?? ''
             }
         ];
 

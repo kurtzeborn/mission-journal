@@ -30,9 +30,20 @@
             <h2>Invite someone</h2>
             <form id="invite">
                 <p>
-                    <label for="email">Their email address</label><br>
-                    <input type="email" id="email" name="email" autocomplete="off" required
-                        placeholder="grandma@example.com">
+                    <label for="email">Their email addresses</label><br>
+                    <!-- A textarea rather than an email field because the
+                         realistic first act after claiming an archive is
+                         inviting a dozen relatives in one sitting, and the
+                         addresses are almost always already in a list
+                         somewhere. Typing them back in one at a time is the
+                         kind of small tax that stops people finishing. -->
+                    <textarea id="email" class="addresses" name="email" rows="4" autocomplete="off" required
+                        placeholder="grandma@example.com, uncle.bob@example.com&#10;Aunt Kay &lt;kay@example.com&gt;"></textarea>
+                </p>
+                <p class="note">
+                    One or many &mdash; separate them with commas or put each on its own line.
+                    Pasting straight out of your contacts or an old email works; names around the
+                    addresses are ignored.
                 </p>
                 <p>
                     <label for="role">They can</label><br>
@@ -41,13 +52,14 @@
                         <option value="owner">Read, edit, and invite others</option>
                     </select>
                 </p>
-                <p><button class="button" type="submit" id="invite-submit">Send the invitation</button></p>
+                <p><button class="button" type="submit" id="invite-submit">Send the invitations</button></p>
                 <p class="note">
                     We email them a link. Nothing changes until they follow it, and the account they
                     sign in with is the one that gets access &mdash; it does not have to be the
                     address you type here.
                 </p>
                 <p class="note" id="invite-said" role="status" aria-live="polite"></p>
+                <ul class="note" id="invite-trouble" hidden></ul>
             </form>
         </section>
     </main>

@@ -1,0 +1,226 @@
+// A DOM small enough to run the site's own scripts against.
+//
+// `web/people.js` and `web/invite.js` are the two files that decide what a
+// person is shown when something goes wrong -- which invitations were refused
+// and why, whether a link is expired or withdrawn, which account is about to
+// be granted access. Every one of those is a sentence somebody reads at the
+// moment they are already confused, and until now none of them were tested at
+// all: the whole of `web/` had no harness.
+//
+// The alternative was a headless browser, which means a dependency, a download
+// on every CI run, and a class of flake that has nothing to do with the code
+// under test. What these two files actually touch is a dozen DOM methods, so
+// this implements those and runs the real, unmodified script in `node:vm`.
+//
+// The trade is stated rather than hidden: this proves the logic and the words,
+// not the rendering. A stylesheet that hides the panel, a mistyped element id
+// in the HTML -- neither is caught here. What is caught is every branch that
+// decides what those elements are *told to say*, which is where the bugs that
+// reach a person live.
+
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+
+class TextNode {
+    constructor(text) {
+        this.textContent = String(text);
+    }
+}
+
+class Element {
+    constructor(tagName) {
+        this.tagName = tagName;
+        this.children = [];
+        this.hidden = false;
+        this.disabled = false;
+        this.className = '';
+        this.href = '';
+        this.value = '';
+        this.type = '';
+        this.listeners = new Map();
+        this.classList = {
+            added: [],
+            add: (...names) => this.classList.added.push(...names)
+        };
+    }
+
+    // Text lives in child nodes, exactly as it does in a browser. It matters:
+    // people.js sets textContent and *then* appends, and an implementation
+    // that stored the string on the element would silently drop the first
+    // half of every row.
+    get textContent() {
+        return this.children.map((child) => child.textContent).join('');
+    }
+
+    set textContent(value) {
+        this.children = value === '' ? [] : [new TextNode(value)];
+    }
+
+    appendChild(child) {
+        this.children.push(child);
+        return child;
+    }
+
+    addEventListener(type, handler) {
+        if (!this.listeners.has(type)) this.listeners.set(type, []);
+        this.listeners.get(type).push(handler);
+    }
+
+    /** Fire the handlers a browser would, and wait for the async ones. */
+    async dispatch(type, event = {}) {
+        const handlers = this.listeners.get(type) ?? [];
+        for (const handler of handlers) await handler({ preventDefault() {}, ...event });
+    }
+
+    /** Every descendant, for finding the button whose label reads a given way. */
+    descendants() {
+        return this.children.flatMap((child) =>
+            child instanceof Element ? [child, ...child.descendants()] : []
+        );
+    }
+}
+
+/**
+ * The ids and sections the real markup provides.
+ *
+ * Regex over HTML is normally a mistake. It is not one here, because the input
+ * is our own hand-written file and the only question being asked of it is
+ * "which ids exist and which start hidden" -- and because the alternative was
+ * a list of ids kept by hand in the test, which would drift from the markup
+ * and drift in the one direction that matters: staying green after somebody
+ * renames an element and breaks the page.
+ */
+function markup(file) {
+    const source = readFileSync(new URL(`../../web/${file}`, import.meta.url), 'utf8')
+        // Comments first. The explanatory ones in these files quote element
+        // names, and a commented-out id is not an id.
+        .replace(/<!--[\s\S]*?-->/g, '');
+
+    const ids = new Map();
+    let sections = 0;
+
+    for (const [, tag, attrs] of source.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)) {
+        if (tag.toLowerCase() === 'section') sections++;
+        const id = attrs.match(/\bid="([^"]+)"/)?.[1];
+        // Quoted values are emptied before looking for the bare `hidden`
+        // attribute, so `class="visually-hidden"` cannot be mistaken for one.
+        if (id) ids.set(id, /\bhidden\b/.test(attrs.replace(/"[^"]*"/g, '""')));
+    }
+
+    return { ids, sections };
+}
+
+/**
+ * A page, built from the file the browser would load.
+ *
+ * Asking for an element the markup does not have throws rather than returning
+ * null, because that failure -- a script reaching for an id the HTML lost in a
+ * rename -- is a real bug and should be loud.
+ */
+export function page({ html, path = '/', hash = '' }) {
+    const { ids, sections } = markup(html);
+
+    const elements = new Map();
+    for (const [id, hidden] of ids) {
+        const element = new Element('div');
+        element.hidden = hidden;
+        elements.set(id, element);
+    }
+
+    const sectionElements = Array.from({ length: sections }, () => new Element('section'));
+
+    const document = {
+        getElementById(id) {
+            if (!elements.has(id)) throw new Error(`no element with id "${id}"`);
+            return elements.get(id);
+        },
+        createElement: (tagName) => new Element(tagName),
+        querySelectorAll: (selector) =>
+            selector === 'main > section' ? sectionElements : []
+    };
+
+    const storage = new Map();
+
+    const context = {
+        document,
+        location: {
+            pathname: path,
+            hash,
+            href: path,
+            assign(target) {
+                this.href = target;
+            }
+        },
+        history: { replaceState() {} },
+        sessionStorage: {
+            getItem: (key) => storage.get(key) ?? null,
+            setItem: (key, value) => storage.set(key, String(value)),
+            removeItem: (key) => storage.delete(key)
+        },
+        confirmed: true,
+        console
+    };
+
+    context.window = context;
+    context.window.confirm = () => context.confirmed;
+    context.self = context;
+
+    return {
+        context,
+        elements,
+        sections: sectionElements,
+        el: (id) => document.getElementById(id),
+        text: (id) => document.getElementById(id).textContent,
+        /** The rendered lines of a list, one string per child. */
+        lines: (id) => document.getElementById(id).children.map((c) => c.textContent),
+        /** A descendant button by the words on it, for clicking. */
+        button: (id, label) =>
+            document
+                .getElementById(id)
+                .descendants()
+                .find((node) => node.tagName === 'button' && node.textContent === label)
+    };
+}
+
+/**
+ * A `fetch` that answers from a script and records what it was asked.
+ *
+ * `answer` is called with (url, init) and returns `{ status, body }`, or throws
+ * to model the network being down -- which is a branch both files handle and
+ * neither had ever had exercised.
+ */
+export function fetching(answer) {
+    const calls = [];
+    const fetch = async (url, init = {}) => {
+        calls.push({ url, method: init.method ?? 'GET', body: init.body ? JSON.parse(init.body) : null });
+        const reply = await answer(url, init, calls.length);
+        if (reply instanceof Error) throw reply;
+        const { status = 200, body = {}, headers = {} } = reply ?? {};
+        return {
+            ok: status >= 200 && status < 300,
+            status,
+            headers: { get: (name) => headers[name] ?? null },
+            json: async () => body
+        };
+    };
+    return { fetch, calls };
+}
+
+/**
+ * Run one of the site's scripts against a page.
+ *
+ * The file is read and executed unmodified, so the thing under test is the
+ * thing that ships. Both scripts start work as they load, and both start it
+ * with an await, so one turn of the microtask queue is not enough -- callers
+ * await `settled()` to let the whole chain finish.
+ */
+export function run(file, { context, fetch }) {
+    const source = readFileSync(new URL(`../../web/${file}`, import.meta.url), 'utf8');
+    context.fetch = fetch;
+    runInNewContext(source, context, { filename: file });
+}
+
+/** Let every pending promise chain finish. */
+export const settled = async () => {
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+};

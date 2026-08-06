@@ -123,7 +123,7 @@
         if (!response.ok) {
             // 404 covers both "no such archive" and "not yours" -- the API
             // refuses to tell them apart, so neither can this message.
-            show('This archive is not available to you.');
+            await showDenied();
             return;
         }
 
@@ -167,6 +167,48 @@
         Reader.mount({ posts: payload.posts, photoSrc, elements, admin });
     }
 
+    // One fetch shared by the masthead and the refusal panel. Both want the
+    // same answer and they run concurrently, so asking twice would be two
+    // round trips for one fact.
+    let principalRequest = null;
+
+    function readPrincipal() {
+        principalRequest ??= (async () => {
+            try {
+                const response = await fetch('/.auth/me', { cache: 'no-store' });
+                if (!response.ok) return null;
+                return (await response.json()).clientPrincipal ?? null;
+            } catch {
+                return null;
+            }
+        })();
+        return principalRequest;
+    }
+
+    // The archive said no. Almost always this is the right person on the wrong
+    // account -- an invitation accepted on one, the link opened on another --
+    // so name the account and offer the way out, rather than a flat sentence
+    // that leaves them with nothing to try.
+    async function showDenied() {
+        elements.state.hidden = true;
+
+        // Signing out returns them here, where the missing session turns into
+        // the ordinary 401 redirect to the chooser. One mechanism, already
+        // built, rather than a second hand-assembled round trip through login.
+        document.getElementById('denied-switch').href =
+            `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(window.location.pathname)}`;
+
+        // Only claimed when known. Telling somebody which account they are on
+        // and being wrong about it is worse than not saying.
+        const principal = await readPrincipal();
+        if (principal?.userDetails) {
+            document.getElementById('denied-email').textContent = principal.userDetails;
+            document.getElementById('denied-who').hidden = false;
+        }
+
+        document.getElementById('denied').hidden = false;
+    }
+
     // Which account is this page answering for. Worth saying out loud: the
     // archive is matched on email address, so someone signed in with the wrong
     // one of their accounts sees a refusal with no clue why.
@@ -182,15 +224,7 @@
         const box = document.getElementById('account');
         if (!box) return;
 
-        let principal;
-        try {
-            const response = await fetch('/.auth/me', { cache: 'no-store' });
-            if (!response.ok) return;
-            principal = (await response.json()).clientPrincipal;
-        } catch {
-            return;
-        }
-
+        const principal = await readPrincipal();
         if (!principal) return;
 
         // An unrecognised provider still gets the address, just without a mark.

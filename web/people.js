@@ -38,6 +38,20 @@
         const who = document.createElement('span');
         who.className = 'people__who';
         who.textContent = person.email;
+
+        // The address the invitation was sent to, when the person signed in
+        // with a different one. Without this the row is unidentifiable: an
+        // owner who invited grandma@aol.com has no way to tell that the
+        // gmail address in front of them is her, and Remove is a button you
+        // have to be sure about before you press it.
+        if (person.invitedEmail) {
+            const was = document.createElement('span');
+            was.className = 'people__was';
+            was.textContent = `invited as ${person.invitedEmail}`;
+            who.appendChild(document.createElement('br'));
+            who.appendChild(was);
+        }
+
         item.appendChild(who);
 
         const what = document.createElement('span');
@@ -150,42 +164,115 @@
         $('everything').hidden = false;
     }
 
+    // Pulls addresses out of whatever got pasted.
+    //
+    // Written to accept the shapes people actually have rather than to be a
+    // parser: a comma-separated line out of an old email, a column copied from
+    // a spreadsheet, `Aunt Kay <kay@example.com>` straight from a mail client,
+    // or all three at once. Names and stray punctuation are dropped rather
+    // than rejected, because a paste that fails wholesale over one trailing
+    // semicolon sends somebody back to retype the lot.
+    //
+    // Nothing here decides whether an address is real. That is the server's
+    // job and it does it again anyway; this only decides where one address
+    // ends and the next begins.
+    function parseAddresses(text) {
+        const found = [];
+        for (const chunk of String(text ?? '').split(/[\n,;]+/)) {
+            // The angle-bracket form wins when present: `Kay <kay@x.com>` has
+            // a name that could otherwise be mistaken for an address.
+            const angled = chunk.match(/<([^>]*)>/);
+            const candidate = (angled ? angled[1] : chunk).trim().replace(/^["']|["']$/g, '');
+            if (candidate) found.push(candidate.toLowerCase());
+        }
+        // Deduped because the same relative appears twice in a pasted list far
+        // more often than not, and every duplicate would otherwise spend one
+        // of the day's twenty invitations to be refused.
+        return [...new Set(found)];
+    }
+
     async function invite(event) {
         event.preventDefault();
         const said = $('invite-said');
-        $('invite-submit').disabled = true;
-        said.textContent = '';
+        const trouble = $('invite-trouble');
+        const submit = $('invite-submit');
 
-        let response;
-        try {
-            response = await api('', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: $('email').value, role: $('role').value })
-            });
-        } catch {
-            said.textContent = 'That did not go through. Please try again.';
-            $('invite-submit').disabled = false;
+        trouble.textContent = '';
+        trouble.hidden = true;
+
+        const addresses = parseAddresses($('email').value);
+        if (!addresses.length) {
+            said.textContent = 'No email addresses found in that.';
             return;
         }
 
-        const body = await response.json().catch(() => ({}));
-        $('invite-submit').disabled = false;
+        submit.disabled = true;
+        const role = $('role').value;
+        const refused = [];
+        let sent = 0;
 
-        if (!response.ok) {
+        // One at a time, deliberately.
+        //
+        // The daily cap is a read-then-check with no atomic counter behind it,
+        // so a dozen requests in flight together can each read the same count
+        // and all pass. Sequential sending is what makes the cap mean exactly
+        // what it says on the path most likely to reach it. It is also the
+        // only way to tell somebody *which* addresses failed.
+        for (const email of addresses) {
+            said.textContent =
+                addresses.length > 1
+                    ? `Sending ${sent + refused.length + 1} of ${addresses.length}\u2026`
+                    : 'Sending\u2026';
+
+            let response;
+            try {
+                response = await api('', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, role })
+                });
+            } catch {
+                refused.push({ email, why: 'could not reach the server' });
+                continue;
+            }
+
+            const body = await response.json().catch(() => ({}));
+            if (response.ok) {
+                sent++;
+                continue;
+            }
+
             // The server's own words. Every refusal it produces is already a
             // sentence written for the person reading it, and translating them
             // here would mean maintaining the same list twice.
-            said.textContent = body.error ?? 'That did not go through.';
-            return;
+            refused.push({ email, why: body.error ?? 'did not go through' });
         }
+
+        submit.disabled = false;
 
         // Deliberately does not claim the mail arrived. It has been handed to
         // the provider, which is a different thing, and telling somebody their
         // invitation was delivered when it went to spam sends them looking in
         // the wrong place.
-        said.textContent = `Invitation sent to ${body.email}. It works for two weeks.`;
-        $('email').value = '';
+        said.textContent = sent
+            ? `${sent === 1 ? 'Invitation' : `${sent} invitations`} sent. ${sent === 1 ? 'It works' : 'They work'} for two weeks.`
+            : 'Nothing was sent.';
+
+        // Named one by one rather than counted. "3 failed" is the message that
+        // makes somebody paste the whole list again to find out which three.
+        for (const { email, why } of refused) {
+            const line = document.createElement('li');
+            line.textContent = `${email} \u2014 ${why}`;
+            trouble.appendChild(line);
+        }
+        trouble.hidden = refused.length === 0;
+
+        // Only cleared when the whole list went through. Leaving the refusals
+        // in the box is what lets somebody fix a typo and press send again,
+        // and clearing it would throw away the addresses that still need one.
+        if (!refused.length) $('email').value = '';
+        else $('email').value = refused.map((r) => r.email).join('\n');
+
         await load();
     }
 

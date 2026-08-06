@@ -353,16 +353,62 @@ button:focus-visible {
     font-size: 0.9rem;
 }
 
+/* The address an invitation went to, under the identity that accepted it. */
+.people__was {
+    color: var(--ink-soft);
+    font-size: 0.85rem;
+}
+
 .people__controls {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
+/* The address box on the people page. Wide and tall enough that a pasted
+   list of a dozen relatives is visible as a list, which is what makes a typo
+   findable before it is sent. */
+.addresses {
+    width: 100%;
+    max-width: 32rem;
+    box-sizing: border-box;
+    font: inherit;
+    padding: 0.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    resize: vertical;
+}
+
 .state {
     padding: 3rem 0;
     text-align: center;
     color: var(--ink-soft);
+}
+
+/* Shown instead of the letters when the archive refuses. Deliberately not
+   styled as an error -- the overwhelmingly likely cause is signing in with the
+   wrong one of several accounts, which is a wrong turn rather than a fault. */
+.denied {
+    margin: 2.5rem 0;
+    padding: 1.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: #faf8f4;
+}
+
+.denied__title {
+    margin-top: 0;
+    font-size: 1.25rem;
+}
+
+/* The address is the whole point of the panel, so let it wrap rather than
+   spill out of the box on a phone. */
+.denied__who {
+    overflow-wrap: anywhere;
+}
+
+.denied__actions {
+    margin: 1.5rem 0;
 }
 
 /* --- search --- */

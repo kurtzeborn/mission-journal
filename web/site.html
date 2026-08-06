@@ -42,6 +42,30 @@
         </form>
 
         <div id="state" class="state">Loading letters&hellip;</div>
+
+        <!--
+            Shown by app.js when the API refuses. The API cannot say whether
+            the archive is missing or merely not this person's, so neither does
+            this -- but it can name the account being refused, which is the one
+            thing the visitor cannot see for themselves and the usual cause: an
+            invitation accepted on one account, opened on another.
+        -->
+        <section id="denied" class="denied" hidden aria-labelledby="denied-title">
+            <h2 class="denied__title" id="denied-title">These letters are not available to this account</h2>
+            <p id="denied-who" class="denied__who" hidden>You are signed in as <strong
+                    id="denied-email"></strong>.</p>
+            <p>Every archive is private. If you were invited, sign in with the same
+                account the invitation was accepted on &mdash; many people have more
+                than one, and an archive answers for exactly one of them.</p>
+            <p class="denied__actions">
+                <a class="button" id="denied-switch" href="/.auth/logout">Sign out and try another account</a>
+            </p>
+            <p class="note">New here? Read <a href="/start">how this works</a> or the <a href="/faq">questions
+                    page</a>. Still stuck &mdash; ask whoever invited you to check the address on their
+                <strong>People</strong> list, or write to <a
+                    href="mailto:hello@pdayletters.com">hello@pdayletters.com</a>.</p>
+        </section>
+
         <ol id="posts" class="posts"></ol>
     </main>
 

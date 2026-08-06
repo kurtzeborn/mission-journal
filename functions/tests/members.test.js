@@ -328,6 +328,48 @@ describe('inviting somebody who has never signed in', () => {
         assert.equal(await resolveRole({ store, slug: SLUG, principal: { email: 'grandma@aol.com' } }), null);
     });
 
+    test('the owner can still tell who the unfamiliar address is', async () => {
+        // The cost of binding to the identity rather than the address: the
+        // owner invited one address and a different one appeared. Without the
+        // address they typed being kept, the confusion invitations exist to
+        // absorb is simply moved onto the person deciding who to remove.
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await inviteMember({
+            store, tables: store, mailer, slug: SLUG, actor: OWNER,
+            email: 'grandma@aol.com', key: KEY, baseUrl: BASE, now: NOW, log: silent
+        });
+        const token = mailer.sent[0].text.match(/\/invite#(\S+)/)[1];
+        await acceptInvite({
+            store, tables: store, token, key: KEY,
+            principal: 'g.example@gmail.com', now: NOW, log: silent
+        });
+
+        const listed = await listMembers({ store, slug: SLUG, actor: OWNER });
+        const grandma = listed.find((m) => m.email === 'g.example@gmail.com');
+        assert.equal(grandma.invitedEmail, 'grandma@aol.com');
+    });
+
+    test('an address that did not change is not echoed back twice', async () => {
+        // Said once is a fact; said twice is noise on a row whose job is to be
+        // checkable at a glance before somebody presses Remove.
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await inviteMember({
+            store, tables: store, mailer, slug: SLUG, actor: OWNER,
+            email: READER, key: KEY, baseUrl: BASE, now: NOW, log: silent
+        });
+        const token = mailer.sent[0].text.match(/\/invite#(\S+)/)[1];
+        await acceptInvite({ store, tables: store, token, key: KEY, principal: READER, now: NOW, log: silent });
+
+        const listed = await listMembers({ store, slug: SLUG, actor: OWNER });
+        assert.equal(listed.find((m) => m.email === READER).invitedEmail, '');
+        // And somebody who was never invited has nothing to show at all.
+        assert.equal(listed.find((m) => m.email === OWNER).invitedEmail, '');
+    });
+
     test('accepting as an owner grants ownership, not a reader seat', async () => {
         const store = await site([member(OWNER, ROLE.owner)]);
         const mailer = recorder();

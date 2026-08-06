@@ -1,0 +1,249 @@
+// What the people page actually says, driven through the real script.
+//
+// The interesting cases are all refusals. Inviting twelve relatives at once
+// means twelve chances for one of them to be a typo, and the difference
+// between a page that says "3 failed" and one that names them is the
+// difference between fixing it and pasting the whole list again.
+
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { fetching, page, run, settled } from './web-dom.js';
+
+const SLUG = 'elder.example';
+
+const OWNER_ONLY = {
+    members: [{ email: 'mum@example.com', role: 'owner', you: true, removable: false, invitedEmail: '' }],
+    invites: []
+};
+
+/** A page with the script loaded and its first render finished. */
+async function people({ answer }) {
+    const view = page({ html: 'people.html', path: `/people/${SLUG}` });
+    const net = fetching(answer);
+    run('people.js', { context: view.context, fetch: net.fetch });
+    await settled();
+    return { ...view, calls: net.calls };
+}
+
+const listing = (payload) => async (url, init) =>
+    init?.method === 'POST' ? { status: 200, body: {} } : { status: 200, body: payload };
+
+describe('inviting a whole family in one sitting', () => {
+    test('one address per invitation, however they were pasted', async () => {
+        const view = await people({ answer: listing(OWNER_ONLY) });
+
+        // The three shapes people actually have: a comma-separated line out of
+        // an old email, a name-and-address pair from a mail client, and a
+        // column copied from a spreadsheet.
+        view.el('email').value =
+            'grandma@example.com, uncle.bob@example.com\nAunt Kay <kay@example.com>\n\n  cousin@example.com  ';
+        view.el('role').value = 'reader';
+        await view.el('invite').dispatch('submit');
+
+        const invited = view.calls.filter((c) => c.method === 'POST').map((c) => c.body.email);
+        assert.deepEqual(invited, [
+            'grandma@example.com',
+            'uncle.bob@example.com',
+            'kay@example.com',
+            'cousin@example.com'
+        ]);
+        assert.equal(view.text('invite-said'), '4 invitations sent. They work for two weeks.');
+        assert.equal(view.el('email').value, '');
+    });
+
+    test('the same relative listed twice is only invited once', async () => {
+        // Duplicates are the norm in a pasted list, and every one of them would
+        // otherwise spend one of the day's twenty invitations to be refused.
+        const view = await people({ answer: listing(OWNER_ONLY) });
+
+        view.el('email').value = 'gran@example.com, Gran <GRAN@example.com>; gran@example.com';
+        await view.el('invite').dispatch('submit');
+
+        const invited = view.calls.filter((c) => c.method === 'POST').map((c) => c.body.email);
+        assert.deepEqual(invited, ['gran@example.com']);
+        assert.equal(view.text('invite-said'), 'Invitation sent. It works for two weeks.');
+    });
+
+    test('nothing recognisable means nothing is sent', async () => {
+        const view = await people({ answer: listing(OWNER_ONLY) });
+
+        view.el('email').value = '  ,  ;\n\n ';
+        await view.el('invite').dispatch('submit');
+
+        assert.equal(view.calls.filter((c) => c.method === 'POST').length, 0);
+        assert.equal(view.text('invite-said'), 'No email addresses found in that.');
+    });
+
+    test('every refusal is named, in the words the server used', async () => {
+        const view = await people({
+            answer: async (url, init) => {
+                if (init?.method !== 'POST') return { status: 200, body: OWNER_ONLY };
+                const email = JSON.parse(init.body).email;
+                if (email === 'nope') return { status: 400, body: { error: 'not an email address' } };
+                if (email === 'mum@example.com') return { status: 400, body: { error: 'already a member' } };
+                return { status: 200, body: {} };
+            }
+        });
+
+        view.el('email').value = 'ok@example.com, nope, mum@example.com';
+        await view.el('invite').dispatch('submit');
+
+        assert.equal(view.text('invite-said'), 'Invitation sent. It works for two weeks.');
+        assert.deepEqual(view.lines('invite-trouble'), [
+            'nope — not an email address',
+            'mum@example.com — already a member'
+        ]);
+        assert.equal(view.el('invite-trouble').hidden, false);
+    });
+
+    test('the ones that failed are left in the box to be fixed', async () => {
+        // Clearing the box on a partial success throws away exactly the
+        // addresses that still need an invitation.
+        const view = await people({
+            answer: async (url, init) => {
+                if (init?.method !== 'POST') return { status: 200, body: OWNER_ONLY };
+                return JSON.parse(init.body).email.startsWith('bad')
+                    ? { status: 400, body: { error: 'not an email address' } }
+                    : { status: 200, body: {} };
+            }
+        });
+
+        view.el('email').value = 'good@example.com, bad-one@x, bad-two@y';
+        await view.el('invite').dispatch('submit');
+
+        assert.equal(view.el('email').value, 'bad-one@x\nbad-two@y');
+    });
+
+    test('hitting the daily cap says so, and says which ones missed out', async () => {
+        // The cap is the one refusal an ordinary family can trip by doing
+        // nothing wrong, so it has to arrive as an explanation rather than a
+        // failure.
+        let allowed = 2;
+        const view = await people({
+            answer: async (url, init) => {
+                if (init?.method !== 'POST') return { status: 200, body: OWNER_ONLY };
+                if (allowed-- > 0) return { status: 200, body: {} };
+                return { status: 429, body: { error: 'too many invitations today, try again tomorrow' } };
+            }
+        });
+
+        view.el('email').value = 'a@example.com\nb@example.com\nc@example.com';
+        await view.el('invite').dispatch('submit');
+
+        assert.equal(view.text('invite-said'), '2 invitations sent. They work for two weeks.');
+        assert.deepEqual(view.lines('invite-trouble'), [
+            'c@example.com — too many invitations today, try again tomorrow'
+        ]);
+    });
+
+    test('the network dropping mid-list does not lose the rest of it', async () => {
+        const view = await people({
+            answer: async (url, init) => {
+                if (init?.method !== 'POST') return { status: 200, body: OWNER_ONLY };
+                return JSON.parse(init.body).email === 'b@example.com'
+                    ? new Error('offline')
+                    : { status: 200, body: {} };
+            }
+        });
+
+        view.el('email').value = 'a@example.com, b@example.com, c@example.com';
+        await view.el('invite').dispatch('submit');
+
+        const invited = view.calls.filter((c) => c.method === 'POST').map((c) => c.body.email);
+        assert.deepEqual(invited, ['a@example.com', 'b@example.com', 'c@example.com']);
+        assert.deepEqual(view.lines('invite-trouble'), ['b@example.com — could not reach the server']);
+        // Left ready to retry, and only that one.
+        assert.equal(view.el('email').value, 'b@example.com');
+    });
+
+    test('the send button comes back even when everything failed', async () => {
+        const view = await people({
+            answer: async (url, init) =>
+                init?.method === 'POST'
+                    ? { status: 400, body: { error: 'not an email address' } }
+                    : { status: 200, body: OWNER_ONLY }
+        });
+
+        view.el('email').value = 'x@example.com';
+        await view.el('invite').dispatch('submit');
+
+        assert.equal(view.el('invite-submit').disabled, false);
+        assert.equal(view.text('invite-said'), 'Nothing was sent.');
+    });
+});
+
+describe('reading the list of who has access', () => {
+    test('an unfamiliar address is shown next to the one it was invited as', async () => {
+        const view = await people({
+            answer: listing({
+                members: [
+                    { email: 'mum@example.com', role: 'owner', you: true, removable: false, invitedEmail: '' },
+                    {
+                        email: 'g.example@gmail.com',
+                        role: 'reader',
+                        removable: true,
+                        invitedEmail: 'grandma@aol.com'
+                    }
+                ],
+                invites: []
+            })
+        });
+
+        const rows = view.lines('people');
+        assert.match(rows[1], /g\.example@gmail\.com/);
+        assert.match(rows[1], /invited as grandma@aol\.com/);
+        // And the one that never changed says it once.
+        assert.doesNotMatch(rows[0], /invited as/);
+    });
+
+    test('a pending invitation is marked as an offer, not as access', async () => {
+        const view = await people({
+            answer: listing({
+                members: OWNER_ONLY.members,
+                invites: [{ id: 'abc', email: 'later@example.com', role: 'reader' }]
+            })
+        });
+
+        assert.match(view.lines('people')[1], /invited as reader/);
+    });
+
+    test('a reader who reaches the page is told why it is empty', async () => {
+        const view = await people({ answer: async () => ({ status: 403, body: {} }) });
+
+        assert.equal(view.text('state'), 'Only owners can see who has access to an archive.');
+        assert.equal(view.el('everything').hidden, true);
+    });
+
+    test('withdrawing an invitation asks first, and asks about the invitation', async () => {
+        // Removing a member and withdrawing an offer read the same on screen
+        // and are not the same act. The confirmation is the only place the
+        // difference is stated.
+        const view = await people({
+            answer: listing({
+                members: OWNER_ONLY.members,
+                invites: [{ id: 'abc', email: 'later@example.com', role: 'reader' }]
+            })
+        });
+
+        view.context.confirmed = false;
+        await view.button('people', 'Remove').dispatch('click');
+
+        assert.equal(view.calls.filter((c) => c.method === 'DELETE').length, 0);
+    });
+
+    test('a withdrawal is addressed by invitation, never by email', async () => {
+        // The invites table is keyed by token hash. Sending the address would
+        // delete nothing, silently.
+        const view = await people({
+            answer: listing({
+                members: OWNER_ONLY.members,
+                invites: [{ id: 'the-hash', email: 'later@example.com', role: 'reader' }]
+            })
+        });
+
+        await view.button('people', 'Remove').dispatch('click');
+
+        const deleted = view.calls.find((c) => c.method === 'DELETE');
+        assert.equal(deleted.url, `/api/members/${SLUG}/the-hash`);
+    });
+});

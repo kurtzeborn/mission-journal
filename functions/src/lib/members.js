@@ -76,6 +76,11 @@ export async function listMembers({ store, slug, actor }) {
         role: m.role,
         verifiedMissionary: Boolean(m.verifiedMissionary),
         addedAt: m.addedAt ?? '',
+        // Only when it differs from the address they ended up signing in with.
+        // Echoing the same string twice tells the owner nothing and makes the
+        // row harder to read, and the row's job is to be checkable at a glance
+        // before somebody presses Remove.
+        invitedEmail: lower(m.invitedEmail) === lower(m.email) ? '' : lower(m.invitedEmail),
         you: lower(m.email) === me,
         // Precomputed rather than left to the client. The client may not
         // reimplement the policy -- it would drift, and it would drift in the
