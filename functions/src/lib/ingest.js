@@ -16,7 +16,9 @@ import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
 import { offerClaim } from './offer.js';
-import { nudgeOnce } from './nudge.js';
+import { nudgeOnce, NUDGE } from './nudge.js';
+import { relayRequestFor, RELAY_TTL_DAYS } from './relay.js';
+import { issueClaimToken, PURPOSE } from './claimtoken.js';
 import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
 import { touchSiteActivity } from './sites.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
@@ -94,6 +96,35 @@ const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 // The identifier a reader sees in a URL. The date makes it legible and sorts
 // naturally; the hash suffix keeps two letters written the same day apart.
 const postIdFor = (day, msgId) => `${day ?? 'undated'}-${msgId.slice(-4)}`;
+
+/**
+ * The link that offers to ask the missionary, signed so the endpoint behind it
+ * never has to take a caller's word for who is being written to or for whom.
+ *
+ * Returns an empty string rather than throwing when there is no signing key.
+ * A misconfigured key must cost the second route in a piece of advice, not the
+ * advice itself -- the first route works without us.
+ */
+function relayUrl({ slug, verdict, config, now }) {
+    if (!config.claimTokenKey || !verdict.author || !verdict.sender) return '';
+    try {
+        const expiresAt = new Date(now().getTime() + RELAY_TTL_DAYS * 86400_000).toISOString();
+        const { token } = issueClaimToken({
+            slug,
+            key: config.claimTokenKey,
+            expiresAt,
+            purpose: PURPOSE.relay,
+            subject: verdict.author,
+            recipient: verdict.sender
+        });
+        // In the fragment, like every other link this service sends: a token in
+        // a query string is in a server log before anybody has decided it
+        // should be.
+        return `${String(config.baseUrl ?? '').replace(/\/$/, '')}/ask#${token}`;
+    } catch {
+        return '';
+    }
+}
 
 /**
  * @param {object} input
@@ -184,18 +215,25 @@ export async function runIngest({
     // costs a DNS round trip, so it is not attempted otherwise.
     const dkim =
         extracted.source === 'rfc822'
-            ? await verifyDkim(extracted)
-            : { verified: false, reason: 'no-embedded-original', signatures: [] };
+            ? await verifyDkim(extracted, { trustedSealers: config.trustedArcSealers })
+            : { verified: false, coverage: null, reason: 'no-embedded-original', signatures: [] };
 
     // Reported every time it was attempted, pass or fail. A held letter is
     // indistinguishable from a lost one without this, and "held" is the
     // outcome that needs a human to understand why.
+    //
+    // `coverage` is logged separately from `verified` because they answer
+    // different questions. `verified` is the decision. `coverage` is how much
+    // of the letter the decision rests on, and a run of `headers` where there
+    // used to be `body` is a mail provider having changed something.
     if (extracted.source === 'rfc822') {
         log.info?.('ingest: dkim', {
             ulid,
             verified: dkim.verified,
+            coverage: dkim.coverage ?? null,
             reason: dkim.reason,
             authorDomain: dkim.authorDomain ?? null,
+            sealer: dkim.arc?.sealer ?? null,
             signatures: dkim.signatures
         });
     }
@@ -211,11 +249,17 @@ export async function runIngest({
     if (verdict.class === CLASS.rejected) {
         logRejection({ log, config, ulid, extracted, verdict, now });
 
-        // The one rejection that gets an answer. See nudge.js for why this is
-        // not the backscatter it looks like, and why the other unverifiable
-        // shape -- an attachment whose signature did not re-verify -- is left
-        // in silence: that sender already did the thing this would advise.
-        if (verdict.reason === 'bootstrap-not-attached') {
+        // The two rejections that get an answer, and they get different ones.
+        // See nudge.js. Every other rejection stays silent, because its sender
+        // is a stranger, a spammer or a loop.
+        const kind =
+            verdict.reason === 'bootstrap-not-attached'
+                ? NUDGE.attach
+                : verdict.reason === 'bootstrap-unverified'
+                    ? NUDGE.rebuilt
+                    : null;
+
+        if (kind) {
             const slug = validSlug(verdict.slug);
             if (slug) {
                 try {
@@ -226,6 +270,11 @@ export async function runIngest({
                         author: verdict.author,
                         slug,
                         baseUrl: config.baseUrl,
+                        kind,
+                        askUrl:
+                            kind === NUDGE.rebuilt
+                                ? relayUrl({ slug, verdict, config, now })
+                                : '',
                         now,
                         log
                     });
@@ -323,6 +372,23 @@ export async function runIngest({
         // the sender's server redeliver it.
         if (mailer && (manifest.claimEmailCount ?? 0) === 0) {
             try {
+                // A direct send is normally offered back to the missionary,
+                // because they are the only authenticated party on it. The
+                // exception is a letter they sent *because we asked them to*,
+                // on behalf of a family member who could not produce a
+                // verifiable forward. Offering that one to the missionary
+                // would hand the archive to the person who was doing somebody
+                // else a favour, and leave the person who wanted it waiting
+                // for a link that went somewhere else.
+                //
+                // Read fresh rather than trusted from the message: the letter
+                // says nothing about any of this, and the request is a signed
+                // token's worth of intent recorded before the letter arrived.
+                const relay = bootstrapping ? null : await relayRequestFor({ tables, slug, now });
+                if (relay) {
+                    log.info?.('ingest: honouring a relay request', { slug, to: relay.requester });
+                }
+
                 await offerClaim({
                     store,
                     mailer,
@@ -333,8 +399,8 @@ export async function runIngest({
                     // missionary. Overridden here because a bootstrap forward
                     // was sent by somebody else, and they are the one waiting
                     // to hear back.
-                    to: bootstrapping ? verdict.forwarder : '',
-                    forwarded: bootstrapping,
+                    to: bootstrapping ? verdict.forwarder : (relay?.requester ?? ''),
+                    forwarded: bootstrapping || Boolean(relay),
                     now,
                     log
                 });

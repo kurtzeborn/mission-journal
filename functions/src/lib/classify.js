@@ -138,15 +138,14 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
     // does, and no header distinguishes them. That residual risk is the
     // reason a verified missionary must be able to remove an owner.
     if (!members) {
-        // Two different failures, and only one of them has a remedy the sender
-        // can act on. Inline text can be re-sent as an attachment, so that one
-        // is worth a reply. An embedded original whose signature did not
-        // re-verify was already forwarded correctly -- telling that sender to
-        // "forward as an attachment" is advice they have followed, and would
-        // send them round the same loop indefinitely. The causes there are a
-        // client that rewrote the body, a signature stripped in transit, or a
-        // key rotated since the letter was sent, and none of them are fixable
-        // from the sender's chair.
+        // Both failures now have a remedy, which was not true when this was
+        // written. Inline text can be re-sent as an attachment. An attachment
+        // that did not verify used to be a dead end -- the sender had already
+        // followed the only advice we had -- but the cause is now known and
+        // has two answers: forward again from Outlook on the web, which does
+        // not rebuild the message, or have the missionary send the letter
+        // directly. Both are worth a reply, and they are different replies.
+        // See nudge.js.
         if (extracted.source === 'inline') {
             return reject('bootstrap-not-attached', { sender, author, slug });
         }
@@ -176,37 +175,39 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
     const member = members.find((m) => m.email?.toLowerCase() === sender);
     if (!member) return reject('forwarder-not-on-acl', { sender, author, slug });
 
-    const isOwner = member.role === 'owner';
-
-    // Inline forwarded text is forwarder-controlled and carries no evidence of
-    // authorship. A reader could otherwise invent a letter, attribute it to
-    // the missionary and backdate it anywhere in the timeline. Owners can
-    // already edit and delete any post, so this grants them nothing new.
-    if (extracted.source === 'inline' && !isOwner) {
-        return reject('inline-requires-owner', { sender, author, slug });
-    }
-
     if (extracted.source !== 'inline' && extracted.source !== 'rfc822') {
         return reject('no-recoverable-original', { sender, author, slug });
     }
 
-    // An embedded original whose signature does not re-verify is exactly as
-    // forgeable as inline text, so it is held rather than published. It is not
-    // dropped: re-verification fails for honest reasons too, including a
-    // client that strips the signature and a signing key rotated since the
-    // letter was sent.
-    const disposition =
-        isOwner || dkimVerified ? DISPOSITION.publish : DISPOSITION.hold;
-
+    // Past this point membership is the control, not the signature.
+    //
+    // Inline text used to be owner-only, and an attachment that did not
+    // re-verify used to be held, both on the reasoning that a reader could
+    // otherwise invent a letter and attribute it to the missionary. That risk
+    // is real and has not changed. What changed is the price of pricing it in:
+    // most of a family cannot produce a verifiable forward at all, because the
+    // desktop Outlook client rebuilds every message it forwards, so the rule
+    // was not admitting only trustworthy letters -- it was holding almost
+    // everything from almost everybody, indefinitely, with no way out.
+    //
+    // The trust boundary is the invitation. Someone on this list was put there
+    // by the owner, deliberately, and the owner can edit or delete anything
+    // they post and remove them from the list. That is a person the family
+    // chose, not a stranger, and it is a smaller risk than an archive nobody
+    // can add to.
+    //
+    // Bootstrap is where the cryptography still earns its keep, and it is
+    // untouched: it decides whether an archive exists at all, and there is no
+    // owner there to appeal to.
     return {
         class: CLASS.forward,
-        disposition,
+        disposition: DISPOSITION.publish,
         slug,
         author,
         forwarder: sender,
         role: member.role,
         extractionSource: extracted.source,
         dkimVerified,
-        reason: disposition === DISPOSITION.hold ? 'unverified-original' : null
+        reason: null
     };
 }

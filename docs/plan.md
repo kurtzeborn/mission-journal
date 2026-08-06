@@ -169,7 +169,7 @@ Inbound messages fall into one of these classes based on what the intake code ca
 | Class | Detection | Publish? |
 |---|---|---|
 | `direct` | `From:` is `@missionary.org` and DMARC passes with `header.from` aligned to that domain, per `Authentication-Results`. The `From:` local-part **is** the target slug. | Yes |
-| `forward` | The original message is recoverable (a `message/rfc822` attachment, or — **owners only** — inline forwarded text), its `From:` resolves to a known slug, and the forwarder is on that slug's ACL with a passing DMARC result of their own | Yes |
+| `forward` | The original message is recoverable (a `message/rfc822` attachment, or inline forwarded text), its `From:` resolves to a known slug, and the forwarder is on that slug's ACL with a passing DMARC result of their own | Yes |
 | `rejected` | None of the above — no recoverable `@missionary.org` author, or the forwarder isn't on the resolved slug's ACL, or authentication of the forwarder itself failed | No — drop silently, log to App Insights |
 
 Provenance for `forward` messages is captured in an `extractionSource` metadata field for audit/debug: `rfc822` (embedded `.eml` was present) or `inline` (parsed from forwarded-text separators). The originating client (Gmail / Outlook / Apple Mail) and DKIM re-verify pass/fail are logged to App Insights at ingest time but not stored on the post — both can be re-derived from the preserved raw MIME if a specific extractor ever turns out to be buggy and we need to requery history.
@@ -188,30 +188,70 @@ Design principles:
 - **Key acceptance on `dmarc=pass` plus `header.from` alignment, not on all three methods passing.** DMARC is already the composite: it passes when SPF *or* DKIM aligns with the `From:` domain. Requiring SPF, DKIM, and DMARC to pass independently adds no security over DMARC alone while rejecting legitimate mail whenever one leg breaks — which is routine, since forwarding rewrites the envelope sender and breaks SPF by design. SPF and DKIM results are recorded for diagnostics; DMARC decides.
 - **The target site is derived from the letter's author, never from the recipient address** — see [Sender-based routing](#sender-based-routing). Every message goes to the same `post@` address, so there is no attacker-supplied "which site" input to validate.
 - **The forwarder must be on the same ACL that grants them read access to the destination missionary's letters site.** There is no separate "allowed forwarders" list — access implies forwarding rights.
-- **Inline-forward extraction is restricted to the `owner` role.** Text between forward separators is entirely forwarder-controlled and carries no cryptographic evidence of authorship — a `reader` could otherwise fabricate a letter, attribute it to the missionary, and backdate it anywhere in the timeline. Owners can already edit and delete any post, so allowing them inline forwards grants no privilege they don't have. `reader`-submitted forwards must carry an embedded copy of the original message. The declared MIME type of that part is not the test — it is forwarder-controlled, and Outlook Android labels the embedded original `application/octet-stream`. Neither is a valid DKIM signature something a legitimate forwarder can supply on demand; see [What DKIM re-verification proves](#what-dkim-re-verification-proves). A signature that re-verifies publishes the post outright. One that does not is **held for owner approval** rather than published or dropped, because an unverified embedded original is exactly as forgeable as inline text, and the owner is the only trust anchor left. Owner submissions skip the hold — they can already post anything.
-- **Reject silently — unless the sender has proven they hold real missionary mail.** No bounce or error by default, because bouncing leaks which addresses exist and invites probing. The exception is a message carrying a **DKIM-valid `message/rfc822` original from `@missionary.org`**: that sender demonstrably possesses a genuine missionary letter, so they're a real person in the circle rather than a prober, and silence would leave them believing their forward worked. They get a short reply explaining what to do — see [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning). Everything else is dropped without a word.
+- **Membership is the control for an archive that already exists; cryptography is the control for creating one.** Inline forwarded text was originally restricted to owners, and an embedded original whose signature did not re-verify was held for owner approval. Both rules were defensible in the abstract and unworkable in practice — see [What DKIM re-verification proves](#what-dkim-re-verification-proves). The desktop Outlook client rebuilds every message it forwards, so "hold anything unverified" did not admit only trustworthy letters: it held almost everything from almost everybody, permanently, with no way out. The trust boundary that remains is the invitation. Someone on an ACL was put there deliberately by an owner who can edit or delete anything they post and remove them from the list; that is a smaller risk than an archive nobody can contribute to. **Bootstrap is unchanged and is where the signature still decides**, because it settles whether an archive exists at all and there is no owner there to appeal to.
+- **Reject silently — unless the sender has proven they hold real missionary mail.** No bounce or error by default, because bouncing leaks which addresses exist and invites probing. The exception is a message carrying a genuine `@missionary.org` original: that sender demonstrably possesses a real letter, so they're a real person in the circle rather than a prober, and silence would leave them believing their forward worked. They get a short reply explaining what to do — see [Onboarding and auto-provisioning](#onboarding-and-auto-provisioning). Everything else is dropped without a word.
 - **Log every rejection** to App Insights (sender, subject, reason, timestamp — no message body). Rejected messages are not archived to blob storage.
 
 #### What DKIM re-verification proves
 
-Re-verification works, and it fails far more often than the design first assumed. Measured with `mailauth` against the pristine captures in the private repo:
+Re-verification works, and it fails far more often than the design first assumed. The first pass at this measured only whether `mailauth` returned a pass, concluded that every Outlook client was hopeless, and built the owner-hold rule on top of that conclusion. Both halves turned out to be wrong. Measured properly — against the pristine captures in the private repo, splitting the body hash from the header signature, and reading the ARC chain:
 
-| Specimen | `d=missionary.org s=google` |
+| Specimen | `bh=` (body) | `b=` (headers) | ARC seal | Usable? |
+| --- | --- | --- | --- | --- |
+| Missionary's BCC, through Cloudflare | **pass** | **pass** | — | yes, in full |
+| The same message, through Exchange Online | fail | **pass** | `microsoft.com` | yes, headers |
+| Forward-as-attachment, Gmail web | **pass** | **pass** | `google.com`, `cv=pass` | yes, in full |
+| Forward-as-attachment, Outlook web | fail | **pass** | `microsoft.com`, valid | yes, headers |
+| Forward-as-attachment, Outlook desktop | fail | **fail** | chain truncated to `i=1` | **no** |
+| Forward-as-attachment, Outlook Android | *no `DKIM-Signature` at all* | — | — | **no** |
+
+RFC 6376 makes `bh=` and `b=` independent: one hashes the body, the other signs the header set. `mailauth` short-circuits on a body-hash mismatch and reports `neutral` without ever checking the signature, which is correct for a delivery decision and useless for this one. Checking the second half separately is what recovered the Outlook web path.
+
+**What Exchange changes, exactly.** Three artifacts, all in the body, totalling 79 bytes on a 190 KB message: a `<meta http-equiv="Content-Type">` prepended to the HTML part, a blank line after a nested multipart's closing delimiter, and a blank line after a base64 payload. `text/plain` parts are never touched. Reversing them reproduced Gmail's bytes exactly on one fixture and failed on a live message at every quoted-printable wrap width from 69 to 77 — an overfit, abandoned. The damage is also done *before* any forwarder acts: it happens in the Exchange store, on delivery, so no client-side fix exists.
+
+**Why Outlook desktop is unrecoverable and Outlook web is not.** Same letter, same `Message-ID`, captured through both. Outlook web altered **zero** signed headers. Outlook desktop altered four: the MIME `boundary` was regenerated, `To:` regained a display name, `Subject:` was re-encoded from Q to B, and `Date:` was converted to UTC. All four are inside `b=`. Desktop Outlook reconstructs the message from MAPI properties rather than sending on the bytes it received, so the original never leaves the machine and no parser can recover it. It also drops Microsoft's own ARC set, leaving a one-entry chain.
+
+**Why the seal alone is not enough, and why the header signature alone is not either.** `ARC-Seal` does not cover `From:`, and Microsoft's sealed record names only the domain — checked directly, there is no local part in it:
+
+```
+i=2; mx.microsoft.com 1; spf=pass ... dmarc=pass ... header.from=missionary.org;
+ dkim=pass (signature was verified) header.d=missionary.org; arc=pass
+```
+
+So a seal on its own would let a genuine sealed letter from one missionary be re-attributed to another by rewriting `From:`. Conversely `b=` says nothing whatever about the body. The two cover each other's gap and neither is accepted alone. Both were tested adversarially rather than reasoned about, against a live capture:
+
+| Edit | Outcome |
 | --- | --- |
-| Missionary's BCC, delivered through Cloudflare | **pass** |
-| The same message, delivered through Exchange Online | body hash did not verify |
-| Forward-as-attachment from Gmail web | **pass** |
-| Forward-as-attachment from Outlook web | body hash did not verify |
-| Forward-as-attachment from Outlook desktop | body hash did not verify |
-| Forward-as-attachment from Outlook Android | no `DKIM-Signature` header at all |
+| none | accepted, coverage `headers` |
+| sealed `header.d` rewritten | rejected — seal signature invalid |
+| sealed `header.from` rewritten | rejected — seal signature invalid |
+| sealed `dkim=` verdict rewritten | rejected — seal signature invalid |
+| `From:` rewritten, ARC left intact | rejected — header signature fails |
+| whitespace added inside the sealed record | accepted — relaxed canonicalization normalises it, correctly |
 
-The first two rows are the same message with the same signature, so the cause is isolated: Exchange Online injects a `<meta>` tag into the HTML part on delivery, and DKIM signs a body hash. A forward-as-attachment can only embed whatever the forwarder's mailbox already holds, so the damage is done before the forwarder acts. Outlook mobile goes further and exports the original with the signature stripped.
+The trusted-sealer list is deliberately **not** `mailauth`'s. That ships fifteen domains on a "these forwarders are usually honest" basis; the only provider whose seal is load-bearing here is the one that breaks the body hash. `TRUSTED_ARC_SEALERS` defaults to `microsoft.com` alone. The sealer is checked *before* the seal is verified, so an inbound message cannot drive a DNS lookup for a domain of its choosing.
 
-Three consequences follow. **The ingest path itself is safe**, because mail reaches it through Cloudflare rather than Exchange, so the missionary's own BCC verifies. **Verification is a property of the forwarder's mail provider, not of their honesty or their client**, so it cannot be used as a rejection test without turning away most Microsoft-hosted family members. And **an unverified forward is not evidence of anything**, so it earns owner review rather than publication.
+**Coverage, not just a verdict.** `verifyEmbeddedDkim` returns `coverage: 'body' | 'headers' | null` alongside `verified`. `body` means the published words are the signed words. `headers` means only that the letter is from the address and date it claims — the text may since have been rewritten, and on the Outlook path it demonstrably has been. Both are logged. A run of `headers` where there used to be `body` is a provider having changed something.
 
-One question this leaves open for [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow): the courtesy auto-reply below is triggered by a DKIM-valid original, which most real forwards will not have. Loosening that trigger would let a prober draw replies with a fabricated attachment, so it stays strict until the claim flow needs otherwise.
+**Prior art, because this looked too much like our own bug to accept.** It is not. The Thunderbird DKIM Verifier add-on (`lieser/dkim_verifier`) hits exactly this, and its maintainer's only workaround after years is an option to trust the plaintext `Authentication-Results` header — strictly weaker than checking a seal. The same project independently proposed splitting `bh=` from `b=`. The Exchange body rewrite has been reported to Microsoft at least three times since 2017 — a Q&A post with a `dkimpy` before/after proof, a 2023 support case that went quiet, and a 2024 TechCommunity post with one Like and no replies. A third-party Outlook library ships code to undo the injected `<meta>` tag, which only works because it runs inside Outlook on the sender's machine. Nine years, no acknowledgement.
 
-The table above is now asserted by `functions/tests/dkim.test.js` rather than left as a research note, so a change in any of these clients' behavior surfaces as a test failure. Those assertions need the pristine captures and a DNS lookup, so they skip when the private repo is absent — which is every CI run.
+**Would Microsoft 365 as our MX have avoided this?** No, and it would probably have hurt. The Gmail capture's own ARC chain settles it: `google.com` (origin) → `cloudflare-email.net` (our MX) → `google.com`, with the final hop re-verifying `missionary.org`'s signature *after* Cloudflare's and still passing. Cloudflare is byte-transparent. Microsoft's sealed record on the same letter also said `dkim=pass`, so the letter was intact on arrival and broke in their store. Exchange is the mangler, not the transport; Defender's Safe Links and Safe Attachments would operate on the `message/rfc822` part we need untouched, putting the Gmail path that works today at risk; and mechanically it is worse — Cloudflare Email Workers hand us raw MIME synchronously, where Graph would mean polling for `$value`.
+
+The tables above are asserted by `functions/tests/dkim.test.js` and `functions/tests/arc.test.js` rather than left as research notes, so a change in any of these clients' behaviour surfaces as a test failure. The assertions that need the pristine captures and a DNS lookup skip when the private repo is absent — which is every CI run.
+
+#### When the first letter cannot be verified
+
+Bootstrap still requires a signature, so the families whose only mail client is desktop or Android Outlook would otherwise be unable to start an archive at all. They get a reply rather than silence, and it offers two routes in a deliberate order.
+
+**Route one: Outlook on the web.** Same mailbox, no new account, and it forwards the message unaltered. This costs nobody anything and it is offered first.
+
+**Route two: ask the missionary.** The reply carries a signed link. Opening it shows who will be written to and on whose behalf; a button — never a `GET`, because link scanners fetch mailed URLs before people read them — sends the missionary one short note asking them to forward a letter to `post@`. It names the requester so a missionary who does not recognise them can ignore it. This is second because it spends a missionary's time, and they have very little.
+
+**The missionary is asked to write to us, not to the family member.** This reads colder and is the only version that works: a letter forwarded to the family member would leave that person holding the same Outlook client, unable to forward it on. Their own send is the one message on this path guaranteed to verify, because it is theirs and it has not been forwarded by anything.
+
+**The claim link goes to the requester, not the sender.** A direct send from a missionary with no site is normally offered back to the missionary, since they are the only authenticated party on it. A letter they sent *because we asked* is the exception — offering it to them would hand the archive to the person doing somebody else a favour and leave the person who wanted it waiting. The redirect rests on a `relays` row written before the letter arrived, so it is fenced: the intent is inside an HMAC that names both parties, the first writer wins so a second requester cannot take over an outstanding request, and the expiry is checked on read rather than swept by a timer.
+
+This is an existence oracle of the same kind the nudge already accepted, and no wider: triggering it requires already holding a genuine, header-verifiable letter from that missionary, which means already being on their distribution list.
 
 #### Sender-based routing
 

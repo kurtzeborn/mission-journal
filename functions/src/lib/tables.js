@@ -25,6 +25,12 @@ export const TABLES = {
     users: 'users',
     sites: 'sites',
     nudges: 'nudges',
+    // PartitionKey = slug, RowKey = 'request'. One outstanding request that a
+    // missionary send the first letter themselves, and the address to hand
+    // the archive to when it arrives. Authoritative for the length of its
+    // expiry: nothing else records that the person about to be offered a site
+    // is not the person who sent the letter.
+    relays: 'relays',
     // PartitionKey = slug, RowKey = the invitation token's hash. Never the
     // token: an owner listing invitations is shown the hash, which is a handle
     // for revoking one and not a credential for accepting it.

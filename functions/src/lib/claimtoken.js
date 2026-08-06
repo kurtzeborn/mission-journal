@@ -53,7 +53,7 @@ const NONCE_BYTES = 24;
  * verification rather than required in the payload, because tokens minted
  * before this existed are in real mailboxes right now and they are claims.
  */
-export const PURPOSE = { claim: 'claim', invite: 'invite', optout: 'optout' };
+export const PURPOSE = { claim: 'claim', invite: 'invite', optout: 'optout', relay: 'relay' };
 
 /**
  * The value stored in `claim.json`, never the token itself.
@@ -78,9 +78,17 @@ const sign = (payloadText, key) =>
  * @param {string} input.expiresAt        RFC3339; normally the pending site's own rolling expiry
  * @param {string} [input.purpose]        a PURPOSE value; omitted means a claim
  * @param {string} [input.subject]        what the token is *about*, when that is not the slug
+ * @param {string} [input.recipient]      who the action is to be performed for
  * @returns {{token: string, hash: string, expiresAt: string}}
  */
-export function issueClaimToken({ slug, key, expiresAt, purpose = PURPOSE.claim, subject = '' }) {
+export function issueClaimToken({
+    slug,
+    key,
+    expiresAt,
+    purpose = PURPOSE.claim,
+    subject = '',
+    recipient = ''
+}) {
     if (!slug) throw new Error('claim token: slug is required');
     if (!key) throw new Error('claim token: signing key is required');
     if (!expiresAt) throw new Error('claim token: expiresAt is required');
@@ -90,8 +98,15 @@ export function issueClaimToken({ slug, key, expiresAt, purpose = PURPOSE.claim,
     // subject is not a site -- it is about an address, and the address has to
     // be inside the signature or the endpoint would have to take somebody's
     // word for whom to stop emailing, which is a way to silence a stranger.
+    //
+    // `r` arrived with the relay link, which is about one person and *for*
+    // another: it asks a missionary to write to the family member holding the
+    // link. Both addresses are inside the signature for the same reason the
+    // opt-out address is -- otherwise the endpoint would take the caller's
+    // word for whom to mail, which is a way to make us send a stranger's mail.
     const payload = { slug, exp: expiresAt, p: purpose, n: b64url(randomBytes(NONCE_BYTES)) };
     if (subject) payload.s = subject;
+    if (recipient) payload.r = recipient;
 
     const payloadText = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
     const token = `${payloadText}.${b64url(sign(payloadText, key))}`;
@@ -152,6 +167,7 @@ export function verifyClaimToken({ token, key, purpose = PURPOSE.claim, now = ()
         valid: true,
         slug: payload.slug,
         subject: payload.s ?? '',
+        recipient: payload.r ?? '',
         expiresAt: payload.exp,
         hash: claimTokenHash(text)
     };

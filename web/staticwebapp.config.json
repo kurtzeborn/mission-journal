@@ -75,6 +75,20 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "Asking a missionary to send the first letter. Anonymous for the same reason the opt-out is: the family member holding this link has never signed in, and this is the route out for the ones whose mail client cannot produce a forward we can verify.",
+      "route": "/ask",
+      "rewrite": "/ask.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/ask.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/ask.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "Help pages, read by people with no account and often before they have decided whether to have one. Anonymous for the same reason the front page is: `/*` below is authenticated, so anything omitted here disappears behind a sign-in.",
       "route": "/start",
       "rewrite": "/start.html",
@@ -127,6 +141,18 @@
     {
       "comment": "POST only, so no link-fetching scanner can spend it. This is also what a mail provider's one-click Unsubscribe posts to, per RFC 8058.",
       "route": "/api/optout",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "Both halves anonymous, like the opt-out and for the same reason: there is no signed-in state to fall back on, because the person using this has no account. Safe because both addresses -- who is written to, and on whose behalf -- are inside the token's signature rather than in the request.",
+      "route": "/api/relay/describe",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "POST only, and this one matters more than most: it sends mail to a missionary, and a GET would be spent by the first link scanner to open the message.",
+      "route": "/api/relay",
       "methods": ["POST"],
       "allowedRoles": ["anonymous", "authenticated"]
     },

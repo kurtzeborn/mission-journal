@@ -151,7 +151,13 @@ test('the same message delivered via Exchange is rejected', async () => {
     assert.equal(result.reason, 'no-auth-results');
 });
 
-test('attached forward from an ACL reader is accepted and held', async () => {
+test('attached forward from an ACL reader publishes even unverified', async () => {
+    // This used to hold. The rule was defensible in the abstract and useless
+    // in practice: the desktop Outlook client rebuilds every message it
+    // forwards, so "hold anything that does not re-verify" held almost
+    // everything from almost everybody, permanently, with no way out.
+    // Membership is the control past bootstrap -- an owner put this person on
+    // the list and can edit, delete and remove them.
     const extracted = await load('outlook-web-attached');
     const result = classify({
         extracted,
@@ -163,7 +169,7 @@ test('attached forward from an ACL reader is accepted and held', async () => {
 
     assert.equal(result.class, CLASS.forward);
     assert.equal(result.slug, 'elder.example');
-    assert.equal(result.disposition, DISPOSITION.hold, 'unverified original must not publish');
+    assert.equal(result.disposition, DISPOSITION.publish);
 });
 
 test('a re-verifying signature publishes outright', async () => {
@@ -179,9 +185,11 @@ test('a re-verifying signature publishes outright', async () => {
     assert.equal(result.disposition, DISPOSITION.publish);
 });
 
-test('inline forward from a reader is rejected', async () => {
-    // Inline text is forwarder-controlled: accepting it from a reader would
-    // let them invent a letter and attribute it to the missionary.
+test('inline forward from a reader is accepted', async () => {
+    // Also a change. Inline text is forwarder-controlled and proves nothing,
+    // which is why it still cannot *start* an archive -- there is no owner
+    // there to appeal to. Into an archive that already exists, it is one
+    // invited person posting to a list they were invited to.
     const extracted = await load('outlook-web-inline');
     const result = classify({
         extracted,
@@ -190,8 +198,8 @@ test('inline forward from a reader is rejected', async () => {
         lookupAcl: asReader
     });
 
-    assert.equal(result.class, CLASS.rejected);
-    assert.equal(result.reason, 'inline-requires-owner');
+    assert.equal(result.class, CLASS.forward);
+    assert.equal(result.disposition, DISPOSITION.publish);
 });
 
 test('inline forward from the owner is accepted', async () => {

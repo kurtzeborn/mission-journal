@@ -11,7 +11,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runIngest } from '../src/lib/ingest.js';
-import { nudgeEmail, nudgeOnce } from '../src/lib/nudge.js';
+import { nudgeEmail, nudgeOnce, NUDGE } from '../src/lib/nudge.js';
 import { memoryStore } from './memory-store.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
@@ -94,16 +94,46 @@ describe('advising a forwarder who quoted instead of attaching', () => {
         );
     });
 
-    test('an attachment that failed to verify is left in silence', async () => {
-        // There is no advice to give. That sender already attached the
-        // original; telling them to attach it would send them round the same
-        // loop forever.
+    test('an attachment that failed to verify gets the other advice', async () => {
+        // This used to be answered with silence, on the reasoning that the
+        // sender had already attached the original and there was nothing left
+        // to tell them. There is now: their client rebuilt the message, and
+        // there are two ways round that. Silence here is what strands every
+        // family whose only mail client is the Outlook desktop app.
         const store = memoryStore();
         const mailer = recorder();
         const result = await forward(store, mailer, 'outlook-web-attached');
 
         assert.equal(result.reason, 'bootstrap-unverified');
-        assert.equal(mailer.sent.length, 0);
+        assert.equal(mailer.sent.length, 1);
+        assert.match(mailer.sent[0].text, /Outlook on the web/);
+    });
+
+    test('the two kinds of advice do not suppress each other', async () => {
+        // The ordinary path through this is inline first, attachment second.
+        // Keyed on person and missionary alone, the advice that actually
+        // unblocks an Outlook user could never be sent -- it would always be
+        // shadowed by the advice they had already followed.
+        const store = memoryStore();
+        const mailer = recorder();
+        const common = {
+            tables: store,
+            mailer,
+            to: 'parent@example.com',
+            author: 'elder.one@missionary.org',
+            slug: 'elder.one',
+            now: NOW,
+            log: silent
+        };
+
+        await nudgeOnce({ ...common, kind: NUDGE.attach });
+        const second = await nudgeOnce({ ...common, kind: NUDGE.rebuilt });
+
+        assert.equal(second.status, 'sent');
+        assert.equal(mailer.sent.length, 2);
+
+        const third = await nudgeOnce({ ...common, kind: NUDGE.rebuilt });
+        assert.equal(third.status, 'duplicate');
     });
 
     test('a forward to a site that already exists is left in silence', async () => {
@@ -216,11 +246,58 @@ describe('advising a forwarder who quoted instead of attaching', () => {
         for (const phrase of [
             'Forward as attachment',
             'post@pdayletters.com',
-            'only required for this first mail',
-            'nothing further will arrive'
+            'only required for this first mail'
         ]) {
             assert.ok(body.text.includes(phrase), `text: ${phrase}`);
             assert.ok(stripped.includes(phrase), `html: ${phrase}`);
         }
+    });
+
+    test('both parts of the second advice say the same things too', async () => {
+        const body = nudgeEmail({
+            author: 'elder.example@missionary.org',
+            baseUrl: 'https://pdayletters.com',
+            kind: NUDGE.rebuilt,
+            askUrl: 'https://pdayletters.com/ask#tok'
+        });
+        const stripped = body.html.replace(/<[^>]+>/g, ' ');
+
+        for (const phrase of [
+            'rebuilt the letter as it sent it',
+            'Outlook on the web does not rebuild the message',
+            'https://pdayletters.com/ask#tok',
+            'only needed for the first letter'
+        ]) {
+            assert.ok(body.text.includes(phrase), `text: ${phrase}`);
+            assert.ok(stripped.includes(phrase), `html: ${phrase}`);
+        }
+    });
+
+    test('the second advice offers the web route before it offers the missionary', async () => {
+        // A missionary has a set number of minutes to write home. The route
+        // that costs nobody anything goes first, and the order is the only
+        // thing enforcing that.
+        const body = nudgeEmail({
+            author: 'elder.example@missionary.org',
+            baseUrl: 'https://pdayletters.com',
+            kind: NUDGE.rebuilt,
+            askUrl: 'https://pdayletters.com/ask#tok'
+        });
+
+        assert.ok(body.text.indexOf('outlook.com') < body.text.indexOf('/ask#tok'));
+    });
+
+    test('a missing relay link costs the second route, not the advice', async () => {
+        // The signing key is the only thing that can be absent here, and the
+        // first route works without us.
+        const body = nudgeEmail({
+            author: 'elder.example@missionary.org',
+            baseUrl: 'https://pdayletters.com',
+            kind: NUDGE.rebuilt,
+            askUrl: ''
+        });
+
+        assert.match(body.text, /Outlook on the web/);
+        assert.doesNotMatch(body.text, /\/ask#/);
     });
 });

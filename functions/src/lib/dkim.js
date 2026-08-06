@@ -11,14 +11,27 @@
 // that no longer exists in DNS. An unverified original is held for the owner
 // rather than dropped -- see classify.js.
 
+import crypto from 'node:crypto';
 import dns from 'node:dns';
 import { createRequire } from 'node:module';
 import { domainOf } from './authresults.js';
+import { verifyArcSeal } from './arc.js';
 
 // mailauth is CommonJS and publishes no exports map, so the subpath is
 // required rather than imported.
 const require = createRequire(import.meta.url);
 const { dkimVerify } = require('mailauth/lib/dkim/verify');
+const { getPublicKey } = require('mailauth/lib/tools');
+
+/**
+ * How much of the letter the evidence actually covers.
+ *
+ * The distinction is not pedantry. `body` means the words being published are
+ * the words that were signed. `headers` means only that the letter came from
+ * the address it claims, on the date it claims -- the text may since have
+ * been rewritten, and in the Outlook case it demonstrably has been.
+ */
+export const COVERAGE = { body: 'body', headers: 'headers' };
 
 // The signature has to be the author's own. A forward is frequently signed by
 // the forwarder's provider as well, and that signature verifies perfectly
@@ -62,36 +75,87 @@ const defaultResolver = () =>
     (cachedResolver ??= createResolver((process.env.DKIM_DNS_SERVERS ?? '').split(',')));
 
 /**
+ * Check `b=` alone -- the signature over the headers -- ignoring `bh=`.
+ *
+ * RFC 6376 makes these independent: `bh=` is a hash of the body, `b=` is a
+ * signature over the signed header set. mailauth never reaches the second
+ * because it short-circuits on a body hash mismatch and reports `neutral`,
+ * which is correct for delivery decisions and useless for ours. Exchange
+ * rewrites bodies and leaves headers alone, so for an Outlook forward this is
+ * the only signature evidence that survives, and it is real: From, Date,
+ * Subject and Message-ID are all inside it.
+ *
+ * Everything needed is already on mailauth's result -- the canonicalized
+ * header block it built to check `b=` with, and the algorithm and selector
+ * from the signature -- so this re-does the key fetch and the verify, and
+ * nothing else.
+ *
+ * Failure is swallowed. This runs only after verification has already failed
+ * once, so there is no verdict to lose, and a withdrawn key or a malformed
+ * result must not turn a held letter into a crashed ingest.
+ */
+async function headerSignatureHolds(result, resolver) {
+    try {
+        const canonicalized = Buffer.from(result.signingHeaders.canonicalizedHeader, 'base64');
+        const key = await getPublicKey(
+            'DKIM',
+            `${result.selector}._domainkey.${result.signingDomain}`,
+            1024,
+            resolver
+        );
+
+        // Ed25519 signs the digest; RSA signs the block and names its hash.
+        const [type, hash] = String(result.algo ?? '').split('-');
+        return crypto.verify(
+            type === 'rsa' ? hash : null,
+            type === 'rsa' ? canonicalized : crypto.createHash('sha256').update(canonicalized).digest(),
+            key.publicKey,
+            Buffer.from(result.signature, 'base64')
+        );
+    } catch {
+        return false;
+    }
+}
+
+/**
  * @param {object} extracted result of extractOriginal()
  * @param {object} [options]
  * @param {function} [options.resolver] (name, rrtype) => Promise<records>
- * @returns {Promise<{verified: boolean, reason: string, signatures: object[]}>}
+ * @param {string[]} [options.trustedSealers] ARC sealers whose word is accepted
+ * @returns {Promise<{verified: boolean, coverage: string|null, reason: string, signatures: object[]}>}
  */
-export async function verifyEmbeddedDkim(extracted, { resolver } = {}) {
+export async function verifyEmbeddedDkim(extracted, { resolver, trustedSealers } = {}) {
     // Only an embedded original has a signature of its own to check. Inline
     // forwarded text was re-typed by the client and carries no signature at
-    // all, which is precisely why it is owner-only.
+    // all, which is precisely why it cannot start an archive.
     if (extracted?.source !== 'rfc822' || !extracted.embeddedBytes?.length) {
-        return { verified: false, reason: 'no-embedded-original', signatures: [] };
+        return { verified: false, coverage: null, reason: 'no-embedded-original', signatures: [] };
     }
 
     const authorDomain = domainOf(extracted.original?.from);
     if (!authorDomain) {
-        return { verified: false, reason: 'no-author-domain', signatures: [] };
+        return { verified: false, coverage: null, reason: 'no-author-domain', signatures: [] };
     }
+
+    const resolve = resolver ?? defaultResolver();
 
     let outcome;
     try {
-        outcome = await dkimVerify(Buffer.from(extracted.embeddedBytes), {
-            resolver: resolver ?? defaultResolver()
-        });
+        outcome = await dkimVerify(Buffer.from(extracted.embeddedBytes), { resolver: resolve });
     } catch (err) {
         // A malformed embedded message must not take down the ingest of a
         // letter we are otherwise willing to hold.
-        return { verified: false, reason: 'verify-threw', error: err.message, signatures: [] };
+        return {
+            verified: false,
+            coverage: null,
+            reason: 'verify-threw',
+            error: err.message,
+            signatures: []
+        };
     }
 
-    const signatures = (outcome?.results ?? []).map((r) => ({
+    const results = outcome?.results ?? [];
+    const signatures = results.map((r) => ({
         domain: r.signingDomain ?? null,
         selector: r.selector ?? null,
         result: r.status?.result ?? null,
@@ -100,12 +164,58 @@ export async function verifyEmbeddedDkim(extracted, { resolver } = {}) {
     }));
 
     if (!signatures.length) {
-        return { verified: false, reason: 'no-signature', authorDomain, signatures };
+        return { verified: false, coverage: null, reason: 'no-signature', authorDomain, signatures };
     }
 
     const passing = signatures.find((s) => s.result === 'pass' && s.alignedWithAuthor);
     if (passing) {
-        return { verified: true, reason: 'pass', authorDomain, signatures };
+        return { verified: true, coverage: COVERAGE.body, reason: 'pass', authorDomain, signatures };
+    }
+
+    // The body hash failed but the headers may not have. mailauth reports
+    // `neutral` for precisely that case and `fail` when the signature itself
+    // is wrong, so only `neutral` is worth a second look -- re-checking a
+    // signature already known to be bad would be asking a different question
+    // and getting the same answer.
+    const recoverable = results.filter(
+        (r) => r.status?.result === 'neutral' && signedByAuthor(r.signingDomain, authorDomain)
+    );
+
+    for (const result of recoverable) {
+        if (!(await headerSignatureHolds(result, resolve))) continue;
+
+        // Headers hold, so the letter is from who it says on the date it says.
+        // That still leaves the body unaccounted for, and a body nobody
+        // vouches for is a body anyone could have written. The seal is what
+        // closes it: the provider that rewrote the body signed a record of
+        // having verified the original in full.
+        const arc = await verifyArcSeal(outcome.arc, { resolver: resolve, trustedSealers });
+
+        const attestsAuthor =
+            arc.sealed &&
+            arc.attested.dmarcPass &&
+            signedByAuthor(arc.attested.dmarcFromDomain, authorDomain) &&
+            arc.attested.dkimDomains.some((d) => signedByAuthor(d, authorDomain));
+
+        if (attestsAuthor) {
+            return {
+                verified: true,
+                coverage: COVERAGE.headers,
+                reason: 'pass-headers-sealed',
+                authorDomain,
+                signatures,
+                arc
+            };
+        }
+
+        return {
+            verified: false,
+            coverage: null,
+            reason: `headers-pass-but-${arc.reason}`,
+            authorDomain,
+            signatures,
+            arc
+        };
     }
 
     // Distinguished so the logs can tell "the key is gone" from "the bytes
@@ -118,5 +228,5 @@ export async function verifyEmbeddedDkim(extracted, { resolver } = {}) {
             ? 'dns-temperror'
             : `author-signature-${aligned[0].result ?? 'unknown'}`;
 
-    return { verified: false, reason, authorDomain, signatures };
+    return { verified: false, coverage: null, reason, authorDomain, signatures };
 }

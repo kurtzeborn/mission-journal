@@ -15,7 +15,7 @@ import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractOriginal } from '../src/lib/extract.js';
-import { verifyEmbeddedDkim, createResolver } from '../src/lib/dkim.js';
+import { verifyEmbeddedDkim, createResolver, COVERAGE } from '../src/lib/dkim.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
 
@@ -94,15 +94,38 @@ test('a forwarder\'s own valid signature does not count as the author\'s', { ski
     }
 });
 
-// Recorded as a test rather than a note because it is the single fact that
-// decides how most forwards will behave, and it would otherwise be rediscovered
-// as a bug report. Only Gmail's forward-as-attachment preserves a verifiable
-// signature; every Outlook client damages or drops it, so those forwards are
-// held for the owner unless the owner sent them.
-test('Outlook forwards cannot be re-verified, by client', { skip: gated }, async () => {
+// Recorded as tests rather than notes because these are the facts that decide
+// how most forwards behave, and they would otherwise be rediscovered as bug
+// reports. The three Outlook clients do three different things, and the
+// difference between them is the whole reason this module grew a second path.
+test('Outlook on the web verifies on headers and seal', { skip: gated }, async () => {
+    // Exchange rewrites the body -- it injects a meta tag and shifts a couple
+    // of blank lines -- so `bh=` cannot match. It does not touch the headers,
+    // so `b=` still holds, and Microsoft sealed a record of having verified
+    // the original in full before they broke it. Neither half would be enough
+    // alone: `b=` says nothing about the body, and the seal does not cover
+    // `From:`.
+    const result = await verifyPristine('outlook-web-attached');
+
+    assert.equal(result.verified, true, `expected a pass, got ${result.reason}`);
+    assert.equal(result.coverage, COVERAGE.headers);
+    assert.equal(result.reason, 'pass-headers-sealed');
+    assert.equal(result.arc.sealer, 'microsoft.com');
+});
+
+test('a Gmail forward is covered in full, not just in the headers', { skip: gated }, async () => {
+    // The distinction the `coverage` field exists to carry: these words are
+    // the words that were signed, where an Outlook forward's are not.
+    const result = await verifyPristine('gmail-web-attached');
+    assert.equal(result.coverage, COVERAGE.body);
+});
+
+test('the other Outlook clients cannot be re-verified at all', { skip: gated }, async () => {
     const expected = {
-        // Re-encodes the embedded body, so the hash no longer matches.
-        'outlook-web-attached': 'author-signature-neutral',
+        // Rebuilds the message from its own store: the boundary is
+        // regenerated, `To:` regains a display name, `Subject:` is re-encoded
+        // and `Date:` is converted to UTC. All four are inside `b=`, so the
+        // header signature fails too and there is nothing left to stand on.
         'outlook-desktop-attached': 'author-signature-neutral',
         // Drops the signature header from the embedded copy outright.
         'outlook-android-attached': 'no-author-signature'
@@ -111,6 +134,68 @@ test('Outlook forwards cannot be re-verified, by client', { skip: gated }, async
     for (const [name, reason] of Object.entries(expected)) {
         const result = await verifyPristine(name);
         assert.equal(result.verified, false, `${name} unexpectedly verified`);
+        assert.equal(result.coverage, null);
         assert.equal(result.reason, reason, `${name} failed for a different reason`);
     }
+});
+
+// --- the seal, adversarially ------------------------------------------------
+//
+// The seal is only worth anything if breaking it is detectable, and the way to
+// find out is to break it. Each of these rewrites the sealed record to say
+// something more useful to an attacker than what Microsoft actually attested.
+//
+// The distinction that matters in the results: `headers-pass-but-seal-*` means
+// the signature caught the edit. `headers-pass-but-sealed` would mean the seal
+// still verified and we declined for some other reason -- which for a forged
+// record would mean the seal was not covering what we think it covers.
+const tamper = async (name, edit) => {
+    const extracted = await extractOriginal(await readFile(join(privateFixtures, `${name}.eml`)));
+    const text = Buffer.from(extracted.embeddedBytes).toString('latin1');
+    return verifyEmbeddedDkim(
+        { ...extracted, embeddedBytes: Buffer.from(edit(text), 'latin1') },
+        { resolver }
+    );
+};
+
+test('a forged sealed record breaks the seal', { skip: gated }, async () => {
+    const edits = {
+        'the attested DKIM domain': (s) =>
+            s.replace(/header\.d=missionary\.org/g, 'header.d=attacker.example'),
+        'the attested DMARC identity': (s) =>
+            s.replace(/header\.from=missionary\.org/g, 'header.from=attacker.example'),
+        'the attested DKIM verdict': (s) =>
+            s.replace(/dkim=pass \(signature was verified\)/g, 'dkim=neutral (signature was verified)')
+    };
+
+    for (const [what, edit] of Object.entries(edits)) {
+        const result = await tamper('outlook-web-attached', edit);
+        assert.equal(result.verified, false, `${what} was accepted`);
+        assert.match(result.reason, /^headers-pass-but-seal-/, `${what}: ${result.reason}`);
+    }
+});
+
+test('rewriting From is caught by the header signature, not the seal', { skip: gated }, async () => {
+    // The hole the header signature is there to close. ARC-Seal does not cover
+    // `From:`, and Microsoft's sealed record names only the domain, so the
+    // seal alone would let a genuine letter from one missionary be re-attributed
+    // to another. `b=` covers `From:` exactly.
+    const result = await tamper('outlook-web-attached', (s) =>
+        s.replace(/^From: .*$/im, 'From: Someone Else <someone.else@missionary.org>')
+    );
+
+    assert.equal(result.verified, false);
+    assert.equal(result.reason, 'author-signature-neutral');
+});
+
+test('whitespace in the sealed record is not tampering', { skip: gated }, async () => {
+    // Relaxed canonicalization collapses runs of whitespace before the seal is
+    // computed, so an added space changes nothing and must not be reported as
+    // an attack. Recorded because the first version of the tamper test above
+    // was exactly this edit, and it passing was mistaken for a hole.
+    const result = await tamper('outlook-web-attached', (s) =>
+        s.replace(/dkim=pass \(signature was verified\)/g, 'dkim=pass  (signature was verified) ')
+    );
+
+    assert.equal(result.verified, true, result.reason);
 });

@@ -236,6 +236,11 @@ var tableNames = [
   // their mail client quoted a letter instead of attaching it. It exists so
   // that advice cannot be sent twice.
   'nudges'
+  // Also not an index, and short-lived: one row per missionary recording that
+  // a family member asked us to have the missionary send the first letter,
+  // and which address to offer the archive to when it lands. Read on ingest,
+  // where its absence simply means the ordinary rule applies.
+  'relays'
   // Also not an index, and the only table that is authoritative: an unaccepted
   // invitation exists nowhere else. It is kept out of `acl.json` deliberately,
   // so that nothing `resolveRole` reads can confuse an offer of access with

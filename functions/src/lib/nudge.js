@@ -37,6 +37,17 @@ import { mailFrom } from './mail.js';
 
 const SIGNATURE = 'P-Day Letters';
 
+// Two things can go wrong on the way to a first letter, and they need
+// different answers.
+//
+//   `attach` -- the client quoted the letter inline. Fixable from a menu.
+//
+//   `rebuilt` -- the letter was attached, correctly, and the client rebuilt it
+//   on the way out, which erases the proof that the missionary wrote it. Not
+//   fixable from a menu, and the desktop Outlook client does it to every
+//   message it forwards. This is the one that needs a way out.
+export const NUDGE = { attach: 'attach', rebuilt: 'rebuilt' };
+
 const escape = (text) =>
     String(text ?? '')
         .replace(/&/g, '&amp;')
@@ -63,10 +74,18 @@ const escape = (text) =>
  * @param {object} input
  * @param {string} input.author   the missionary the forwarded letter was from
  * @param {string} input.baseUrl  e.g. https://pdayletters.com
+ * @param {string} [input.kind]   a NUDGE value
+ * @param {string} [input.askUrl] the relay link, for the `rebuilt` case
  */
-export function nudgeEmail({ author, baseUrl }) {
-    const subject = 'That letter did not come through — one thing to try';
+export function nudgeEmail({ author, baseUrl, kind = NUDGE.attach, askUrl = '' }) {
     const faq = `${String(baseUrl ?? '').replace(/\/$/, '')}/faq#forward-did-nothing`;
+    return kind === NUDGE.rebuilt
+        ? rebuiltEmail({ author, faq, askUrl })
+        : attachEmail({ author, faq });
+}
+
+function attachEmail({ author, faq }) {
+    const subject = 'That letter did not come through — one thing to try';
 
     const text = [
         `Thanks for forwarding a letter from ${author} to ${SIGNATURE}.`,
@@ -86,8 +105,6 @@ export function nudgeEmail({ author, baseUrl }) {
         'a link to set up the archive.',
         '',
         'This is only required for this first mail to set up the archive.',
-        'This is the only time we will send you this. If it happens again,',
-        'nothing further will arrive.',
         '',
         `For further information, consult our FAQ at ${faq}`,
         '',
@@ -108,7 +125,7 @@ export function nudgeEmail({ author, baseUrl }) {
         '<li><strong>Apple Mail</strong> &mdash; Message &gt; Forward as Attachment</li>',
         '</ul>',
         `<p>Send that to <strong>${POST_ADDRESS}</strong> and we will write straight back with a link to set up the archive.</p>`,
-        '<p>This is only required for this first mail to set up the archive. This is the only time we will send you this. If it happens again, nothing further will arrive.</p>',
+        '<p>This is only required for this first mail to set up the archive.</p>',
         `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,
         `<p>${SIGNATURE}</p>`,
         '</div>'
@@ -118,12 +135,91 @@ export function nudgeEmail({ author, baseUrl }) {
 }
 
 /**
- * Send it, at most once per person per missionary.
+ * The reply when the letter was attached properly and still did not verify.
  *
- * Keyed on both rather than on the sender alone: a parent with two children
+ * The tone matters more here than anywhere else in the service. This person
+ * did everything right, twice, and is being told no by a machine. So the mail
+ * says outright that it is not their fault, names the cause, and does not
+ * repeat advice they have already followed.
+ *
+ * The two routes are ordered deliberately. Outlook on the web is first because
+ * it costs nobody anything and it works. Asking the missionary is second
+ * because it spends somebody else's time -- a missionary has a set number of
+ * minutes to write home, and this would take some of them.
+ */
+function rebuiltEmail({ author, faq, askUrl }) {
+    const subject = 'That letter did not come through — two ways to fix it';
+
+    const text = [
+        `Thanks for forwarding a letter from ${author} to ${SIGNATURE}.`,
+        '',
+        'You attached it, which is exactly right. The problem is not something',
+        'you did. Your mail program rebuilt the letter as it sent it, and that',
+        'erases the proof that the missionary wrote it. We cannot start an',
+        'archive without that proof, and forwarding it the same way again will',
+        'not work.',
+        '',
+        'This happens with the Outlook app on Windows and on Android. There are',
+        'two ways around it.',
+        '',
+        '1. Forward it again from Outlook on the web.',
+        '',
+        '   Open outlook.com in a browser, find the letter, and use',
+        `   More actions (…) > Forward as attachment to ${POST_ADDRESS}.`,
+        '   Outlook on the web does not rebuild the message, so this works.',
+        '',
+        `2. Or let us ask ${author} to send it to us.`,
+        '',
+        askUrl ? `   ${askUrl}` : '   (link unavailable — please write to us instead)',
+        '',
+        '   Open that link and we will send them a short note asking them to',
+        '   forward this letter to us. It names you, so they know who it is',
+        '   for. When it arrives we will email you the link to set up the',
+        '   archive.',
+        '',
+        'Either way, this is only needed for the first letter.',
+        '',
+        `For further information, consult our FAQ at ${faq}`,
+        '',
+        SIGNATURE
+    ].join('\n');
+
+    const route2 = askUrl
+        ? `<p><a href="${escape(askUrl)}">${escape(askUrl)}</a></p>`
+        : '<p>(link unavailable &mdash; please write to us instead)</p>';
+
+    const html = [
+        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+        `<p>Thanks for forwarding a letter from <strong>${escape(author)}</strong> to ${SIGNATURE}.</p>`,
+        '<p>You attached it, which is exactly right. The problem is not something you did. Your mail program rebuilt the letter as it sent it, and that erases the proof that the missionary wrote it. We cannot start an archive without that proof, and forwarding it the same way again will not work.</p>',
+        '<p>This happens with the Outlook app on Windows and on Android. There are two ways around it.</p>',
+        '<p><strong>1. Forward it again from Outlook on the web.</strong></p>',
+        `<p>Open outlook.com in a browser, find the letter, and use More actions (&hellip;) &gt; Forward as attachment to <strong>${POST_ADDRESS}</strong>. Outlook on the web does not rebuild the message, so this works.</p>`,
+        `<p><strong>2. Or let us ask ${escape(author)} to send it to us.</strong></p>`,
+        route2,
+        '<p>Open that link and we will send them a short note asking them to forward this letter to us. It names you, so they know who it is for. When it arrives we will email you the link to set up the archive.</p>',
+        '<p>Either way, this is only needed for the first letter.</p>',
+        `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,
+        `<p>${SIGNATURE}</p>`,
+        '</div>'
+    ].join('');
+
+    return { subject, text, html };
+}
+
+/**
+ * Send it, at most once per person per missionary per kind.
+ *
+ * Keyed on the missionary as well as the person: a parent with two children
  * out at once has two archives to start, and getting the advice for the first
  * does not help them with the second if they never read it. Keyed on the
- * sender as well as the slug because the advice is about *their* mail client.
+ * sender because the advice is about *their* mail client.
+ *
+ * Keyed on the kind too, which it was not originally, and the omission was a
+ * trap: the ordinary path through this is inline first, attachment second, so
+ * a single key per person per missionary meant the one piece of advice that
+ * actually unblocks an Outlook user could never be sent -- it would always be
+ * suppressed by the advice they had already followed.
  *
  * The row is written before the send, not after. The two orderings trade a
  * lost nudge against a duplicated one, and a duplicate is the failure this
@@ -137,8 +233,21 @@ export function nudgeEmail({ author, baseUrl }) {
  * @param {string} input.author  the missionary the letter was from
  * @param {string} input.slug
  * @param {string} input.baseUrl
+ * @param {string} [input.kind]  a NUDGE value
+ * @param {string} [input.askUrl]
  */
-export async function nudgeOnce({ tables, mailer, to, author, slug, baseUrl = '', now = () => new Date(), log = console }) {
+export async function nudgeOnce({
+    tables,
+    mailer,
+    to,
+    author,
+    slug,
+    baseUrl = '',
+    kind = NUDGE.attach,
+    askUrl = '',
+    now = () => new Date(),
+    log = console
+}) {
     if (!tables || !mailer || !to || !slug) return { status: 'skipped' };
 
     const at = now().toISOString();
@@ -146,17 +255,17 @@ export async function nudgeOnce({ tables, mailer, to, author, slug, baseUrl = ''
 
     const first = await tables.insertEntity(TABLES.nudges, {
         partitionKey: recipient,
-        rowKey: slug,
+        rowKey: `${slug}:${kind}`,
         sentAt: at,
         author: author ?? ''
     });
 
     if (!first) {
-        log.info?.('nudge: already advised, staying quiet', { slug });
+        log.info?.('nudge: already advised, staying quiet', { slug, kind });
         return { status: 'duplicate' };
     }
 
-    const body = nudgeEmail({ author, baseUrl });
+    const body = nudgeEmail({ author, baseUrl, kind, askUrl });
     const result = await mailer.send({
         from: mailFrom(POST_ADDRESS),
         to: recipient,
@@ -170,6 +279,6 @@ export async function nudgeOnce({ tables, mailer, to, author, slug, baseUrl = ''
         log
     });
 
-    log.info?.('nudge: sent', { slug, status: result.status });
+    log.info?.('nudge: sent', { slug, kind, status: result.status });
     return { status: result.status };
 }

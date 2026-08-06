@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ask for the first letter — P-Day Letters</title>
+    <!-- Reached anonymously and never indexed, like the claim, invitation and
+         opt-out pages. The token arrives in the fragment, and the addresses it
+         names are only shown after the server has verified the signature. -->
+    <meta name="description" content="Ask a missionary to send the first letter to P-Day Letters.">
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/">P-Day Letters</a>
+            <span class="beta">beta</span>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <section id="loading">
+            <h2>One moment&hellip;</h2>
+        </section>
+
+        <!-- A button, not a link that acts on GET. Mail providers fetch every
+             link in a message before its recipient reads it, and this one
+             sends mail to a missionary. Nobody's letter-writing time should be
+             spent by a link scanner. -->
+        <section id="ready" hidden>
+            <h2>Ask for the first letter?</h2>
+            <p class="lede" id="ready-lede"></p>
+            <p>
+                We will send one short message. It explains that you are trying to save the
+                letters in one place, asks them to forward one letter to us, and says who
+                asked. There is nothing for them to sign in to and nothing to reply to.
+            </p>
+            <p>
+                When their letter reaches us, we will email <strong>you</strong> the link to
+                set the archive up. You stay in charge of it.
+            </p>
+            <form id="ask-form">
+                <p><button class="button" type="submit" id="ask-submit">Send the request</button></p>
+            </form>
+            <p class="note">
+                Would rather not interrupt them? Open outlook.com in a browser, find the
+                letter, and use More actions (&hellip;) &gt; Forward as attachment. Outlook on
+                the web does not change the message, so that works too.
+            </p>
+        </section>
+
+        <section id="working" hidden>
+            <h2>Sending&hellip;</h2>
+        </section>
+
+        <section id="done" hidden>
+            <h2>Asked</h2>
+            <p class="lede" id="done-summary"></p>
+            <p class="note">
+                Missionaries usually write once a week, so this may take a few days. We will
+                email you as soon as their letter arrives. You do not need to do anything
+                until then, and you do not need to come back to this page.
+            </p>
+        </section>
+
+        <section id="failed" hidden>
+            <h2 id="failed-title">This link cannot be used</h2>
+            <p class="lede" id="failed-detail"></p>
+            <p class="note" id="failed-help"></p>
+        </section>
+    </main>
+
+    <script src="/ask.js"></script>
+</body>
+
+</html>

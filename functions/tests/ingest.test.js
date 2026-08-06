@@ -187,15 +187,17 @@ test('an attached forward from an ACL member is archived with its attachments', 
     }
 });
 
-test('an unverified forward is stored hidden rather than dropped', async () => {
+test('an unverified forward from a member is published, not held', async () => {
     const store = memoryStore();
     store.acl('elder.example', READER);
     const result = await ingestFixture(store, 'outlook-web-attached');
 
-    // DKIM re-verification is not wired in yet, so every forward from a
-    // non-owner is held. The letter is kept either way.
-    assert.equal(result.post.hidden, true);
-    assert.equal(result.post.heldReason, 'unverified-original');
+    // Held originally, and the hold was the wrong trade: the client that
+    // cannot produce a verifiable forward is the one most of these families
+    // use, so the rule hid nearly every letter from nearly everybody. The
+    // invitation is the control now. Bootstrap still requires the signature.
+    assert.equal(result.post.hidden, false);
+    assert.equal(result.post.heldReason, null);
 });
 
 test('a forward from someone not on the ACL is rejected and nothing is written', async () => {
@@ -209,16 +211,14 @@ test('a forward from someone not on the ACL is rejected and nothing is written',
     assert.equal(store.queues.get('render'), undefined);
 });
 
-test('an inline forward from an owner is stored, from a reader is refused', async () => {
+test('an inline forward is stored for owner and reader alike', async () => {
     const asOwner = memoryStore();
     asOwner.acl('elder.example', OWNER);
     assert.equal((await ingestFixture(asOwner, 'outlook-web-inline')).status, 'stored');
 
     const asReader = memoryStore();
     asReader.acl('elder.example', READER);
-    const refused = await ingestFixture(asReader, 'outlook-web-inline');
-    assert.equal(refused.status, 'rejected');
-    assert.equal(refused.reason, 'inline-requires-owner');
+    assert.equal((await ingestFixture(asReader, 'outlook-web-inline')).status, 'stored');
 });
 
 // The bytes infra/seed-config.ps1 actually uploads, checked in verbatim. Every

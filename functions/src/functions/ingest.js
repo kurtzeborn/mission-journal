@@ -2,6 +2,7 @@ import { app, output } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
 import { createTableStore } from '../lib/tables.js';
 import { createMailer } from '../lib/mail.js';
+import { trustedSealersFrom } from '../lib/arc.js';
 import { runIngest } from '../lib/ingest.js';
 
 // The render job is emitted through an output binding rather than a queue
@@ -55,7 +56,12 @@ async function handler(message, context) {
             .map((d) => d.trim().toLowerCase())
             .filter(Boolean),
         claimTokenKey: setting('CLAIM_TOKEN_KEY', ''),
-        baseUrl: setting('PUBLIC_BASE_URL', 'https://pdayletters.com')
+        baseUrl: setting('PUBLIC_BASE_URL', 'https://pdayletters.com'),
+        // Whose ARC seal we are willing to treat as evidence. Defaults to the
+        // one provider we actually need, rather than to mailauth's list, which
+        // is a general-purpose "these forwarders are usually honest" set and
+        // much wider than anything here has a reason to trust.
+        trustedArcSealers: trustedSealersFrom(setting('TRUSTED_ARC_SEALERS', ''))
     };
 
     const store = {
