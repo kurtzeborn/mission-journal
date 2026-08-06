@@ -1,0 +1,23 @@
+{
+  "Name": "P-Day Letters Blob Purge",
+  "IsCustom": true,
+  "Description": "Storage Blob Data Contributor plus permanentDelete. Held only by the identity that runs the deletion purge, so that the identity processing inbound mail cannot irreversibly erase an archive.",
+  "Actions": [
+    "Microsoft.Storage/storageAccounts/blobServices/containers/read",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/write",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/delete"
+  ],
+  "DataActions": [
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/delete",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/add/action",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/move/action",
+    "Microsoft.Storage/storageAccounts/blobServices/containers/blobs/permanentDelete/action"
+  ],
+  "NotActions": [],
+  "NotDataActions": [],
+  "AssignableScopes": [
+    "/subscriptions/41fbccc1-bb65-416d-816d-30cb2a41dd9b/resourceGroups/mission-journal/providers/Microsoft.Storage/storageAccounts/mjstutfe5uagkbz7q"
+  ]
+}

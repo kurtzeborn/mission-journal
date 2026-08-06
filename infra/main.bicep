@@ -98,9 +98,20 @@ var workerPlanName = '${namePrefix}-plan-${suffix}'
 var workerAppName = '${namePrefix}-fn-${suffix}'
 
 var storageBlobDataOwner = 'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
+var storageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var storageQueueDataContributor = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributor = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
+
+// The containers the Functions host keeps for itself: the deployment package,
+// the lease blobs it coordinates with, and its own key material. Declared here
+// only so that a role assignment can be scoped to them -- see workerHostRoles.
+// The host creates them on its own if they are missing.
+var hostContainerNames = [
+  'app-package'
+  'azure-webjobs-hosts'
+  'azure-webjobs-secrets'
+]
 
 // ---------------------------------------------------------------------------
 // Storage — the durable archive. GRS because raw/ is, for many families, the
@@ -453,13 +464,15 @@ resource secretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 // September 2028 and there is no in-place migration to Flex.
 // ---------------------------------------------------------------------------
 
-resource deploymentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
-  parent: blobService
-  name: 'app-package'
-  properties: {
-    publicAccess: 'None'
+resource hostContainers 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [
+  for name in hostContainerNames: {
+    parent: blobService
+    name: name
+    properties: {
+      publicAccess: 'None'
+    }
   }
-}
+]
 
 resource workerPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: workerPlanName
@@ -488,7 +501,7 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
       deployment: {
         storage: {
           type: 'blobContainer'
-          value: '${storage.properties.primaryEndpoints.blob}${deploymentContainer.name}'
+          value: '${storage.properties.primaryEndpoints.blob}${hostContainerNames[0]}'
           authentication: {
             type: 'SystemAssignedIdentity'
           }
@@ -589,20 +602,50 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
-// Blob Data Owner rather than Contributor: the Functions host manages its own
-// leases and the deployment package container, which Contributor cannot do.
+// Blob access is split in two on purpose.
+//
+// The account-wide grant is Contributor, which cannot permanently delete: with
+// versioning and soft delete on, a delete from this identity is recoverable for
+// thirty days. That matters because this is the identity that processes
+// inbound mail. It is the part of the system an attacker reaches first, and it
+// should not be able to erase an archive beyond recovery.
+//
+// Owner is kept, but only on the containers the Functions host runs itself --
+// the deployment package, its leases, its keys. The host needs more than
+// Contributor there (Microsoft's own Flex Consumption guidance says otherwise,
+// but narrowing it was not worth betting the ingest pipeline on). None of
+// those containers holds a letter, so the extra power reaches nothing that
+// matters.
+//
+// The permanentDelete right that a purge needs lives on a separate identity --
+// see purgeIdentity below.
 resource workerBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storage
-  name: guid(storage.id, workerApp.id, storageBlobDataOwner)
+  name: guid(storage.id, workerApp.id, storageBlobDataContributor)
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
-      storageBlobDataOwner
+      storageBlobDataContributor
     )
     principalId: workerApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
+
+resource workerHostRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
+  for (name, i) in hostContainerNames: {
+    scope: hostContainers[i]
+    name: guid(storage.id, workerApp.id, storageBlobDataOwner, name)
+    properties: {
+      roleDefinitionId: subscriptionResourceId(
+        'Microsoft.Authorization/roleDefinitions',
+        storageBlobDataOwner
+      )
+      principalId: workerApp.identity.principalId
+      principalType: 'ServicePrincipal'
+    }
+  }
+]
 
 resource workerQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storage
@@ -616,6 +659,66 @@ resource workerQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
     principalType: 'ServicePrincipal'
   }
 }
+
+// ---------------------------------------------------------------------------
+// The purge identity — permanent deletion, held apart.
+//
+// Deleting an archive has to mean deleted: a family that asks for their letters
+// to be destroyed is not served by thirty days of recoverable versions sitting
+// in the account. So something must hold permanentDelete.
+//
+// That something is deliberately not the app. This identity exists so that the
+// right to erase is a credential the ingest path does not carry, rather than a
+// capability sprayed across everything the Functions host can reach. Isolation
+// here is by credential, not by process: the purge code asks for this identity
+// by client ID, and nothing else does.
+//
+// It is not attached to the function app yet. Attaching it before there is
+// purge code to use it would only make managed-identity selection ambiguous for
+// the code already running, and buy nothing.
+// ---------------------------------------------------------------------------
+
+resource purgeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: '${namePrefix}-id-purge'
+  location: location
+}
+
+// Storage Blob Data Contributor's permissions verbatim, plus permanentDelete.
+//
+// The definition itself is not declared here. Role definitions live at
+// subscription scope, and this is a resource-group deployment, so declaring it
+// would quietly create a second, resource-group-scoped role beside the real
+// one. It is version controlled as infra/purge-role.json and created with:
+//
+//   az role definition create --role-definition @infra/purge-role.json
+//
+var purgeRoleId = 'f9e960ce-244b-4c38-af79-06e7bdafc5b4'
+
+// Scoped to the containers a deletion actually empties. `inbox` is left out:
+// it holds the untouched original of every message and is aged out by lifecycle
+// rule, not by this timer.
+var purgeContainerNames = [
+  'raw'
+  'rendered'
+  'config'
+  'exports'
+  'pending'
+]
+
+resource purgeRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
+  for name in purgeContainerNames: {
+    scope: containers[indexOf(containerNames, name)]
+    name: guid(storage.id, purgeIdentity.id, name)
+    properties: {
+      roleDefinitionId: subscriptionResourceId(
+        'Microsoft.Authorization/roleDefinitions',
+        purgeRoleId
+      )
+      principalId: purgeIdentity.properties.principalId
+      principalType: 'ServicePrincipal'
+    }
+  }
+]
 
 resource workerTableRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storage
