@@ -271,10 +271,13 @@ export async function runIngest({
                         slug,
                         baseUrl: config.baseUrl,
                         kind,
-                        askUrl:
-                            kind === NUDGE.rebuilt
-                                ? relayUrl({ slug, verdict, config, now })
-                                : '',
+                        // Both replies carry it. The inline case looks like
+                        // the safer one to withhold it from and is not: an
+                        // author address typed into quoted text is no less
+                        // forgeable than one written into an attached file.
+                        // Withholding it only penalises whoever has the worse
+                        // mail client, which is the person this exists for.
+                        askUrl: relayUrl({ slug, verdict, config, now }),
                         now,
                         log
                     });

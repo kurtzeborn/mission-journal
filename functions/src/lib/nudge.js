@@ -40,12 +40,23 @@ const SIGNATURE = 'P-Day Letters';
 // Two things can go wrong on the way to a first letter, and they need
 // different answers.
 //
-//   `attach` -- the client quoted the letter inline. Fixable from a menu.
+//   `attach` -- the client quoted the letter inline. Usually fixable from a
+//   menu, but not always: the Outlook and Gmail phone apps have no "forward
+//   as attachment" item at all, so this advice is unfollowable for anyone
+//   holding only a phone. Both kinds therefore carry the relay link.
 //
 //   `rebuilt` -- the letter was attached, correctly, and the client rebuilt it
 //   on the way out, which erases the proof that the missionary wrote it. Not
 //   fixable from a menu, and the desktop Outlook client does it to every
 //   message it forwards. This is the one that needs a way out.
+//
+// Offering the relay from both costs nothing in security, which is worth
+// stating because it looks as though it should. The author address on an
+// inline forward is attacker-controlled text; the author address on an
+// unverified attachment is an attacker-controlled header in a file they
+// wrote. Neither is evidence, and the fences are the same for both: the
+// requester's own DMARC has already passed, so we know who asked; the note
+// names them; and only one grant per missionary can be outstanding at a time.
 export const NUDGE = { attach: 'attach', rebuilt: 'rebuilt' };
 
 const escape = (text) =>
@@ -81,30 +92,46 @@ export function nudgeEmail({ author, baseUrl, kind = NUDGE.attach, askUrl = '' }
     const faq = `${String(baseUrl ?? '').replace(/\/$/, '')}/faq#forward-did-nothing`;
     return kind === NUDGE.rebuilt
         ? rebuiltEmail({ author, faq, askUrl })
-        : attachEmail({ author, faq });
+        : attachEmail({ author, faq, askUrl });
 }
 
-function attachEmail({ author, faq }) {
-    const subject = 'That letter did not come through — one thing to try';
+// Two routes here as well, ordered on the same principle as the other reply:
+// the fix that costs nobody anything comes first, and the one that spends a
+// missionary's limited minutes comes second, framed as what to do when the
+// menu item is missing rather than as an equal choice.
+function attachEmail({ author, faq, askUrl }) {
+    const subject = 'That letter did not come through — how to send it again';
 
     const text = [
         `Thanks for forwarding a letter from ${author} to ${SIGNATURE}.`,
         '',
         'Unfortunately, the manner in which you forwarded it to us is not',
         'secure enough to start an archive. We need you to do it again in a',
-        'more secure way.',
+        'more secure way, and there are two ways to do that.',
         '',
-        'The fix is to forward as an attachment. In your mail program, instead',
-        'of Forward, look for:',
+        '1. Forward the letter again as an attachment.',
         '',
-        '  Gmail          More (⋮) > Forward as attachment',
-        '  Outlook        More actions (…) > Forward as attachment',
-        '  Apple Mail     Message > Forward as Attachment',
+        '   In your mail program, instead of Forward, look for:',
         '',
-        `Send that to ${POST_ADDRESS} and we will write straight back with`,
-        'a link to set up the archive.',
+        '     Gmail          More (⋮) > Forward as attachment',
+        '     Outlook        More actions (…) > Forward as attachment',
+        '     Apple Mail     Message > Forward as Attachment',
         '',
-        'This is only required for this first mail to set up the archive.',
+        `   Send that to ${POST_ADDRESS} and we will write straight back`,
+        '   with a link to set up the archive.',
+        '',
+        `2. Or, if you cannot find that menu item, let us ask ${author} to`,
+        '   vouch for you.',
+        '',
+        askUrl ? `   ${askUrl}` : '   (link unavailable — please write to us instead)',
+        '',
+        '   Phone apps usually cannot forward as an attachment at all. Open',
+        '   that link and we will send them a short note with a link of their',
+        '   own, asking them to pass it on to you. It names you, so they know',
+        '   who it is for. Opening the link they send you sets up the archive,',
+        '   and then your letters will go through.',
+        '',
+        'Either way, this is only needed for the first letter.',
         '',
         `For further information, consult our FAQ at ${faq}`,
         '',
@@ -117,15 +144,21 @@ function attachEmail({ author, faq }) {
     const html = [
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
         `<p>Thanks for forwarding a letter from <strong>${escape(author)}</strong> to ${SIGNATURE}.</p>`,
-        '<p>Unfortunately, the manner in which you forwarded it to us is not secure enough to start an archive. We need you to do it again in a more secure way.</p>',
-        '<p><strong>The fix is to forward as an attachment.</strong> In your mail program, instead of Forward, look for:</p>',
+        '<p>Unfortunately, the manner in which you forwarded it to us is not secure enough to start an archive. We need you to do it again in a more secure way, and there are two ways to do that.</p>',
+        '<p><strong>1. Forward the letter again as an attachment.</strong></p>',
+        '<p>In your mail program, instead of Forward, look for:</p>',
         '<ul>',
         '<li><strong>Gmail</strong> &mdash; More (&#8942;) &gt; Forward as attachment</li>',
         '<li><strong>Outlook</strong> &mdash; More actions (&hellip;) &gt; Forward as attachment</li>',
         '<li><strong>Apple Mail</strong> &mdash; Message &gt; Forward as Attachment</li>',
         '</ul>',
         `<p>Send that to <strong>${POST_ADDRESS}</strong> and we will write straight back with a link to set up the archive.</p>`,
-        '<p>This is only required for this first mail to set up the archive.</p>',
+        `<p><strong>2. Or, if you cannot find that menu item, let us ask ${escape(author)} to vouch for you.</strong></p>`,
+        askUrl
+            ? `<p><a href="${escape(askUrl)}">${escape(askUrl)}</a></p>`
+            : '<p>(link unavailable &mdash; please write to us instead)</p>',
+        '<p>Phone apps usually cannot forward as an attachment at all. Open that link and we will send them a short note with a link of their own, asking them to pass it on to you. It names you, so they know who it is for. Opening the link they send you sets up the archive, and then your letters will go through.</p>',
+        '<p>Either way, this is only needed for the first letter.</p>',
         `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,
         `<p>${SIGNATURE}</p>`,
         '</div>'

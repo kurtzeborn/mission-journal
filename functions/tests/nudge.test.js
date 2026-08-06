@@ -26,14 +26,14 @@ const recorder = () => {
     return mailer;
 };
 
-const forward = async (store, mailer, name, ulid = '01TEST0000000000000000000') => {
+const forward = async (store, mailer, name, ulid = '01TEST0000000000000000000', cfg = config) => {
     store.seed(ulid, await raw(name));
     return runIngest({
         ulid,
         store,
         tables: store,
         mailer,
-        config,
+        config: cfg,
         log: silent,
         now: NOW,
         verifyDkim: async () => ({ verified: false, reason: 'test', signatures: [] })
@@ -246,7 +246,7 @@ describe('advising a forwarder who quoted instead of attaching', () => {
         for (const phrase of [
             'Forward as attachment',
             'post@pdayletters.com',
-            'only required for this first mail'
+            'only needed for the first letter'
         ]) {
             assert.ok(body.text.includes(phrase), `text: ${phrase}`);
             assert.ok(stripped.includes(phrase), `html: ${phrase}`);
@@ -299,5 +299,57 @@ describe('advising a forwarder who quoted instead of attaching', () => {
 
         assert.match(body.text, /Outlook on the web/);
         assert.doesNotMatch(body.text, /\/ask#/);
+    });
+
+    test('the first advice offers the missionary too, for a phone that cannot attach', async () => {
+        // The Outlook and Gmail phone apps have no "forward as attachment"
+        // item at all, so an inline forwarder holding only a phone was being
+        // given advice they could not follow and nothing else. Withholding
+        // the link here bought no security: the author address in quoted text
+        // is no less forgeable than one in an attached file.
+        const body = nudgeEmail({
+            author: 'elder.example@missionary.org',
+            baseUrl: 'https://pdayletters.com',
+            kind: NUDGE.attach,
+            askUrl: 'https://pdayletters.com/ask#tok'
+        });
+        const stripped = body.html.replace(/<[^>]+>/g, ' ');
+
+        for (const phrase of [
+            'Forward the letter again as an attachment',
+            'https://pdayletters.com/ask#tok',
+            'only needed for the first letter'
+        ]) {
+            assert.ok(body.text.includes(phrase), `text: ${phrase}`);
+            assert.ok(stripped.includes(phrase), `html: ${phrase}`);
+        }
+    });
+
+    test('the first advice offers the attachment before it offers the missionary', async () => {
+        // Same ordering rule as the other reply, and for the same reason: the
+        // route that spends a missionary's minutes goes second.
+        const body = nudgeEmail({
+            author: 'elder.example@missionary.org',
+            baseUrl: 'https://pdayletters.com',
+            kind: NUDGE.attach,
+            askUrl: 'https://pdayletters.com/ask#tok'
+        });
+
+        assert.ok(body.text.indexOf('Forward as attachment') < body.text.indexOf('/ask#tok'));
+    });
+
+    test('an inline forward is answered with a usable link, not just a menu item', async () => {
+        // End to end, because the link is minted in ingest and the branch that
+        // does it used to withhold it for exactly this kind.
+        const store = memoryStore();
+        const mailer = recorder();
+        const result = await forward(store, mailer, 'outlook-web-inline', '01LINK0000000000000000000', {
+            ...config,
+            claimTokenKey: 'test-key',
+            baseUrl: 'https://pdayletters.com'
+        });
+
+        assert.equal(result.reason, 'bootstrap-not-attached');
+        assert.match(mailer.sent[0].text, /https:\/\/pdayletters\.com\/ask#/);
     });
 });
