@@ -940,6 +940,53 @@ resource workerAuth 'Microsoft.Web/sites/config@2023-12-01' = {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Basic publishing credentials — closed.
+//
+// The deployment endpoint at {app}.scm.azurewebsites.net accepts two proofs
+// that a caller may deploy: an Entra token, subject to RBAC and conditional
+// access; and a username and password Azure mints for the app. The second pair
+// is the whole content of a downloaded publish profile. It belongs to no
+// person, never expires, and is not revoked when someone leaves a laptop in a
+// taxi. Every copy ever downloaded from the portal, Visual Studio or VS Code is
+// still valid while these are `true`.
+//
+// The reason this is not merely untidy: code deployed here runs *as this app*,
+// and this app's identity reads the storage account and resolves Key Vault
+// references. Deploy rights are therefore read access to every letter, reached
+// without touching Entra at all.
+//
+// Nothing uses them. `deploy-functions.yml` authenticates by workload identity
+// federation, and a hand publish through `func` uses the operator's own Azure
+// login. Closing them removes an authentication path with no consumer.
+//
+// These are declared rather than switched off in the portal so that the setting
+// is written down and re-asserted on every infrastructure deployment. A
+// security control that exists only as a checkbox somebody once ticked is one
+// undocumented click from being untrue.
+//
+// Written out twice rather than looped: `name` is a discriminator here, and a
+// loop variable makes it undeterminable at compile time, which turns off type
+// checking on the body (BCP225). Two lines of duplication buy back a typo in
+// `allow` being caught by the compiler instead of by nobody.
+// ---------------------------------------------------------------------------
+
+resource workerScmBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: workerApp
+  name: 'scm'
+  properties: {
+    allow: false
+  }
+}
+
+resource workerFtpBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: workerApp
+  name: 'ftp'
+  properties: {
+    allow: false
+  }
+}
+
 output storageAccountName string = storage.name
 output keyVaultName string = keyVault.name
 output appInsightsName string = appInsights.name
