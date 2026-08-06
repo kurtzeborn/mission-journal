@@ -225,6 +225,7 @@ export async function runIngest({
                         to: verdict.sender,
                         author: verdict.author,
                         slug,
+                        baseUrl: config.baseUrl,
                         now,
                         log
                     });

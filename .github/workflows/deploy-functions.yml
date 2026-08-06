@@ -1,0 +1,121 @@
+name: Deploy functions
+
+# The last thing in this repository that shipped by hand. Infrastructure, the
+# static site and the worker all deployed themselves; the API -- the part that
+# reads other people's mail -- was published from a laptop, which meant the
+# deployed code was whatever happened to be in one working tree at the time,
+# and the 473-test suite gated a report rather than a release.
+#
+# Test and deploy are one workflow rather than two on purpose. Split across
+# files they would have to be joined by `workflow_run`, which fires on the
+# workflow finishing rather than on it passing, and which resolves the code to
+# deploy separately from the code that was tested. `needs: test` in a single
+# run has neither gap.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'tests/fixtures/**'
+      - '.github/workflows/deploy-functions.yml'
+  pull_request:
+    paths:
+      - 'functions/**'
+      - 'tests/fixtures/**'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two pushes in quick succession must not race each other onto the app, and
+# cancelling the loser mid-deploy would be worse than queueing it.
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - run: npm ci
+        working-directory: functions
+
+      # The fixture corpus lives at the repo root, not under functions/, and
+      # the tests reach it by relative path — so this must run from a full
+      # checkout rather than a sparse one.
+      - run: npm test
+        working-directory: functions
+
+      # A gate, not a report. `npm audit` alone would be permanently red here:
+      # sixteen advisories stand against `mailauth`'s tree, all marked "No fix
+      # available", and none reachable — `undici` is never loaded by
+      # `mailauth/lib/dkim/verify`, and of `nodemailer` we load one file,
+      # `lib/addressparser`, which no advisory touches. A build that fails every
+      # time teaches everyone to stop reading it.
+      #
+      # So this compares advisory IDs against functions/audit-baseline.json and
+      # fails only on one nobody has looked at yet. Counting would not do: a
+      # count can hold steady while one advisory is fixed and another appears.
+      - name: Audit dependencies
+        run: npm run audit
+        working-directory: functions
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # federated token for azure/login; no secret is stored
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deliberately no `npm ci` here. The app runs on Flex Consumption, which
+      # builds remotely: the zip carries package.json and package-lock.json and
+      # Oryx installs from the lock on the platform side. Installing locally as
+      # well would ship a linux-x64 node_modules built by the runner and make it
+      # ambiguous which install actually ran. A clean checkout has no
+      # node_modules, so what goes up is source plus the lock.
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish to the function app
+        uses: Azure/functions-action@v1
+        with:
+          app-name: mj-fn-utfe5uagkbz7q
+          package: functions
+          # Flex always builds with Oryx when this is set; `sku` is only needed
+          # when authenticating with a publish profile, which we do not.
+          remote-build: true
+          # Without this the zip carries functions/tests and local.settings.json
+          # up to the platform. Neither is read at runtime, which is exactly why
+          # nobody would notice them being there.
+          respect-funcignore: true
+
+      # ARM reporting success only means the package was accepted. This asks the
+      # running host to answer, which is the thing that was actually deployed.
+      - name: Check the API answers
+        run: |
+          for endpoint in claim/describe invite/describe optout/describe; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -X POST "https://pdayletters.com/api/$endpoint" \
+              -H 'content-type: application/json' \
+              --data '{"token":"deployment-probe"}')
+            echo "$endpoint -> $code"
+            [ "$code" = "200" ] || exit 1
+          done

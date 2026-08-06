@@ -189,4 +189,38 @@ describe('advising a forwarder who quoted instead of attaching', () => {
         assert.doesNotMatch(body.text, /\/claim#/);
         assert.doesNotMatch(body.html, /\/claim#/);
     });
+
+    test('the FAQ link is absolute and anchored, in both parts', async () => {
+        // A relative href is fine on a page and useless in an email, and the
+        // anchor matters as much as the host: someone reading this has one
+        // question, and /faq alone lands them on a contents list.
+        const body = nudgeEmail({
+            author: 'elder.example@missionary.org',
+            baseUrl: 'https://pdayletters.com/'
+        });
+
+        const expected = 'https://pdayletters.com/faq#forward-did-nothing';
+        assert.ok(body.text.includes(expected), 'plain text link');
+        assert.ok(body.html.includes(`href="${expected}"`), 'html link');
+    });
+
+    test('both parts say the same things', async () => {
+        // Nothing in the send path checks that they agree, so a client showing
+        // one and a client showing the other could be told different stories.
+        const body = nudgeEmail({
+            author: 'elder.example@missionary.org',
+            baseUrl: 'https://pdayletters.com'
+        });
+        const stripped = body.html.replace(/<[^>]+>/g, ' ');
+
+        for (const phrase of [
+            'Forward as attachment',
+            'post@pdayletters.com',
+            'only required for this first mail',
+            'nothing further will arrive'
+        ]) {
+            assert.ok(body.text.includes(phrase), `text: ${phrase}`);
+            assert.ok(stripped.includes(phrase), `html: ${phrase}`);
+        }
+    });
 });
