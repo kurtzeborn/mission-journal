@@ -119,7 +119,8 @@ export function relayEmail({ requester, link, baseUrl }) {
         'rather than posting it anywhere.',
         '',
         `If you do not know ${requester}, delete this message. Nothing happens`,
-        'unless somebody opens the link.',
+        'unless somebody opens the link. Nothing has been saved yet on our',
+        'servers and nothing will be saved if you delete this message.',
         '',
         'You do not need to sign in or reply to us. If you would like your own',
         `access to the archive later, email ${CLAIM_ADDRESS} from this address`,
@@ -135,7 +136,7 @@ export function relayEmail({ requester, link, baseUrl }) {
         `<p><strong>If you know ${escape(requester)}, forward this message to them.</strong></p>`,
         `<p><a href="${escape(link)}">${escape(link)}</a></p>`,
         `<p>Whoever opens that link sets up the archive and looks after it. It works once and stops working in ${RELAY_TTL_DAYS} days, so please send it to them rather than posting it anywhere.</p>`,
-        `<p>If you do not know ${escape(requester)}, delete this message. Nothing happens unless somebody opens the link.</p>`,
+        `<p>If you do not know ${escape(requester)}, delete this message. Nothing happens unless somebody opens the link. Nothing has been saved yet on our servers and nothing will be saved if you delete this message.</p>`,
         `<p>You do not need to sign in or reply to us. If you would like your own access to the archive later, email <strong>${CLAIM_ADDRESS}</strong> from this address and we will send you a link of your own.</p>`,
         `<p>${SIGNATURE} &mdash; <a href="${escape(home)}">${escape(home)}</a></p>`,
         '</div>'
