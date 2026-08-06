@@ -81,6 +81,11 @@ const FAILURES = {
         detail: 'The archive was either set up already or the letters passed the date they are held until.',
         help: 'If letters are still arriving, a new link will come with the next one.'
     },
+    owned: {
+        title: 'This archive already has someone looking after it',
+        detail: 'It was set up by another route while this link was on its way to you.',
+        help: 'Ask whoever set it up to add your email address, and the letters will show up for you.'
+    },
     unavailable: {
         title: 'Something is wrong on our end',
         detail: 'We cannot check links at the moment. This is not a problem with your link.',
@@ -118,11 +123,25 @@ function renderReady(described, principal) {
     // under a parent, in which case "letters are waiting", "set up the
     // archive" and "makes you its owner" are all simply untrue.
     const missionary = described.kind === 'missionary';
+    // A third link, and the one whose holder was told the least. It reached
+    // them via the missionary, who was asked to pass it on, so the page has to
+    // say what it is for without any letters to point at -- there are none,
+    // because the letter that started this was the one we could not accept.
+    const relay = described.kind === 'relay';
     // Joining an archive that exists, rather than bringing one into being. The
     // server knows which, so the page does not have to hedge.
     const joining = missionary && Boolean(described.alreadyOwned);
 
-    if (missionary) {
+    if (relay) {
+        $('ready-title').textContent = 'Set up this archive';
+        $('ready-lede').textContent =
+            `${described.sender || 'A missionary'} passed this link on, which is how they say yes. ` +
+            'Signing in below sets the archive up under the account you choose.';
+        $('ready-owner-note').textContent =
+            'Setting the archive up makes you its owner. Once you are in, forward the letters ' +
+            'you have kept and they will go straight in — from any mail program, including the ' +
+            'one that would not work before.';
+    } else if (missionary) {
         $('ready-title').textContent = 'Your archive';
         $('ready-lede').textContent = joining
             ? 'You asked for access to your letters. Signing in below adds this archive to the account you choose.'
@@ -166,8 +185,7 @@ function renderReady(described, principal) {
         $('claim-submit').textContent = joining ? 'Get access' : 'Set up the archive';
         $('claim-as').textContent = missionary
             ? `You are signed in as ${principal}. This address will be added as an owner.`
-            : `You are signed in as ${principal}. This address will own the archive.`;
-    } else {
+            : `You are signed in as ${principal}. This address will own the archive.`;    } else {
         // Come back to this page after signing in. The token is already in
         // sessionStorage, so it does not need to survive the redirect itself.
         const back = encodeURIComponent(location.pathname);

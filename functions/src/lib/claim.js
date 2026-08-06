@@ -33,6 +33,7 @@ import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { ROLE } from './acl.js';
 import { validSlug } from './paths.js';
 import { MISSIONARY_CLAIM } from './claimverb.js';
+import { RELAY_CLAIM } from './relay.js';
 
 const CLAIM = 'claim.json';
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
@@ -54,27 +55,44 @@ async function readMissionaryBlob(store, slug) {
     return { record: JSON.parse(Buffer.from(blob.bytes).toString('utf8')), etag: blob.etag };
 }
 
+async function readRelayBlob(store, slug) {
+    const safe = validSlug(slug);
+    if (!safe) return null;
+    const blob = await store.readBlob('config', `${safe}/${RELAY_CLAIM}`);
+    if (!blob) return null;
+    return { record: JSON.parse(Buffer.from(blob.bytes).toString('utf8')), etag: blob.etag };
+}
+
 /**
  * Which grant is this token for?
  *
- * The two kinds are deliberately indistinguishable from the token itself --
- * both are `issueClaimToken({ slug, key, expiresAt })`, and putting the kind in
+ * The three kinds are deliberately indistinguishable from the token itself --
+ * all are `issueClaimToken({ slug, key, expiresAt })`, and putting the kind in
  * the payload would mean a signed assertion about its own privilege level
- * travelling through a stranger's mailbox. The stored hash is what decides,
- * which keeps the answer server-side and unforgeable.
+ * travelling through a stranger's mailbox. That matters most for the relay
+ * grant, whose whole design has it pass through one. The stored hash is what
+ * decides, which keeps the answer server-side and unforgeable.
  *
  * The missionary record is checked first. If a slug somehow has a live hash in
- * both, the one that proves control of the missionary mailbox is the stronger
- * evidence and should win.
+ * more than one, the one that proves control of the missionary mailbox is the
+ * stronger evidence and should win.
+ *
+ * The trailing fallbacks are what let a spent or superseded token be told
+ * apart from a slug that never existed.
  */
 async function grantFor({ store, slug, hash }) {
     const missionary = await readMissionaryBlob(store, slug);
     if (missionary && missionary.record.claimTokenHash === hash) {
         return { kind: 'missionary', ...missionary };
     }
+    const relay = await readRelayBlob(store, slug);
+    if (relay && relay.record.claimTokenHash === hash) {
+        return { kind: 'relay', ...relay };
+    }
     const pending = await readClaimBlob(store, slug);
     if (pending) return { kind: 'pending', ...pending };
-    return missionary ? { kind: 'missionary', ...missionary } : null;
+    if (missionary) return { kind: 'missionary', ...missionary };
+    return relay ? { kind: 'relay', ...relay } : null;
 }
 
 /**
@@ -181,6 +199,10 @@ export async function describeClaim({ store, tables, token, key, now = () => new
         return describeMissionaryGrant({ store, tables, grant, verified });
     }
 
+    if (grant.kind === 'relay') {
+        return describeRelayGrant({ store, grant, verified });
+    }
+
     const found = grant;
 
     if (found.manifest.claimedAt) return { status: 'claimed', slug: verified.slug };
@@ -255,6 +277,52 @@ async function describeMissionaryGrant({ store, tables, grant, verified }) {
 }
 
 /**
+ * The same questions asked of a relay grant, which is neither of the others.
+ *
+ * There is no pending site behind it and there are no letters to describe: the
+ * grant was created because a letter could *not* be accepted, and the family
+ * member will forward their stack again once they are on the ACL. So the page
+ * has nothing to convince anyone with except the two addresses, which is
+ * exactly right for a link whose holder was told what it was for in the
+ * message that carried it.
+ *
+ * `owned` is folded into `claimed` rather than given a status of its own. It
+ * means the archive came into being some other way while this link sat in a
+ * mailbox -- another family member got a verifiable forward through, or the
+ * missionary claimed it themselves -- and what that page already says is the
+ * right advice: it exists, ask whoever runs it to add you. A relay grant is
+ * deliberately not a way into an archive that already has an owner.
+ */
+async function describeRelayGrant({ store, grant, verified }) {
+    const slug = verified.slug;
+
+    if (grant.record.claimTokenHash !== verified.hash) return { status: 'superseded', slug };
+    if (verified.reason === 'expired') return { status: 'expired', slug };
+
+    // Not a refusal on its own: the redeemer's own retry looks like this, and
+    // `redeemClaim` lets it through to be checked against the principal. The
+    // kind has to travel with it, or the retry is dispatched to the pending
+    // path and told the letters are gone.
+    if (grant.record.claimedAt) return { status: 'claimed', kind: 'relay', slug };
+
+    // Raced by some other route into existence. Terminal, and deliberately not
+    // dispatched anywhere: spending this token would burn it against a site
+    // the holder cannot be given.
+    const acl = await store.readBlob('config', `${slug}/acl.json`);
+    if (acl) return { status: 'owned', slug };
+
+    return {
+        status: 'ready',
+        kind: 'relay',
+        slug,
+        sender: grant.record.author ?? '',
+        messageCount: 0,
+        sampleSubjects: [],
+        expiresAt: grant.record.expiresAt
+    };
+}
+
+/**
  * Spend the token, create the site, and publish everything held for it.
  *
  * @param {object} input
@@ -295,6 +363,10 @@ export async function redeemClaim({
             currentName: described.displayName ?? '',
             slug, now, log
         });
+    }
+
+    if (described.kind === 'relay') {
+        return redeemRelayGrant({ store, tables, token, key, email, displayName, slug, now, log });
     }
 
     const at = now().toISOString();
@@ -401,6 +473,110 @@ export async function redeemClaim({
     });
 
     return { status: 'ok', slug, promoted };
+}
+
+/**
+ * Redeem a relay grant: the missionary vouched, and this is the person they
+ * vouched for.
+ *
+ * Written against the pending path rather than the missionary one, because the
+ * central write is the pending path's. `acl.json` is created with
+ * `If-None-Match: *` and an ACL that already exists means somebody got there
+ * first -- the opposite of the missionary grant, where joining an archive a
+ * parent has been running for months is the expected case.
+ *
+ * The redeemer becomes an owner **without** the verified-missionary flag. What
+ * reaching here proves is that a link we mailed to a missionary was opened;
+ * the missionary chose to pass it on, which is exactly the authorisation this
+ * flow was built to collect, and it is not evidence about who is holding it
+ * now. The flag confers removal protection and belongs only to somebody who
+ * proved control of the mailbox itself.
+ *
+ * Nothing is promoted that was not already held. The letter that started all
+ * this was refused at ingest and never stored, so the backlog here is normally
+ * empty and the family member re-forwards their stack afterwards -- which now
+ * works, because they are on the ACL and membership is what the forward path
+ * checks.
+ */
+async function redeemRelayGrant({ store, tables, token, key, email, displayName, slug, now, log }) {
+    const verified = verifyClaimToken({ token, key, now });
+    const at = now().toISOString();
+
+    // --- 1. spend --------------------------------------------------------
+    let spent = null;
+    for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
+        const found = await readRelayBlob(store, slug);
+        if (!found) return { status: 'gone', slug };
+        if (found.record.claimTokenHash !== verified.hash) return { status: 'superseded', slug };
+
+        if (found.record.claimedAt) {
+            if (lower(found.record.claimedBy) !== email) return { status: 'claimed', slug };
+            // Our own earlier attempt. Fall through and finish the job.
+            spent = found.record;
+            break;
+        }
+
+        const record = { ...found.record, claimedAt: at, claimedBy: email };
+
+        try {
+            await store.writeBlob('config', `${slug}/${RELAY_CLAIM}`, utf8(record), {
+                contentType: 'application/json',
+                ifMatch: found.etag
+            });
+            spent = record;
+            break;
+        } catch (error) {
+            if (!isConflict(error) || attempt === CONFLICT_RETRIES - 1) throw error;
+        }
+    }
+    if (!spent) return { status: 'claimed', slug };
+
+    // --- 2. grant --------------------------------------------------------
+    const acl = {
+        slug,
+        members: [{ email, role: ROLE.owner, verifiedMissionary: false, addedAt: at }]
+    };
+
+    let created = false;
+    try {
+        await store.writeBlob('config', `${slug}/acl.json`, utf8(acl), {
+            contentType: 'application/json',
+            ifNoneMatch: '*'
+        });
+        created = true;
+    } catch (error) {
+        if (!isConflict(error)) throw error;
+        // Either our own retry or a genuine race. The ACL, not the grant, is
+        // the authority on which -- and either way this person is not being
+        // added to a site that already has an owner.
+        const existing = await store.readBlob('config', `${slug}/acl.json`);
+        const members = existing
+            ? (JSON.parse(Buffer.from(existing.bytes).toString('utf8')).members ?? [])
+            : [];
+        if (!members.some((m) => lower(m.email) === email)) {
+            log.warn?.('claim: relay grant lost the race for an acl', { slug, email });
+            return { status: 'owned', slug };
+        }
+    }
+
+    // --- 3. index --------------------------------------------------------
+    await recordMembership({ tables, email, slug, role: ROLE.owner, now });
+
+    const wanted = String(displayName ?? '').trim();
+    if (wanted) {
+        try {
+            await setSiteName({ tables, slug, missionaryDisplayName: wanted });
+        } catch (error) {
+            log.error?.('claim: site name write failed', { slug, error: error.message });
+        }
+    }
+
+    // --- 4. publish ------------------------------------------------------
+    const promoted = await promotePending({ store, tables, slug, now, log });
+
+    log.info?.('claim: relay grant redeemed', { slug, created, promoted: promoted.promoted });
+
+    return { status: 'ok', slug, created, promoted };
 }
 
 /**

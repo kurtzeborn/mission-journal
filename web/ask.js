@@ -71,7 +71,7 @@ async function submit(event, token, author) {
     if (!result.ok || result.body.status !== 'ok') return fail(result.body.status ?? 'unavailable');
 
     sessionStorage.removeItem(KEY);
-    $('done-summary').textContent = `We have asked ${author} to send us a letter.`;
+    $('done-summary').textContent = `We have asked ${author} to send you a link.`;
     show('done');
 }
 
@@ -88,7 +88,7 @@ async function start() {
     // `textContent`. Both addresses are inside the signature, so they are ours
     // rather than a stranger's, but they are still addresses somebody typed.
     $('ready-lede').textContent =
-        `We will email ${author} and ask them to send one of their letters to us, for ${requester}.`;
+        `We will email ${author} and ask them to forward a link to ${requester}.`;
     show('ready');
 
     $('ask-form').addEventListener('submit', (event) => submit(event, token, author));

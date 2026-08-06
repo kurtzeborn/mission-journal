@@ -1,10 +1,10 @@
 import { app } from '@azure/functions';
-import { createTableStore } from '../lib/tables.js';
+import { createBlobStore } from '../lib/store.js';
 import { createMailer } from '../lib/mail.js';
 import { hardened } from '../lib/api.js';
 import { readRelay, requestRelay } from '../lib/relay.js';
 
-// Asking the missionary to send the first letter.
+// Asking the missionary to vouch for a family member.
 //
 // Anonymous, like the opt-out, and for the same reason: the person holding
 // this link has never signed in and is not going to. The signature on the
@@ -16,10 +16,10 @@ import { readRelay, requestRelay } from '../lib/relay.js';
 // missionary on nobody's behalf -- the exact outcome this flow is built to
 // keep rare.
 
-let cachedTables = null;
+let cachedBlobs = null;
 let cachedMailer = null;
 const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
+const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
 const mailer = () =>
     (cachedMailer ??= createMailer({
         accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
@@ -66,14 +66,14 @@ export async function describe({ request, key }) {
     );
 }
 
-export async function ask({ request, context, tables, key }) {
+export async function ask({ request, context, store, key }) {
     if (!key) return json(503, { status: 'unavailable' });
 
     const token = await tokenFrom(request);
     if (!token) return json(400, { status: 'invalid' });
 
     const result = await requestRelay({
-        tables,
+        store,
         mailer: mailer(),
         token,
         key,
@@ -95,5 +95,5 @@ app.http('relay', {
     authLevel: 'anonymous',
     methods: ['POST'],
     route: 'relay',
-    handler: (request, context) => ask({ request, context, tables: tableStore(), key: signingKey(context) })
+    handler: (request, context) => ask({ request, context, store: blobStore(), key: signingKey(context) })
 });

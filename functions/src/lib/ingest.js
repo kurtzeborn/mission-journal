@@ -17,7 +17,7 @@ import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
 import { offerClaim } from './offer.js';
 import { nudgeOnce, NUDGE } from './nudge.js';
-import { relayRequestFor, RELAY_TTL_DAYS } from './relay.js';
+import { RELAY_TTL_DAYS } from './relay.js';
 import { issueClaimToken, PURPOSE } from './claimtoken.js';
 import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
 import { touchSiteActivity } from './sites.js';
@@ -372,23 +372,6 @@ export async function runIngest({
         // the sender's server redeliver it.
         if (mailer && (manifest.claimEmailCount ?? 0) === 0) {
             try {
-                // A direct send is normally offered back to the missionary,
-                // because they are the only authenticated party on it. The
-                // exception is a letter they sent *because we asked them to*,
-                // on behalf of a family member who could not produce a
-                // verifiable forward. Offering that one to the missionary
-                // would hand the archive to the person who was doing somebody
-                // else a favour, and leave the person who wanted it waiting
-                // for a link that went somewhere else.
-                //
-                // Read fresh rather than trusted from the message: the letter
-                // says nothing about any of this, and the request is a signed
-                // token's worth of intent recorded before the letter arrived.
-                const relay = bootstrapping ? null : await relayRequestFor({ tables, slug, now });
-                if (relay) {
-                    log.info?.('ingest: honouring a relay request', { slug, to: relay.requester });
-                }
-
                 await offerClaim({
                     store,
                     mailer,
@@ -399,8 +382,8 @@ export async function runIngest({
                     // missionary. Overridden here because a bootstrap forward
                     // was sent by somebody else, and they are the one waiting
                     // to hear back.
-                    to: bootstrapping ? verdict.forwarder : (relay?.requester ?? ''),
-                    forwarded: bootstrapping || Boolean(relay),
+                    to: bootstrapping ? verdict.forwarder : '',
+                    forwarded: bootstrapping,
                     now,
                     log
                 });
