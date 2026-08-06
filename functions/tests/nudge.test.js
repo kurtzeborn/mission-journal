@@ -258,19 +258,26 @@ describe('advising a forwarder who quoted instead of attaching', () => {
             author: 'elder.example@missionary.org',
             baseUrl: 'https://pdayletters.com',
             kind: NUDGE.rebuilt,
-            askUrl: 'https://pdayletters.com/ask#tok'
+            askUrl: 'https://pdayletters.com/ask#tok',
+            requester: 'parent@example.com'
         });
         const stripped = body.html.replace(/<[^>]+>/g, ' ');
 
         for (const phrase of [
             'rebuilt the letter as it sent it',
             'Outlook on the web does not rebuild the message',
-            'https://pdayletters.com/ask#tok',
+            'never spoofed or faked on this',
             'only needed for the first letter'
         ]) {
             assert.ok(body.text.includes(phrase), `text: ${phrase}`);
             assert.ok(stripped.includes(phrase), `html: ${phrase}`);
         }
+
+        // The URL itself cannot be word-identical: the HTML hides it behind
+        // anchor text and the plain-text part has nowhere to hide it. Both
+        // must still carry it somewhere usable.
+        assert.ok(body.text.includes('https://pdayletters.com/ask#tok'));
+        assert.match(body.html, /href="https:\/\/pdayletters\.com\/ask#tok"/);
     });
 
     test('the second advice offers the web route before it offers the missionary', async () => {
@@ -311,17 +318,42 @@ describe('advising a forwarder who quoted instead of attaching', () => {
             author: 'elder.example@missionary.org',
             baseUrl: 'https://pdayletters.com',
             kind: NUDGE.attach,
-            askUrl: 'https://pdayletters.com/ask#tok'
+            askUrl: 'https://pdayletters.com/ask#tok',
+            requester: 'parent@example.com'
         });
         const stripped = body.html.replace(/<[^>]+>/g, ' ');
 
         for (const phrase of [
             'Forward the letter again as an attachment',
-            'https://pdayletters.com/ask#tok',
+            'never spoofed or faked on this',
             'only needed for the first letter'
         ]) {
             assert.ok(body.text.includes(phrase), `text: ${phrase}`);
             assert.ok(stripped.includes(phrase), `html: ${phrase}`);
+        }
+
+        assert.ok(body.text.includes('https://pdayletters.com/ask#tok'));
+        assert.match(body.html, /href="https:\/\/pdayletters\.com\/ask#tok"/);
+    });
+
+    test('the link is anchored, not printed bare, and names who it is for', async () => {
+        // A naked URL in a message about not trusting unverified mail reads
+        // like the thing it is warning about. The address is shown because it
+        // is what the missionary will be asked to forward to, and the reader
+        // is the only person who can catch it being wrong.
+        for (const kind of [NUDGE.attach, NUDGE.rebuilt]) {
+            const body = nudgeEmail({
+                author: 'elder.example@missionary.org',
+                baseUrl: 'https://pdayletters.com',
+                kind,
+                askUrl: 'https://pdayletters.com/ask#tok',
+                requester: 'parent@example.com'
+            });
+
+            assert.match(body.html, /<a href="https:\/\/pdayletters\.com\/ask#tok">Click this link<\/a>/, kind);
+            assert.doesNotMatch(body.html, />https:\/\/pdayletters\.com\/ask#tok</, `${kind}: bare link`);
+            assert.ok(body.text.includes('parent@example.com'), `${kind}: text address`);
+            assert.ok(body.html.includes('parent@example.com'), `${kind}: html address`);
         }
     });
 

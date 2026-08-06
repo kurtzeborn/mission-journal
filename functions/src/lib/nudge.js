@@ -86,21 +86,78 @@ const escape = (text) =>
  * @param {string} input.author   the missionary the forwarded letter was from
  * @param {string} input.baseUrl  e.g. https://pdayletters.com
  * @param {string} [input.kind]   a NUDGE value
- * @param {string} [input.askUrl] the relay link, for the `rebuilt` case
+ * @param {string} [input.askUrl] the relay link
+ * @param {string} [input.requester] the address the missionary will be asked
+ *                                   to forward to, shown so the reader can
+ *                                   check it before spending anyone's time
  */
-export function nudgeEmail({ author, baseUrl, kind = NUDGE.attach, askUrl = '' }) {
+export function nudgeEmail({ author, baseUrl, kind = NUDGE.attach, askUrl = '', requester = '' }) {
     const faq = `${String(baseUrl ?? '').replace(/\/$/, '')}/faq#forward-did-nothing`;
     return kind === NUDGE.rebuilt
-        ? rebuiltEmail({ author, faq, askUrl })
-        : attachEmail({ author, faq, askUrl });
+        ? rebuiltEmail({ author, faq, askUrl, requester })
+        : attachEmail({ author, faq, askUrl, requester });
+}
+
+/**
+ * The second route, written once and used by both replies so they cannot drift
+ * apart. The heading differs between them; everything below it does not.
+ *
+ * The link is anchored rather than printed bare. A naked URL in a message about
+ * not trusting unverified mail reads exactly like the thing it is warning
+ * about, and it is the plain-text part that forces the URL to appear at all --
+ * there is no way to anchor text without HTML, and an instruction to "click
+ * this link" with no link to click is worse than an ugly one.
+ */
+function askRoute({ heading, askUrl, requester }) {
+    const who = requester || 'you';
+
+    const text = [
+        heading.text,
+        '',
+        '   Click this link to send a short email to your missionary with a',
+        '   link to get started.',
+        '',
+        askUrl ? `   ${askUrl}` : '   (link unavailable — please write to us instead)',
+        '',
+        `   The mail will ask the missionary to forward it to you`,
+        `   (${who}) and you will take care of it from there.`,
+        '   You can then click the link you got from the missionary and get',
+        '   things started.',
+        '',
+        '   We do this so that missionaries are never spoofed or faked on this',
+        '   site. We do this out of deep respect for missionaries and their',
+        '   families.'
+    ];
+
+    const opener = askUrl
+        ? `<a href="${escape(askUrl)}">Click this link</a>`
+        : 'Click this link (unavailable &mdash; please write to us instead)';
+
+    const html = [
+        heading.html,
+        `<p>${opener} to send a short email to your missionary with a link to get started.</p>`,
+        `<p>The mail will ask the missionary to forward it to you (<strong>${escape(who)}</strong>) and you will take care of it from there. You can then click the link you got from the missionary and get things started.</p>`,
+        '<p>We do this so that missionaries are never spoofed or faked on this site. We do this out of deep respect for missionaries and their families.</p>'
+    ];
+
+    return { text, html };
 }
 
 // Two routes here as well, ordered on the same principle as the other reply:
 // the fix that costs nobody anything comes first, and the one that spends a
 // missionary's limited minutes comes second, framed as what to do when the
 // menu item is missing rather than as an equal choice.
-function attachEmail({ author, faq, askUrl }) {
+function attachEmail({ author, faq, askUrl, requester }) {
     const subject = 'That letter did not come through — how to send it again';
+
+    const route2 = askRoute({
+        heading: {
+            text: `2. Or, if you cannot find that menu item, let us ask\n   ${author} to vouch for you.`,
+            html: `<p><strong>2. Or, if you cannot find that menu item, let us ask ${escape(author)} to vouch for you.</strong></p>`
+        },
+        askUrl,
+        requester
+    });
 
     const text = [
         `Thanks for forwarding a letter from ${author} to ${SIGNATURE}.`,
@@ -120,16 +177,7 @@ function attachEmail({ author, faq, askUrl }) {
         `   Send that to ${POST_ADDRESS} and we will write straight back`,
         '   with a link to set up the archive.',
         '',
-        `2. Or, if you cannot find that menu item, let us ask ${author} to`,
-        '   vouch for you.',
-        '',
-        askUrl ? `   ${askUrl}` : '   (link unavailable — please write to us instead)',
-        '',
-        '   Phone apps usually cannot forward as an attachment at all. Open',
-        '   that link and we will send them a short note with a link of their',
-        '   own, asking them to pass it on to you. It names you, so they know',
-        '   who it is for. Opening the link they send you sets up the archive,',
-        '   and then your letters will go through.',
+        ...route2.text,
         '',
         'Either way, this is only needed for the first letter.',
         '',
@@ -153,11 +201,7 @@ function attachEmail({ author, faq, askUrl }) {
         '<li><strong>Apple Mail</strong> &mdash; Message &gt; Forward as Attachment</li>',
         '</ul>',
         `<p>Send that to <strong>${POST_ADDRESS}</strong> and we will write straight back with a link to set up the archive.</p>`,
-        `<p><strong>2. Or, if you cannot find that menu item, let us ask ${escape(author)} to vouch for you.</strong></p>`,
-        askUrl
-            ? `<p><a href="${escape(askUrl)}">${escape(askUrl)}</a></p>`
-            : '<p>(link unavailable &mdash; please write to us instead)</p>',
-        '<p>Phone apps usually cannot forward as an attachment at all. Open that link and we will send them a short note with a link of their own, asking them to pass it on to you. It names you, so they know who it is for. Opening the link they send you sets up the archive, and then your letters will go through.</p>',
+        ...route2.html,
         '<p>Either way, this is only needed for the first letter.</p>',
         `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,
         `<p>${SIGNATURE}</p>`,
@@ -180,8 +224,17 @@ function attachEmail({ author, faq, askUrl }) {
  * because it spends somebody else's time -- a missionary has a set number of
  * minutes to write home, and this would take some of them.
  */
-function rebuiltEmail({ author, faq, askUrl }) {
+function rebuiltEmail({ author, faq, askUrl, requester }) {
     const subject = 'That letter did not come through — two ways to fix it';
+
+    const route2 = askRoute({
+        heading: {
+            text: `2. Or let us ask ${author} to vouch for you.`,
+            html: `<p><strong>2. Or let us ask ${escape(author)} to vouch for you.</strong></p>`
+        },
+        askUrl,
+        requester
+    });
 
     const text = [
         `Thanks for forwarding a letter from ${author} to ${SIGNATURE}.`,
@@ -201,14 +254,7 @@ function rebuiltEmail({ author, faq, askUrl }) {
         `   More actions (…) > Forward as attachment to ${POST_ADDRESS}.`,
         '   Outlook on the web does not rebuild the message, so this works.',
         '',
-        `2. Or let us ask ${author} to vouch for you.`,
-        '',
-        askUrl ? `   ${askUrl}` : '   (link unavailable — please write to us instead)',
-        '',
-        '   Open that link and we will send them a short note with a link of',
-        '   their own, asking them to pass it on to you. It names you, so they',
-        '   know who it is for. Opening the link they send you sets up the',
-        '   archive, and then your letters will go through.',
+        ...route2.text,
         '',
         'Either way, this is only needed for the first letter.',
         '',
@@ -217,10 +263,6 @@ function rebuiltEmail({ author, faq, askUrl }) {
         SIGNATURE
     ].join('\n');
 
-    const route2 = askUrl
-        ? `<p><a href="${escape(askUrl)}">${escape(askUrl)}</a></p>`
-        : '<p>(link unavailable &mdash; please write to us instead)</p>';
-
     const html = [
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
         `<p>Thanks for forwarding a letter from <strong>${escape(author)}</strong> to ${SIGNATURE}.</p>`,
@@ -228,9 +270,7 @@ function rebuiltEmail({ author, faq, askUrl }) {
         '<p>This happens with the Outlook app on Windows and on Android. There are two ways around it.</p>',
         '<p><strong>1. Forward it again from Outlook on the web.</strong></p>',
         `<p>Open outlook.com in a browser, find the letter, and use More actions (&hellip;) &gt; Forward as attachment to <strong>${POST_ADDRESS}</strong>. Outlook on the web does not rebuild the message, so this works.</p>`,
-        `<p><strong>2. Or let us ask ${escape(author)} to vouch for you.</strong></p>`,
-        route2,
-        '<p>Open that link and we will send them a short note with a link of their own, asking them to pass it on to you. It names you, so they know who it is for. Opening the link they send you sets up the archive, and then your letters will go through.</p>',
+        ...route2.html,
         '<p>Either way, this is only needed for the first letter.</p>',
         `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,
         `<p>${SIGNATURE}</p>`,
@@ -298,7 +338,7 @@ export async function nudgeOnce({
         return { status: 'duplicate' };
     }
 
-    const body = nudgeEmail({ author, baseUrl, kind, askUrl });
+    const body = nudgeEmail({ author, baseUrl, kind, askUrl, requester: recipient });
     const result = await mailer.send({
         from: mailFrom(POST_ADDRESS),
         to: recipient,
