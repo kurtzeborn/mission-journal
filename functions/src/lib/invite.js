@@ -230,6 +230,143 @@ export async function listInvites({ tables, slug, now = () => new Date() }) {
 }
 
 /**
+ * Send the same invitation again, as a fresh link.
+ *
+ * The common case is dull and worth naming: the first mail went to spam, or
+ * grandmother cannot find it. Without this the owner's only move is to invite
+ * the same address a second time, which works but leaves two live links and
+ * two rows on the list for one person.
+ *
+ * Four things are deliberate.
+ *
+ * **The address comes from the stored row, never from the request.** The
+ * caller names an invitation, not a recipient. If this took an address it
+ * would be a second, quieter path to mailing arbitrary strangers, sitting
+ * behind the same owner session but none of the reasoning that guards
+ * `inviteMember`.
+ *
+ * **It counts against the daily cap, like any other send.** This is the whole
+ * reason to be careful here: a resend that did not count would turn one
+ * invitation into an unbounded send loop pointed at a single address, which is
+ * a worse shape than the revoke loop the tombstone exists to close.
+ *
+ * **The old token is tombstoned.** Partly so the two links cannot both be
+ * live, and partly because the alternative -- reissuing the same token -- does
+ * not solve the problem it is asked to: an invitation resent on day thirteen
+ * would still expire tomorrow. A new link means a new fortnight.
+ *
+ * **Expired invitations are not resendable, because they are not visible.**
+ * `listInvites` filters them out, so an owner never sees one to act on, and
+ * the remedy for an expired invitation is simply to invite the address again.
+ * Stated because "resend" sounds like it should cover exactly that case.
+ */
+export async function resendInvite({
+    store,
+    tables,
+    mailer,
+    slug,
+    actor,
+    id,
+    key,
+    baseUrl,
+    now = () => new Date(),
+    log = console
+}) {
+    const safe = validSlug(slug);
+    if (!safe || !id) return { error: 'no such invitation' };
+
+    const members = await readAcl(store, safe);
+    if (!members) return { error: 'no such site' };
+
+    const me = lower(actor);
+    const mine = members.find((m) => lower(m.email) === me);
+    if (!mine || mine.role !== ROLE.owner) return { error: 'owners only' };
+
+    const row = await tables.getEntity(TABLES.invites, safe, String(id));
+
+    // Accepted, revoked and expired all collapse into one answer, matching
+    // what the owner's list shows: if it is not on the list, there is nothing
+    // here to resend.
+    if (!row || row.acceptedAt || row.revokedAt) return { error: 'no such invitation' };
+    if (Date.parse(row.expiresAt) <= now().getTime()) return { error: 'no such invitation' };
+
+    const them = lower(row.email);
+
+    // Between the first send and this one, they may have told us to stop.
+    if (await optedOut({ tables, email: them })) {
+        return { error: 'has asked us not to email them' };
+    }
+
+    const issued = await tables.listEntities(TABLES.invites, { partitionKey: safe });
+    if (issuedToday(issued, now) >= INVITES_PER_DAY) {
+        log.warn?.('invite: daily cap reached on resend', { slug: safe, cap: INVITES_PER_DAY });
+        return { error: 'too many invitations today, try again tomorrow' };
+    }
+
+    const expiresAt = expiryFrom(now);
+    const { token, hash } = issueClaimToken({
+        slug: safe,
+        key,
+        expiresAt,
+        purpose: PURPOSE.invite
+    });
+
+    // The new row first. If the write below fails the owner is left with a
+    // live invitation they cannot see, which is recoverable; the other order
+    // leaves them with no invitation at all and a mail already sent.
+    await tables.upsertEntity(TABLES.invites, {
+        partitionKey: safe,
+        rowKey: hash,
+        email: them,
+        role: row.role,
+        invitedBy: me,
+        createdAt: now().toISOString(),
+        expiresAt
+    });
+
+    await tables.upsertEntity(TABLES.invites, {
+        partitionKey: safe,
+        rowKey: String(id),
+        revokedAt: now().toISOString(),
+        // For whoever is reading the table at three in the morning wondering
+        // why a link died. Not shown to anyone.
+        supersededBy: hash
+    });
+
+    const sites = await sitesBySlug({ tables, slugs: [safe] });
+    const optOutToken = issueOptOut({ email: them, slug: safe, key, now });
+    const body = inviteEmail({
+        baseUrl,
+        token,
+        invitedBy: me,
+        missionary: sites.get(safe)?.missionaryDisplayName ?? '',
+        role: row.role,
+        expiresAt,
+        optOutToken,
+        again: true
+    });
+
+    const result = await mailer.send({
+        from: mailFrom(HUMAN_ADDRESS),
+        to: them,
+        subject: body.subject,
+        text: body.text,
+        html: body.html,
+        headers: {
+            'Auto-Submitted': 'auto-generated',
+            ...unsubscribeHeaders({ baseUrl, token: optOutToken, humanAddress: HUMAN_ADDRESS })
+        },
+        log
+    });
+
+    if (result.status !== 'sent') {
+        log.error?.('invite: could not redeliver', { slug: safe, status: result.status });
+    }
+
+    return { ok: true, slug: safe, id: hash, email: them, role: row.role, expiresAt, delivery: result.status };
+}
+
+/**
  * Withdraw an invitation before anybody uses it.
  *
  * A tombstone rather than a delete. Two things rest on the row surviving: the

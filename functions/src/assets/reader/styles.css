@@ -203,7 +203,6 @@ button:focus-visible {
     font-size: 1.25rem;
     line-height: 1.5;
 }
-
 .address {
     font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
     font-size: 1.05rem;
@@ -302,6 +301,67 @@ button:focus-visible {
     font-size: 0.95rem;
 }
 
+/* --- the questions page --- */
+
+/* The list of questions at the top. Every question below it has an id, so a
+   refusal elsewhere in the service can link to the one answer that explains
+   it, and a browser's find-in-page reaches all of them because none of the
+   answers are hidden. */
+.contents {
+    background: #faf8f4;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 0.25rem 1.25rem 1rem;
+    margin: 2rem 0;
+}
+
+.contents h2 {
+    font-size: 1.05rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+.contents h3 {
+    font-size: 1rem;
+    margin-bottom: 0.3rem;
+}
+
+.contents ul {
+    margin: 0 0 1rem;
+    padding-left: 1.2rem;
+}
+
+.contents li {
+    margin-bottom: 0.35rem;
+}
+
+/* The topic headings between groups of questions. Quieter than the questions
+   themselves, which are what somebody is actually scanning for. */
+.topic {
+    margin-top: 3rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--rule);
+    font-size: 1.05rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+/* Room above a heading jumped to from the contents, so it does not land
+   flush against the top of the window with its answer cut off. */
+[id] {
+    scroll-margin-top: 1.5rem;
+}
+
+/* Says which question was jumped to. Landing halfway down a page of similar
+   headings, the one you asked for is not otherwise distinguishable from its
+   neighbours. */
+h3:target {
+    background: #fdf6e3;
+    box-shadow: -0.6rem 0 0 #fdf6e3, 0.6rem 0 0 #fdf6e3;
+}
+
 /* The numbered instructions on the getting-started page. Each step is a bold
    sentence with its explanation underneath, so the list reads as a sequence at
    a glance and as prose when someone stops to actually follow it. */
@@ -363,6 +423,16 @@ button:focus-visible {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+/* Why a row's button did nothing. Full-width so it drops onto its own line
+   under the row it belongs to -- squeezed in beside the buttons it would
+   push them off the edge on a phone, which is where somebody is most likely
+   to be pressing Resend in the first place. */
+.people__trouble {
+    flex: 1 0 100%;
+    margin: 0;
+    color: var(--ink-soft);
 }
 
 /* The address box on the people page. Wide and tall enough that a pasted

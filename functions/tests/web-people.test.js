@@ -247,3 +247,125 @@ describe('reading the list of who has access', () => {
         assert.equal(deleted.url, `/api/members/${SLUG}/the-hash`);
     });
 });
+
+describe('sending an invitation again', () => {
+    const WAITING = {
+        members: OWNER_ONLY.members,
+        invites: [{ id: 'the-hash', email: 'later@example.com', role: 'reader' }]
+    };
+
+    test('the button is offered on invitations and on nobody else', async () => {
+        const view = await people({
+            answer: listing({
+                members: [
+                    ...OWNER_ONLY.members,
+                    { email: 'reader@example.com', role: 'reader', removable: true, invitedEmail: '' }
+                ],
+                invites: WAITING.invites
+            })
+        });
+
+        const rows = view.lines('people');
+        assert.doesNotMatch(rows[0], /Resend/);
+        assert.doesNotMatch(rows[1], /Resend/);
+        assert.match(rows[2], /Resend/);
+    });
+
+    test('it names the invitation, not the address', async () => {
+        // Same reason withdrawal does: the invites table is keyed by token
+        // hash, and an address would match nothing.
+        const view = await people({ answer: listing(WAITING) });
+
+        await view.button('people', 'Resend').dispatch('click');
+
+        const sent = view.calls.find((c) => c.url.endsWith('/resend'));
+        assert.equal(sent.method, 'POST');
+        assert.equal(sent.url, `/api/members/${SLUG}/the-hash/resend`);
+    });
+
+    test('it does not ask first', async () => {
+        // The cost of a misfire is one duplicate email to somebody already
+        // being invited. A dialog in front of that is worse than the mistake.
+        const view = await people({ answer: listing(WAITING) });
+
+        view.context.confirmed = false;
+        await view.button('people', 'Resend').dispatch('click');
+
+        assert.ok(view.calls.some((c) => c.url.endsWith('/resend')));
+    });
+
+    test('a refusal is said out loud, next to the row it belongs to', async () => {
+        // The failure this replaces: the button re-enabled itself, the list
+        // reloaded unchanged, and nothing on the page explained why. An owner
+        // presses it again, and again.
+        const view = await people({
+            answer: async (url, init) =>
+                url.endsWith('/resend')
+                    ? { status: 429, body: { error: 'too many invitations today, try again tomorrow' } }
+                    : { status: 200, body: WAITING }
+        });
+
+        await view.button('people', 'Resend').dispatch('click');
+        await settled();
+
+        assert.match(view.lines('people')[1], /too many invitations today/);
+    });
+
+    test('and the button comes back so it can be tried tomorrow', async () => {
+        const view = await people({
+            answer: async (url) =>
+                url.endsWith('/resend')
+                    ? { status: 429, body: { error: 'too many invitations today, try again tomorrow' } }
+                    : { status: 200, body: WAITING }
+        });
+
+        await view.button('people', 'Resend').dispatch('click');
+        await settled();
+
+        assert.equal(view.button('people', 'Resend').disabled, false);
+    });
+
+    test('a refusal the owner cannot act on links to the answer', async () => {
+        // The opt-out is the one refusal an owner cannot fix and did not
+        // cause, so "has asked us not to email them" reads like our bug
+        // rather than the recipient's choice. The link is the whole reason
+        // the questions page is anchored instead of collapsed.
+        const view = await people({
+            answer: async (url) =>
+                url.endsWith('/resend')
+                    ? { status: 403, body: { error: 'has asked us not to email them' } }
+                    : { status: 200, body: WAITING }
+        });
+
+        await view.button('people', 'Resend').dispatch('click');
+        await settled();
+
+        assert.match(view.lines('people')[1], /has asked us not to email them/);
+        assert.equal(view.link('people', 'Why?').href, '/faq#stop-emails');
+    });
+
+    test('the network dropping is reported rather than swallowed', async () => {
+        const view = await people({
+            answer: async (url) => (url.endsWith('/resend') ? new Error('offline') : { status: 200, body: WAITING })
+        });
+
+        await view.button('people', 'Resend').dispatch('click');
+        await settled();
+
+        assert.match(view.lines('people')[1], /could not reach the server/);
+    });
+
+    test('success reloads the list rather than claiming anything', async () => {
+        // There is nothing honest to say. The mail has been handed to a
+        // provider, which is not the same as arriving, and the row is already
+        // where the owner is looking.
+        const view = await people({ answer: listing(WAITING) });
+        const before = view.calls.filter((c) => c.method === 'GET').length;
+
+        await view.button('people', 'Resend').dispatch('click');
+        await settled();
+
+        assert.equal(view.calls.filter((c) => c.method === 'GET').length, before + 1);
+        assert.doesNotMatch(view.lines('people')[1], /could not/);
+    });
+});

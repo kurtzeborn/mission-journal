@@ -53,8 +53,18 @@ const escape = (text) =>
  * @param {string} input.role
  * @param {string} input.expiresAt
  * @param {string} [input.optOutToken] signed, names the recipient; omitted only in tests
+ * @param {boolean} [input.again]      an owner asked for this one to be sent a second time
  */
-export function inviteEmail({ baseUrl, token, invitedBy, missionary = '', role, expiresAt, optOutToken = '' }) {
+export function inviteEmail({
+    baseUrl,
+    token,
+    invitedBy,
+    missionary = '',
+    role,
+    expiresAt,
+    optOutToken = '',
+    again = false
+}) {
     const root = baseUrl.replace(/\/$/, '');
     const link = `${root}/invite#${token}`;
     const optOut = optOutToken ? `${root}/optout#${optOutToken}` : '';
@@ -70,9 +80,29 @@ export function inviteEmail({ baseUrl, token, invitedBy, missionary = '', role, 
     // identify nobody. The person named is the *sender's own correspondent*,
     // not the missionary, and without it this is a stranger asking somebody to
     // sign in to a website.
-    const subject = `${invitedBy} wants to share missionary letters with you`;
+    //
+    // A resend says so in the subject, so it does not read as the same message
+    // arriving twice from a machine. This service promises never to repeat an
+    // invitation on its own, and the honest way to keep that promise visible
+    // is to be plain about the one case where a person asked us to.
+    const subject = again
+        ? `${invitedBy} sent you this again: missionary letters to share`
+        : `${invitedBy} wants to share missionary letters with you`;
+
+    // Both halves matter. Somebody who kept the first email will try its link
+    // first, and "this link cannot be used" on a message that just arrived
+    // reads as the service being broken rather than as the link being old.
+    const repeated = again
+        ? [
+              `${invitedBy} asked us to send this again. If you still have the`,
+              'earlier email, use the link below instead -- the older one has',
+              'stopped working.',
+              ''
+          ]
+        : [];
 
     const text = [
+        ...repeated,
         `${invitedBy} has invited you to read ${whose} on ${SIGNATURE}.`,
         '',
         role === 'owner'
@@ -110,6 +140,9 @@ export function inviteEmail({ baseUrl, token, invitedBy, missionary = '', role, 
 
     const html = [
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+        again
+            ? `<p style="padding:12px;background:#faf8f4;border-radius:4px">${escape(invitedBy)} asked us to send this again. If you still have the earlier email, use the button below instead &mdash; the older link has stopped working.</p>`
+            : '',
         `<p><strong>${escape(invitedBy)}</strong> has invited you to read ${escape(whose)} on ${SIGNATURE}.</p>`,
         role === 'owner'
             ? '<p>You have been invited as an <strong>owner</strong>, so you will be able to edit letters and invite other people as well as read them.</p>'

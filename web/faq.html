@@ -26,7 +26,90 @@
             <span class="address">hello@pdayletters.com</span> and a person will read it.
         </p>
 
-        <h2>I'm a missionary and someone else set up my archive. How do I take control?</h2>
+        <!-- Links rather than collapsible panels, and the reason is that these
+             anchors are used from outside the page: a refusal on the People
+             page or a line in an email can point at one question and land on
+             it. Collapsed answers also depend on the browser opening them for
+             find-in-page, which is not something every browser does. -->
+        <nav class="contents" aria-labelledby="contents-title">
+            <h2 id="contents-title">On this page</h2>
+
+            <h3>General</h3>
+            <ul>
+                <li><a href="#what-is-this">What is this?</a></li>
+                <li><a href="#getting-letters-out">Can I get the letters back out?</a></li>
+            </ul>
+
+            <h3>Setting up</h3>
+            <ul>
+                <li><a href="#forward-did-nothing">I forwarded a letter and nothing happened.</a></li>
+                <li><a href="#claiming-your-archive">I'm a missionary and someone else set up my archive. How do I
+                        take control?</a></li>
+                <li><a href="#mission-account">Can the missionary sign in with their mission account?</a></li>
+                <li><a href="#claim-link-expired">Why does the claim link expire?</a></li>
+            </ul>
+
+            <h3>Access</h3>
+            <ul>
+                <li><a href="#who-can-read">Who can read an archive?</a></li>
+                <li><a href="#adding-family">How do I add the rest of the family?</a></li>
+                <li><a href="#invitation-not-arrived">Somebody I invited never got the email.</a></li>
+                <li><a href="#readers-and-owners">What is the difference between a reader and an owner?</a></li>
+            </ul>
+
+            <h3>Privacy</h3>
+            <ul>
+                <li><a href="#missionary-emails">Does the missionary get emails from you?</a></li>
+                <li><a href="#stop-emails">I was invited and I do not want any emails from you.</a></li>
+                <li><a href="#unclaimed-letters">What happens to letters nobody claims?</a></li>
+                <li><a href="#deleting-an-archive">How do I delete an archive?</a></li>
+            </ul>
+        </nav>
+
+        <h2 class="topic">General</h2>
+
+        <h3 id="what-is-this">What is this?</h3>
+
+        <p>
+            Missionary letters arrive by email, scatter across inboxes, and are gone by
+            the time anyone wants to read them again. This keeps them together: forward
+            a letter to <span class="address">post@pdayletters.com</span> and it is
+            filed, with the photos kept at full size, in one private archive the family
+            can read.
+        </p>
+
+        <p class="note">
+            Archives are not public, are not listed anywhere, and are not indexed by
+            search engines. See <a href="/start">getting started</a> for the first
+            few minutes of it.
+        </p>
+
+        <h3 id="getting-letters-out">Can I get the letters back out?</h3>
+
+        <p>
+            Yes. An owner can download the whole archive as a zip of the original emails,
+            with the photos at full size. Nothing here is a one-way door.
+        </p>
+
+        <h2 class="topic">Setting up</h2>
+
+        <h3 id="forward-did-nothing">I forwarded a letter and nothing happened.</h3>
+
+        <p>
+            Almost always this means your mail program quoted the letter as text instead
+            of attaching it. Try again using <em>Forward as attachment</em> &mdash; the
+            exact menu item for each program is on the
+            <a href="/start">getting started page</a>.
+        </p>
+
+        <p class="note">
+            We write back once to say so. Only once, so that forwarding a stack of old
+            letters does not produce a stack of replies &mdash; which does mean a second
+            plain forward is met with silence.
+        </p>
+
+        <h3 id="claiming-your-archive">I'm a missionary and someone else set up my archive. How do I take control?
+        </h3>
 
         <p>
             Email <span class="address">claim@pdayletters.com</span> from your
@@ -48,59 +131,7 @@
             remove &mdash; so once you have claimed it, the archive is yours to control.
         </p>
 
-        <h2>Who can read an archive?</h2>
-
-        <p>
-            Only the people an owner has added. Archives are not public, are not listed
-            anywhere, and are not indexed by search engines.
-        </p>
-
-        <h2>How do I add the rest of the family?</h2>
-
-        <p>
-            Open the archive, choose <strong>People</strong>, and enter their email addresses
-            &mdash; one, or a whole list pasted in at once. We send each of them a link;
-            nothing changes until they follow it. There is a limit of twenty invitations
-            per archive per day, which is more than most families need in one sitting.
-        </p>
-
-        <p class="note">
-            The address you type is only where the invitation is sent. Whichever account
-            they actually sign in with is the one that gets access &mdash; which matters
-            more often than you would think, because the address a family has used for
-            somebody for twenty years is frequently not the account they sign in to
-            things with.
-        </p>
-
-        <h2>What is the difference between a reader and an owner?</h2>
-
-        <p>
-            A reader can read the letters and download them. An owner can do that, and
-            also edit or delete letters, invite other people, and remove them.
-        </p>
-
-        <p class="note">
-            Owners can promote and remove each other. Nobody can remove or demote
-            themselves, which is what stops an archive from ending up with no owner at
-            all.
-        </p>
-
-        <h2>I forwarded a letter and nothing happened.</h2>
-
-        <p>
-            Almost always this means your mail program quoted the letter as text instead
-            of attaching it. Try again using <em>Forward as attachment</em> &mdash; the
-            exact menu item for each program is on the
-            <a href="/start">getting started page</a>.
-        </p>
-
-        <p class="note">
-            We write back once to say so. Only once, so that forwarding a stack of old
-            letters does not produce a stack of replies &mdash; which does mean a second
-            plain forward is met with silence.
-        </p>
-
-        <h2>Can the missionary sign in with their mission account?</h2>
+        <h3 id="mission-account">Can the missionary sign in with their mission account?</h3>
 
         <p>
             No. <span class="address">@missionary.org</span> accounts are managed by the
@@ -115,7 +146,73 @@
             from. Proving and signing in are two different things here.
         </p>
 
-        <h2>Does the missionary get emails from you?</h2>
+        <h3 id="claim-link-expired">Why does the claim link expire?</h3>
+
+        <p>
+            Because it is a key. Anyone holding the link can set the archive up, so it is
+            deliberately short-lived and stops working once it has been used. If yours
+            has expired, send another letter to
+            <span class="address">post@pdayletters.com</span> and a fresh one follows.
+        </p>
+
+        <h2 class="topic">Access</h2>
+
+        <h3 id="who-can-read">Who can read an archive?</h3>
+
+        <p>
+            Only the people an owner has added. Archives are not public, are not listed
+            anywhere, and are not indexed by search engines.
+        </p>
+
+        <h3 id="adding-family">How do I add the rest of the family?</h3>
+
+        <p>
+            Open the archive, choose <strong>People</strong>, and enter their email addresses
+            &mdash; one, or a whole list pasted in at once. We send each of them a link;
+            nothing changes until they follow it. There is a limit of twenty invitations
+            per archive per day, which is more than most families need in one sitting.
+        </p>
+
+        <p class="note">
+            The address you type is only where the invitation is sent. Whichever account
+            they actually sign in with is the one that gets access &mdash; which matters
+            more often than you would think, because the address a family has used for
+            somebody for twenty years is frequently not the account they sign in to
+            things with. Once they accept, the list shows both.
+        </p>
+
+        <h3 id="invitation-not-arrived">Somebody I invited never got the email.</h3>
+
+        <p>
+            Ask them to look in their spam folder first; an invitation is a message from
+            a domain they have never heard of, which is exactly what spam filters are
+            for. If it is not there, open <strong>People</strong> and press
+            <strong>Resend</strong> next to their name.
+        </p>
+
+        <p class="note">
+            Resending sends a fresh link and stops the earlier one working, so if they
+            later find both emails, only the newer link will do anything. It counts
+            towards the twenty invitations a day, and we will not send to anyone who has
+            <a href="#stop-emails">asked us to stop emailing them</a>.
+        </p>
+
+        <h3 id="readers-and-owners">What is the difference between a reader and an owner?</h3>
+
+        <p>
+            A reader can read the letters and download them. An owner can do that, and
+            also edit or delete letters, invite other people, and remove them.
+        </p>
+
+        <p class="note">
+            Owners can promote and remove each other. Nobody can remove or demote
+            themselves, which is what stops an archive from ending up with no owner at
+            all.
+        </p>
+
+        <h2 class="topic">Privacy</h2>
+
+        <h3 id="missionary-emails">Does the missionary get emails from you?</h3>
 
         <p>
             Only if their archive does not exist yet. Once it has been set up, their
@@ -123,7 +220,7 @@
             point of a parent setting it up first.
         </p>
 
-        <h2>I was invited and I do not want any emails from you.</h2>
+        <h3 id="stop-emails">I was invited and I do not want any emails from you.</h3>
 
         <p>
             Every invitation has a link at the bottom that stops all of our email to
@@ -140,7 +237,7 @@
             <a href="mailto:hello@pdayletters.com">hello@pdayletters.com</a>.
         </p>
 
-        <h2>What happens to letters nobody claims?</h2>
+        <h3 id="unclaimed-letters">What happens to letters nobody claims?</h3>
 
         <p>
             They are held, unpublished and unreadable, and then deleted: sixty days if
@@ -148,27 +245,11 @@
             them. Every new letter that arrives pushes the date back.
         </p>
 
-        <h2>Can I get the letters back out?</h2>
-
-        <p>
-            Yes. An owner can download the whole archive as a zip of the original emails,
-            with the photos at full size. Nothing here is a one-way door.
-        </p>
-
-        <h2>How do I delete an archive?</h2>
+        <h3 id="deleting-an-archive">How do I delete an archive?</h3>
 
         <p>
             Write to <span class="address">hello@pdayletters.com</span>. There is no
             button for it yet, so it is done by hand &mdash; but it is done.
-        </p>
-
-        <h2>Why does the claim link expire?</h2>
-
-        <p>
-            Because it is a key. Anyone holding the link can set the archive up, so it is
-            deliberately short-lived and stops working once it has been used. If yours
-            has expired, send another letter to
-            <span class="address">post@pdayletters.com</span> and a fresh one follows.
         </p>
 
         <p class="note">

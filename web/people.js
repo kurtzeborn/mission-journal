@@ -66,6 +66,14 @@
         const controls = document.createElement('span');
         controls.className = 'people__controls';
 
+        // Where a refused action says why. Lives in the row rather than in the
+        // form's status line at the bottom of the page, because the answer to
+        // "why did nothing happen" has to be next to the thing that did
+        // nothing.
+        const trouble = document.createElement('span');
+        trouble.className = 'note people__trouble';
+        trouble.hidden = true;
+
         if (!person.pending && person.removable) {
             controls.appendChild(
                 button(person.role === 'owner' ? 'Make reader' : 'Make owner', async () => {
@@ -74,7 +82,28 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ role: person.role === 'owner' ? 'reader' : 'owner' })
                     });
-                })
+                }, trouble)
+            );
+        }
+
+        if (person.pending) {
+            controls.appendChild(
+                button('Resend', async () => {
+                    // No confirmation. The consequence of an accidental press
+                    // is one duplicate email to somebody who was already being
+                    // invited, which is a smaller cost than a dialog in front
+                    // of the button people came here to press.
+                    const response = await api(`/${encodeURIComponent(person.id)}/resend`, {
+                        method: 'POST'
+                    });
+                    if (response.ok) return;
+
+                    // The refusals this one can actually hit are the daily cap
+                    // and an opt-out, both of which are about the recipient
+                    // rather than about the owner doing something wrong.
+                    const body = await response.json().catch(() => ({}));
+                    return body.error ?? 'could not send that again';
+                }, trouble)
             );
         }
 
@@ -91,7 +120,7 @@
                     await api(`/${encodeURIComponent(person.pending ? person.id : person.email)}`, {
                         method: 'DELETE'
                     });
-                })
+                }, trouble)
             );
         } else if (!person.pending) {
             const why = document.createElement('span');
@@ -105,25 +134,56 @@
         }
 
         item.appendChild(controls);
+        item.appendChild(trouble);
         return item;
     }
 
-    function button(label, action) {
+    // Refusals that are true but read like a malfunction unless you know the
+    // rule behind them. The questions page has the rule; these are the anchors
+    // that reach it. An owner told "has asked us not to email them" about
+    // their own mother is owed the sentence explaining that it was her doing
+    // and not ours.
+    const EXPLAINED = {
+        'has asked us not to email them': '/faq#stop-emails',
+        'too many invitations today, try again tomorrow': '/faq#adding-family'
+    };
+
+    // An action may return a string to mean "this did not happen, and here is
+    // why". Anything else means it did, and the list is reloaded to show it.
+    //
+    // `cancelled` is the one string that reports nothing, because the person
+    // who dismissed the confirmation already knows what they chose.
+    function button(label, action, trouble) {
         const el = document.createElement('button');
         el.type = 'button';
         el.className = 'button button--quiet button--compact';
         el.textContent = label;
         el.addEventListener('click', async () => {
             el.disabled = true;
+            if (trouble) trouble.hidden = true;
+
+            let outcome;
             try {
-                if ((await action()) === 'cancelled') {
-                    el.disabled = false;
-                    return;
-                }
+                outcome = await action();
             } catch {
+                outcome = 'could not reach the server';
+            }
+
+            if (typeof outcome === 'string') {
                 el.disabled = false;
+                if (trouble && outcome !== 'cancelled') {
+                    trouble.textContent = `${outcome} `;
+                    if (EXPLAINED[outcome]) {
+                        const why = document.createElement('a');
+                        why.href = EXPLAINED[outcome];
+                        why.textContent = 'Why?';
+                        trouble.appendChild(why);
+                    }
+                    trouble.hidden = false;
+                }
                 return;
             }
+
             await load();
         });
         return el;

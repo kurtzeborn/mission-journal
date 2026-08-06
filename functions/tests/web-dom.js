@@ -194,7 +194,13 @@ export function page({ html, path = '/', hash = '' }) {
             document
                 .getElementById(id)
                 .descendants()
-                .find((node) => node.tagName === 'button' && node.textContent === label)
+                .find((node) => node.tagName === 'button' && node.textContent === label),
+        /** A descendant link by the words on it, for reading its href. */
+        link: (id, label) =>
+            document
+                .getElementById(id)
+                .descendants()
+                .find((node) => node.tagName === 'a' && node.textContent === label)
     };
 }
 

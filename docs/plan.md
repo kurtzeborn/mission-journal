@@ -661,7 +661,13 @@ Binding on acceptance avoids that entirely: whatever identity signs in *through 
 
 - **The row key is the token's hash, never the token.** An owner listing invitations is shown the hash, which is a handle for revoking one and not a credential for accepting it.
 - **Revoking leaves a tombstone rather than deleting the row**, which the design did not anticipate needing. Two things rest on the row surviving: the daily cap counts issued rows, so revoking cannot buy another send; and a withdrawn token stays explicitly refused rather than merely unrecognised. Its holder still gets the same answer as for a link that never existed.
-- **Resend is not built.** Revoke-then-invite-again is the same two writes with one more click, so it is a convenience rather than a capability.
+- **Resend shipped 2026-08-06**, having been dismissed here as *"revoke-then-invite-again is the same two writes with one more click"*. That was wrong about the audience rather than about the writes: the owner who needs it is the one whose invitation went to spam, and asking them to withdraw the invitation they are trying to repeat is asking them to do the frightening thing first. Four properties, each of which the obvious implementation gets wrong:
+  - **The address comes from the stored row, never from the request.** A resend that accepts an address is a second, quieter path to mailing strangers — one with no bulk-parse in front of it and a different name in the logs.
+  - **It counts against the daily cap.** A resend that did not count turns one invitation into an unbounded send loop, which is a worse shape than the revoke loop the tombstone closes, because it needs no second control.
+  - **The old token is tombstoned and a new one issued.** Reissuing the same token would leave an invitation resent on day thirteen expiring tomorrow; the owner would have done the thing that was supposed to help and made no difference.
+  - **Expired invitations are not resendable**, because `listInvites` filters them out and the owner therefore never sees one. The remedy is to invite again, which costs the same.
+
+  The new row is written before the old one is tombstoned. If the second write fails, the owner has a live invitation they cannot see, which is recoverable; the other order can leave no invitation at all and a mail already sent. The second email says it is a repeat and says the earlier link has stopped working, because the likeliest thing the recipient does is open whichever of the two they find first.
 
 #### Switching between sites
 
@@ -1308,7 +1314,7 @@ Two prerequisites stood between the service and being able to send anything, and
   - **The cap counts issued rows, including revoked ones, which is why revocation is a tombstone.** A cap counting only surviving rows is reset by the revoke button, and invite/revoke/invite is then a loop with no upper bound: the withdrawal control becomes the exploit. Worth stating because the naive implementation is the wrong one and looks right.
   - **It is an upper bound plus concurrency, not an exact count.** Two requests in flight can each read the same total and both pass. Making it exact needs an atomic counter the table wrapper does not expose today, and a reputation guard measured over a day is not sensitive to being off by the handful of requests one browser can have open.
   - **Bulk paste-and-parse, `invitedEmail`, and the one-click opt-out shipped 2026-08-06**, each described in [Invitations](#invitations). The opt-out arrived here rather than in Phase 8 because an invitation is the only mail the service sends that its recipient did not ask for, so it is the only one that cannot wait for a preferences page.
-  - **Still outstanding:** owner-initiated resend.
+  - **Owner-initiated resend shipped 2026-08-06**, per the four properties in [Invitations](#invitations).
 - **Removing and promoting members** — not previously in this plan as a separate item, and built alongside invitations because *"an owner can revoke"* above quietly assumed it. An owner may remove anyone and change anyone's role, with two rules: **nobody may change their own membership**, and **the verified missionary cannot be removed or demoted by anyone**.
   - **The self-rule is what makes a zero-owner archive impossible, and there is no separate last-owner check.** Every removal is somebody removing somebody else, so the last owner cannot be removed by construction. It is stated here because the absence of that check looks like an oversight and is not.
   - **Self-*demotion* is blocked as well as self-removal**, which is a small extension: demoting yourself out of the only owner seat is removal with extra steps, and permitting it would require the last-owner check the rule above avoids.

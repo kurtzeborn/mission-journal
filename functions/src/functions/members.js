@@ -7,7 +7,7 @@ import { ROLE, resolveRole } from '../lib/acl.js';
 import { readPrincipal } from '../lib/principal.js';
 import { validSlug } from '../lib/paths.js';
 import { listMembers, removeMember, setMemberRole } from '../lib/members.js';
-import { inviteMember, listInvites, revokeInvite } from '../lib/invite.js';
+import { inviteMember, listInvites, resendInvite, revokeInvite } from '../lib/invite.js';
 
 // Managing who may read an archive.
 //
@@ -131,8 +131,38 @@ export async function invite({ request, context, store, tables, mail, key, baseU
     return json(200, result);
 }
 
-export async function update({ request, context, store, tables }) {
+// Its own route rather than a shape check on an existing one.
+//
+// `remove` sniffs whether its parameter is an address or an invitation id
+// because to the owner those really are one list with one X button. Nothing
+// like that applies here: only an invitation can be resent, so a separate
+// route says so without anybody having to read a regular expression to find
+// out what a request means.
+export async function resend({ request, context, store, tables, mail, key, baseUrl }) {
+    if (!key) return json(503, { error: 'unavailable' });
+
     const gated = await ownerOf({ request, store });
+    if (gated.denied) return gated.denied;
+
+    const result = await resendInvite({
+        store,
+        tables,
+        mailer: mail,
+        slug: gated.slug,
+        actor: gated.principal.email,
+        id: request.params.id,
+        key,
+        baseUrl,
+        log: context
+    });
+
+    if (result.error) return refuse(result.error);
+
+    context.log('member.invite-resent', { slug: gated.slug, delivery: result.delivery });
+    return json(200, result);
+}
+
+export async function update({ request, context, store, tables }) {    const gated = await ownerOf({ request, store });
     if (gated.denied) return gated.denied;
 
     const { role } = await readBody(request);
@@ -206,6 +236,22 @@ app.http('members-invite', {
     route: 'members/{slug}',
     handler: (request, context) =>
         invite({
+            request,
+            context,
+            store: blobStore(),
+            tables: tableStore(),
+            mail: mailer(),
+            key: signingKey(context),
+            baseUrl: baseUrl()
+        })
+});
+
+app.http('members-resend', {
+    authLevel: 'anonymous',
+    methods: ['POST'],
+    route: 'members/{slug}/{id}/resend',
+    handler: (request, context) =>
+        resend({
             request,
             context,
             store: blobStore(),
