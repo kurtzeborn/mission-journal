@@ -443,11 +443,25 @@ window.Reader = (function () {
      * @param {object|null} [options.admin] owner controls, when the caller has
      *   somewhere to send them. Absent in the downloaded archive.
      */
-    function mount({ posts, photoSrc, elements, admin = null }) {
+    function mount({ posts, photoSrc, elements, admin = null, help = null }) {
         const { list, state } = elements;
 
         if (!posts.length) {
             state.textContent = 'No letters have arrived yet.';
+
+            // Passed in rather than written here. This file also runs inside a
+            // downloaded archive, which has no site to link to and no address
+            // worth naming, so an empty archive there says the first sentence
+            // and stops. Somebody reading a zip on a plane cannot act on either.
+            if (help) {
+                state.append(` Forward one to ${help.address} and it will appear here. `);
+
+                const link = document.createElement('a');
+                link.href = help.href;
+                link.textContent = 'If you forwarded one and nothing happened, here is why';
+                state.append(link, '.');
+            }
+
             state.hidden = false;
             return;
         }

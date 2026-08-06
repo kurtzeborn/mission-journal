@@ -1,11 +1,17 @@
 import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
+import { createTableStore } from '../lib/tables.js';
+import { sitesBySlug } from '../lib/sites.js';
 import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
 
 let cachedStore = null;
 const blobStore = () =>
     (cachedStore ??= createBlobStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
+
+let cachedTables = null;
+const tableStore = () =>
+    (cachedTables ??= createTableStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
 // The whole site in one response. A family archive is a few hundred letters at
 // most, so paging would add a moving part for no gain, and having the entire
@@ -26,11 +32,20 @@ async function handler(request) {
     const unchanged = notModified(request.headers.get('if-none-match'), etag);
     if (unchanged) return unchanged;
 
+    // After the 304, because a revalidation that is going to send no body has
+    // no use for a name. One point read in the slug's own partition, which is
+    // what the site row exists to make cheap.
+    const sites = await sitesBySlug({ tables: tableStore(), slugs: [result.slug] });
+
     return {
         status: 200,
         headers: hardened({ 'Content-Type': 'application/json; charset=utf-8', ...fresh }),
         jsonBody: {
             slug: result.slug,
+            // What the family calls the missionary, which is what the page is
+            // titled with. Empty until somebody claims the site and types one,
+            // so the client falls back to the slug rather than to nothing.
+            name: sites.get(result.slug)?.missionaryDisplayName ?? '',
             role: result.role,
             posts: presentPosts(result.posts, result.role)
         }

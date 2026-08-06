@@ -129,8 +129,13 @@
 
         const payload = await response.json();
         loadedEtag = response.headers.get('ETag');
-        title.textContent = payload.slug;
-        document.title = `${payload.slug} — P-Day Letters`;
+
+        // The name if the archive has one, the slug if it does not. A site
+        // claimed before anybody typed a name still has to be called something,
+        // and the slug is the one label that always exists.
+        const heading = payload.name || payload.slug;
+        title.textContent = heading;
+        document.title = `${heading} — P-Day Letters`;
 
         const download = document.getElementById('download');
         if (download) {
@@ -164,7 +169,13 @@
                   }
                 : null;
 
-        Reader.mount({ posts: payload.posts, photoSrc, elements, admin });
+        Reader.mount({
+            posts: payload.posts,
+            photoSrc,
+            elements,
+            admin,
+            help: { href: '/faq#forward-did-nothing', address: 'post@pdayletters.com' }
+        });
     }
 
     // One fetch shared by the masthead and the refusal panel. Both want the
