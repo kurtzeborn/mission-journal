@@ -15,7 +15,7 @@
     "@azure/data-tables": "^13.3.2",
     "@azure/functions": "^4.6.0",
     "@azure/identity": "^4.5.0",
-    "@azure/storage-blob": "^12.26.0",
+    "@azure/storage-blob": "^12.33.0",
     "@azure/storage-queue": "^12.31.0",
     "mailauth": "^4.8.0",
     "postal-mime": "^2.4.0",
