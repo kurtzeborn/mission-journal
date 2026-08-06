@@ -28,7 +28,14 @@ export const TABLES = {
     // PartitionKey = slug, RowKey = the invitation token's hash. Never the
     // token: an owner listing invitations is shown the hash, which is a handle
     // for revoking one and not a credential for accepting it.
-    invites: 'invites'
+    invites: 'invites',
+    // PartitionKey = 'optout', RowKey = SHA-256 of the address. One partition
+    // on purpose: the only question ever asked of it is "this one address,
+    // yes or no", and a single partition makes that a point read. It is also
+    // the one table here that is *not* a derived index -- nothing else records
+    // that somebody asked us to stop, so losing it would silently resume mail
+    // to people who told us not to.
+    optouts: 'optouts'
 };
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {

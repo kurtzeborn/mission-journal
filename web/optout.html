@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stop these emails — P-Day Letters</title>
+    <!-- Reached anonymously and never indexed, like the claim and invitation
+         pages. The token arrives in the fragment and the address it names is
+         only ever shown after the server has verified the signature. -->
+    <meta name="description" content="Stop receiving email from P-Day Letters.">
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/">P-Day Letters</a>
+            <span class="beta">beta</span>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <section id="loading">
+            <h2>One moment&hellip;</h2>
+        </section>
+
+        <!-- A button, not a link that acts on GET. Mail providers fetch every
+             link in a message before its recipient reads it, and an opt-out
+             spent by a scanner silences somebody who never asked. -->
+        <section id="ready" hidden>
+            <h2>Stop these emails?</h2>
+            <p class="lede" id="ready-lede"></p>
+            <p>
+                We will not email this address again, and nobody will be able to invite it to
+                an archive. This does not remove you from any archive you already have access
+                to &mdash; those are still there, and you can still sign in and read them.
+            </p>
+            <form id="stop-form">
+                <p><button class="button" type="submit" id="stop-submit">Stop emailing me</button></p>
+            </form>
+            <p class="note">
+                Changed your mind, or pressed this by accident? Write to
+                <a href="mailto:hello@pdayletters.com">hello@pdayletters.com</a> and we will undo it.
+            </p>
+        </section>
+
+        <section id="working" hidden>
+            <h2>Doing that&hellip;</h2>
+        </section>
+
+        <section id="done" hidden>
+            <h2>Done</h2>
+            <p class="lede" id="done-summary"></p>
+            <p class="note">
+                If somebody tries to invite this address, they will be told it has asked not to
+                be emailed. Nothing else about it is shared with them.
+            </p>
+        </section>
+
+        <section id="failed" hidden>
+            <h2 id="failed-title">This link cannot be used</h2>
+            <p class="lede" id="failed-detail"></p>
+            <p class="note" id="failed-help"></p>
+        </section>
+    </main>
+
+    <script src="/optout.js"></script>
+</body>
+
+</html>

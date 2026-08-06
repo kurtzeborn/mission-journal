@@ -30,6 +30,7 @@ import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { inviteEmail } from './invitemail.js';
 import { HUMAN_ADDRESS, mailFrom } from './mail.js';
 import { recordMembership } from './memberships.js';
+import { issueOptOut, optedOut, unsubscribeHeaders } from './optout.js';
 import { validSlug } from './paths.js';
 import { sitesBySlug } from './sites.js';
 import { TABLES } from './tables.js';
@@ -114,6 +115,23 @@ export async function inviteMember({
     // sending a link that would do nothing.
     if (members.some((m) => lower(m.email) === them)) return { error: 'already a member' };
 
+    // Somebody at this address told us to stop, and an owner cannot overrule
+    // that -- the whole point of an opt-out is that it survives the good
+    // intentions of the person who caused the first message.
+    //
+    // The refusal says so plainly rather than pretending to have sent. An
+    // owner who is not told will simply try again tomorrow, and a fortnight
+    // later will ask why grandmother never replied. It does disclose, to an
+    // owner who guesses an address, that its holder has opted out of this
+    // service; that is a small thing to give up next to leaving the owner
+    // chasing a message that is never going to arrive.
+    //
+    // Phrased as a fragment, like 'already a member', because the page shows
+    // it after the address: "grandma@example.com -- has asked us not to...".
+    if (await optedOut({ tables, email: them })) {
+        return { error: 'has asked us not to email them' };
+    }
+
     // Checked after the cheap refusals, so a typo or a duplicate does not
     // spend somebody's daily allowance.
     //
@@ -148,13 +166,15 @@ export async function inviteMember({
     });
 
     const sites = await sitesBySlug({ tables, slugs: [safe] });
+    const optOutToken = issueOptOut({ email: them, slug: safe, key, now });
     const body = inviteEmail({
         baseUrl,
         token,
         invitedBy: me,
         missionary: sites.get(safe)?.missionaryDisplayName ?? '',
         role,
-        expiresAt
+        expiresAt,
+        optOutToken
     });
 
     const result = await mailer.send({
@@ -163,7 +183,10 @@ export async function inviteMember({
         subject: body.subject,
         text: body.text,
         html: body.html,
-        headers: { 'Auto-Submitted': 'auto-generated' },
+        headers: {
+            'Auto-Submitted': 'auto-generated',
+            ...unsubscribeHeaders({ baseUrl, token: optOutToken, humanAddress: HUMAN_ADDRESS })
+        },
         log
     });
 

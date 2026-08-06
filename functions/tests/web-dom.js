@@ -107,7 +107,7 @@ function markup(file) {
         if (id) ids.set(id, /\bhidden\b/.test(attrs.replace(/"[^"]*"/g, '""')));
     }
 
-    return { ids, sections };
+    return { ids, sections, source };
 }
 
 /**
@@ -118,7 +118,7 @@ function markup(file) {
  * rename -- is a real bug and should be loud.
  */
 export function page({ html, path = '/', hash = '' }) {
-    const { ids, sections } = markup(html);
+    const { ids, sections, source } = markup(html);
 
     const elements = new Map();
     for (const [id, hidden] of ids) {
@@ -151,7 +151,18 @@ export function page({ html, path = '/', hash = '' }) {
                 this.href = target;
             }
         },
-        history: { replaceState() {} },
+        // A real `replaceState` rewrites the address bar, fragment included,
+        // and scripts here call it precisely to get rid of a token. A no-op
+        // would let a script that forgot to strip the fragment pass.
+        history: {
+            replaceState(state, title, url) {
+                const target = String(url ?? '');
+                const cut = target.indexOf('#');
+                context.location.pathname = cut === -1 ? target : target.slice(0, cut);
+                context.location.hash = cut === -1 ? '' : target.slice(cut);
+                context.location.href = target;
+            }
+        },
         sessionStorage: {
             getItem: (key) => storage.get(key) ?? null,
             setItem: (key, value) => storage.set(key, String(value)),
@@ -169,6 +180,11 @@ export function page({ html, path = '/', hash = '' }) {
         context,
         elements,
         sections: sectionElements,
+        // The markup itself, comments stripped. For asserting on wording that
+        // is written into the page rather than rendered by a script -- the
+        // element map has no tree, so a section's static prose is not
+        // reachable through `text`.
+        source,
         el: (id) => document.getElementById(id),
         text: (id) => document.getElementById(id).textContent,
         /** The rendered lines of a list, one string per child. */

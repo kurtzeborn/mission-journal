@@ -75,7 +75,11 @@ const STATUS = {
     // Not a 403: the caller is allowed to do this and will be allowed again
     // tomorrow. 429 is the answer that says so, and the one an owner's client
     // could sensibly act on.
-    'too many invitations today, try again tomorrow': 429
+    'too many invitations today, try again tomorrow': 429,
+    // 403 rather than 409: this is not a conflict to be resolved, and no
+    // amount of retrying by the owner will change it. The person at that
+    // address said no, and the owner does not get a vote.
+    'has asked us not to email them': 403
 };
 
 const refuse = (error) => json(STATUS[error] ?? 409, { error });

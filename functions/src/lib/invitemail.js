@@ -52,9 +52,12 @@ const escape = (text) =>
  * @param {string} [input.missionary]  the archive's display name, if it has one
  * @param {string} input.role
  * @param {string} input.expiresAt
+ * @param {string} [input.optOutToken] signed, names the recipient; omitted only in tests
  */
-export function inviteEmail({ baseUrl, token, invitedBy, missionary = '', role, expiresAt }) {
-    const link = `${baseUrl.replace(/\/$/, '')}/invite#${token}`;
+export function inviteEmail({ baseUrl, token, invitedBy, missionary = '', role, expiresAt, optOutToken = '' }) {
+    const root = baseUrl.replace(/\/$/, '');
+    const link = `${root}/invite#${token}`;
+    const optOut = optOutToken ? `${root}/optout#${optOutToken}` : '';
     const deadline = readableDate(expiresAt);
 
     // Falls back to the generic phrasing rather than to the slug. A slug is
@@ -88,6 +91,19 @@ export function inviteEmail({ baseUrl, token, invitedBy, missionary = '', role, 
         '',
         `If you do not know ${invitedBy}, ignore this. Nothing happens until`,
         'somebody follows the link.',
+        // The only message this service sends that its recipient did not ask
+        // for, so it is the only one that has to carry a way out. Spelled out
+        // rather than left to the mail client's Unsubscribe button, which not
+        // every client shows.
+        ...(optOut
+            ? [
+                  '',
+                  'To stop anyone inviting you to this service again, follow this',
+                  'link. It stops all of our mail to this address, not just this',
+                  'invitation:',
+                  optOut
+              ]
+            : []),
         '',
         SIGNATURE
     ].join('\n');
@@ -102,9 +118,12 @@ export function inviteEmail({ baseUrl, token, invitedBy, missionary = '', role, 
         '<p>Please use a <strong>personal</strong> account rather than a work or school one. The account you sign in with is the one that gets access &mdash; it does not have to be the address this email arrived at.</p>',
         `<p>This invitation stops working on <strong>${escape(deadline)}</strong>.</p>`,
         `<p>If you do not know ${escape(invitedBy)}, ignore this. Nothing happens until somebody follows the link.</p>`,
+        optOut
+            ? `<p style="color:#666;font-size:14px">Would rather we did not write to you? <a href="${escape(optOut)}">Stop all email to this address.</a></p>`
+            : '',
         `<p>&mdash; ${SIGNATURE}</p>`,
         '</div>'
     ].join('');
 
-    return { subject, text, html, link };
+    return { subject, text, html, link, optOut };
 }

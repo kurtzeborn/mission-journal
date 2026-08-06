@@ -61,6 +61,20 @@
       "allowedRoles": ["authenticated"]
     },
     {
+      "comment": "Stopping our mail. Anonymous and it has to be: the person using it has never signed in and is not going to, and requiring an account would make the opt-out technically available and practically impossible.",
+      "route": "/optout",
+      "rewrite": "/optout.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/optout.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/optout.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "Help pages, read by people with no account and often before they have decided whether to have one. Anonymous for the same reason the front page is: `/*` below is authenticated, so anything omitted here disappears behind a sign-in.",
       "route": "/start",
       "rewrite": "/start.html",
@@ -101,6 +115,18 @@
     {
       "comment": "Same as claim/describe: the invitation page has to say who invited whom before anybody signs in. Accepting is not listed, so it falls through to authenticated.",
       "route": "/api/invite/describe",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "Both halves of the opt-out are anonymous, unlike claim and invite where only the describe half is. There is no signed-in state to fall back on here: the whole point is that somebody who has never had an account can make the mail stop. Safe because the address to suppress is inside the token's signature rather than in the request -- the endpoint never takes anybody's word for whom to silence.",
+      "route": "/api/optout/describe",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "POST only, so no link-fetching scanner can spend it. This is also what a mail provider's one-click Unsubscribe posts to, per RFC 8058.",
+      "route": "/api/optout",
       "methods": ["POST"],
       "allowedRoles": ["anonymous", "authenticated"]
     },

@@ -53,7 +53,7 @@ const NONCE_BYTES = 24;
  * verification rather than required in the payload, because tokens minted
  * before this existed are in real mailboxes right now and they are claims.
  */
-export const PURPOSE = { claim: 'claim', invite: 'invite' };
+export const PURPOSE = { claim: 'claim', invite: 'invite', optout: 'optout' };
 
 /**
  * The value stored in `claim.json`, never the token itself.
@@ -77,14 +77,22 @@ const sign = (payloadText, key) =>
  * @param {string|Buffer} input.key       HMAC key, from Key Vault
  * @param {string} input.expiresAt        RFC3339; normally the pending site's own rolling expiry
  * @param {string} [input.purpose]        a PURPOSE value; omitted means a claim
+ * @param {string} [input.subject]        what the token is *about*, when that is not the slug
  * @returns {{token: string, hash: string, expiresAt: string}}
  */
-export function issueClaimToken({ slug, key, expiresAt, purpose = PURPOSE.claim }) {
+export function issueClaimToken({ slug, key, expiresAt, purpose = PURPOSE.claim, subject = '' }) {
     if (!slug) throw new Error('claim token: slug is required');
     if (!key) throw new Error('claim token: signing key is required');
     if (!expiresAt) throw new Error('claim token: expiresAt is required');
 
+    // `s` only when there is one, so every token minted before this existed
+    // still verifies byte for byte. An opt-out link is the first thing whose
+    // subject is not a site -- it is about an address, and the address has to
+    // be inside the signature or the endpoint would have to take somebody's
+    // word for whom to stop emailing, which is a way to silence a stranger.
     const payload = { slug, exp: expiresAt, p: purpose, n: b64url(randomBytes(NONCE_BYTES)) };
+    if (subject) payload.s = subject;
+
     const payloadText = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
     const token = `${payloadText}.${b64url(sign(payloadText, key))}`;
 
@@ -143,6 +151,7 @@ export function verifyClaimToken({ token, key, purpose = PURPOSE.claim, now = ()
     return {
         valid: true,
         slug: payload.slug,
+        subject: payload.s ?? '',
         expiresAt: payload.exp,
         hash: claimTokenHash(text)
     };

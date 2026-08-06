@@ -215,6 +215,10 @@ var tableNames = [
   // so that nothing `resolveRole` reads can confuse an offer of access with
   // access.
   'invites'
+  // Authoritative too, and the one whose loss would be visible to strangers:
+  // nothing else records that somebody asked us to stop emailing them, so an
+  // empty table silently resumes mail to people who said no.
+  'optouts'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [
