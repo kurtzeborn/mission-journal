@@ -61,6 +61,12 @@
       "allowedRoles": ["authenticated"]
     },
     {
+      "comment": "Naming an archive and recording when it ends. Same treatment as /people/* and for the same reason: this rule decides who may load the markup, and the API decides who may change anything.",
+      "route": "/settings/*",
+      "rewrite": "/settings.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
       "comment": "Stopping our mail. Anonymous and it has to be: the person using it has never signed in and is not going to, and requiring an account would make the opt-out technically available and practically impossible.",
       "route": "/optout",
       "rewrite": "/optout.html",

@@ -7,7 +7,7 @@
 
 import { validSlug } from './paths.js';
 import { readPrincipal } from './principal.js';
-import { resolveRole } from './acl.js';
+import { resolveRole, ROLE } from './acl.js';
 
 // Applied to every response that carries archive bytes. The CSP is aimed at a
 // direct hit on the API URL: these responses are consumed by fetch() and by
@@ -63,6 +63,53 @@ export const notModified = (candidate, etag) =>
 // the site list from being enumerable one guess at a time.
 const DENIED = { status: 404, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
 
+// The 401 the two gates below share. Safe to distinguish from a refusal,
+// because it says only "you are not signed in", which the caller already
+// knows. Static Web Apps turns it into the login redirect.
+const UNAUTHENTICATED = {
+    denied: { status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' }
+};
+
+/**
+ * Identity, slug, and role -- without requiring that anything be rendered yet.
+ *
+ * `gate` below reads `rendered/{slug}/posts.json`, which is right for an
+ * endpoint about to return letters and wrong for one that manages the archive
+ * itself. An archive claimed a minute ago has nothing rendered, and "you
+ * cannot rename your site or invite your family until the first letter
+ * arrives" is a rule nobody would choose.
+ *
+ * @param {boolean} [ownersOnly] refuse a reader with 403 rather than 404. A
+ *   reader already knows the site exists, so the honest answer discloses
+ *   nothing and saves them hunting for a broken link.
+ * @returns {Promise<{denied: object}|{slug: string, role: string, principal: object}>}
+ */
+export async function siteGate({ store, request, ownersOnly = false }) {
+    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
+    if (!principal) return UNAUTHENTICATED;
+
+    const slug = validSlug(request.params.slug);
+    if (!slug) return { denied: DENIED };
+
+    const role = await resolveRole({ store, slug, principal });
+    if (!role) return { denied: DENIED };
+
+    if (ownersOnly && role !== ROLE.owner) {
+        return {
+            denied: {
+                status: 403,
+                headers: hardened({
+                    'Cache-Control': 'no-store',
+                    'Content-Type': 'application/json; charset=utf-8'
+                }),
+                jsonBody: { error: 'owners only' }
+            }
+        };
+    }
+
+    return { slug, role, principal };
+}
+
 /**
  * @returns {Promise<{denied: object}|{role: string, slug: string, posts: object[],
  *   principal: object, etag: string}>} the ETag is the one a write endpoint has
@@ -70,19 +117,8 @@ const DENIED = { status: 404, headers: hardened({ 'Cache-Control': 'no-store' })
  *   which version of posts.json was examined.
  */
 export async function gate({ store, request }) {
-    // 401 rather than 404: this one is safe to distinguish, because it says
-    // only "you are not signed in", which the caller already knows. Static Web
-    // Apps turns it into the login redirect.
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
-    if (!principal) {
-        return {
-            denied: {
-                status: 401,
-                headers: hardened({ 'Cache-Control': 'no-store' }),
-                body: ''
-            }
-        };
-    }
+    if (!principal) return UNAUTHENTICATED;
 
     const slug = validSlug(request.params.slug);
     if (!slug) return { denied: DENIED };

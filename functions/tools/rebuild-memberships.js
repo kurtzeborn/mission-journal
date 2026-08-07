@@ -61,8 +61,15 @@ for (const slug of slugs) {
     await rebuildMemberships({ tables, slug, acl });
     await touchSiteActivity({ tables, slug, lastPostAt });
 
-    // The name comes from `profile.json`, which is what the reader already
-    // shows. Taking it from anywhere else would let the two disagree.
+    // `profile.json` is the record and the `sites` row is the index, the same
+    // way `acl.json` is the record behind `memberships`. Restoring the name
+    // from the file is the whole point of running this: the row is the copy
+    // that can be lost.
+    //
+    // Skipped entirely when there is no file, which is the case for every site
+    // claimed before profile editing existed. Those have a name on the row and
+    // nothing to restore it from, and overwriting it with a blank would turn a
+    // repair into a data loss.
     const profileBlob = await blobs.readBlob('config', `${slug}/profile.json`);
     if (profileBlob) {
         const profile = JSON.parse(Buffer.from(profileBlob.bytes).toString('utf8'));

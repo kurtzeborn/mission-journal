@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings — P-Day Letters</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/">P-Day Letters</a>
+            <span class="beta">beta</span>
+            <span class="masthead__spacer"></span>
+            <a class="button button--quiet button--compact" id="back" href="/">Back to the letters</a>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <h1>Archive settings</h1>
+
+        <div id="state" class="state">Loading&hellip;</div>
+
+        <section id="everything" hidden>
+            <form id="profile">
+                <p>
+                    <label for="displayName">What this archive is called</label><br>
+                    <input id="displayName" name="displayName" type="text" maxlength="60" autocomplete="off"
+                        required placeholder="Elder Example">
+                </p>
+                <p class="note">
+                    This heads every page of the archive, labels it on your list of archives, and
+                    goes out in the invitations you send. Most people use the name the letters are
+                    signed with.
+                </p>
+
+                <p>
+                    <label for="returnDate">When they come home <span class="note">(optional)</span></label><br>
+                    <input id="returnDate" name="returnDate" type="date">
+                </p>
+                <p class="note">
+                    Only used to work out when to remind you about things &mdash; nobody reading the
+                    archive is shown it. Leave it blank and we will guess from the letters.
+                </p>
+
+                <p><button class="button" type="submit" id="save">Save</button></p>
+                <p class="note" id="said" role="status" aria-live="polite"></p>
+            </form>
+        </section>
+    </main>
+
+    <script src="/settings.js"></script>
+</body>
+
+</html>

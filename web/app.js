@@ -152,6 +152,12 @@
             people.hidden = false;
         }
 
+        const settings = document.getElementById('settings');
+        if (settings && payload.role === 'owner') {
+            settings.href = `/settings/${encodeURIComponent(payload.slug)}`;
+            settings.hidden = false;
+        }
+
         // Only owners get controls, and the API enforces that again on every
         // call -- this decides what to draw, not who is allowed to do it.
         const admin =

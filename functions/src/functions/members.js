@@ -2,10 +2,8 @@ import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
 import { createTableStore } from '../lib/tables.js';
 import { createMailer } from '../lib/mail.js';
-import { hardened } from '../lib/api.js';
-import { ROLE, resolveRole } from '../lib/acl.js';
-import { readPrincipal } from '../lib/principal.js';
-import { validSlug } from '../lib/paths.js';
+import { hardened, siteGate } from '../lib/api.js';
+import { ROLE } from '../lib/acl.js';
 import { listMembers, removeMember, setMemberRole } from '../lib/members.js';
 import { inviteMember, listInvites, resendInvite, revokeInvite } from '../lib/invite.js';
 
@@ -16,8 +14,8 @@ import { inviteMember, listInvites, resendInvite, revokeInvite } from '../lib/in
 // is missing, which is right for endpoints that are about to return posts and
 // wrong here: an archive claimed a minute ago may have nothing rendered yet,
 // and "you cannot invite your family until the first letter finishes
-// rendering" is a rule nobody would choose. So the identity-slug-role part of
-// the gate is repeated here without the fourth step.
+// rendering" is a rule nobody would choose. `siteGate` is the same gate
+// without that fourth step.
 //
 // Membership is disclosed to owners only. A reader is entitled to the letters,
 // not to the list of every other relative's email address.
@@ -42,25 +40,7 @@ const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody:
 // stranger must not be able to discover which slugs exist by asking.
 const DENIED = { status: 404, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
 
-async function ownerOf({ request, store }) {
-    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
-    if (!principal) {
-        return { denied: { status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' } };
-    }
-
-    const slug = validSlug(request.params.slug);
-    if (!slug) return { denied: DENIED };
-
-    const role = await resolveRole({ store, slug, principal });
-    if (!role) return { denied: DENIED };
-
-    // 403 rather than 404, matching post.js: a reader already knows the site
-    // exists, so the honest answer discloses nothing and saves them hunting
-    // for a broken link.
-    if (role !== ROLE.owner) return { denied: json(403, { error: 'owners only' }) };
-
-    return { slug, principal };
-}
+const ownerOf = ({ request, store }) => siteGate({ store, request, ownersOnly: true });
 
 // Every refusal from the lib layer is a 409 except the ones that are really
 // about the request itself. Kept as one table so the endpoints below stay free
