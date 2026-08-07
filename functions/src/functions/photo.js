@@ -15,8 +15,8 @@ const SIZES = new Set(['large', 'thumb']);
 // Re-derived here rather than trusted, for the same reason the slug is.
 const PHOTO_ID = /^p_[0-9a-f]{12}$/;
 
-async function handler(request) {
-    const result = await gate({ store: blobStore(), request });
+async function handler(request, context) {
+    const result = await gate({ store: blobStore(), request, log: context });
     if (result.denied) return result.denied;
 
     const { slug, role, posts } = result;

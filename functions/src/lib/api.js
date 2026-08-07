@@ -7,7 +7,7 @@
 
 import { validSlug } from './paths.js';
 import { readPrincipal } from './principal.js';
-import { resolveRole, ROLE } from './acl.js';
+import { resolveAccess, ROLE } from './acl.js';
 
 // Applied to every response that carries archive bytes. The CSP is aimed at a
 // direct hit on the API URL: these responses are consumed by fetch() and by
@@ -28,14 +28,19 @@ export const hardened = (headers = {}) => ({ ...HARDENING, ...headers });
 /**
  * The validator for a `posts.json` response.
  *
- * Weak, and salted with the role, because the bytes on the wire are a
- * projection of the blob rather than the blob itself: one version of the file
- * is a different response to an owner than to a reader, and a validator that
- * ignored that would let a demoted owner keep reading hidden posts out of
- * their own cache.
+ * Weak, and salted, because the bytes on the wire are a projection of the blob
+ * rather than the blob itself: one version of the file is a different response
+ * to an owner than to a reader, and a validator that ignored that would let a
+ * demoted owner keep reading hidden posts out of their own cache.
+ *
+ * `viaOperator` is in the salt for the same reason, even though it changes no
+ * letter -- it decides whether the page says out loud that somebody is reading
+ * an archive they do not belong to. Two responses that differ only in that
+ * flag must not share a validator, or an operator removed from a family's ACL
+ * would keep revalidating into a cached body with the warning switched off.
  */
-export const contentEtag = (blobEtag, role) =>
-    `W/"${String(blobEtag ?? '').replace(/[^A-Za-z0-9]/g, '')}.${role}"`;
+export const contentEtag = (blobEtag, role, viaOperator = false) =>
+    `W/"${String(blobEtag ?? '').replace(/[^A-Za-z0-9]/g, '')}.${role}${viaOperator ? '.op' : ''}"`;
 
 // Browsers echo back exactly what was sent, but proxies have been known to drop
 // the weak marker, so neither side's punctuation is trusted.
@@ -70,6 +75,47 @@ const UNAUTHENTICATED = {
     denied: { status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' }
 };
 
+// The path alone. The origin is constant and the query string is dropped
+// rather than parsed: nothing behind these gates takes a token in the URL
+// today, and a log line that would start carrying one the day something does
+// is not a line worth writing.
+const pathOf = (url) => {
+    const text = String(url ?? '');
+    try {
+        return new URL(text).pathname;
+    } catch {
+        return text.split('?')[0];
+    }
+};
+
+/**
+ * The standing exception to private-by-default, made observable.
+ *
+ * Emitted from inside the gates rather than from each endpoint, because an
+ * audit trail a caller has to remember to write is one an endpoint added next
+ * year will not have. Every route that authorizes through here is covered by
+ * construction.
+ *
+ * **Reads are logged, not only writes.** Reading a family's letters is the
+ * privilege that matters most, and a write-only trail would miss exactly that
+ * -- so the method is recorded rather than used to decide whether to record.
+ *
+ * `warn`, not `info`: this lands in App Insights `traces` rather than
+ * `customEvents`, since nothing here takes a dependency on the SDK, and the
+ * severity is the only thing that separates it from the ordinary chatter it
+ * would otherwise be buried in.
+ */
+const auditOperator = ({ log, principal, slug, request, viaOperator }) => {
+    if (!viaOperator) return;
+    log?.warn?.('OperatorAction', {
+        actor: principal?.email,
+        slug,
+        method: request?.method,
+        route: pathOf(request?.url),
+        at: new Date().toISOString()
+    });
+};
+
 /**
  * Identity, slug, and role -- without requiring that anything be rendered yet.
  *
@@ -82,16 +128,17 @@ const UNAUTHENTICATED = {
  * @param {boolean} [ownersOnly] refuse a reader with 403 rather than 404. A
  *   reader already knows the site exists, so the honest answer discloses
  *   nothing and saves them hunting for a broken link.
- * @returns {Promise<{denied: object}|{slug: string, role: string, principal: object}>}
+ * @returns {Promise<{denied: object}|{slug: string, role: string, principal: object,
+ *   viaOperator: boolean}>}
  */
-export async function siteGate({ store, request, ownersOnly = false }) {
+export async function siteGate({ store, request, ownersOnly = false, log }) {
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     if (!principal) return UNAUTHENTICATED;
 
     const slug = validSlug(request.params.slug);
     if (!slug) return { denied: DENIED };
 
-    const role = await resolveRole({ store, slug, principal });
+    const { role, viaOperator } = await resolveAccess({ store, slug, principal });
     if (!role) return { denied: DENIED };
 
     if (ownersOnly && role !== ROLE.owner) {
@@ -107,24 +154,28 @@ export async function siteGate({ store, request, ownersOnly = false }) {
         };
     }
 
-    return { slug, role, principal };
+    auditOperator({ log, principal, slug, request, viaOperator });
+
+    return { slug, role, principal, viaOperator };
 }
 
 /**
  * @returns {Promise<{denied: object}|{role: string, slug: string, posts: object[],
- *   principal: object, etag: string}>} the ETag is the one a write endpoint has
- *   to pass back on If-Match, so reading and writing cannot disagree about
- *   which version of posts.json was examined.
+ *   principal: object, etag: string, viaOperator: boolean}>} the ETag is the one
+ *   a write endpoint has to pass back on If-Match, so reading and writing cannot
+ *   disagree about which version of posts.json was examined.
  */
-export async function gate({ store, request }) {
+export async function gate({ store, request, log }) {
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     if (!principal) return UNAUTHENTICATED;
 
     const slug = validSlug(request.params.slug);
     if (!slug) return { denied: DENIED };
 
-    const role = await resolveRole({ store, slug, principal });
+    const { role, viaOperator } = await resolveAccess({ store, slug, principal });
     if (!role) return { denied: DENIED };
+
+    auditOperator({ log, principal, slug, request, viaOperator });
 
     // An archive with no letters in it yet is not a refusal. Everything the
     // 404 above protects has already been decided by this point -- the caller
@@ -139,10 +190,10 @@ export async function gate({ store, request }) {
     // and it necessarily differs from any real blob's, so the first letter
     // to arrive invalidates it.
     const blob = await store.readBlob('rendered', `${slug}/posts.json`);
-    if (!blob) return { role, slug, posts: [], principal, etag: '' };
+    if (!blob) return { role, slug, posts: [], principal, etag: '', viaOperator };
 
     const posts = JSON.parse(Buffer.from(blob.bytes).toString('utf8'));
     if (!Array.isArray(posts)) return { denied: DENIED };
 
-    return { role, slug, posts, principal, etag: blob.etag };
+    return { role, slug, posts, principal, etag: blob.etag, viaOperator };
 }

@@ -48,6 +48,21 @@
     </header>
 
     <main class="wrap">
+        <!--
+            Shown by app.js only to an operator on an archive they are not a
+            member of. It guards against the likeliest failure by a long way --
+            an operator forgetting which hat they are wearing and editing a real
+            family's letter -- and it makes the boundary visible while they work.
+
+            Private by default is a headline promise of this service and this
+            access is the standing exception to it, so the exception is stated
+            on the page rather than left implicit.
+        -->
+        <p class="operator-banner" id="operator-banner" hidden role="status">
+            You are viewing this archive as an <strong>operator</strong>, not as a member of it.
+            This access is logged.
+        </p>
+
         <h1 id="site-title" class="post__subject">&nbsp;</h1>
 
         <form id="search" class="search" role="search" hidden>

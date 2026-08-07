@@ -89,6 +89,20 @@ will recognise as the one they were told about.
 param publicBaseUrl string = 'https://pdayletters.com'
 
 @description('''
+Comma-separated addresses that may administer any archive in the service.
+Empty means nobody, which is the default and what every environment but
+production runs with.
+
+This is configuration rather than data on purpose. A privilege this broad must
+not be grantable through the interface it grants: were the list in a blob or a
+table, one compromised operator account could quietly add a second and make the
+escalation permanent. As a setting it takes Azure control-plane access to
+change, which is a separate credential and separately recorded in the Activity
+Log. There is deliberately no UI for editing it.
+''')
+param operatorEmails string = ''
+
+@description('''
 GitHub's `sub_claim_prefix` for this repository, which the federated credential
 below must match exactly. **It is not `repo:owner/name`**, despite nearly every
 example showing that: GitHub's current default subject embeds the numeric owner
@@ -618,6 +632,13 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'PUBLIC_BASE_URL'
           value: publicBaseUrl
+        }
+        // Who may administer any archive. Kept here rather than in a table so
+        // that granting it takes Azure control-plane access -- a different
+        // credential to the one it hands out, and separately recorded.
+        {
+          name: 'OPERATOR_EMAILS'
+          value: operatorEmails
         }
       ]
     }

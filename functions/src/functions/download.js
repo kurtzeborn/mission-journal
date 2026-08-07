@@ -37,7 +37,7 @@ const LINK_MINUTES = 15;
  * hand a reader an owner's copy.
  */
 async function handler(request, context) {
-    const result = await gate({ store: blobStore(), request });
+    const result = await gate({ store: blobStore(), request, log: context });
     if (result.denied) return result.denied;
 
     const posts = presentPosts(result.posts, result.role);

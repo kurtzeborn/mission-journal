@@ -163,6 +163,13 @@
         // round trip in front of the content on every visit.
         showSwitcher(payload.slug);
 
+        // The standing exception to private-by-default, said out loud on the
+        // page where it is being exercised. The server has already logged it;
+        // this is for the operator, who is about to edit somebody else's
+        // letters and needs to know that is what these controls now do.
+        const banner = document.getElementById('operator-banner');
+        if (banner && payload.viaOperator) banner.hidden = false;
+
         // Only owners get controls, and the API enforces that again on every
         // call -- this decides what to draw, not who is allowed to do it.
         const admin =

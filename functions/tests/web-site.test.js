@@ -196,3 +196,35 @@ describe('the archive switcher', () => {
         assert.equal(view.el('download').hidden, false);
     });
 });
+
+// The banner an operator sees on an archive they do not belong to.
+//
+// It guards against the likeliest failure by a long way: an operator
+// forgetting which hat they are wearing and editing a real family's letter.
+describe('operator access is stated on the page', () => {
+    const loaded = (body) =>
+        archive({
+            answer: async (url) =>
+                url === '/.auth/me' ? signedIn('ops@pdayletters.com') : { status: 200, body }
+        });
+
+    test('says so when the authority came from the operator setting', async () => {
+        const view = await loaded({ slug: SLUG, role: 'owner', viaOperator: true, posts: [] });
+
+        assert.equal(view.el('operator-banner').hidden, false);
+    });
+
+    test('says nothing to an owner on their own archive', async () => {
+        // A warning that fires when nothing is wrong is one people learn to
+        // stop reading.
+        const view = await loaded({ slug: SLUG, role: 'owner', viaOperator: false, posts: [] });
+
+        assert.equal(view.el('operator-banner').hidden, true);
+    });
+
+    test('says nothing when the API does not mention it at all', async () => {
+        const view = await loaded({ slug: SLUG, role: 'reader', posts: [] });
+
+        assert.equal(view.el('operator-banner').hidden, true);
+    });
+});

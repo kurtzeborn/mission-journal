@@ -352,6 +352,26 @@ button:focus-visible {
     font-size: 0.95rem;
 }
 
+/* An operator reading an archive they do not belong to.
+
+   Loud on purpose, and at the top of the content rather than in the masthead:
+   the failure it guards against is somebody forgetting whose letters these are
+   while they are looking straight at them, so it has to sit where the reading
+   happens. It is the one warning on this site that is meant to be slightly
+   uncomfortable. */
+.operator-banner {
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0 0 1.25rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #d9a441;
+    border-left-width: 5px;
+    border-radius: var(--radius);
+    background: #fdf0d5;
+    color: #6b4f14;
+}
+
 /* --- the questions page --- */
 
 /* The list of questions at the top. Every question below it has an id, so a

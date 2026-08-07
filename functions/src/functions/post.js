@@ -30,8 +30,8 @@ const ok = (body) => ({
 });
 
 // The read gate plus the one extra question these endpoints ask.
-async function ownerOnly(request) {
-    const result = await gate({ store: blobStore(), request });
+async function ownerOnly(request, context) {
+    const result = await gate({ store: blobStore(), request, log: context });
     if (result.denied) return result;
 
     // 403 rather than the gate's 404. A reader is genuinely entitled to this
@@ -50,18 +50,20 @@ async function ownerOnly(request) {
 // from a copy of the site that has since moved on, then saving it back whole
 // and undoing whatever happened in between. That is not a race, it is a
 // perfectly orderly write of stale data, and only the client knows it is stale.
-const stale = (request, blobEtag) => {
+const stale = (request, blobEtag, viaOperator) => {
     const expected = request.headers.get('if-match');
     // Absent means the caller is not making the claim -- older clients, and
     // curl. Enforcing it only when offered keeps this from being a new way for
     // a write to fail mysteriously.
-    return expected ? !matchesEtag(expected, contentEtag(blobEtag, ROLE.owner)) : false;
+    return expected
+        ? !matchesEtag(expected, contentEtag(blobEtag, ROLE.owner, viaOperator))
+        : false;
 };
 
 const STALE = 'the page you edited is out of date';
 
 async function edit(request, context) {
-    const gated = await ownerOnly(request);
+    const gated = await ownerOnly(request, context);
     if (gated.denied) return gated.denied;
 
     let changes;
@@ -79,7 +81,7 @@ async function edit(request, context) {
         slug: gated.slug,
         log: context,
         mutate: (posts, blobEtag) => {
-            if (stale(request, blobEtag)) return { error: STALE };
+            if (stale(request, blobEtag, gated.viaOperator)) return { error: STALE };
 
             const index = posts.findIndex((post) => post.id === postId);
             if (index < 0) return { error: 'not found' };
@@ -108,7 +110,7 @@ async function edit(request, context) {
 }
 
 async function remove(request, context) {
-    const gated = await ownerOnly(request);
+    const gated = await ownerOnly(request, context);
     if (gated.denied) return gated.denied;
 
     const { postId } = request.params;

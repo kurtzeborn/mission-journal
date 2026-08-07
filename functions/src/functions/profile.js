@@ -29,8 +29,8 @@ const STATUS = {
     'somebody else changed this first': 409
 };
 
-export async function read({ request, store }) {
-    const gated = await siteGate({ store, request, ownersOnly: true });
+export async function read({ request, context, store }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
     if (gated.denied) return gated.denied;
 
     const { profile } = await readProfile({ store, slug: gated.slug });
@@ -51,7 +51,7 @@ export async function read({ request, store }) {
 }
 
 export async function write({ request, context, store, tables }) {
-    const gated = await siteGate({ store, request, ownersOnly: true });
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
     if (gated.denied) return gated.denied;
 
     let body = {};
@@ -85,7 +85,7 @@ app.http('profile-read', {
     authLevel: 'anonymous',
     methods: ['GET'],
     route: 'profile/{slug}',
-    handler: (request) => read({ request, store: blobStore() })
+    handler: (request, context) => read({ request, context, store: blobStore() })
 });
 
 app.http('profile-write', {

@@ -16,11 +16,11 @@ const tableStore = () =>
 // The whole site in one response. A family archive is a few hundred letters at
 // most, so paging would add a moving part for no gain, and having the entire
 // corpus client-side is what lets the reader's search run without a server.
-async function handler(request) {
-    const result = await gate({ store: blobStore(), request });
+async function handler(request, context) {
+    const result = await gate({ store: blobStore(), request, log: context });
     if (result.denied) return result.denied;
 
-    const etag = contentEtag(result.etag, result.role);
+    const etag = contentEtag(result.etag, result.role, result.viaOperator);
 
     // `no-cache` rather than a lifetime. This file is the one thing here that
     // changes -- a letter arrives, an owner hides or edits one -- and a stale
@@ -47,6 +47,12 @@ async function handler(request) {
             // so the client falls back to the slug rather than to nothing.
             name: sites.get(result.slug)?.missionaryDisplayName ?? '',
             role: result.role,
+            // Only ever true for the one or two addresses in OPERATOR_EMAILS,
+            // and it drives a banner rather than a permission -- the operator
+            // is already an owner by the time this is read. It is part of the
+            // ETag salt above, because it is part of the body: a response with
+            // the warning and one without must not share a validator.
+            viaOperator: Boolean(result.viaOperator),
             posts: presentPosts(result.posts, result.role)
         }
     };

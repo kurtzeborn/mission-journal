@@ -29,3 +29,15 @@ param cloudflareAccountId = 'cfd16cf97da3b933b26c7e996d1c8433'
 // `*` opens outbound mail to any recipient. It has to be typed on purpose,
 // which is exactly what this line is.
 param mailAllowlist = '*'
+
+// Who may administer any archive in the service. Restated here for the same
+// reason as the two settings above: `what-if` cannot see app settings, so an
+// omitted parameter would blank this on the next deployment. That direction is
+// safe -- it revokes rather than grants -- but it would revoke silently, and
+// the failure would surface as the operator locked out of the archive they
+// were in the middle of fixing.
+//
+// One name, deliberately. This list is the exception to the promise the rest
+// of the service makes, and every address on it is somebody who can read any
+// family's mail.
+param operatorEmails = 'scott@kurtzeborn.org'

@@ -179,6 +179,128 @@ describe('the gate', () => {
     });
 });
 
+// An operator reaching a family's archive is the standing exception to
+// everything the block above enforces, so what is checked here is that the
+// exception announces itself. A silent one is indistinguishable from the
+// authorization bug it would otherwise look exactly like.
+describe('an operator at the gate', () => {
+    const OPERATOR = 'ops@pdayletters.com';
+
+    // `resolveAccess` reads `process.env` when nobody hands it an environment,
+    // and the gates deliberately do not thread one through -- there is no
+    // per-request operator list, and an argument for it would be an invitation
+    // to pass the wrong one.
+    const withSetting = async (value, body) => {
+        const before = process.env.OPERATOR_EMAILS;
+        if (value === null) delete process.env.OPERATOR_EMAILS;
+        else process.env.OPERATOR_EMAILS = value;
+        try {
+            return await body();
+        } finally {
+            if (before === undefined) delete process.env.OPERATOR_EMAILS;
+            else process.env.OPERATOR_EMAILS = before;
+        }
+    };
+
+    const recorder = () => {
+        const said = [];
+        return { said, warn: (message, detail) => said.push({ message, detail }) };
+    };
+
+    test('reads an archive they are not a member of', async () => {
+        const result = await withSetting(OPERATOR, () =>
+            gate({ store: seeded(), request: request({ auth: header(OPERATOR) }) })
+        );
+
+        assert.equal(result.denied, undefined);
+        assert.equal(result.role, 'owner');
+        assert.equal(result.viaOperator, true);
+    });
+
+    test('and the read is logged, not only writes', async () => {
+        // Reading a family's letters is the privilege that matters most here.
+        // A write-only audit trail would miss exactly that.
+        const log = recorder();
+        await withSetting(OPERATOR, () =>
+            gate({
+                store: seeded(),
+                request: {
+                    ...request({ auth: header(OPERATOR) }),
+                    method: 'GET',
+                    url: 'https://pdayletters.com/api/content/isaac.backman/posts.json'
+                },
+                log
+            })
+        );
+
+        assert.equal(log.said.length, 1);
+        assert.equal(log.said[0].message, 'OperatorAction');
+        assert.equal(log.said[0].detail.actor, OPERATOR);
+        assert.equal(log.said[0].detail.slug, SLUG);
+        assert.equal(log.said[0].detail.method, 'GET');
+        assert.equal(log.said[0].detail.route, '/api/content/isaac.backman/posts.json');
+    });
+
+    test('the query string is dropped from what is logged', async () => {
+        // Nothing behind this gate takes a token in the URL today, and a log
+        // line that would start carrying one the day something does is not a
+        // line worth writing.
+        const log = recorder();
+        await withSetting(OPERATOR, () =>
+            gate({
+                store: seeded(),
+                request: {
+                    ...request({ auth: header(OPERATOR) }),
+                    method: 'GET',
+                    url: 'https://pdayletters.com/api/content/isaac.backman/posts.json?t=secret'
+                },
+                log
+            })
+        );
+
+        assert.equal(log.said[0].detail.route, '/api/content/isaac.backman/posts.json');
+    });
+
+    test('an ordinary reader is never logged', async () => {
+        const log = recorder();
+        await withSetting(OPERATOR, () =>
+            gate({ store: seeded(), request: request({ auth: header('gran@example.com') }), log })
+        );
+
+        assert.deepEqual(log.said, []);
+    });
+
+    test('with the setting unset, the operator address is a stranger', async () => {
+        const result = await withSetting(null, () =>
+            gate({ store: seeded(), request: request({ auth: header(OPERATOR) }) })
+        );
+
+        assert.equal(result.denied.status, 404);
+    });
+
+    test('an unsigned-in caller is still 401, whatever the setting says', async () => {
+        const result = await withSetting(OPERATOR, () =>
+            gate({ store: seeded(), request: request({}) })
+        );
+
+        assert.equal(result.denied.status, 401);
+    });
+
+    test('a traversal slug is still refused before anything is logged', async () => {
+        const log = recorder();
+        const result = await withSetting(OPERATOR, () =>
+            gate({
+                store: seeded(),
+                request: request({ auth: header(OPERATOR), slug: '../config/other' }),
+                log
+            })
+        );
+
+        assert.equal(result.denied.status, 404);
+        assert.deepEqual(log.said, []);
+    });
+});
+
 describe('what a reader receives', () => {
     const shown = () => presentPosts(POSTS, 'reader');
 

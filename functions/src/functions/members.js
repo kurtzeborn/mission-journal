@@ -40,7 +40,8 @@ const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody:
 // stranger must not be able to discover which slugs exist by asking.
 const DENIED = { status: 404, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
 
-const ownerOf = ({ request, store }) => siteGate({ store, request, ownersOnly: true });
+const ownerOf = ({ request, store, context }) =>
+    siteGate({ store, request, ownersOnly: true, log: context });
 
 // Every refusal from the lib layer is a 409 except the ones that are really
 // about the request itself. Kept as one table so the endpoints below stay free
@@ -72,8 +73,8 @@ async function readBody(request) {
     }
 }
 
-export async function list({ request, store, tables }) {
-    const gated = await ownerOf({ request, store });
+export async function list({ request, context, store, tables }) {
+    const gated = await ownerOf({ request, store, context });
     if (gated.denied) return gated.denied;
 
     const members = await listMembers({ store, slug: gated.slug, actor: gated.principal.email });
@@ -87,7 +88,7 @@ export async function list({ request, store, tables }) {
 export async function invite({ request, context, store, tables, mail, key, baseUrl }) {
     if (!key) return json(503, { error: 'unavailable' });
 
-    const gated = await ownerOf({ request, store });
+    const gated = await ownerOf({ request, store, context });
     if (gated.denied) return gated.denied;
 
     const { email, role } = await readBody(request);
@@ -121,7 +122,7 @@ export async function invite({ request, context, store, tables, mail, key, baseU
 export async function resend({ request, context, store, tables, mail, key, baseUrl }) {
     if (!key) return json(503, { error: 'unavailable' });
 
-    const gated = await ownerOf({ request, store });
+    const gated = await ownerOf({ request, store, context });
     if (gated.denied) return gated.denied;
 
     const result = await resendInvite({
@@ -142,7 +143,8 @@ export async function resend({ request, context, store, tables, mail, key, baseU
     return json(200, result);
 }
 
-export async function update({ request, context, store, tables }) {    const gated = await ownerOf({ request, store });
+export async function update({ request, context, store, tables }) {
+    const gated = await ownerOf({ request, store, context });
     if (gated.denied) return gated.denied;
 
     const { role } = await readBody(request);
@@ -164,7 +166,7 @@ export async function update({ request, context, store, tables }) {    const gat
 }
 
 export async function remove({ request, context, store, tables }) {
-    const gated = await ownerOf({ request, store });
+    const gated = await ownerOf({ request, store, context });
     if (gated.denied) return gated.denied;
 
     const target = request.params.email;
@@ -207,7 +209,7 @@ app.http('members-list', {
     authLevel: 'anonymous',
     methods: ['GET'],
     route: 'members/{slug}',
-    handler: (request) => list({ request, store: blobStore(), tables: tableStore() })
+    handler: (request, context) => list({ request, context, store: blobStore(), tables: tableStore() })
 });
 
 app.http('members-invite', {

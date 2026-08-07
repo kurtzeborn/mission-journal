@@ -228,6 +228,19 @@ describe('content validators', () => {
         assert.notEqual(contentEtag('"0x8DD1"', 'owner'), contentEtag('"0x8DD2"', 'owner'));
     });
 
+    test('an operator and a member owner do not share one', () => {
+        // The bodies differ only in the flag that draws the "you do not belong
+        // to this archive" banner. Sharing a validator would let an operator
+        // who has just been removed from a family's ACL keep revalidating into
+        // a cached copy with the warning switched off.
+        assert.notEqual(contentEtag('"0x8DD1"', 'owner', true), contentEtag('"0x8DD1"', 'owner'));
+    });
+
+    test('and the ordinary case is unchanged by the new salt', () => {
+        // Every existing browser cache stays valid across this deployment.
+        assert.equal(contentEtag('"0x8DD1"', 'owner', false), contentEtag('"0x8DD1"', 'owner'));
+    });
+
     test('the validator survives a proxy stripping its punctuation', () => {
         const etag = contentEtag('"0x8DD1"', 'owner');
         assert.ok(matchesEtag(etag, etag));
