@@ -29,6 +29,11 @@ export const TABLES = {
     // token: an owner listing invitations is shown the hash, which is a handle
     // for revoking one and not a credential for accepting it.
     invites: 'invites',
+    // PartitionKey = '{slug}:{YYYY-MM-DD}', RowKey = the message's ULID. One
+    // row per letter that arrived, partitioned by the day it arrived on, so
+    // counting a day's traffic for one archive is a single-partition list
+    // bounded by the cap rather than a scan.
+    arrivals: 'arrivals',
     // PartitionKey = 'optout', RowKey = SHA-256 of the address. One partition
     // on purpose: the only question ever asked of it is "this one address,
     // yes or no", and a single partition makes that a point read. It is also

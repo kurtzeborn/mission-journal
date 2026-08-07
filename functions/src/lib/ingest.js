@@ -18,6 +18,7 @@ import { holdPending } from './pending.js';
 import { offerClaim } from './offer.js';
 import { nudgeOnce, NUDGE } from './nudge.js';
 import { explainRejection, isTold } from './rejection.js';
+import { withinDailyCap } from './cap.js';
 import { RELAY_TTL_DAYS } from './relay.js';
 import { issueClaimToken, PURPOSE } from './claimtoken.js';
 import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
@@ -325,6 +326,20 @@ export async function runIngest({
     if (!slug) {
         log.warn?.('ingest: rejected', { ulid, reason: 'invalid-slug', slug: verdict.slug });
         return { status: 'rejected', ulid, reason: 'invalid-slug' };
+    }
+
+    // Placed here, above both the pending branch and the commit, because a
+    // loop into a site nobody has claimed costs exactly as much as a loop into
+    // one somebody has -- and is worse, because there is no owner to notice.
+    //
+    // Promotion does not pass through here at all: it calls `commitLetter`
+    // directly, so a claimed site replaying a year of held letters is
+    // unaffected. That is the correct exemption. Those letters were already
+    // counted on the days they arrived, and refusing them now would destroy
+    // the backlog the pending mechanism exists to preserve.
+    const allowance = await withinDailyCap({ tables, slug, ulid, now, log });
+    if (!allowance.ok) {
+        return { status: 'rejected', ulid, slug, reason: 'daily-cap' };
     }
 
     // A site that does not exist yet, reached two ways.

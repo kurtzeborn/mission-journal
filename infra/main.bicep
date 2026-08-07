@@ -245,6 +245,10 @@ var tableNames = [
   // nothing else records that somebody asked us to stop emailing them, so an
   // empty table silently resumes mail to people who said no.
   'optouts'
+  // One row per letter that arrived, partitioned by slug and day. Purely a
+  // cost guard: it is what stops a forwarding loop from turning into thousands
+  // of posts and a matching storage bill. Losing it costs one day's counting.
+  'arrivals'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [
