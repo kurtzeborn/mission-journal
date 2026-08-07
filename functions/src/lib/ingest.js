@@ -17,6 +17,7 @@ import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
 import { offerClaim } from './offer.js';
 import { nudgeOnce, NUDGE } from './nudge.js';
+import { explainRejection, isTold } from './rejection.js';
 import { RELAY_TTL_DAYS } from './relay.js';
 import { issueClaimToken, PURPOSE } from './claimtoken.js';
 import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
@@ -286,6 +287,32 @@ export async function runIngest({
                     // A failure here costs advice, not mail.
                     log.error?.('ingest: could not advise the forwarder', { slug, error: error.message });
                 }
+            }
+        }
+
+        // The other half of the same argument. A nudge answers somebody with
+        // no archive yet; this answers somebody who already has one and is on
+        // its list -- a person the owner invited, whose forward failed for a
+        // reason they can act on. Silence there does not protect anybody, it
+        // just loses the letter and tells them it worked. See rejection.js for
+        // the fences, which are the same three the nudge relies on.
+        if (isTold(verdict.reason)) {
+            try {
+                await explainRejection({
+                    tables,
+                    mailer,
+                    to: verdict.sender,
+                    reason: verdict.reason,
+                    author: verdict.author,
+                    baseUrl: config.baseUrl,
+                    now,
+                    log
+                });
+            } catch (error) {
+                log.error?.('ingest: could not explain the rejection', {
+                    reason: verdict.reason,
+                    error: error.message
+                });
             }
         }
 
