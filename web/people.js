@@ -199,7 +199,12 @@
         }
 
         if (response.status === 401) {
-            location.href = `/.auth/login/aad?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`;
+            // Through the chooser, never straight at a provider. There are two
+            // now, and sending a Google owner to Microsoft strands them on an
+            // account that has never heard of this archive -- with a page that
+            // then tells them, correctly and uselessly, that they are not the
+            // owner.
+            location.href = `/login.html?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`;
             return;
         }
         if (response.status === 403) {

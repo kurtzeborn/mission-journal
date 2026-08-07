@@ -25,6 +25,21 @@
                 <span class="visually-hidden" id="account-provider"></span>
                 <span id="account-email"></span>
             </span>
+            <!--
+                Rendered by app.js only when this account belongs to more than
+                one archive. Nothing at all appears for the overwhelming
+                majority, who have exactly one: a control whose only possible
+                answer is "you are already here" is friction between somebody
+                and the letters they came for.
+
+                It matters because there is no dashboard and every archive is
+                auth-gated. Somebody who loses one URL has the root redirect and
+                this, and nothing else.
+            -->
+            <details class="switcher" id="switcher" hidden>
+                <summary class="button button--quiet button--compact">Archives</summary>
+                <ul class="switcher__list" id="switcher-list"></ul>
+            </details>
             <a class="button button--quiet button--compact" id="people" href="#" hidden>People</a>
             <a class="button button--quiet button--compact" id="settings" href="#" hidden>Settings</a>
             <a class="button button--quiet button--compact" id="download" href="#" hidden>Download</a>

@@ -214,7 +214,12 @@ async function submit(event, token, described) {
 
     if (!result.ok || result.body.status !== 'ok') {
         if (result.status === 401) {
-            location.href = `/.auth/login/aad?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`;
+            // The chooser, not a provider. This page offered both a moment ago;
+            // picking one here would send half the people whose session lapsed
+            // mid-claim to an account the invitation was never for. The token
+            // is in `sessionStorage`, so dropping the query string on the way
+            // back is deliberate rather than lossy.
+            location.href = `/login.html?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`;
             return;
         }
         fail(result.body.status);

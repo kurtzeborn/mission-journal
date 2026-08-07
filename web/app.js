@@ -158,6 +158,11 @@
             settings.hidden = false;
         }
 
+        // Not awaited: the letters are the point, and a masthead control that
+        // appears a moment later costs nothing. Awaiting it would put a second
+        // round trip in front of the content on every visit.
+        showSwitcher(payload.slug);
+
         // Only owners get controls, and the API enforces that again on every
         // call -- this decides what to draw, not who is allowed to do it.
         const admin =
@@ -202,12 +207,66 @@
         return principalRequest;
     }
 
+    // The other archives this account can read.
+    //
+    // There is deliberately no dashboard page, so this and the signed-in root
+    // redirect are the whole of discovery. Between them: land on any archive
+    // you belong to, reach every other one from there.
+    //
+    // `except` is the archive already on screen, which is left out when it is
+    // one of theirs and passed as null on the refusal page, where every
+    // membership is worth offering -- somebody who has just been told no is
+    // exactly the person who needs to see where they *can* go.
+    //
+    // Silent on failure, like the account line: this is a way back to letters
+    // that are already reachable, not a thing whose absence needs explaining.
+    async function showSwitcher(except) {
+        const box = document.getElementById('switcher');
+        const list = document.getElementById('switcher-list');
+        if (!box || !list) return;
+
+        let memberships;
+        try {
+            const response = await fetch('/api/memberships', { cache: 'no-store' });
+            if (!response.ok) return;
+            memberships = (await response.json()).memberships;
+        } catch {
+            return;
+        }
+
+        if (!Array.isArray(memberships)) return;
+
+        const others = memberships.filter((membership) => membership.slug !== except);
+        // Nothing is drawn for the overwhelming majority, who have one archive
+        // and would get a control that can only tell them where they already
+        // are.
+        if (others.length === 0) return;
+
+        for (const membership of others) {
+            const item = document.createElement('li');
+            const link = document.createElement('a');
+            link.href = `/${encodeURIComponent(membership.slug)}/`;
+            // textContent, not innerHTML: the display name was typed by
+            // whoever claimed that archive, so it is somebody else's text
+            // being drawn on this page.
+            link.textContent = membership.missionaryDisplayName || membership.slug;
+            item.appendChild(link);
+            list.appendChild(item);
+        }
+
+        box.hidden = false;
+    }
+
     // The archive said no. Almost always this is the right person on the wrong
     // account -- an invitation accepted on one, the link opened on another --
     // so name the account and offer the way out, rather than a flat sentence
     // that leaves them with nothing to try.
     async function showDenied() {
         elements.state.hidden = true;
+
+        // Every membership, none excluded: the slug in the address bar is by
+        // definition not one of theirs.
+        showSwitcher(null);
 
         // Signing out returns them here, where the missing session turns into
         // the ordinary 401 redirect to the chooser. One mechanism, already

@@ -116,3 +116,83 @@ describe('being turned away from an archive', () => {
         assert.equal(view.el('people').href, `/people/${SLUG}`);
     });
 });
+
+// Reaching the other archives you belong to.
+//
+// There is no dashboard, and every archive is behind a sign-in, so somebody
+// who loses one URL has the signed-in root redirect and this control and
+// nothing else. It is also the reason it appears on the refusal page: a person
+// who has just been told no is exactly the person who has lost a URL.
+describe('the archive switcher', () => {
+    const belongsTo = (...slugs) => ({
+        status: 200,
+        body: {
+            memberships: slugs.map((slug) => ({
+                slug,
+                missionaryDisplayName: `Elder ${slug.split('.')[1]}`
+            }))
+        }
+    });
+
+    const reading = (memberships, archiveAnswer = { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } }) =>
+        archive({
+            answer: async (url) => {
+                if (url === '/.auth/me') return signedIn('gran@example.com');
+                if (url === '/api/memberships') return memberships;
+                return archiveAnswer;
+            }
+        });
+
+    test('does not appear for the one archive somebody is already reading', async () => {
+        // Which is nearly everybody. A control whose only possible answer is
+        // "you are already here" is friction between them and the letters.
+        const view = await reading(belongsTo(SLUG));
+
+        assert.equal(view.el('switcher').hidden, true);
+    });
+
+    test('lists the others by name when there is more than one', async () => {
+        const view = await reading(belongsTo(SLUG, 'sister.backman'));
+
+        assert.equal(view.el('switcher').hidden, false);
+        assert.deepEqual(view.lines('switcher-list'), ['Elder backman']);
+    });
+
+    test('links to the archive, not to a page about it', async () => {
+        const view = await reading(belongsTo(SLUG, 'sister.backman'));
+
+        assert.equal(view.link('switcher-list', 'Elder backman').href, '/sister.backman/');
+    });
+
+    test('falls back to the slug when an archive has never been named', async () => {
+        const view = await reading({
+            status: 200,
+            body: { memberships: [{ slug: SLUG }, { slug: 'sister.backman' }] }
+        });
+
+        assert.deepEqual(view.lines('switcher-list'), ['sister.backman']);
+    });
+
+    test('offers every archive to somebody who has just been refused', async () => {
+        // Nothing is excluded here: the slug in the address bar is by
+        // definition not one of theirs.
+        const view = await reading(belongsTo('sister.backman', 'elder.other'), { status: 404, body: {} });
+
+        assert.equal(view.el('denied').hidden, false);
+        assert.deepEqual(view.lines('switcher-list'), ['Elder backman', 'Elder other']);
+    });
+
+    test('stays out of the way when the list cannot be fetched', async () => {
+        // The letters are the point and they have already loaded. An error in
+        // a masthead convenience must not be the thing anybody reads.
+        const view = await reading({ status: 500, body: {} });
+
+        assert.equal(view.el('switcher').hidden, true);
+    });
+
+    test('does not put a second round trip in front of the letters', async () => {
+        const view = await reading(belongsTo(SLUG, 'sister.backman'));
+
+        assert.equal(view.el('download').hidden, false);
+    });
+});

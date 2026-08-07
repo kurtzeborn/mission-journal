@@ -190,6 +190,57 @@ a {
     line-height: 1.2;
 }
 
+/* The other archives this account can read. A `details` rather than a hand-
+   built menu: the browser already owns the open-and-close behaviour, the
+   keyboard handling and the expanded state a screen reader announces, and none
+   of that is worth reimplementing for a list of two or three links. */
+.switcher {
+    position: relative;
+}
+
+.switcher summary {
+    /* Chrome and Safari draw a disclosure triangle that puts a marker inside
+       something styled as a button. */
+    list-style: none;
+}
+
+.switcher summary::-webkit-details-marker {
+    display: none;
+}
+
+.switcher__list {
+    position: absolute;
+    right: 0;
+    z-index: 20;
+    margin: 0.35rem 0 0;
+    padding: 0.35rem 0;
+    min-width: 12rem;
+    max-width: 16rem;
+    list-style: none;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+}
+
+.switcher__list a {
+    display: block;
+    /* A tap target, not a line of prose -- these are read on a phone by people
+       who are not steady with one. */
+    padding: 0.55rem 0.85rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.switcher__list a:hover,
+.switcher__list a:focus-visible {
+    background: rgb(0 0 0 / 4%);
+}
+
 /* Visible focus everywhere. Removing it is not an option for this audience. */
 a:focus-visible,
 button:focus-visible {

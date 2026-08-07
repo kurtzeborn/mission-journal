@@ -180,7 +180,10 @@ describe('accepting', () => {
         assert.equal(view.text('failed-title'), 'This invitation cannot be used');
     });
 
-    test('a session that lapsed while they read sends them back through login', async () => {
+    test('a session that lapsed while they read sends them back through the chooser', async () => {
+        // The chooser, not a provider. This page offers both a moment earlier,
+        // so hard-coding one here would send half the people whose session
+        // lapsed mid-acceptance to an account the invitation was never for.
         const view = await invitePage({
             answer: server({
                 described: READY,
@@ -191,6 +194,7 @@ describe('accepting', () => {
 
         await view.el('accept-form').dispatch('submit');
 
-        assert.match(view.context.location.href, /\/\.auth\/login\/aad/);
+        assert.match(view.context.location.href, /^\/login\.html\?/);
+        assert.match(view.context.location.href, /post_login_redirect_uri=%2Finvite/);
     });
 });
