@@ -685,39 +685,17 @@ Access *policy* is above. This section is the reader-facing half: how someone wh
 
 #### Invitations
 
-**Shipped 2026-08-05**, and this section is annotated below wherever the built thing differs from the designed one. Each difference has a reason; the largest is that a pending invitation does not live in `acl.json` at all.
+**Shipped.** An owner pastes one or more addresses and picks a role; each invitee gets exactly one email, from `P-Day Letters <hello@pdayletters.com>`, naming the human who invited them.
 
-**An invitation is an email, not just an ACL write.** Adding an address to `acl.json` grants access but tells nobody; without a message, the invitee can reach the site only if the owner separately sends them the URL.
+- **An invitation is an email, not just an ACL write.** Adding an address to `acl.json` grants access but tells nobody.
+- **The link is a signed, single-use HMAC token**, bound to one slug, one role and one purpose, expiring in 14 days.
+- **The token, not the typed address, is what grants access.** Whatever identity signs in through the link is written to the ACL. The typed address is *where to send the invitation*, not *who the person must prove they are* — because the address an owner knows for someone is frequently not the address behind their Google or Microsoft account. Both are recorded, so the owner's list still shows the address they typed.
+- **It is never repeated automatically.** A resend is always owner-initiated; it issues a fresh token and refuses the old one.
+- **Pending invitations live in an `invites` table, not in `acl.json`.** A row appears in the ACL only on acceptance.
+- **Invitations carry the one-click opt-out**, which here means "never invite me to anything again", is global rather than per archive, and is honoured ahead of any future invitation to that address.
+- **Sends are capped per site per day.** An owner who invites a suppressed or capped address is told so plainly rather than being left to believe mail went out.
 
-**Adding people is bulk by default.** The realistic first act after claiming a site is inviting a dozen relatives in one sitting, so the field accepts a pasted list — commas, semicolons, newlines, and `Name <addr@example.com>` forms — rather than one address at a time. One-at-a-time entry turns the single most common setup task into a dozen round-trips through a confirmation dialog. **Shipped.** The addresses are sent one at a time rather than in parallel, which the design did not specify: sequential sending is what makes the read-then-check daily cap exact on this path, and it is what lets a refusal name the address it refused. Addresses that fail stay in the box so a typo can be corrected and resent without re-pasting the ones that worked.
-
-**Each invitee gets exactly one email**, from `P-Day Letters <hello@pdayletters.com>` — the only class of outbound mail the service sends to someone who never wrote to us. Three things make that acceptable, and all three are requirements rather than niceties:
-
-- **It names the human who invited them**, in the subject and the first line: *"Sarah Smith invited you to read Elder Smith's letters."* Unattributed, it is a message from an unfamiliar domain, about a named person, asking you to click a link — indistinguishable from phishing. **Shipped**, and it is the one subject line in the service that names anybody, deliberately breaking the rule the rest follow.
-- **It is never repeated.** No reminders, no nudges. An unaccepted invitation stays unaccepted. Anything else turns a text box on a web page into a mechanism for repeatedly mailing arbitrary strangers. **Shipped**, and now held by arithmetic as well as by intention — see the daily cap in [Phase 9](#phase-9--owner-admin-invitations-and-operators).
-- **It carries the one-click opt-out**, which here means "never invite me to anything again" and is honored ahead of any future invitation to that address. **Shipped**, and built here rather than in Phase 8 as planned, because this is the mail that needs it: an invitation is the only message the service sends to somebody who did not write to us first, so it is the only one whose recipient has no other way to make it stop. The opt-out is **global rather than per archive** — "stop emailing me" is not "stop emailing me about Elder Example", and making somebody repeat it once per family would honor the request technically while defeating it. The address to suppress is **inside the token's signature**, so the endpoint never takes anybody's word for whom to silence; without that, the opt-out form would be a way to stop a grandmother ever receiving the invitation her family is about to send. It is **spent by `POST`, never `GET`**, per the scanner problem in [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow). An owner who invites a suppressed address is told so plainly rather than being allowed to believe mail went out; that discloses, to an owner who guesses an address, that its holder opted out, which is a smaller cost than leaving the owner chasing a message that is never going to arrive.
-
-**The link is a signed invitation token, and that token — not the typed address — is what grants access.** Same HMAC mechanism as the claim link, scoped smaller: single-use, bound to one slug and one role, 30-day expiry. **Shipped at 14 days, not 30.** A claim link is generous because it is the only route to letters that would otherwise be deleted; an invitation can be reissued in ten seconds by somebody already signed in, so the cheap thing is to let it lapse. **The token also carries a signed `purpose`,** which the design did not ask for: without it a claim link and an invitation were separated only by which table their hash was looked up in, which is incidental rather than arithmetic, and the day a third kind of link appears the separation has to be re-derived rather than read.
-
-It exists because the ACL is keyed on email address, but **the address an owner knows for someone is frequently not the address behind their Google or Microsoft account.** A parent invites `grandma@aol.com`; she signs in with the Gmail account on her tablet; the ACL check fails, and neither she nor the parent can see why. The same applies to every relative with a work address, an old ISP address, or a shared household mailbox.
-
-Binding on acceptance avoids that entirely: whatever identity signs in *through the invitation link* is written to the ACL. The typed address is **where to send the invitation**, not **who the person must prove they are**. Both are recorded — `invitedEmail` alongside the bound identity — so the owner's list still shows the address they typed. **Shipped.** The list shows the invited address only when it differs from the one they signed in with; echoing the same string twice tells the owner nothing and makes the row harder to read, and the row's job is to be checkable at a glance before somebody presses Remove.
-
-**The security trade is small and consistent with the claim link.** A forwarded invitation email lets the recipient in — the same property the claim link has, at lower stakes, since the claim link grants ownership of the whole site while an invitation grants read access to letters the forwarder could already read. Single-use binding caps exposure at one identity, and an owner can revoke. **One stake is higher than that sentence allows**, and it was missed here: an invitation can carry the *owner* role, so a forwarded one hands over more than read access. It is also why the sanitizer now strips our own links out of published letters — see [Never publishing our own access links](#never-publishing-our-own-access-links).
-
-**ACL entries carry an acceptance state** — `invited` (no identity bound yet) or `active` — surfaced in the owner's admin list, so *"Grandma says she still can't see it"* is answerable by looking: the owner sees the invitation was never accepted and resends, which issues a fresh token and invalidates the old one. **A resend is owner-initiated and manual**, which is what keeps "never repeated" true — the service never decides on its own to email an invitee a second time.
-
-**Shipped differently, and this is the largest divergence in the section.** Pending invitations live in their own `invites` table, partitioned by slug; `acl.json` is written only on acceptance. Putting a state column on an ACL entry means a row exists in the ACL for somebody who has no access — in the one file `resolveRole` reads. Access control and pending-offer state would share a data structure, so every future reader of that file has to remember that some rows do not count, and one forgotten check is a stranger reading a family's letters. The owner's list still shows both states; the API assembles them from the two sources rather than reading one.
-
-- **The row key is the token's hash, never the token.** An owner listing invitations is shown the hash, which is a handle for revoking one and not a credential for accepting it.
-- **Revoking leaves a tombstone rather than deleting the row**, which the design did not anticipate needing. Two things rest on the row surviving: the daily cap counts issued rows, so revoking cannot buy another send; and a withdrawn token stays explicitly refused rather than merely unrecognised. Its holder still gets the same answer as for a link that never existed.
-- **Resend shipped 2026-08-05**, having been dismissed here as *"revoke-then-invite-again is the same two writes with one more click"*. That was wrong about the audience rather than about the writes: the owner who needs it is the one whose invitation went to spam, and asking them to withdraw the invitation they are trying to repeat is asking them to do the frightening thing first. Four properties, each of which the obvious implementation gets wrong:
-  - **The address comes from the stored row, never from the request.** A resend that accepts an address is a second, quieter path to mailing strangers — one with no bulk-parse in front of it and a different name in the logs.
-  - **It counts against the daily cap.** A resend that did not count turns one invitation into an unbounded send loop, which is a worse shape than the revoke loop the tombstone closes, because it needs no second control.
-  - **The old token is tombstoned and a new one issued.** Reissuing the same token would leave an invitation resent on day thirteen expiring tomorrow; the owner would have done the thing that was supposed to help and made no difference.
-  - **Expired invitations are not resendable**, because `listInvites` filters them out and the owner therefore never sees one. The remedy is to invite again, which costs the same.
-
-  The new row is written before the old one is tombstoned. If the second write fails, the owner has a live invitation they cannot see, which is recoverable; the other order can leave no invitation at all and a mail already sent. The second email says it is a repeat and says the earlier link has stopped working, because the likeliest thing the recipient does is open whichever of the two they find first.
+The reasoning, and the four places the implementation departs from the original design, are in [Phase 9](#phase-9--owner-admin-invitations-and-operators).
 
 #### Switching between sites
 
@@ -784,6 +762,8 @@ There is no signup form. A site comes into existence because someone mailed us a
 
 #### Re-inviting the missionary
 
+**Not built.** A one-time nudge exists when a bootstrap forward fails DMARC; the tapering series below does not.
+
 A single invitation is too few. A missionary who adds `post@` to his BCC line, skims the reply on a busy P-day, and never acts on it loses nothing — the rolling window preserves every letter — but six months later there are twenty-six letters unrendered and unviewable, his family has read none of them, and his only contact from us was one message half a year ago. Everything is preserved; no site exists.
 
 So the invitation repeats, on a **tapering schedule, always as a reply to an actual letter**:
@@ -847,6 +827,8 @@ The reply contains a signed, single-use claim link. Following it requires a Goog
 
 #### The 60-day cliff
 
+**Partly built.** `verifiedMissionary` protection and personal-account binding are shipped; the two banners in points 2 and 3 below are not.
+
 Per [External constraints](#external-constraints), `@missionary.org` access ends **60 days after a missionary returns home**. `claim@` therefore stops working entirely at that point, and so does `direct` publishing.
 
 This is exactly backwards from when disputes tend to surface — "I found out years later there's a site about me" is the case that matters most and the one the mechanism cannot serve. Four responses, none of which depend on the mailbox still being alive after the fact:
@@ -881,6 +863,8 @@ This is why **pending-site claim emails count as replies, not as self-originated
 
 ### Notification preferences
 
+**Not built.** The global opt-out is shipped; per-user, per-site preferences are not.
+
 Per-user (not per-missionary) preferences for outbound emails the service generates. Stored as columns on the user's row in the `users` Azure Table — same row that holds identity metadata (display name, auth provider, first-seen timestamp) so all per-user state lives in one place. Additional preferences are just additional columns.
 
 A `users` row is **created by the ingest path**, not only by sign-in. The missionary at `elder.smith@missionary.org` receives acknowledgments and may never sign in with Google or Microsoft at all, but still needs somewhere to record that they'd rather not be emailed.
@@ -904,6 +888,8 @@ An authenticated settings page at `/settings` still exists for ACL members who'd
 Acks double as an end-to-end smoke test for the send-and-receive email pipeline: they exercise outbound send, the token-signing service, and the `users` table read/write path.
 
 ### New-letter notifications
+
+**Not built.** See [Phase 10](#phase-10--new-letter-notifications).
 
 As designed so far, the service publishes letters to a website and never tells anyone a new one exists. Grandparents are a core audience and will not remember to check a URL. Without a nudge, the archive gets built for readers who never arrive.
 
@@ -979,6 +965,8 @@ An owner can change a post's **subject** and **body** — copy-editing, fixing a
 
 #### Restoring the original
 
+**Not built.** `raw/` retains everything needed for it.
+
 **This is the only way anyone gets at what the missionary originally wrote, and it is destructive.** An owner picks **Restore original** on a post; the render Function re-runs against `raw/{slug}/{msgId}/` and overwrites `subject`, `bodyHtml`, and the `photos` array with a fresh render.
 
 It is not a read of `raw/` — nobody is handed the `.eml`. It is a *rewrite of the rendered post from it*, so the text arrives through the sanitizer and the ordinary ACL-checked read path, exactly like a newly ingested letter. Everything in [Storage layout](#storage-layout) about raw email never leaving the service holds.
@@ -1037,37 +1025,17 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 **Owner-only actions:**
 
-- **Deletion is immediate to everyone, and permanent after 30 days.** An owner can delete the site and all archived content (raw, rendered, config, and per-missionary preferences). The site stops resolving at once and no ACL member can reach anything through any path; a timer purges the blobs for real 30 days later, including soft-deleted versions and snapshots. A [service operator](#service-operators) can invoke the same path on any site, with a recorded reason.
+- **Deletion is immediate to everyone, and permanent after 30 days.** An owner deletes the site and all archived content — raw, rendered, config, exports and pending. The site stops resolving at once and no ACL member can reach anything through any path; a nightly timer purges the blobs for real 30 days later, including soft-deleted versions and snapshots. A [service operator](#service-operators) can invoke the same path on any site, with a recorded reason, and can restore a site that has not yet been purged.
 
-  **The delay is deliberate.** `raw/` runs with soft-delete and versioning precisely so nothing is ever lost, so a literally-instant hard delete would mean disabling the one safety net protecting the irreplaceable half of the archive. A typed confirmation catches a misclick; it does not catch an owner who meant it in the moment, or a family mid-argument. It has to be **stated plainly at the confirmation prompt** — *"Everything is marked as deleted now and will no longer be visible. 30 days later it will be purged from storage completely."* — because a "permanent" button that isn't is worse than an honest one.
+  **The delay is deliberate.** `raw/` runs with soft-delete and versioning precisely so nothing is ever lost, so an instant hard delete would mean disabling the one safety net protecting the irreplaceable half of the archive. A typed confirmation catches a misclick; it does not catch an owner who meant it in the moment, or a family mid-argument. The confirmation says so plainly — *"Everything is marked as deleted now and will no longer be visible. 30 days later it will be purged from storage completely."* — because a "permanent" button that isn't is worse than an honest one.
 
   **A pending-site purge stays immediate.** Nothing there was ever claimed, and expiry follows 60 days of silence rather than a click, so there is no misclick to undo and no owner to change their mind.
 
-  **Purging a version is a three-pass operation.** Verified against the real account in Phase 0: `DELETE ?versionid=…` only *soft-deletes* the version, and `DELETE ?versionid=…&deletetype=permanent` returns `409 BlobSnapshotNotSoftDeleted` unless that first pass has already run. A version that is still the current version of a live blob refuses both with `403 OperationNotAllowedOnRootBlob`, so the base blob has to be deleted first to demote it. Demote, soft-delete, permanently delete — skipping any of them leaves data behind while reporting success.
-
-  **`az storage blob delete` cannot do this at all.** It has no `--version-id`, and a `?versionid=` smuggled in through `--blob-url` is *silently ignored* — the CLI deletes the base blob, exits 0, and leaves every version intact. Any purge implementation has to call the REST API directly.
-
-  **Permanent delete requires the `blobs/permanentDelete/action` data action, and Storage Blob Data Contributor does not include it.** Checked against the live account on 2026-08-05, the Function App's identity held **Storage Blob Data Owner**, account-wide, and had done since Phase 0 — so the identity processing attacker-supplied mail could permanently erase the one part of the system that cannot be rebuilt.
-
-  **The grant was deliberate, which is why it survived.** `main.bicep` carried a comment on it: *Blob Data Owner rather than Contributor: the Functions host manages its own leases and the deployment package container, which Contributor cannot do.* Microsoft's guidance says the opposite — that `Storage Blob Data Contributor` scoped to the deployment storage account is what a system-assigned identity needs. The documentation cannot settle which is right.
-
-  **Split by scope instead, on 2026-08-05**, so the disputed question never has to be answered:
-
-  - **Storage Blob Data Contributor, account-wide** — the data plane. Cannot permanently delete, so with versioning and soft delete on, anything this identity destroys is recoverable for thirty days.
-  - **Storage Blob Data Owner, on `app-package`, `azure-webjobs-hosts`, and `azure-webjobs-secrets` only** — the containers the Functions host runs for itself. None of them holds a letter.
-  - **A custom role, `P-Day Letters Blob Purge`** — Contributor's permissions verbatim plus `permanentDelete`, version controlled as `infra/purge-role.json`. Assigned to a **separate user-assigned identity**, `mj-id-purge`, scoped to `raw`, `rendered`, `config`, `exports`, and `pending`. Not `inbox`, which holds untouched originals and is aged out by lifecycle rule.
-
-  `permanentDelete` therefore no longer reaches `raw/` from the internet-exposed credential, and the ingest pipeline was not made to depend on whose claim about the Functions host is correct.
-
-  **The purge identity is attached to the function app only alongside the purge code.** `createBlobStore` and `createTableStore` construct a bare `new DefaultAzureCredential()`, and what App Service selects when an app carries both a system-assigned and a user-assigned identity is not documented — Microsoft requires `client_id` for multiple *user-assigned* identities and is silent on the mixed case. If the platform silently preferred the user-assigned identity, the role split would be undone invisibly. The credential is pinned explicitly in the same change.
-
-  **It also requires `allowPermanentDelete` on the blob service**, which is off by default and cannot be set from the az CLI — it is an ARM property, set in `main.bicep`. That flag is what stops soft delete from being an absolute backstop against a compromised credential mass-deleting the archive. It is on because a service that promises a family their letters are erased has to be able to erase them; the compensating control is that the credential able to use it is not the one exposed to inbound mail — the [Worker's SAS](#email-ingestion--cloudflare-email-routing) cannot delete anything at all.
-
-  **Decided on 2026-08-05: the flag stays on.** `infra/reset-slug.ps1`, which wipes a test slug between fixture runs, authenticates as the *signed-in user* rather than as the Function App's identity — it calls `az account get-access-token` and passes `--auth-mode login` throughout. So per-identity RBAC cannot affect the development loop; only `allowPermanentDelete` could, because it is account-wide and identity-independent. Turning it off would cost the dev wipe and force the deletion timer to hold ARM control-plane rights so it could flip the flag, purge, and flip it back — a larger blast radius than the thing it defends against, since a credential that can rewrite blob service properties can also turn soft delete off entirely. The role split addresses the same risk more narrowly.
+  The mechanics of purging, and the identity split that keeps `permanentDelete` away from the credential exposed to inbound mail, are in [Phase 0](#phase-0--foundation) and [Phase 9](#phase-9--owner-admin-invitations-and-operators).
 
 ### Journal Publish
 
-*Last feature to be built, after everything else is stable.*
+**Not built.** Last feature to be built, after everything else is stable. See [Phase 11](#phase-11--journal-publish).
 
 Assemble a physical hardcover photo book from a missionary's journal — all posts, in chronological order, with the photos — and route the print order to a photo-book print-on-demand provider.
 
@@ -1155,6 +1123,92 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
 
 **Each phase carries a status line.** Written when the phase changes state, not in a sweep, because a status that is only ever correct on the day someone audited it is worse than none. Three values: **Shipped**, **Partly shipped** with the split named, and **Not started**. A phase that cannot start for a reason outside the code says so instead.
 
+**Decisions live here, not above.** The sections above describe the system as it stands; the reasoning behind each choice — including the alternatives rejected and the bugs that forced a rethink — is recorded in the phase that built it. A decision has exactly one home, and it is the phase entry.
+
+### Where everything stands
+
+Struck-through items are done. Each links to the phase that built it, where the reasoning is.
+
+**Ingest — the letters get in**
+
+- [x] ~~Cloudflare Worker streams every message to `inbox/` before anything inspects it~~ — [Phase 1](#phase-1--inbound-forward-pipeline)
+- [x] ~~Message classification: forward-attached, forward-inline, direct~~ — [Phase 1](#phase-1--inbound-forward-pipeline)
+- [x] ~~DKIM re-verification of the original letter~~ — [Phase 1](#phase-1--inbound-forward-pipeline)
+- [x] ~~Forward extraction, de-duplication, and photo handling~~ — [Phase 1](#phase-1--inbound-forward-pipeline)
+- [x] ~~Render pipeline: sanitize, store, index~~ — [Phase 2](#phase-2--render-pipeline)
+- [x] ~~Photos that arrive as links rather than attachments~~ — [Phase 2](#phase-2--render-pipeline)
+- [x] ~~Direct sends from `@missionary.org` classify and publish~~ — [Phase 6](#phase-6--direct-ingest)
+- [ ] One live end-to-end run from a real `@missionary.org` account — [Phase 6](#phase-6--direct-ingest) *(externally gated)*
+- [ ] Alert rule on the daily ingest cap — [Phase 12](#phase-12--leaving-beta)
+
+**Reading — the family gets in**
+
+- [x] ~~Google and Microsoft sign-in, ACL-gated private delivery~~ — [Phase 3](#phase-3--auth-and-private-content-delivery)
+- [x] ~~Reader UI and client-side search~~ — [Phase 4](#phase-4--reader-ui-and-search)
+- [x] ~~Offline archive export, byte-identical reader~~ — [Phase 5](#phase-5--offline-archive-export)
+- [x] ~~`/login` chooser, `401` deep links, `403` refusal panel~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [x] ~~Root archive list and in-site switcher~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Inline photos with wrapped text and click-to-enlarge — [Reader UI backlog](#reader-ui-backlog)
+- [ ] Search-hit highlighting with next/previous and a floating control — [Reader UI backlog](#reader-ui-backlog)
+- [ ] Collapsible letters, collapsed by default — [Reader UI backlog](#reader-ui-backlog)
+- [ ] Horizontal photo carousel in place of the vertical album — [Reader UI backlog](#reader-ui-backlog)
+- [ ] Any automated test over `reader.js` — [Reader UI backlog](#reader-ui-backlog)
+
+**Onboarding — a site comes into existence**
+
+- [x] ~~Unclaimed letters accumulate as a pending site~~ — [Phase 6](#phase-6--direct-ingest)
+- [x] ~~`claim@` handler, HMAC claim tokens, `/claim` redeem page~~ — [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow)
+- [x] ~~Promotion of the whole backlog on claim~~ — [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow)
+- [x] ~~Nightly purge of expired pending sites~~ — [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow)
+- [x] ~~"A site already exists" reply, and the relay to its owners~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [ ] Recurring reminder and tapering invitation series — [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow)
+- [ ] "Email me a new link" for an expired token — [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow)
+
+**Outbound mail**
+
+- [x] ~~Send layer over the Cloudflare Email REST API, allowlist-gated~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [x] ~~Claim email from `claim@`~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [x] ~~Rejection notices, rate-limited per sender per reason per day~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [x] ~~One-click opt-out, global and signature-bound~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [x] ~~One-time nudge when a bootstrap forward fails DMARC~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [ ] Acknowledgement email on a successful forward — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [ ] Suppression is invisible — nothing handles `E_RECIPIENT_SUPPRESSED` — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [ ] Store `Message-ID` so acks thread — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [ ] Per-user notification preferences page — [Phase 8](#phase-8--outbound-mail-and-preferences)
+- [ ] Monthly digest of new letters — [Phase 10](#phase-10--new-letter-notifications)
+- [ ] Text messages — [Phase 10](#phase-10--new-letter-notifications) *(stretch)*
+
+**Owner and operator tools**
+
+- [x] ~~Invitations: bulk paste, signed single-use links, daily cap, revoke, resend~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [x] ~~Member removal and role changes~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [x] ~~Profile editing: display name and return date~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [x] ~~Edit, hide and delete a post, with in-place editing~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [x] ~~Operator role, banner, and `OperatorAction` audit trail~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [x] ~~Site deletion, 30-day erase, and operator restore at `/manage`~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Restore a post to its original — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Surface `editedBy` / `editedAt` — written today, readable only in the blob — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Dim hidden posts rather than badging them — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] `/manage/last-received` service-wide flow view — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Ownership-window banner for `missionary.org` owners — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+
+**Platform**
+
+- [x] ~~`main.bicep` deploys on push, by workload identity federation~~ — [Phase 0](#phase-0--foundation)
+- [x] ~~Function App deploys on push, gated on the test suite~~ — [Phase 0](#phase-0--foundation)
+- [x] ~~Basic publishing credentials refused in the template~~ — [Phase 0](#phase-0--foundation)
+- [ ] Expiry date on the Cloudflare send token in Key Vault — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Route `SecretNearExpiry` to a notification — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Align every credential to one expiry month — [Phase 12](#phase-12--leaving-beta)
+
+**Leaving beta**
+
+- [ ] Terms of use — [Phase 12](#phase-12--leaving-beta)
+- [ ] Privacy policy, including operator access — [Phase 12](#phase-12--leaving-beta)
+- [ ] Takedown and dispute process — [Phase 12](#phase-12--leaving-beta)
+- [ ] Journal Publish — [Phase 11](#phase-11--journal-publish)
+
+
 ---
 
 ## Stage 1 — Vertical slice
@@ -1213,6 +1267,20 @@ See [docs/email-options.md](email-options.md) for the vendor / pricing compariso
   The consequence is that upstream cannot break this service on its own initiative, and the residual risk points the other way — nothing floats, so nothing updates, and an advisory against something we ship would arrive as no signal at all. `.github/dependabot.yml` turns that silence into a monthly pull request, grouped, with major versions of the parsing and imaging libraries deliberately left out of the group: a major `sharp`, `mailauth`, or `postal-mime` changes what subscribers actually receive.
 
   One part stays outside the lock's guarantee: **`sharp` ships platform-specific native binaries as optional dependencies**, so versions are pinned but binary selection happens at install time on the build agent. Same lock, different machine, different artifact.
+
+- **The storage identities are split by scope so `permanentDelete` never reaches `raw/` from the credential exposed to inbound mail.** Checked against the live account on 2026-08-05, the Function App's identity held **Storage Blob Data Owner**, account-wide, and had done since this phase — so the identity processing attacker-supplied mail could permanently erase the one part of the system that cannot be rebuilt.
+
+  **The grant was deliberate, which is why it survived.** `main.bicep` carried a comment on it: *Blob Data Owner rather than Contributor: the Functions host manages its own leases and the deployment package container, which Contributor cannot do.* Microsoft's guidance says the opposite — that `Storage Blob Data Contributor` scoped to the deployment storage account is what a system-assigned identity needs. The documentation cannot settle which is right, so the split avoids having to answer it:
+
+  - **Storage Blob Data Contributor, account-wide** — the data plane. Cannot permanently delete, so with versioning and soft delete on, anything this identity destroys is recoverable for thirty days.
+  - **Storage Blob Data Owner, on `app-package`, `azure-webjobs-hosts`, and `azure-webjobs-secrets` only** — the containers the Functions host runs for itself. None of them holds a letter.
+  - **A custom role, `P-Day Letters Blob Purge`** — Contributor's permissions verbatim plus `permanentDelete`, version controlled as `infra/purge-role.json`. Assigned to a **separate user-assigned identity**, `mj-id-purge`, scoped to `raw`, `rendered`, `config`, `exports`, and `pending`. Not `inbox`, which holds untouched originals and is aged out by lifecycle rule.
+
+  **The purge identity is pinned by client ID rather than left to `DefaultAzureCredential`.** `createBlobStore` and `createTableStore` construct a bare credential, and what App Service selects when an app carries both a system-assigned and a user-assigned identity is not documented — Microsoft requires `client_id` for multiple *user-assigned* identities and is silent on the mixed case. If the platform silently preferred the user-assigned identity, the split would be undone invisibly.
+
+- **`allowPermanentDelete` is on, and stays on.** It is an ARM property on the blob service, off by default, and not settable from the az CLI. It is what stops soft delete from being an absolute backstop against a compromised credential mass-deleting the archive — but a service that promises a family their letters are erased has to be able to erase them.
+
+  **Turning it off would cost more than it buys.** `infra/reset-slug.ps1`, which wipes a test slug between fixture runs, authenticates as the *signed-in user* rather than as the Function App's identity, so per-identity RBAC cannot affect the development loop; only this flag could, because it is account-wide and identity-independent. Off, the deletion timer would need ARM control-plane rights to flip the flag, purge, and flip it back — and a credential that can rewrite blob service properties can also turn soft delete off entirely. The role split above addresses the same risk more narrowly.
 
 ### Phase 1 — Inbound forward pipeline
 **Shipped.** 25 real letters ingested; 13 fixtures in the corpus.
@@ -1409,7 +1477,9 @@ Shipped since, and previously listed here as outstanding:
   - **Pulled forward to Stage 1 — edit, hide, and delete now ship.** The read half of hiding was already built and enforced in four places, but nothing could *set* `hidden` except the DKIM hold in ingest, so taking a letter down meant editing `posts.json` by hand in Storage Explorer — leaving [Moderation / quarantine](#moderation--quarantine) resting its hands-off argument on tools that did not exist. `PATCH` and `DELETE` on `/api/posts/{slug}/{postId}`, with provisional controls in the reader. **Two things found while building it:** re-sanitizing an already-rendered body stripped every `<img>` (its `src` is an `/api/photo/` URL by then, not a `cid:`), so a one-character typo fix would have silently deleted every photo in the letter — hence `sanitizeBody`'s `keepPhotoPrefix`, pinned to the editor's own slug. And `bodyText` still shipped to readers, so anonymizing `bodyHtml` would have published the removed name anyway; editing the body now drops it.
   - **Still outstanding from this bullet:** hidden posts are badged rather than dimmed, and there is no admin surface for `editedBy` / `editedAt` — they are written, and only readable in the blob.
 - **Restore original** per [Restoring the original](#restoring-the-original): owner-only, one post at a time, re-runs render from `raw/` and overwrites the post. Confirmation names whose edits are being discarded; `editedBy` / `editedAt` clear and `hidden` is preserved.
-- **Site deletion** per [Post-mission archive](#post-mission-archive). **Shipped 2026-08-06.** `DELETE /api/site/{slug}`, owners only, with the typed archive name as confirmation; the `deletions` table holding one row per pending erase; and a nightly `erase` timer at 04:15 UTC that empties `raw/`, `rendered/`, `config/`, `exports/` and `pending/` under the slug — base blobs *and* every version, in that order, because a version that is still current refuses both the soft delete and the permanent one. The custom role `P-Day Letters Blob Purge` and the user-assigned identity `mj-id-purge` were created on 2026-08-05; the timer asks for that identity explicitly by client ID rather than repointing the shared credential in `store.js`.
+- **Site deletion** per [Post-mission archive](#post-mission-archive). **Shipped 2026-08-06.** `DELETE /api/site/{slug}`, owners only, with the typed archive name as confirmation; the `deletions` table holding one row per pending erase; and a nightly `erase` timer at 04:15 UTC that empties `raw/`, `rendered/`, `config/`, `exports/` and `pending/` under the slug. It runs as `mj-id-purge`, asked for explicitly by client ID per [Phase 0](#phase-0--foundation).
+  - **Purging a version is a three-pass operation.** `DELETE ?versionid=…` only *soft-deletes* the version, and `DELETE ?versionid=…&deletetype=permanent` returns `409 BlobSnapshotNotSoftDeleted` unless that first pass has already run. A version that is still the current version of a live blob refuses both with `403 OperationNotAllowedOnRootBlob`, so the base blob has to be deleted first to demote it. Demote, soft-delete, permanently delete — skipping any of them leaves data behind while reporting success.
+  - **`az storage blob delete` cannot do this at all.** It has no `--version-id`, and a `?versionid=` smuggled in through `--blob-url` is *silently ignored* — the CLI deletes the base blob, exits 0, and leaves every version intact. The purge calls the REST API directly. The same shape of trap catches scripts written against it: `az storage blob list -o json | ConvertFrom-Json` coerces `versionId` into a `DateTime` that no longer round-trips, so version IDs have to be read with `-o tsv`.
   - **"Stops resolving at once" is `acl.json` being deleted, not a flag.** The blob is copied aside to `config/{slug}/deleted-acl.json` first, then the `memberships` rows go. Nothing gains a hot-path read, every existing authorization path refuses instantly because it already reads the ACL first, and versioning makes all of it recoverable. A `deleted: true` flag would have needed every caller to remember to check it.
   - **The slug is not reserved afterwards**, which is the deliberate answer to "what happens to a letter forwarded to a deleted archive": it starts a fresh pending site, exactly as the first letter for any archive does. No tombstone, no permanent grudge against a name.
   - **Which creates a thirty-day fuse, and the guard for it is `acl.json`.** A recreated site claimed on day twenty promotes into `raw/` and `rendered/` under the same slug, and the outstanding appointment would destroy a new family's letters. So the eraser refuses if an ACL exists, logs it as an error, and *cancels* the record rather than retrying — the appointment will never become appropriate again. `restoreSite` refuses on the same condition, with a `409`, for the same reason.
@@ -1421,12 +1491,25 @@ Shipped since, and previously listed here as outstanding:
     - **It had to go into the ETag salt.** Deletion writes nothing to `posts.json`, so the blob ETag is unchanged, and `viaOperator` was already true — the two responses were indistinguishable to the cache. An operator with the page open from a minute earlier would have revalidated into a `304` and been handed back the copy with no notice on it.
     - **`post.js` salts identically.** The edit path recomputes the validator to check `If-Match`, so a salt applied in one place and not the other produces a phantom "the page you edited is out of date" for an operator correcting a letter on a deleted archive.
   - **A service with an operator role cannot be tested for refusal by its operator.** The manual pass said "confirm you are refused"; the tester is the operator, the override resolves above the ACL, and on this archive the only ACL member *was* the operator. The honest check is the storage state — `acl.json` gone, the `memberships` row gone — which is what was verified instead.
-- **Invitations** per [Invitations](#invitations): bulk paste-and-parse, one signed single-use email per invitee naming the inviting owner, identity binding on acceptance rather than address matching, `invited` / `active` state in the admin list, and manual owner-initiated resend that invalidates the prior token. **Capped per site and per day**, since an uncapped bulk field is an outbound-mail cannon pointed at the sending domain's reputation.
-  - **Shipped 2026-08-05, early, because `hello@` unblocked it.** Identity binding, the single-use token, the named inviter, the pending list, revocation, and the cap are all built and deployed. See [Invitations](#invitations) for where the implementation departs from the design — most notably that pending invitations live in their own table and never in `acl.json`.
+- **Invitations** per [Invitations](#invitations). **Shipped 2026-08-05, early**, because `hello@` was the only real dependency and an archive readable by exactly one person was the most conspicuous thing left.
+  - **Bulk paste by default.** The realistic first act after claiming a site is inviting a dozen relatives in one sitting, so the field accepts a pasted list — commas, semicolons, newlines, and `Name <addr@example.com>` forms. One-at-a-time entry turns the most common setup task into a dozen round-trips through a confirmation dialog. **They are sent sequentially, not in parallel**, which is what makes the read-then-check cap exact on this path and what lets a refusal name the address it refused. Addresses that fail stay in the box so a typo can be fixed without re-pasting the ones that worked.
+  - **The invitation names the inviting human**, in the subject and the first line: *"Sarah Smith invited you to read Elder Smith's letters."* Unattributed, it is a message from an unfamiliar domain, about a named person, asking you to click a link — indistinguishable from phishing. It is the one subject line in the service that names anybody, deliberately breaking the rule the rest follow.
+  - **Identity binding exists because the ACL is keyed on email address and the address an owner knows is frequently not the one behind the account.** A parent invites `grandma@aol.com`; she signs in with the Gmail account on her tablet; the check fails and neither of them can see why. Binding whatever identity arrives through the link avoids that entirely. `invitedEmail` is stored alongside, and shown **only when it differs** from the address they signed in with — echoing the same string twice makes the row harder to check before somebody presses Remove.
+  - **The token expires in 14 days, not the 30 first designed.** A claim link is generous because it is the only route to letters that would otherwise be deleted; an invitation can be reissued in ten seconds by somebody already signed in, so the cheap thing is to let it lapse. **It also carries a signed `purpose`**, without which a claim link and an invitation are separated only by which table their hash is looked up in — incidental rather than arithmetic, and needing re-derivation the day a third kind of link appears.
+  - **Pending invitations live in an `invites` table, not as a state column on an ACL entry — the largest divergence from the design.** A state column means a row exists in `acl.json` for somebody who has no access, in the one file `resolveRole` reads. Access control and pending-offer state would share a data structure, so every future reader of that file has to remember that some rows do not count, and one forgotten check is a stranger reading a family's letters. The owner's list assembles both states from the two sources.
+  - **The row key is the token's hash, never the token.** An owner listing invitations is shown a handle for revoking one, not a credential for accepting it.
   - **The cap is 20 per site per UTC day**, refused before the send and returned as `429`. The sending plan includes 3,000 messages a month, so one site sustaining twenty a day consumes a fifth of it and is visible in the logs long before it is expensive, while a hundred a day would eat the lot. It also has to clear a real family in one sitting, so it is tested from below as well as above.
-  - **The cap counts issued rows, including revoked ones, which is why revocation is a tombstone.** A cap counting only surviving rows is reset by the revoke button, and invite/revoke/invite is then an unbounded loop.
+  - **The cap counts issued rows, including revoked ones, which is why revocation is a tombstone.** A cap counting only surviving rows is reset by the revoke button, and invite/revoke/invite is then an unbounded loop. The tombstone also keeps a withdrawn token explicitly refused rather than merely unrecognised.
   - **It is an upper bound plus concurrency, not an exact count.** Two requests in flight can each read the same total and both pass. Making it exact needs an atomic counter the table wrapper does not expose.
-  - **Bulk paste-and-parse, `invitedEmail`, one-click opt-out, and owner-initiated resend all shipped 2026-08-05**, each described in [Invitations](#invitations).
+  - **Resend shipped**, having first been dismissed as *"revoke-then-invite-again is the same two writes with one more click"*. That was wrong about the audience: the owner who needs it is the one whose invitation went to spam, and asking them to withdraw the invitation they are trying to repeat is asking them to do the frightening thing first. Four properties the obvious implementation gets wrong:
+    - **The address comes from the stored row, never from the request.** A resend that accepts an address is a second, quieter path to mailing strangers.
+    - **It counts against the daily cap**, or one invitation becomes an unbounded send loop.
+    - **The old token is tombstoned and a new one issued.** Reissuing the same token would leave an invitation resent on day thirteen expiring tomorrow.
+    - **Expired invitations are not resendable**, because `listInvites` filters them out; the remedy is to invite again, which costs the same.
+
+    The new row is written before the old one is tombstoned: if the second write fails the owner has a live invitation they cannot see, which is recoverable, where the other order can leave no invitation at all and a mail already sent. The second email says it is a repeat and that the earlier link has stopped working, because the recipient will open whichever of the two they find first.
+  - **The one-click opt-out was built here rather than in Phase 8 as planned**, because an invitation is the only message the service sends to somebody who did not write to us first, so it is the only one whose recipient has no other way to make it stop. It is **global rather than per archive** — "stop emailing me" is not "stop emailing me about Elder Example". The address to suppress is **inside the token's signature**, so the endpoint never takes anybody's word for whom to silence; otherwise the opt-out form would be a way to stop a grandmother ever receiving the invitation her family is about to send. It is **spent by `POST`, never `GET`**, per the scanner problem in [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow).
+  - **An invitation can carry the *owner* role**, so a forwarded one hands over more than read access — a higher stake than the claim-link comparison first allowed for. It is why the sanitizer strips our own links out of published letters; see [Never publishing our own access links](#never-publishing-our-own-access-links).
 - **Removing and promoting members** — built alongside invitations because *"an owner can revoke"* above assumed it. An owner may remove anyone and change anyone's role, with two rules: **nobody may change their own membership**, and **the verified missionary cannot be removed or demoted by anyone**.
   - **The self-rule is what makes a zero-owner archive impossible, and there is no separate last-owner check.** Every removal is somebody removing somebody else, so the last owner cannot be removed by construction. Stated here because the absence of that check looks like an oversight.
   - **Self-*demotion* is blocked as well as self-removal**, since demoting yourself out of the only owner seat is removal with extra steps.
