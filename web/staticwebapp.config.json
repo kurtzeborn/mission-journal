@@ -67,6 +67,20 @@
       "allowedRoles": ["authenticated"]
     },
     {
+      "comment": "Operator tooling: archives that have been deleted and not yet erased. `authenticated` is all this rule can say -- Static Web Apps roles are not where OPERATOR_EMAILS lives -- so the markup loads for any signed-in visitor and the API behind it returns 404 to everyone else. Nothing links here.",
+      "route": "/manage",
+      "rewrite": "/manage.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
+      "route": "/manage.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
+      "route": "/manage.js",
+      "allowedRoles": ["authenticated"]
+    },
+    {
       "comment": "Stopping our mail. Anonymous and it has to be: the person using it has never signed in and is not going to, and requiring an account would make the opt-out technically available and practically impossible.",
       "route": "/optout",
       "rewrite": "/optout.html",

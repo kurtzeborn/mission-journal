@@ -61,6 +61,15 @@ class Element {
         return child;
     }
 
+    // Needed by manage.js, which redraws its whole table after a restore
+    // rather than surgically editing a row. The distinction from setting
+    // textContent to '' matters: this drops element children too, and a
+    // version that only cleared text would leave every previous row's buttons
+    // still wired to a fetch.
+    replaceChildren(...nodes) {
+        this.children = nodes;
+    }
+
     addEventListener(type, handler) {
         if (!this.listeners.has(type)) this.listeners.set(type, []);
         this.listeners.get(type).push(handler);
@@ -102,9 +111,21 @@ function markup(file) {
     for (const [, tag, attrs] of source.matchAll(/<([a-z][\w-]*)\b([^>]*)>/gi)) {
         if (tag.toLowerCase() === 'section') sections++;
         const id = attrs.match(/\bid="([^"]+)"/)?.[1];
-        // Quoted values are emptied before looking for the bare `hidden`
-        // attribute, so `class="visually-hidden"` cannot be mistaken for one.
-        if (id) ids.set(id, /\bhidden\b/.test(attrs.replace(/"[^"]*"/g, '""')));
+        // Quoted values are emptied before looking for the bare `hidden` and
+        // `disabled` attributes, so `class="visually-hidden"` cannot be
+        // mistaken for one.
+        const bare = attrs.replace(/"[^"]*"/g, '""');
+        if (id) {
+            ids.set(id, {
+                hidden: /\bhidden\b/.test(bare),
+                // Carried for the same reason as `hidden`: a control that
+                // starts disabled in the markup and is armed by script is only
+                // safe if it really does start that way, and a test that set
+                // the initial state itself could never notice the attribute
+                // being dropped.
+                disabled: /\bdisabled\b/.test(bare)
+            });
+        }
     }
 
     return { ids, sections, source };
@@ -121,9 +142,10 @@ export function page({ html, path = '/', hash = '' }) {
     const { ids, sections, source } = markup(html);
 
     const elements = new Map();
-    for (const [id, hidden] of ids) {
+    for (const [id, start] of ids) {
         const element = new Element('div');
-        element.hidden = hidden;
+        element.hidden = start.hidden;
+        element.disabled = start.disabled;
         elements.set(id, element);
     }
 
@@ -149,6 +171,14 @@ export function page({ html, path = '/', hash = '' }) {
             href: path,
             assign(target) {
                 this.href = target;
+            },
+            // Distinct from `assign`, because the difference is the whole
+            // reason a script picks one: `replace` leaves no history entry, so
+            // Back cannot return to the page. Recorded separately so a test can
+            // assert that a page nobody should be able to go back to used it.
+            replace(target) {
+                this.href = target;
+                this.replaced = target;
             }
         },
         // A real `replaceState` rewrites the address bar, fragment included,

@@ -42,6 +42,9 @@ param authservId string = 'mx.cloudflare.net'
 @description('Days before inbox blobs are deleted by lifecycle policy.')
 param inboxRetentionDays int = 30
 
+@description('Days before a staged export archive is deleted by lifecycle policy.')
+param exportRetentionDays int = 7
+
 // Client IDs are public identifiers -- they travel in every authorization
 // request and appear in the browser's address bar -- so they belong in source
 // where a reader can see which registrations the site actually trusts. The
@@ -263,6 +266,13 @@ var tableNames = [
   // cost guard: it is what stops a forwarding loop from turning into thousands
   // of posts and a matching storage bill. Losing it costs one day's counting.
   'arrivals'
+  // One row per archive that has been deleted and not yet erased, and the only
+  // place the thirty-day promise is written down. Ordinarily empty.
+  //
+  // Authoritative, and its loss is the quiet kind: no letters would go, since
+  // the blobs are all still there, but they would be stranded -- nothing would
+  // ever erase them, and nothing would know to offer them back.
+  'deletions'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [
@@ -284,10 +294,18 @@ resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-
   }
 ]
 
+// Two rules, both about data that has already served its purpose.
+//
 // The Worker writes every inbound message to the inbox container before
 // anything parses it. Once ingest has copied a message to raw/{slug}/, the
 // inbox copy is landing-zone residue. Versions and snapshots are expired too,
 // or soft-delete quietly retains everything this rule is meant to remove.
+//
+// `exports` holds staged download archives -- a second copy of an entire
+// family's correspondence, sitting under a URL somebody was emailed. Every
+// byte of it is rebuildable from `raw/`, so keeping one is pure duplicated
+// exposure once it has been fetched. A week is long enough for a link nobody
+// opened until the weekend.
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storage
   name: 'default'
@@ -321,6 +339,38 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05
               version: {
                 delete: {
                   daysAfterCreationGreaterThan: inboxRetentionDays
+                }
+              }
+            }
+          }
+        }
+        {
+          name: 'expire-exports'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: {
+              blobTypes: [
+                'blockBlob'
+              ]
+              prefixMatch: [
+                'exports/'
+              ]
+            }
+            actions: {
+              baseBlob: {
+                delete: {
+                  daysAfterModificationGreaterThan: exportRetentionDays
+                }
+              }
+              snapshot: {
+                delete: {
+                  daysAfterCreationGreaterThan: exportRetentionDays
+                }
+              }
+              version: {
+                delete: {
+                  daysAfterCreationGreaterThan: exportRetentionDays
                 }
               }
             }
@@ -527,8 +577,19 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
   name: workerAppName
   location: location
   kind: 'functionapp,linux'
+  // Two identities, and the split is the point. Everything the service does
+  // routinely runs as the system-assigned one, which cannot permanently
+  // delete anything. The erase timer -- and only the erase timer -- asks for
+  // the user-assigned one by client ID.
+  //
+  // Attaching a second identity makes managed-identity selection ambiguous for
+  // any code that does not name one, which is why every identity-based
+  // connection above already names the system-assigned identity explicitly.
   identity: {
-    type: 'SystemAssigned'
+    type: 'SystemAssigned, UserAssigned'
+    userAssignedIdentities: {
+      '${purgeIdentity.id}': {}
+    }
   }
   properties: {
     serverFarmId: workerPlan.id
@@ -640,6 +701,17 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'OPERATOR_EMAILS'
           value: operatorEmails
         }
+        // Which identity the erase timer asks for. Nothing else reads this.
+        //
+        // If it is missing the timer refuses to run rather than falling back:
+        // erasing with the app's own credential would appear to work, since it
+        // can delete base blobs, and would leave every version behind -- a
+        // family told their letters were destroyed and the letters still in
+        // the account.
+        {
+          name: 'PURGE_IDENTITY_CLIENT_ID'
+          value: purgeIdentity.properties.clientId
+        }
       ]
     }
   }
@@ -716,9 +788,11 @@ resource workerQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
 // here is by credential, not by process: the purge code asks for this identity
 // by client ID, and nothing else does.
 //
-// It is not attached to the function app yet. Attaching it before there is
-// purge code to use it would only make managed-identity selection ambiguous for
-// the code already running, and buy nothing.
+// It is attached to the function app above, alongside the system-assigned
+// identity that everything else runs as. The two are told apart by the client
+// ID in `PURGE_IDENTITY_CLIENT_ID` -- which is also why every identity-based
+// connection in that app names its identity explicitly: with two attached,
+// nothing may be left to guess.
 // ---------------------------------------------------------------------------
 
 resource purgeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {

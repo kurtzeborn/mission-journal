@@ -34,6 +34,14 @@ export const TABLES = {
     // counting a day's traffic for one archive is a single-partition list
     // bounded by the cap rather than a scan.
     arrivals: 'arrivals',
+    // PartitionKey = slug, RowKey = 'record'. One row per archive that has
+    // been deleted and not yet purged, which is the only place the thirty-day
+    // promise is written down. Ordinarily empty.
+    //
+    // **This one is not a derived index.** Losing it would not lose any
+    // letters -- the blobs are all still there -- but it would strand them:
+    // nothing would ever purge them, and nothing would know to offer them back.
+    deletions: 'deletions',
     // PartitionKey = 'optout', RowKey = SHA-256 of the address. One partition
     // on purpose: the only question ever asked of it is "this one address,
     // yes or no", and a single partition makes that a point read. It is also

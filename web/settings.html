@@ -49,6 +49,54 @@
                 <p><button class="button" type="submit" id="save">Save</button></p>
                 <p class="note" id="said" role="status" aria-live="polite"></p>
             </form>
+
+            <!--
+                Below a rule, last on the page, and behind a disclosure that
+                starts closed. Not decoration: this is the only control here
+                that destroys anything, and the ones above it are the reason
+                people visit. Somebody correcting a typo in a name should not
+                have to read past a delete button to do it.
+
+                The wording is deliberate and is the promise the service keeps.
+                "Permanently erased" with a date, because a permanent button
+                that is not permanent is worse than an honest one -- and no
+                mention of taking it back, because a confirmation that offers
+                an undo in the same breath is not a confirmation.
+            -->
+            <hr class="rule">
+
+            <details class="danger" id="danger">
+                <summary>Delete this archive</summary>
+
+                <p>
+                    This removes every letter, every photo, and everyone&rsquo;s access to them.
+                    <strong>It cannot be undone.</strong>
+                </p>
+                <p class="note">
+                    The archive stops being visible to you and to everyone you have invited
+                    straight away. Everything in it is permanently erased 30 days from now.
+                    Nobody is emailed about this.
+                </p>
+                <p class="note">
+                    If you only want your own copy of the letters, close this and use
+                    <strong>Download my letters</strong> on the archive first &mdash; afterwards
+                    there is nothing to download.
+                </p>
+
+                <form id="delete">
+                    <p>
+                        <label for="confirm">Type <code id="confirm-slug"></code> to confirm</label><br>
+                        <input id="confirm" name="confirm" type="text" autocomplete="off"
+                            autocapitalize="off" spellcheck="false" required>
+                    </p>
+                    <p>
+                        <button class="button button--danger" type="submit" id="delete-go" disabled>
+                            Delete this archive
+                        </button>
+                    </p>
+                    <p class="note" id="delete-said" role="status" aria-live="polite"></p>
+                </form>
+            </details>
         </section>
     </main>
 

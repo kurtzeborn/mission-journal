@@ -176,6 +176,23 @@ a {
     border: 1px solid var(--rule);
 }
 
+/* Destructive, and only ever reached after typing the archive's name.
+
+   Red, but not the loudest thing on the page it lives on: the danger section
+   is already closed by default and already below a rule, so the colour is
+   confirming what somebody has worked to reach rather than warning them off
+   something they might hit by accident. */
+.button--danger {
+    background: #9b2226;
+    color: #fff;
+}
+
+.button--danger:disabled {
+    background: #d9c2c3;
+    color: #6b4f50;
+    cursor: not-allowed;
+}
+
 /* The 44px rule above is for controls a reader has to find and hit. These two
    sit in the masthead beside an email address, and at full size they wrapped
    onto their own line on a phone and pushed the letters below the fold. They
@@ -370,6 +387,80 @@ button:focus-visible {
     border-radius: var(--radius);
     background: #fdf0d5;
     color: #6b4f14;
+}
+
+/* Deleting an archive.
+
+   Last on the settings page, behind a rule, and closed until somebody opens
+   it. Somebody correcting a typo in a display name should not have to read
+   past a delete button to do it, and the summary is the whole warning for
+   anybody who is not looking for this. */
+.rule {
+    border: 0;
+    border-top: 1px solid var(--rule);
+    margin: 2.5rem 0 1.5rem;
+}
+
+.danger > summary {
+    font-family: system-ui, sans-serif;
+    font-size: 0.95rem;
+    color: #9b2226;
+    cursor: pointer;
+}
+
+.danger[open] {
+    padding: 0.25rem 0.9rem 0.6rem;
+    border: 1px solid #e3c4c5;
+    border-radius: var(--radius);
+    background: #fdf5f5;
+}
+
+.danger[open] > summary {
+    margin: 0.5rem 0 0;
+}
+
+.danger code {
+    font-size: 0.95em;
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+    background: #efdcdc;
+}
+
+/* --- the operator's list of deleted archives --- */
+
+/* A table, which nothing else on this site uses, because this is the one page
+   written for an operator rather than for a family. What it shows is six
+   facts about each of several archives, and every other shape would be a
+   worse way to read them. It is ordinarily empty. */
+.deletions {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: system-ui, sans-serif;
+    font-size: 0.92rem;
+    margin: 1.5rem 0;
+}
+
+.deletions th,
+.deletions td {
+    text-align: left;
+    padding: 0.55rem 0.7rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+}
+
+.deletions th {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+    border-bottom-width: 2px;
+}
+
+/* A reason is free text somebody typed into a form and can be a sentence. It
+   is the only column allowed to be long, and it wraps rather than pushing the
+   dates off the side of a phone. */
+.deletions td:nth-child(4) {
+    max-width: 18rem;
 }
 
 /* --- the questions page --- */

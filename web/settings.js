@@ -112,11 +112,64 @@
         said.textContent = 'Saved. Everyone reading the archive sees the new name.';
     }
 
+    // --- deleting the archive ---------------------------------------------
+
+    // The button stays disabled until the typed name matches exactly.
+    //
+    // The server checks this too, and that is the check that counts -- a
+    // confirmation living only in JavaScript is one a retried fetch never has
+    // to pass. This half exists because a disabled button is a better prompt
+    // than an error is: it tells somebody who half-meant it that they have not
+    // finished, without ever having accepted the request.
+    function armed() {
+        $('delete-go').disabled = $('confirm').value.trim() !== slug;
+    }
+
+    async function destroy(event) {
+        event.preventDefault();
+        const said = $('delete-said');
+        const button = $('delete-go');
+
+        button.disabled = true;
+        said.textContent = 'Deleting\u2026';
+
+        let response;
+        try {
+            response = await fetch(`/api/site/${encodeURIComponent(slug)}`, {
+                method: 'DELETE',
+                cache: 'no-store',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: $('confirm').value.trim() })
+            });
+        } catch {
+            armed();
+            said.textContent = 'Could not reach the server. Nothing was deleted.';
+            return;
+        }
+
+        if (refused(response)) return;
+
+        if (!response.ok) {
+            armed();
+            const body = await response.json().catch(() => ({}));
+            said.textContent = body.error ?? 'That did not work. Nothing was deleted.';
+            return;
+        }
+
+        // To the root rather than back to the archive, which is the one place
+        // that is now guaranteed to refuse them. Replaced rather than pushed,
+        // so Back does not lead to a page about an archive that is gone.
+        location.replace('/');
+    }
+
     if (!slug) {
         show('No archive was named.');
     } else {
         $('back').href = `/${encodeURIComponent(slug)}/`;
+        $('confirm-slug').textContent = slug;
         $('profile').addEventListener('submit', save);
+        $('confirm').addEventListener('input', armed);
+        $('delete').addEventListener('submit', destroy);
         load();
     }
 })();

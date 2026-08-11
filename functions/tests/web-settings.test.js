@@ -1,0 +1,171 @@
+// The settings page, driven through the real script.
+//
+// Almost all of this is the delete control. The rename half is two fields and
+// a PUT; the delete half is the only thing on this site that destroys
+// anything, and the interesting cases are the ones where it must refuse to.
+
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { fetching, page, run, settled } from './web-dom.js';
+
+const SLUG = 'elder.example';
+
+const PROFILE = { slug: SLUG, displayName: 'Elder Example', returnDate: '' };
+
+async function settings({ answer }) {
+    const view = page({ html: 'settings.html', path: `/settings/${SLUG}` });
+    const net = fetching(answer);
+    run('settings.js', { context: view.context, fetch: net.fetch });
+    await settled();
+    return { ...view, calls: net.calls };
+}
+
+const loaded = (deleteAnswer) => async (url, init) =>
+    init?.method === 'DELETE'
+        ? deleteAnswer
+        : { status: 200, body: PROFILE };
+
+const gone = { status: 200, body: { slug: SLUG, purgeAfter: '2026-09-07T09:00:00.000Z', members: 2 } };
+
+const deletes = (view) => view.calls.filter((call) => call.method === 'DELETE');
+
+describe('arming the delete button', () => {
+    test('starts disabled, with the archive name shown to copy', async () => {
+        const view = await settings({ answer: loaded(gone) });
+
+        assert.equal(view.el('delete-go').disabled, true);
+        assert.equal(view.text('confirm-slug'), SLUG);
+    });
+
+    test('stays disabled while the typed name is wrong', async () => {
+        const view = await settings({ answer: loaded(gone) });
+
+        view.el('confirm').value = 'elder.exampl';
+        await view.el('confirm').dispatch('input');
+
+        assert.equal(view.el('delete-go').disabled, true);
+    });
+
+    test('and while the box is empty, which is the state it is left in', async () => {
+        const view = await settings({ answer: loaded(gone) });
+
+        view.el('confirm').value = '';
+        await view.el('confirm').dispatch('input');
+
+        assert.equal(view.el('delete-go').disabled, true);
+    });
+
+    test('a stray space either side is the same intention', async () => {
+        const view = await settings({ answer: loaded(gone) });
+
+        view.el('confirm').value = `  ${SLUG} `;
+        await view.el('confirm').dispatch('input');
+
+        assert.equal(view.el('delete-go').disabled, false);
+    });
+
+    test('the wrong case is not', async () => {
+        // Slugs are lowercase everywhere in this service. Accepting a
+        // capitalised one here would be the only place that is not true, and
+        // the point of the exercise is that somebody read what they typed.
+        const view = await settings({ answer: loaded(gone) });
+
+        view.el('confirm').value = 'Elder.Example';
+        await view.el('confirm').dispatch('input');
+
+        assert.equal(view.el('delete-go').disabled, true);
+    });
+});
+
+describe('deleting', () => {
+    test('sends the typed name for the server to check again', async () => {
+        // The check that counts is the server's. A confirmation living only in
+        // JavaScript is one a retried fetch never has to pass.
+        const view = await settings({ answer: loaded(gone) });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.equal(deletes(view).length, 1);
+        assert.equal(deletes(view)[0].url, `/api/site/${SLUG}`);
+        assert.equal(deletes(view)[0].body.confirm, SLUG);
+    });
+
+    test('leaves for the root, and not by a route Back can undo', async () => {
+        // The archive is the one page now guaranteed to refuse them, so going
+        // back to it would end a deletion on a page saying they are not
+        // allowed here.
+        const view = await settings({ answer: loaded(gone) });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.equal(view.context.location.replaced, '/');
+    });
+
+    test('a server refusal is shown and the page stays put', async () => {
+        const view = await settings({
+            answer: loaded({ status: 400, body: { error: 'type the archive name to confirm' } })
+        });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.equal(view.text('delete-said'), 'type the archive name to confirm');
+        assert.equal(view.context.location.replaced, undefined);
+    });
+
+    test('and the button comes back, so a corrected attempt is possible', async () => {
+        const view = await settings({
+            answer: loaded({ status: 409, body: {} })
+        });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.equal(view.el('delete-go').disabled, false);
+    });
+
+    test('a network failure says plainly that nothing was deleted', async () => {
+        // The one message on this page somebody will read twice. "Could not
+        // reach the server" alone leaves them wondering whether it went
+        // through.
+        const view = await settings({
+            answer: async (url, init) => {
+                if (init?.method === 'DELETE') throw new Error('offline');
+                return { status: 200, body: PROFILE };
+            }
+        });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.match(view.text('delete-said'), /nothing was deleted/i);
+        assert.equal(view.context.location.replaced, undefined);
+    });
+
+    test('an expired session goes through the chooser, not straight to a provider', async () => {
+        const view = await settings({ answer: loaded({ status: 401, body: {} }) });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.match(view.context.location.href, /^\/login\.html\?/);
+        assert.match(view.context.location.href, /settings/);
+    });
+});
+
+describe('who sees the control at all', () => {
+    test('a reader is told to go away before any of it renders', async () => {
+        const view = await settings({ answer: async () => ({ status: 403, body: {} }) });
+
+        assert.equal(view.el('everything').hidden, true);
+        assert.match(view.text('state'), /owners/i);
+    });
+});

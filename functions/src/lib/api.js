@@ -8,6 +8,7 @@
 import { validSlug } from './paths.js';
 import { readPrincipal } from './principal.js';
 import { resolveAccess, ROLE } from './acl.js';
+import { isOperator } from './operators.js';
 
 // Applied to every response that carries archive bytes. The CSP is aimed at a
 // direct hit on the API URL: these responses are consumed by fetch() and by
@@ -115,6 +116,35 @@ const auditOperator = ({ log, principal, slug, request, viaOperator }) => {
         at: new Date().toISOString()
     });
 };
+
+/**
+ * The gate for routes that belong to nobody's archive.
+ *
+ * The two gates below both start from a slug and ask what this caller may do
+ * with it. Operator tooling is the other shape: `/manage/deletions` is about
+ * every archive at once, so there is no ACL to consult and the only question
+ * is whether the caller is on the operator list.
+ *
+ * Refuses with 404 rather than 403, matching everything else here. A signed-in
+ * stranger who pokes at `/api/manage/...` should not learn that the route
+ * exists, and an operator who mistypes gets the same answer they would for any
+ * other bad URL.
+ *
+ * Every call is audited, unconditionally -- there is no non-operator path
+ * through here, so `viaOperator` is passed as true rather than derived.
+ *
+ * @returns {{denied: object}|{principal: object}}
+ */
+export function operatorGate({ request, log, env = process.env }) {
+    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
+    if (!principal) return UNAUTHENTICATED;
+
+    if (!isOperator(principal.email, env)) return { denied: DENIED };
+
+    auditOperator({ log, principal, slug: '', request, viaOperator: true });
+
+    return { principal };
+}
 
 /**
  * Identity, slug, and role -- without requiring that anything be rendered yet.

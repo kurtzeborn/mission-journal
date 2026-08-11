@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deleted archives — P-Day Letters</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<!--
+    Operator tooling, and it looks like it.
+
+    No navigation points here and nothing links to it. That is not security --
+    the API refuses anyone not on OPERATOR_EMAILS regardless, and a page that
+    relied on being unlinked would be no protection at all -- it is honesty
+    about who it is for. Everything else on this site is written for a family;
+    this is written for the one person who can undo a mistake, and pretending
+    otherwise would only invite somebody to go looking for it.
+
+    The list is ordinarily empty, which is the state the page is designed
+    around: the common case is confirming that nothing is waiting.
+-->
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/">P-Day Letters</a>
+            <span class="beta">beta</span>
+            <span class="masthead__spacer"></span>
+            <a class="button button--quiet button--compact" href="/">Back to the letters</a>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <h1>Deleted archives</h1>
+
+        <p class="note">
+            Archives whose owners have deleted them. The letters are still here until the date
+            shown, and after that they are gone for good. Nobody but you can see this page, and
+            the family cannot restore an archive themselves.
+        </p>
+
+        <div id="state" class="state">Loading&hellip;</div>
+
+        <table id="deletions" class="deletions" hidden>
+            <thead>
+                <tr>
+                    <th scope="col">Archive</th>
+                    <th scope="col">Deleted</th>
+                    <th scope="col">By</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Erased after</th>
+                    <th scope="col"><span class="visually-hidden">Restore</span></th>
+                </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+        </table>
+
+        <p class="note" id="said" role="status" aria-live="polite"></p>
+    </main>
+
+    <script src="/manage.js"></script>
+</body>
+
+</html>
