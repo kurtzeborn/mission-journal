@@ -1,12 +1,18 @@
 import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
+import { createTableStore } from '../lib/tables.js';
 import { gate, hardened, contentEtag, matchesEtag } from '../lib/api.js';
 import { ROLE } from '../lib/acl.js';
+import { deletionOf } from '../lib/deletion.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
 
 let cachedStore = null;
 const blobStore = () =>
     (cachedStore ??= createBlobStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
+
+let cachedTables = null;
+const tableStore = () =>
+    (cachedTables ??= createTableStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
 const problem = (status, error) => ({
     status,
@@ -50,13 +56,19 @@ async function ownerOnly(request, context) {
 // from a copy of the site that has since moved on, then saving it back whole
 // and undoing whatever happened in between. That is not a race, it is a
 // perfectly orderly write of stale data, and only the client knows it is stale.
-const stale = (request, blobEtag, viaOperator) => {
+//
+// `deleted` is threaded through for one reason: it is part of the validator
+// the archive page was issued, so computing one without it here would reject
+// an operator's edit on a deleted archive as out of date when nothing about
+// the letters had moved at all. The two places must salt identically or the
+// salt becomes a source of phantom conflicts.
+const stale = (request, blobEtag, viaOperator, deleted) => {
     const expected = request.headers.get('if-match');
     // Absent means the caller is not making the claim -- older clients, and
     // curl. Enforcing it only when offered keeps this from being a new way for
     // a write to fail mysteriously.
     return expected
-        ? !matchesEtag(expected, contentEtag(blobEtag, ROLE.owner, viaOperator))
+        ? !matchesEtag(expected, contentEtag(blobEtag, ROLE.owner, viaOperator, deleted))
         : false;
 };
 
@@ -76,12 +88,19 @@ async function edit(request, context) {
     const { postId } = request.params;
     let changed = [];
 
+    // Read once, outside the mutate callback, which `commitPosts` may run more
+    // than once on an ETag collision. Skipped entirely unless the caller is an
+    // operator, which is the only way to be editing a deleted archive.
+    const deleted = gated.viaOperator
+        ? Boolean(await deletionOf({ tables: tableStore(), slug: gated.slug }))
+        : false;
+
     const outcome = await commitPosts({
         store: blobStore(),
         slug: gated.slug,
         log: context,
         mutate: (posts, blobEtag) => {
-            if (stale(request, blobEtag, gated.viaOperator)) return { error: STALE };
+            if (stale(request, blobEtag, gated.viaOperator, deleted)) return { error: STALE };
 
             const index = posts.findIndex((post) => post.id === postId);
             if (index < 0) return { error: 'not found' };

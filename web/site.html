@@ -63,6 +63,29 @@
             This access is logged.
         </p>
 
+        <!--
+            A deleted archive, which only an operator can be looking at -- the
+            family lost access the moment `acl.json` went.
+
+            Louder than the banner above it, because the banner says something
+            that is true on every visit to somebody else's archive and this
+            says something true on almost none of them. Without it the page
+            renders a deleted family's letters in full, in the ordinary layout,
+            with nothing to distinguish it from a live archive -- and the only
+            person who can undo the deletion is left to find out from a
+            different page entirely.
+
+            It names the date rather than a countdown. "Erased in 30 days"
+            starts being wrong the moment it is cached, and this is exactly the
+            sentence somebody will screenshot and come back to.
+        -->
+        <p class="deleted-banner" id="deleted-banner" hidden role="status">
+            <strong>This archive has been deleted.</strong>
+            <span id="deleted-detail"></span>
+            The letters are still here, and an operator can restore it from
+            <a href="/manage">the deleted archives page</a>.
+        </p>
+
         <h1 id="site-title" class="post__subject">&nbsp;</h1>
 
         <form id="search" class="search" role="search" hidden>

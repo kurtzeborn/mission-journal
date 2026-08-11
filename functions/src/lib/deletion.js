@@ -218,3 +218,33 @@ export async function pendingDeletions({ tables }) {
 }
 
 export const deletedAclPath = gravePath;
+
+/**
+ * The pending deletion for one archive, or null.
+ *
+ * A point read rather than a filter over `pendingDeletions`, because the
+ * caller is the archive page and the scan above is sized for a table nobody
+ * reads on a hot path.
+ *
+ * **Only ever called for an operator**, which is what makes it affordable. An
+ * archive that has been deleted has no `acl.json`, so the only way to be
+ * looking at one is to hold the role by way of `OPERATOR_EMAILS` -- every
+ * ordinary reader has already been refused by the time this would be reached,
+ * and pays nothing for it.
+ *
+ * It exists because operator access to a deleted archive is correct and its
+ * silence was not: the page rendered a family's letters in full, with the
+ * ordinary operator banner and nothing at all to say the archive was deleted
+ * or that it would be destroyed on a date. The one person who can undo the
+ * deletion was the one person not being told it had happened.
+ */
+export async function deletionOf({ tables, slug }) {
+    const row = await tables.getEntity(TABLES.deletions, slug, DELETION_RECORD);
+    if (!row) return null;
+
+    return {
+        deletedAt: row.deletedAt ?? '',
+        deletedBy: row.deletedBy ?? '',
+        purgeAfter: row.purgeAfter ?? ''
+    };
+}

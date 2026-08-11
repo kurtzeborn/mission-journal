@@ -241,6 +241,25 @@ describe('content validators', () => {
         assert.equal(contentEtag('"0x8DD1"', 'owner', false), contentEtag('"0x8DD1"', 'owner'));
     });
 
+    test('a deleted archive does not share one with the same archive alive', () => {
+        // Sharper than the operator flag above, because deleting an archive
+        // writes nothing to posts.json -- the blob ETag is identical and the
+        // operator flag was already true. An operator holding the page from a
+        // minute earlier would otherwise revalidate into a 304 and be handed
+        // back a copy with no notice on it, at the one moment it matters.
+        assert.notEqual(
+            contentEtag('"0x8DD1"', 'owner', true, true),
+            contentEtag('"0x8DD1"', 'owner', true, false)
+        );
+    });
+
+    test('and an undeleted archive is unchanged by that salt too', () => {
+        assert.equal(
+            contentEtag('"0x8DD1"', 'owner', true, false),
+            contentEtag('"0x8DD1"', 'owner', true)
+        );
+    });
+
     test('the validator survives a proxy stripping its punctuation', () => {
         const etag = contentEtag('"0x8DD1"', 'owner');
         assert.ok(matchesEtag(etag, etag));

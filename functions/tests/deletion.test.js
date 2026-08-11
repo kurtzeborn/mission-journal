@@ -9,7 +9,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { memoryStore } from './memory-store.js';
-import { deleteSite, restoreSite, pendingDeletions, PURGE_DAYS } from '../src/lib/deletion.js';
+import { deleteSite, restoreSite, pendingDeletions, deletionOf, PURGE_DAYS } from '../src/lib/deletion.js';
 import { resolveAccess, resolveRole, readAcl, ROLE } from '../src/lib/acl.js';
 import { membershipsFor, recordMembership } from '../src/lib/memberships.js';
 import { gate } from '../src/lib/api.js';
@@ -199,6 +199,37 @@ describe('the record left for the timer', () => {
 
         assert.deepEqual(await remove(store), { error: 'no such site' });
         assert.deepEqual(await pendingDeletions({ tables: store }), []);
+    });
+});
+
+// What the archive page asks so it can say the archive is deleted. Only ever
+// asked on behalf of an operator, since deletion is what takes the ACL away
+// and nobody else can hold a role without one.
+describe('the record read back for one archive', () => {
+    test('is there for a deleted archive', async () => {
+        const store = await seeded();
+        await remove(store);
+
+        const found = await deletionOf({ tables: store, slug: SLUG });
+        assert.equal(found.deletedBy, MUM);
+        assert.equal(found.purgeAfter, '2026-09-07T09:00:00.000Z');
+    });
+
+    test('is null for a live one, which is every archive', async () => {
+        const store = await seeded();
+
+        assert.equal(await deletionOf({ tables: store, slug: SLUG }), null);
+    });
+
+    test('and null again the moment it is restored', async () => {
+        // The banner has to come off by itself. Leaving the row behind would
+        // put a permanent "this archive is deleted" on a restored family's
+        // letters.
+        const store = await seeded();
+        await remove(store);
+        await restoreSite({ store, tables: store, slug: SLUG, by: OPERATOR, now: NOW, log: silent });
+
+        assert.equal(await deletionOf({ tables: store, slug: SLUG }), null);
     });
 });
 

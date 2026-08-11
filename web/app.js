@@ -170,6 +170,44 @@
         const banner = document.getElementById('operator-banner');
         if (banner && payload.viaOperator) banner.hidden = false;
 
+        // Deleted, and not yet erased. Only ever sent to an operator, so this
+        // draws whatever the server chose to disclose rather than deciding
+        // anything itself.
+        const deleted = payload.deleted;
+        const deletedBanner = document.getElementById('deleted-banner');
+        if (deletedBanner && deleted) {
+            // The reader's own locale, matching /manage. An ISO timestamp is
+            // the wrong thing to put in front of somebody deciding whether
+            // there is still time to restore an archive.
+            const shortDate = (value) => {
+                const when = new Date(value);
+                return Number.isNaN(when.getTime())
+                    ? ''
+                    : when.toLocaleDateString(undefined, {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                      });
+            };
+
+            const on = shortDate(deleted.purgeAfter);
+            const by = deleted.deletedBy;
+
+            // Assembled as text rather than markup, like everything else here,
+            // and every part of it is optional: an operator deletion carries a
+            // reason and an address, an owner's carries an address, and a row
+            // written by an older build may carry neither. A sentence with a
+            // hole in it is worse than a shorter sentence.
+            const detail = document.getElementById('deleted-detail');
+            const who = by ? ` by ${by}` : '';
+            const when = shortDate(deleted.deletedAt);
+            detail.textContent = on
+                ? `Deleted${when ? ` on ${when}` : ''}${who}. Everything in it is erased on ${on}.`
+                : `Deleted${when ? ` on ${when}` : ''}${who}.`;
+
+            deletedBanner.hidden = false;
+        }
+
         // Only owners get controls, and the API enforces that again on every
         // call -- this decides what to draw, not who is allowed to do it.
         const admin =

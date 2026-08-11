@@ -389,6 +389,30 @@ button:focus-visible {
     color: #6b4f14;
 }
 
+/* An archive that has been deleted and not yet erased.
+
+   Red where the operator banner is amber, and the difference is the point.
+   That one is true on every visit to somebody else's archive, so it has to be
+   readable without being alarming; this one is true almost never, and when it
+   is, something is on a timer. Sharing its styling would have made it the
+   second yellow box on the page and therefore the one nobody reads. */
+.deleted-banner {
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0 0 1.25rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid #b42318;
+    border-left-width: 5px;
+    border-radius: var(--radius);
+    background: #fef3f2;
+    color: #7a271a;
+}
+
+.deleted-banner a {
+    color: inherit;
+}
+
 /* Deleting an archive.
 
    Last on the settings page, behind a rule, and closed until somebody opens

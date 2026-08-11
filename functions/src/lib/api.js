@@ -39,9 +39,17 @@ export const hardened = (headers = {}) => ({ ...HARDENING, ...headers });
  * an archive they do not belong to. Two responses that differ only in that
  * flag must not share a validator, or an operator removed from a family's ACL
  * would keep revalidating into a cached body with the warning switched off.
+ *
+ * `deleted` is salted for a reason the flag above does not cover, and it is
+ * the sharper of the two: deleting an archive does not touch `posts.json` at
+ * all, so its blob ETag is unchanged and `viaOperator` was already true for an
+ * operator reading somebody else's site. Without this, an operator who had the
+ * page open before the deletion would revalidate into a 304 and be handed back
+ * the copy with no notice on it -- at the one moment the notice is the whole
+ * point.
  */
-export const contentEtag = (blobEtag, role, viaOperator = false) =>
-    `W/"${String(blobEtag ?? '').replace(/[^A-Za-z0-9]/g, '')}.${role}${viaOperator ? '.op' : ''}"`;
+export const contentEtag = (blobEtag, role, viaOperator = false, deleted = false) =>
+    `W/"${String(blobEtag ?? '').replace(/[^A-Za-z0-9]/g, '')}.${role}${viaOperator ? '.op' : ''}${deleted ? '.del' : ''}"`;
 
 // Browsers echo back exactly what was sent, but proxies have been known to drop
 // the weak marker, so neither side's punctuation is trusted.

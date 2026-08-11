@@ -2,6 +2,7 @@ import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
 import { createTableStore } from '../lib/tables.js';
 import { sitesBySlug } from '../lib/sites.js';
+import { deletionOf } from '../lib/deletion.js';
 import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
 
@@ -20,7 +21,15 @@ async function handler(request, context) {
     const result = await gate({ store: blobStore(), request, log: context });
     if (result.denied) return result.denied;
 
-    const etag = contentEtag(result.etag, result.role, result.viaOperator);
+    // Before the ETag rather than after, unlike the site row below, because
+    // the answer changes the validator -- see contentEtag. Only an operator
+    // can reach a deleted archive at all, so this read is skipped for every
+    // ordinary visitor, which is everyone.
+    const deleted = result.viaOperator
+        ? await deletionOf({ tables: tableStore(), slug: result.slug })
+        : null;
+
+    const etag = contentEtag(result.etag, result.role, result.viaOperator, Boolean(deleted));
 
     // `no-cache` rather than a lifetime. This file is the one thing here that
     // changes -- a letter arrives, an owner hides or edits one -- and a stale
@@ -53,6 +62,11 @@ async function handler(request, context) {
             // ETag salt above, because it is part of the body: a response with
             // the warning and one without must not share a validator.
             viaOperator: Boolean(result.viaOperator),
+            // Present only when this archive has been deleted and not yet
+            // erased, which only an operator can ever see. Null the rest of
+            // the time rather than absent, so the client has one shape to
+            // read and no reason to guess.
+            deleted,
             posts: presentPosts(result.posts, result.role)
         }
     };

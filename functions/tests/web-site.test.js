@@ -228,3 +228,61 @@ describe('operator access is stated on the page', () => {
         assert.equal(view.el('operator-banner').hidden, true);
     });
 });
+
+// A deleted archive still renders in full to an operator, because the operator
+// override resolves above the ACL that deletion removes. That access is
+// wanted -- somebody about to restore an archive needs to look at it first --
+// and it was completely silent, which is the part that was not.
+describe('a deleted archive says so', () => {
+    const loaded = (body) =>
+        archive({
+            answer: async (url) =>
+                url === '/.auth/me' ? signedIn('ops@pdayletters.com') : { status: 200, body }
+        });
+
+    const DELETED = {
+        slug: SLUG,
+        role: 'owner',
+        viaOperator: true,
+        deleted: {
+            deletedAt: '2026-08-11T20:56:41.257Z',
+            deletedBy: 'dad@example.com',
+            purgeAfter: '2026-09-10T20:56:41.257Z'
+        },
+        posts: []
+    };
+
+    test('names who deleted it and the date it is erased', async () => {
+        const view = await loaded(DELETED);
+
+        assert.equal(view.el('deleted-banner').hidden, false);
+        assert.match(view.text('deleted-detail'), /dad@example\.com/);
+        assert.match(view.text('deleted-detail'), /erased on /i);
+    });
+
+    test('and stays quiet on an archive nobody has deleted', async () => {
+        const view = await loaded({ slug: SLUG, role: 'owner', viaOperator: true, posts: [] });
+
+        assert.equal(view.el('deleted-banner').hidden, true);
+    });
+
+    test('and on one the API says nothing about', async () => {
+        // Every ordinary reader, who is never told about deletions at all --
+        // and, for that matter, could not be reading a deleted archive.
+        const view = await loaded({ slug: SLUG, role: 'reader', posts: [] });
+
+        assert.equal(view.el('deleted-banner').hidden, true);
+    });
+
+    test('a record with no address still forms a sentence', async () => {
+        // `deletedBy` and the dates are each optional in the row, and a
+        // sentence with a hole in it reads worse than a shorter one.
+        const view = await loaded({
+            ...DELETED,
+            deleted: { deletedAt: '', deletedBy: '', purgeAfter: '' }
+        });
+
+        assert.equal(view.el('deleted-banner').hidden, false);
+        assert.doesNotMatch(view.text('deleted-detail'), /undefined|NaN|Invalid/i);
+    });
+});
