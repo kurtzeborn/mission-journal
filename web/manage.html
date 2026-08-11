@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Deleted archives — P-Day Letters</title>
+    <title>P-Day Letters</title>
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="/styles.css">
 </head>
@@ -18,6 +18,15 @@
     about who it is for. Everything else on this site is written for a family;
     this is written for the one person who can undo a mistake, and pretending
     otherwise would only invite somebody to go looking for it.
+
+    Nothing below `#tooling` is shown until the API has confirmed the visitor
+    is an operator, and the title says nothing either. Static Web Apps roles
+    cannot express OPERATOR_EMAILS, so the route can only require
+    `authenticated` and the markup is served to any signed-in visitor. An
+    earlier version rendered the heading and the explanation to all of them --
+    including a line promising that nobody else could see the page, read by
+    exactly the people it was untrue for. A refused visitor now gets the same
+    answer as anyone who mistypes a URL.
 
     The list is ordinarily empty, which is the state the page is designed
     around: the common case is confirming that nothing is waiting.
@@ -34,31 +43,41 @@
     </header>
 
     <main class="wrap">
-        <h1>Deleted archives</h1>
+        <p id="loading" class="state">Loading&hellip;</p>
 
-        <p class="note">
-            Archives whose owners have deleted them. The letters are still here until the date
-            shown, and after that they are gone for good. Nobody but you can see this page, and
-            the family cannot restore an archive themselves.
-        </p>
+        <section id="missing" hidden>
+            <h1>Nothing here</h1>
+            <p class="note">There is no page at this address.</p>
+            <p><a class="button" href="/">Back to the letters</a></p>
+        </section>
 
-        <div id="state" class="state">Loading&hellip;</div>
+        <div id="tooling" hidden>
+            <h1>Deleted archives</h1>
 
-        <table id="deletions" class="deletions" hidden>
-            <thead>
-                <tr>
-                    <th scope="col">Archive</th>
-                    <th scope="col">Deleted</th>
-                    <th scope="col">By</th>
-                    <th scope="col">Reason</th>
-                    <th scope="col">Erased after</th>
-                    <th scope="col"><span class="visually-hidden">Restore</span></th>
-                </tr>
-            </thead>
-            <tbody id="rows"></tbody>
-        </table>
+            <p class="note">
+                Archives whose owners have deleted them. The letters are still here until the
+                date shown, and after that they are gone for good. An operator is the only
+                person who can put one back &mdash; the family cannot.
+            </p>
 
-        <p class="note" id="said" role="status" aria-live="polite"></p>
+            <div id="state" class="state" hidden></div>
+
+            <table id="deletions" class="deletions" hidden>
+                <thead>
+                    <tr>
+                        <th scope="col">Archive</th>
+                        <th scope="col">Deleted</th>
+                        <th scope="col">By</th>
+                        <th scope="col">Reason</th>
+                        <th scope="col">Erased after</th>
+                        <th scope="col"><span class="visually-hidden">Restore</span></th>
+                    </tr>
+                </thead>
+                <tbody id="rows"></tbody>
+            </table>
+
+            <p class="note" id="said" role="status" aria-live="polite"></p>
+        </div>
     </main>
 
     <script src="/manage.js"></script>

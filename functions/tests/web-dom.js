@@ -152,6 +152,9 @@ export function page({ html, path = '/', hash = '' }) {
     const sectionElements = Array.from({ length: sections }, () => new Element('section'));
 
     const document = {
+        // Taken from the markup rather than defaulted, so a test can assert
+        // what a page discloses before its script has decided who is asking.
+        title: source.match(/<title>([\s\S]*?)<\/title>/i)?.[1].trim() ?? '',
         getElementById(id) {
             if (!elements.has(id)) throw new Error(`no element with id "${id}"`);
             return elements.get(id);

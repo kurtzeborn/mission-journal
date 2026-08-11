@@ -14,6 +14,26 @@
     const state = $('state');
     const said = $('said');
 
+    // Nothing about this page is shown until the API has said the visitor is
+    // an operator -- not the heading, not the explanation, not the title. The
+    // markup is served to anyone signed in, because Static Web Apps roles
+    // cannot express OPERATOR_EMAILS and the route can only ask for
+    // `authenticated`, so this is the only place the distinction can be drawn
+    // in the browser.
+    const reveal = () => {
+        $('loading').hidden = true;
+        $('tooling').hidden = false;
+        document.title = 'Deleted archives \u2014 P-Day Letters';
+    };
+
+    // What a stranger sees, and what an operator sees if they mistype: the
+    // same nothing. The API answers 404 rather than 403 so the route is never
+    // confirmed, and it would be pointless for the page to confirm it instead.
+    const refuse = () => {
+        $('loading').hidden = true;
+        $('missing').hidden = false;
+    };
+
     const show = (message) => {
         state.textContent = message;
         state.hidden = false;
@@ -106,7 +126,11 @@
         try {
             response = await fetch('/api/manage/deletions', { cache: 'no-store' });
         } catch {
-            show('Could not load this page. Please try again.');
+            // Deliberately not `refuse()`. A dropped connection is not an
+            // answer about who the visitor is, and telling an operator the
+            // page does not exist because their train went into a tunnel
+            // would send them looking for the wrong problem.
+            $('loading').textContent = 'Could not load this page. Please try again.';
             return;
         }
 
@@ -115,12 +139,14 @@
             return;
         }
         if (!response.ok) {
-            show('Nothing here.');
+            refuse();
             return;
         }
 
         const body = await response.json();
         const deletions = Array.isArray(body.deletions) ? body.deletions : [];
+
+        reveal();
 
         // The ordinary state, and worth saying plainly rather than showing an
         // empty table: the point of the visit is usually to confirm that

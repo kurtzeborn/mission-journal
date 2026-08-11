@@ -105,24 +105,47 @@ describe('the ordinary state, which is nothing at all', () => {
 });
 
 describe('who the page tells nothing to', () => {
-    test('a signed-in visitor who is not an operator sees nothing here', async () => {
+    test('a signed-in visitor who is not an operator is shown a dead end', async () => {
         // The API answers 404 rather than 403 so the route is not confirmed,
         // and the page must not undo that by explaining what it would have
         // shown.
         const view = await manage({ answer: async () => ({ status: 404, body: '' }) });
 
-        assert.equal(view.text('state'), 'Nothing here.');
+        assert.equal(view.el('missing').hidden, false);
+        assert.equal(view.el('loading').hidden, true);
+    });
+
+    test('and is told nothing about what the page is for', async () => {
+        // The whole heading and explanation used to render for every signed-in
+        // visitor, including a line assuring them nobody else could see the
+        // page -- read only by the people it was untrue for. Found by opening
+        // the URL in a private window on an unrelated account.
+        const view = await manage({ answer: async () => ({ status: 404, body: '' }) });
+
+        assert.equal(view.el('tooling').hidden, true);
         assert.equal(view.el('deletions').hidden, true);
+        assert.doesNotMatch(view.context.document.title, /deleted archives/i);
+    });
+
+    test('an operator is shown all of it', async () => {
+        const view = await manage({ answer: listed(DELETIONS) });
+
+        assert.equal(view.el('tooling').hidden, false);
+        assert.equal(view.el('missing').hidden, true);
+        assert.match(view.context.document.title, /Deleted archives/);
     });
 
     test('and a server that cannot be reached is not mistaken for one', async () => {
+        // An offline operator must not be told the page does not exist, or
+        // they will go looking for the wrong problem.
         const view = await manage({
             answer: async () => {
                 throw new Error('offline');
             }
         });
 
-        assert.match(view.text('state'), /Could not load/i);
+        assert.match(view.text('loading'), /Could not load/i);
+        assert.equal(view.el('missing').hidden, true);
     });
 
     test('nobody signed in at all is sent to the chooser, not to a provider', async () => {
