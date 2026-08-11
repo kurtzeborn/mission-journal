@@ -10,12 +10,21 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { extractOriginal } from '../src/lib/extract.js';
-import { verifyEmbeddedDkim, createResolver, COVERAGE } from '../src/lib/dkim.js';
+import {
+    verifyEmbeddedDkim,
+    createResolver,
+    earliestSigningTime,
+    COVERAGE
+} from '../src/lib/dkim.js';
+
+const { dkimSign } = createRequire(import.meta.url)('mailauth/lib/dkim/sign');
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
 
@@ -49,6 +58,125 @@ test('an altered body fails before any key is fetched', async () => {
     assert.equal(result.signatures.length, 1);
     assert.equal(result.signatures[0].domain, 'missionary.org');
     assert.equal(result.signatures[0].alignedWithAuthor, true);
+});
+
+// --- the expiry rule -------------------------------------------------------
+
+// Signed here rather than captured. The defect these guard against only shows
+// itself once a signature is older than its own `x=`, and a capture that is
+// old enough today was not old enough on the day it was taken -- which is
+// exactly how it got past the suite the first time. Signing in the test means
+// the letter can be as stale as the question needs, forever.
+
+const SIGNED_ON = new Date('2026-08-03T16:00:00Z');
+const A_WEEK = 7 * 86400_000;
+
+async function forwardOfSignedLetter({ expires }) {
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+
+    const letter = [
+        'From: Elder Test <elder.test@missionary.org>',
+        'To: Family <family@example.com>',
+        'Subject: Week twelve',
+        'Date: Mon, 03 Aug 2026 09:00:00 -0700',
+        'Message-ID: <week-twelve@missionary.org>',
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        'It rained all week and we taught a family of five.',
+        ''
+    ].join('\r\n');
+
+    const { signatures } = await dkimSign(letter, {
+        canonicalization: 'relaxed/relaxed',
+        algorithm: 'rsa-sha256',
+        signTime: SIGNED_ON,
+        expires,
+        signatureData: [
+            {
+                signingDomain: 'missionary.org',
+                selector: 'google',
+                privateKey: privateKey.export({ type: 'pkcs8', format: 'pem' })
+            }
+        ]
+    });
+
+    // Wrapped the way a client forwards it, because that is the only shape
+    // the extractor will hand to the verifier.
+    const forward = [
+        'From: Mum <mum@example.com>',
+        'To: Archive <post@pdayletters.com>',
+        'Subject: Fwd: Week twelve',
+        'MIME-Version: 1.0',
+        'Content-Type: multipart/mixed; boundary="OUTER"',
+        '',
+        '--OUTER',
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        '---------- Forwarded message ---------',
+        '',
+        '--OUTER',
+        'Content-Type: message/rfc822',
+        'Content-Disposition: attachment; filename="letter.eml"',
+        '',
+        signatures + letter,
+        '--OUTER--',
+        ''
+    ].join('\r\n');
+
+    const key = publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
+    const resolver = async () => [[`v=DKIM1; k=rsa; p=${key}`]];
+
+    return verifyEmbeddedDkim(await extractOriginal(Buffer.from(forward, 'latin1')), { resolver });
+}
+
+test('a letter still verifies long after its signature expired', async () => {
+    // The whole promise of the archive. Google stamps `x=` about a week out,
+    // so a letter forwarded a month after it was written -- let alone the
+    // years this is built for -- is always past its expiry by the time anyone
+    // asks. Refusing it would mean the service verified letters only while
+    // they were too new for anyone to need it to.
+    const result = await forwardOfSignedLetter({ expires: new Date(SIGNED_ON.getTime() + A_WEEK) });
+
+    assert.equal(result.verified, true, `expected a pass, got ${result.reason}`);
+    assert.equal(result.reason, 'pass');
+    assert.equal(result.coverage, COVERAGE.body);
+    assert.equal(result.authorDomain, 'missionary.org');
+});
+
+test('a letter with no expiry at all is unaffected', async () => {
+    const result = await forwardOfSignedLetter({ expires: undefined });
+
+    assert.equal(result.verified, true, `expected a pass, got ${result.reason}`);
+    assert.equal(result.coverage, COVERAGE.body);
+});
+
+test('the clock is the earliest signature, not the latest', async () => {
+    // A forward carries the forwarder's signatures too, stamped when the
+    // forward was sent -- years after the letter. Taking the latest would put
+    // the clock back past the author's own expiry and lose the letter, which
+    // is the failure this whole rule exists to prevent.
+    const headers = [
+        'DKIM-Signature: v=1; a=rsa-sha256; d=relay.example; s=r1;',
+        ' t=1786000000; x=1786600000; b=aaa',
+        'DKIM-Signature: v=1; a=rsa-sha256; d=missionary.org; s=google; t=1754000000;',
+        ' x=1754604800; b=bbb',
+        'From: Elder Test <elder.test@missionary.org>',
+        '',
+        'body'
+    ].join('\r\n');
+
+    assert.deepEqual(earliestSigningTime(Buffer.from(headers)), new Date(1754000000 * 1000));
+});
+
+test('an unsigned message falls back to the epoch', async () => {
+    // Nothing to date it by, and no expiry can bite without a signature, so
+    // the value only has to be early enough never to be the reason for a
+    // refusal.
+    assert.deepEqual(
+        earliestSigningTime(Buffer.from('From: nobody@example.com\r\n\r\nhello')),
+        new Date(0)
+    );
 });
 
 // --- what requires the pristine captures -----------------------------------

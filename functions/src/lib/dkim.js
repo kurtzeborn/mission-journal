@@ -118,6 +118,52 @@ async function headerSignatureHolds(result, resolver) {
 }
 
 /**
+ * The moment the earliest signer signed, read off the `t=` tags.
+ *
+ * A DKIM signature may carry an expiry in `x=`, and Google sets one about a
+ * week out. Checked against the wall clock, every letter in an archive stops
+ * verifying a few days after it was sent -- which would quietly gut the one
+ * thing this service exists to do. It is a failure that arrives late and
+ * silently: the captures verified on the day they were taken, the tests that
+ * proved it went green, and the same tests began failing a week later with a
+ * body hash complaint that pointed nowhere near the real cause.
+ *
+ * The question worth asking of an archived letter is not "is this signature
+ * still valid today" but "was it valid when it was made", so the clock is set
+ * to the earliest signing time the message itself carries. That is early
+ * enough that no signature can be past its own expiry, because `x=` always
+ * follows the `t=` on the same signature. Taking the latest instead would put
+ * the clock at the moment of the *forward*, years after the letter, and lose
+ * the author's signature to the very expiry this is here to ignore.
+ *
+ * Two things make it safe. `t=` sits inside the signed header block, so moving
+ * it means forging the signature, which is the thing the key prevents. And
+ * what it gives up is replay protection -- an expired signature now verifies
+ * forever -- which is deliberate: a replay here is a letter the missionary
+ * really did sign, and accepting those is the entire point.
+ *
+ * @param {Uint8Array} bytes the embedded original
+ * @returns {Date} earliest `t=`, or the epoch when nothing is timestamped
+ */
+export function earliestSigningTime(bytes) {
+    const headerBlock = Buffer.from(bytes).toString('latin1').split(/\r?\n\r?\n/, 1)[0];
+
+    // Header values wrap onto indented continuation lines, and a DKIM
+    // signature is long enough that `t=` is usually on one of them.
+    const unfolded = headerBlock.replace(/\r?\n[ \t]+/g, ' ');
+
+    let earliest = null;
+    for (const line of unfolded.match(/^DKIM-Signature:.*$/gim) ?? []) {
+        const stamp = line.match(/[;\s]t=(\d+)/);
+        if (!stamp) continue;
+        const at = new Date(Number(stamp[1]) * 1000);
+        if (!earliest || at < earliest) earliest = at;
+    }
+
+    return earliest ?? new Date(0);
+}
+
+/**
  * @param {object} extracted result of extractOriginal()
  * @param {object} [options]
  * @param {function} [options.resolver] (name, rrtype) => Promise<records>
@@ -141,7 +187,10 @@ export async function verifyEmbeddedDkim(extracted, { resolver, trustedSealers }
 
     let outcome;
     try {
-        outcome = await dkimVerify(Buffer.from(extracted.embeddedBytes), { resolver: resolve });
+        outcome = await dkimVerify(Buffer.from(extracted.embeddedBytes), {
+            resolver: resolve,
+            curTime: earliestSigningTime(extracted.embeddedBytes)
+        });
     } catch (err) {
         // A malformed embedded message must not take down the ingest of a
         // letter we are otherwise willing to hold.
