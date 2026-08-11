@@ -32,7 +32,7 @@
 
 import { TABLES } from './tables.js';
 import { readAcl } from './acl.js';
-import { DELETION_RECORD } from './deletion.js';
+import { DELETION_RECORD, deletedAclPath } from './deletion.js';
 
 // Everything a deleted archive occupies. `inbox` is deliberately absent: it
 // holds the untouched original of every message, is aged out by a lifecycle
@@ -72,6 +72,16 @@ export async function eraseSite({ purge, store, tables, slug, now = () => new Da
             deletedAt: record.deletedAt,
             deletedBy: record.deletedBy
         });
+
+        // The one thing that does still have to go. Everything else under this
+        // prefix belongs to the family who are here now, but the grave holds
+        // the *previous* family's member list, and clearing the record below is
+        // the last moment anything knows it is there. Left alone it would
+        // outlive the archive it came from indefinitely, sitting in a stranger's
+        // config prefix -- exactly the surviving artifact deletion.js promises
+        // the day-30 walk will never leave behind.
+        await store.deleteBlob('config', deletedAclPath(slug));
+
         await tables.deleteEntity(TABLES.deletions, slug, DELETION_RECORD);
         return { slug, outcome: 'recreated' };
     }

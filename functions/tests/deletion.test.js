@@ -128,7 +128,24 @@ describe('what is deliberately still there', () => {
         const store = await seeded();
         await remove(store);
 
-        assert.deepEqual(store.json('config', `${SLUG}/deleted-acl.json`), { members: MEMBERS });
+        assert.deepEqual(store.json('config', `${SLUG}/deleted-acl.json`), {
+            slug: SLUG,
+            members: MEMBERS
+        });
+    });
+
+    test('kept verbatim, not re-rendered from the members alone', async () => {
+        // readAcl returns only the members array, so building the copy from
+        // its output drops everything else acl.json carries -- `slug` today,
+        // and whatever gets added to the file later. A restore that silently
+        // rewrites the one file the whole service authorizes against is the
+        // format drift memory-store.js was taught to catch.
+        const store = await seeded();
+        const before = store.blobs.get(`config/${SLUG}/acl.json`).bytes;
+
+        await remove(store);
+
+        assert.deepEqual(store.blobs.get(`config/${SLUG}/deleted-acl.json`).bytes, before);
     });
 });
 
@@ -193,6 +210,16 @@ describe('restoring it', () => {
 
         assert.equal(await resolveRole({ store, slug: SLUG, principal: { email: MUM } }), ROLE.owner);
         assert.equal(await resolveRole({ store, slug: SLUG, principal: { email: GRAN } }), ROLE.reader);
+    });
+
+    test('puts back the same bytes that were taken away', async () => {
+        const store = await seeded();
+        const before = store.blobs.get(`config/${SLUG}/acl.json`).bytes;
+
+        await remove(store);
+        await restore(store);
+
+        assert.deepEqual(store.blobs.get(`config/${SLUG}/acl.json`).bytes, before);
     });
 
     test('and puts it back on their lists', async () => {

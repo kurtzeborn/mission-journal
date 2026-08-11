@@ -101,12 +101,18 @@ export async function deleteSite({
     const at = now();
     const purgeAfter = new Date(at.getTime() + PURGE_DAYS * 86400_000);
 
-    await store.writeBlob(
-        'config',
-        gravePath(slug),
-        Buffer.from(JSON.stringify({ members: acl }, null, 2)),
-        { contentType: 'application/json' }
-    );
+    // Copied byte for byte rather than re-serialised from what readAcl
+    // returned, so that restoring puts back exactly the file that was taken
+    // away. readAcl deliberately yields only the members array, and acl.json
+    // carries more than that -- rebuilding the file from its output would
+    // quietly drop the rest. That is the same two-way format drift between the
+    // real file and a rebuilt one that memory-store.js still carries a comment
+    // about, and it survived a green suite the last time.
+    const original = await store.readBlob('config', `${slug}/acl.json`);
+
+    await store.writeBlob('config', gravePath(slug), Buffer.from(original.bytes), {
+        contentType: 'application/json'
+    });
 
     await tables.upsertEntity(TABLES.deletions, {
         partitionKey: slug,
@@ -167,10 +173,12 @@ export async function restoreSite({ store, tables, slug, by, now = () => new Dat
         return { error: 'slug in use' };
     }
 
-    const acl = JSON.parse(grave.bytes.toString('utf8'));
+    const acl = JSON.parse(Buffer.from(grave.bytes).toString('utf8'));
     const members = acl?.members ?? [];
 
-    await store.writeBlob('config', `${slug}/acl.json`, Buffer.from(JSON.stringify(acl, null, 2)), {
+    // The grave is the original file, so this is a copy back rather than a
+    // re-render. See the note where it was written.
+    await store.writeBlob('config', `${slug}/acl.json`, Buffer.from(grave.bytes), {
         contentType: 'application/json'
     });
 

@@ -256,6 +256,18 @@ describe('the slug that came back to life', () => {
 
         assert.equal(await world.store.getEntity(TABLES.deletions, SLUG, 'record'), null);
     });
+
+    test('but the old family\u2019s member list does not stay behind', async () => {
+        // The one thing here that belongs to the family who left. Cancelling
+        // the appointment is the last moment anything knows the grave exists,
+        // so leaving it would strand a member list under a slug that now
+        // belongs to strangers -- for good.
+        const world = await reoccupied();
+
+        await erase(world, DAY_30);
+
+        assert.equal(await world.store.readBlob('config', `${SLUG}/deleted-acl.json`), null);
+    });
 });
 
 describe('the daily run', () => {

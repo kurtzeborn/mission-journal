@@ -800,14 +800,22 @@ resource purgeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01
   location: location
 }
 
-// Storage Blob Data Contributor's permissions verbatim, plus permanentDelete.
+// Storage Blob Data Contributor's permissions verbatim, plus the two rights a
+// purge needs: deleteBlobVersion and permanentDelete.
+//
+// Both, and they are not the same right. `blobs/delete` only demotes a current
+// version to history, which is what versioning is for and the opposite of what
+// a purge is asked to do. Removing a named version needs deleteBlobVersion,
+// and removing it beyond soft-delete recovery needs permanentDelete. Missing
+// the first is a 403 that arrives only after the current blobs are already
+// gone, which is exactly how it was found.
 //
 // The definition itself is not declared here. Role definitions live at
 // subscription scope, and this is a resource-group deployment, so declaring it
 // would quietly create a second, resource-group-scoped role beside the real
-// one. It is version controlled as infra/purge-role.json and created with:
+// one. It is version controlled as infra/purge-role.json and updated with:
 //
-//   az role definition create --role-definition @infra/purge-role.json
+//   az role definition update --role-definition @infra/purge-role.json
 //
 var purgeRoleId = 'f9e960ce-244b-4c38-af79-06e7bdafc5b4'
 
