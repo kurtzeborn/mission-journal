@@ -36,13 +36,29 @@ The organising principle: **a task nobody is reminded of is a task that fails si
 
 ### Automating the reminder
 
-The vault should be the one place that knows when anything expires. Key Vault raises `SecretNearExpiry` through Event Grid 30 days ahead; routing that to a notification turns the whole table above into something that announces itself.
+**Shipped 2026-08-11.** The vault is the one place that knows when anything expires, and it now says so out loud.
 
-Three things already measured that shape what is worth building:
+- **Event Grid system topic `mj-evt-utfe5uagkbz7q`** on the Key Vault, subscribing to `Microsoft.KeyVault.SecretNearExpiry` and `Microsoft.KeyVault.SecretExpired` only.
+- **Destination is `MonitorAlert`, Sev2**, firing action group `mj-ag-utfe5uagkbz7q`, which mails `scott@kurtzeborn.org`. Delivery confirmed with `az monitor action-group test-notifications create`.
+- **All of it is in `infra/main.bicep`**, gated on the `alertEmail` parameter — empty creates none of it, which is the right default for a scratch deployment.
 
-- **Key Vault serves an expired secret quite happily.** `exp` is advisory for secrets and not enforced on read, so a date set early is a warning rather than a scheduled outage.
-- **Key Vault cannot renew any of these.** Auto-renewal is a certificates-only feature for integrated CAs. Real rotation would be a Function reacting to the near-expiry event and calling Graph or the Cloudflare API — justifiable across a set, hard to justify for one secret every two years.
-- **Because `exp` is advisory, credentials that do not live in Key Vault can still be tracked there.** A secret holding nothing but a note, carrying the real expiry date of the GitHub-held deploy token, would surface in the same alert as everything else. That is a trick rather than a design, and it earns its place only if the alternative is a calendar entry nobody shares.
+The alert arrives **30 days ahead**, names the vault and the secret, and points here. The table above is what turns that into an action: it says what the credential does and where it is reissued, which the event does not.
+
+**The notification deliberately does not go through our own mailer.** Every message this service sends uses `cloudflare-api-token` — one of the secrets being watched. An alert about that token expiring, sent with that token, would fail exactly when it mattered. Azure Monitor's email path shares nothing with the system it reports on.
+
+Three things worth remembering about the mechanism:
+
+- **`MonitorAlert` needs `eventDeliverySchema: 'CloudEventSchemaV1_0'`,** which is not the default. Without it the deployment fails naming the schema but not the resource that wanted it. `Microsoft.EventGrid` must also be registered on the subscription first.
+- **`az eventgrid system-topic event-subscription show` cannot read this subscription** — the CLI pins an API version older than the feature and refuses. Verify with `az resource show --api-version 2025-02-15` instead.
+- **`SecretNewVersionCreated` is deliberately not subscribed.** The vault emits it on every write, so including it would make a rotation — the fix — raise an alert of its own.
+
+### What is still not covered
+
+**Key Vault cannot renew any of these.** Auto-renewal is a certificates-only feature for integrated CAs, so the alert is the entire mechanism — every rotation below is done by hand. Real automation would be a Function reacting to the near-expiry event and calling Graph or the Cloudflare API, which is justifiable across a set and hard to justify for one secret every two years.
+
+**Key Vault also serves an expired secret quite happily.** `exp` is advisory for secrets and is not enforced on read, so a date set early is a warning rather than a scheduled outage — which is what makes it safe to set these honestly.
+
+Three of the credentials in the table live outside Key Vault, so none of this sees them: both GitHub Actions secrets and the registrar. Because `exp` is advisory, a secret holding nothing but a note could carry the GitHub deploy token's real date and surface in the same alert. That is a trick rather than a design, and it earns its place only if the alternative is a calendar entry nobody shares — revisit it during the [alignment pass](#the-alignment-goal), when the whole set is being handled at once anyway.
 
 ---
 

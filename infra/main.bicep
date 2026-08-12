@@ -45,6 +45,23 @@ param inboxRetentionDays int = 30
 @description('Days before a staged export archive is deleted by lifecycle policy.')
 param exportRetentionDays int = 7
 
+@description('''
+Where operational alerts are mailed. Empty means no action group and no Event
+Grid subscription are created at all, which is the right default for a scratch
+deployment -- an alert nobody reads is worse than no alert, because it looks
+like coverage.
+
+**This address is deliberately reached by Azure Monitor and not by our own
+mailer.** Every other message this service sends goes out through Cloudflare,
+using the API token in `cloudflare-api-token` -- which is one of the very
+secrets being watched here. Wiring the near-expiry warning through the mailer
+would mean the alert that the sending credential is about to expire is itself
+sent with the sending credential, and the first alert to matter would be the
+first one that could not be delivered. Monitor's email path shares nothing with
+the system it is reporting on.
+''')
+param alertEmail string = ''
+
 // Client IDs are public identifiers -- they travel in every authorization
 // request and appear in the browser's address bar -- so they belong in source
 // where a reader can see which registrations the site actually trusts. The
@@ -439,6 +456,104 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     softDeleteRetentionInDays: 7
     enablePurgeProtection: true
     publicNetworkAccess: 'Enabled'
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Credential expiry alerting
+//
+// Every credential this service holds fails the same way: not with an error,
+// but with a capability quietly disappearing. An expired Cloudflare token
+// makes outbound mail return `10101 unauthorized`, which the mailer logs and
+// swallows, so the first visible evidence is a pending site expiring unoffered
+// -- roughly sixty days after the cause, by which time nothing links the two.
+// An expired Entra secret ends Microsoft sign-in. Neither raises anything.
+//
+// Key Vault already knows the dates: `exp` is set on the secrets that have
+// one, and the vault emits `SecretNearExpiry` thirty days ahead. Nothing was
+// listening. These three resources are the listener.
+//
+// `exp` is advisory for secrets and is NOT enforced on read -- the vault will
+// serve an expired secret quite happily. That is what makes the date safe to
+// set honestly rather than defensively: it buys a warning and can never cause
+// an outage of its own.
+//
+// Key Vault cannot renew any of these either. Auto-renewal is a
+// certificates-only feature for integrated CAs, so the alert is the whole
+// mechanism -- there is no self-healing path to build toward here.
+// ---------------------------------------------------------------------------
+
+resource alertGroup 'Microsoft.Insights/actionGroups@2024-10-01-preview' = if (!empty(alertEmail)) {
+  name: '${namePrefix}-ag-${suffix}'
+  // Action groups are global; `location` is not the resource group's.
+  location: 'Global'
+  properties: {
+    // Twelve characters, hard limit. It prefixes the subject line.
+    groupShortName: 'pdayletters'
+    enabled: true
+    emailReceivers: [
+      {
+        name: 'operator'
+        emailAddress: alertEmail
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
+resource vaultEvents 'Microsoft.EventGrid/systemTopics@2025-02-15' = if (!empty(alertEmail)) {
+  name: '${namePrefix}-evt-${suffix}'
+  location: location
+  properties: {
+    source: keyVault.id
+    topicType: 'Microsoft.KeyVault.vaults'
+  }
+}
+
+// The `MonitorAlert` destination is what keeps this codeless. The obvious
+// alternative -- Event Grid to a Function, Function sends mail -- would have
+// put the notification back inside the system it is watching, and would have
+// meant the alerting path could break in exactly the ways it exists to report.
+//
+// Sev2 rather than Sev3: thirty days is enough warning that this is not
+// urgent, but every one of these is a scheduled outage if it is ignored, and
+// Sev3 is where advisory noise goes to be filtered.
+resource secretExpiryAlert 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2025-02-15' = if (!empty(alertEmail)) {
+  parent: vaultEvents
+  name: 'secret-expiry'
+  properties: {
+    // Required, and not the default. A `MonitorAlert` destination accepts
+    // CloudEvents 1.0 and nothing else; leaving this unset deploys the older
+    // Event Grid schema and fails the whole template with a message that names
+    // the schema but not the resource asking for it.
+    eventDeliverySchema: 'CloudEventSchemaV1_0'
+    filter: {
+      // Only the two that mean something. The vault also emits
+      // `SecretNewVersionCreated` on every write, which would turn a rotation
+      // -- the fix -- into an alert of its own.
+      includedEventTypes: [
+        'Microsoft.KeyVault.SecretNearExpiry'
+        'Microsoft.KeyVault.SecretExpired'
+      ]
+    }
+    destination: {
+      endpointType: 'MonitorAlert'
+      properties: {
+        severity: 'Sev2'
+        description: 'A Key Vault secret is near expiry or has expired. See docs/todos.md for what each credential does and where it is rotated.'
+        actionGroups: [
+          alertGroup.id
+        ]
+      }
+    }
+    // Four tries over two hours, then stop. A destination that is an action
+    // group either accepts immediately or is having an outage, and a
+    // near-expiry event has thirty days of slack -- the next daily emission
+    // covers a missed one.
+    retryPolicy: {
+      maxDeliveryAttempts: 4
+      eventTimeToLiveInMinutes: 120
+    }
   }
 }
 

@@ -41,3 +41,10 @@ param mailAllowlist = '*'
 // of the service makes, and every address on it is somebody who can read any
 // family's mail.
 param operatorEmails = 'scott@kurtzeborn.org'
+
+// Where credential-expiry alerts go. The same address as above, but for an
+// unrelated reason -- this one is a maintenance contact, not a privilege, and
+// nothing about being alerted grants any access. They are separate parameters
+// so that handing operations to somebody who is not an operator, or the
+// reverse, does not require touching the other.
+param alertEmail = 'scott@kurtzeborn.org'
