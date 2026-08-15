@@ -43,19 +43,30 @@ window.Reader = (function () {
     // caller supplied.
     const API_PREFIX = '/api/photo/';
 
+    // The stored src carries the photo's id and size. Both are needed again
+    // later -- the id to ask for the large rendition when somebody clicks,
+    // the size to know which one is on screen -- so the parse lives here
+    // rather than being repeated at each site.
+    function photoRefOf(raw) {
+        if (!raw || !raw.startsWith(API_PREFIX)) return null;
+
+        const parts = raw.slice(API_PREFIX.length).split('/');
+        if (parts.length !== 3) return null;
+
+        return {
+            raw,
+            id: decodeURIComponent(parts[1]),
+            size: parts[2].replace(/\.webp$/, '')
+        };
+    }
+
     function repointPhotos(root, photoSrc) {
         for (const img of root.querySelectorAll('img')) {
             // getAttribute, not .src: the property resolves against the
             // document, so on file:// it would already have been mangled into
             // an absolute path that no longer starts with the prefix.
-            const raw = img.getAttribute('src') ?? '';
-            if (!raw.startsWith(API_PREFIX)) continue;
-
-            const parts = raw.slice(API_PREFIX.length).split('/');
-            if (parts.length !== 3) continue;
-
-            const photoId = decodeURIComponent(parts[1]);
-            const size = parts[2].replace(/\.webp$/, '');
+            const ref = photoRefOf(img.getAttribute('src'));
+            if (!ref) continue;
 
             // Kept so an owner's edit can put back exactly what was stored.
             // On the website the repointed URL happens to be identical to the
@@ -64,8 +75,8 @@ window.Reader = (function () {
             // anything else, because the server's sanitizer drops an <img>
             // whose src it does not recognize. That is how an edit deletes
             // every picture in a letter, and it is not worth risking twice.
-            img.setAttribute('data-photo', raw);
-            img.setAttribute('src', photoSrc(photoId, size));
+            img.setAttribute('data-photo', ref.raw);
+            img.setAttribute('src', photoSrc(ref.id, ref.size));
 
             // Set here rather than in the stored markup, because the stored
             // markup for letters already in the archive would not get it
@@ -75,6 +86,125 @@ window.Reader = (function () {
             // single word. Images near the top still load immediately.
             img.setAttribute('loading', 'lazy');
             img.setAttribute('decoding', 'async');
+        }
+    }
+
+    // --- the lightbox -----------------------------------------------------
+    //
+    // One dialog for the whole page, created the first time somebody asks for
+    // it. Both the pictures inside a letter and the album beneath it open it,
+    // which is the point: before this, an inline photo could not be enlarged
+    // at all and an album thumbnail navigated away from the archive to a bare
+    // image URL, leaving the reader to find their way back.
+    //
+    // A real <dialog> rather than a div pretending to be one. It gets focus
+    // trapping, Escape, inertness of the page behind it and a backdrop for
+    // free, all of which are tedious and easy to get subtly wrong by hand, and
+    // none of which needs a server -- so it works from file:// like the rest.
+    let lightbox = null;
+
+    function ensureLightbox() {
+        if (lightbox) return lightbox;
+
+        const dialog = document.createElement('dialog');
+        dialog.className = 'lightbox';
+
+        const image = document.createElement('img');
+        image.className = 'lightbox__image';
+        image.alt = '';
+
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'lightbox__close';
+        // A label, not an icon glyph: the archive renders from a folder with
+        // no icon font, and a bare X is invisible to a screen reader anyway.
+        close.textContent = 'Close';
+
+        close.addEventListener('click', () => dialog.close());
+
+        // Belt and braces over the dialog element's own Escape handling.
+        // Escape is the one way out of a full-screen photo that everybody
+        // already knows, and the cost of not relying on the browser for it is
+        // two lines. If the browser handles it too, this closes an already
+        // closing dialog, which is a no-op.
+        dialog.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') dialog.close();
+        });
+
+        // Clicking away from the picture closes it, which is what every other
+        // image viewer does. The test is against the dialog itself rather
+        // than a backdrop element, because the ::backdrop pseudo-element
+        // cannot receive a listener -- a click on the dark area is reported
+        // as a click on the dialog box.
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) dialog.close();
+        });
+
+        // Dropping the src on close stops a large photo from sitting in
+        // memory, and stops the previous picture from flashing up for a frame
+        // the next time the dialog opens.
+        dialog.addEventListener('close', () => {
+            image.removeAttribute('src');
+        });
+
+        dialog.append(image, close);
+        document.body.append(dialog);
+
+        lightbox = { dialog, image };
+        return lightbox;
+    }
+
+    function openLightbox(src, alt) {
+        const view = ensureLightbox();
+        view.image.src = src;
+        view.image.alt = alt ?? '';
+        view.dialog.showModal();
+    }
+
+    // --- inline photos ----------------------------------------------------
+    //
+    // A photo the missionary pasted into the letter arrives as a plain <img>
+    // and, left alone, renders full width: it breaks the column, pushes the
+    // paragraphs apart, and says nothing about being clickable. Wrapping it
+    // in a button gives it three things it cannot have on its own -- a float
+    // the text can wrap around, a visible "View larger" affordance, and
+    // keyboard access, since an <img> is not focusable and a click handler on
+    // one is reachable by mouse only.
+    //
+    // The wrapper is presentation, so it is added here rather than stored.
+    // Nothing that goes back to the server ever sees it: `open()` strips it
+    // before the owner starts editing, and `markup()` strips it again from
+    // the copy it sends, because a save that shipped these buttons into the
+    // stored HTML would have them sanitized away on the round trip and take
+    // the photos with them.
+    const PHOTO_FRAME = 'photo';
+
+    function decoratePhotos(root, photoSrc) {
+        for (const img of root.querySelectorAll('img[data-photo]')) {
+            if (img.parentElement?.classList.contains(PHOTO_FRAME)) continue;
+
+            const ref = photoRefOf(img.getAttribute('data-photo'));
+            if (!ref) continue;
+
+            const frame = document.createElement('button');
+            frame.type = 'button';
+            frame.className = PHOTO_FRAME;
+            frame.dataset.large = photoSrc(ref.id, 'large');
+
+            const hint = document.createElement('span');
+            hint.className = 'photo__hint';
+            hint.textContent = 'View larger';
+
+            img.replaceWith(frame);
+            frame.append(img, hint);
+        }
+    }
+
+    function undecoratePhotos(root) {
+        for (const frame of root.querySelectorAll(`.${PHOTO_FRAME}`)) {
+            const img = frame.querySelector('img');
+            if (img) frame.replaceWith(img);
+            else frame.remove();
         }
     }
 
@@ -89,6 +219,7 @@ window.Reader = (function () {
             // here would only give a second, weaker opinion.
             body.innerHTML = post.bodyHtml;
             repointPhotos(body, photoSrc);
+            decoratePhotos(body, photoSrc);
         } else {
             // A letter that never rendered still has its plain text. Set as
             // text, so it is escaped by the DOM rather than by us.
@@ -100,6 +231,19 @@ window.Reader = (function () {
         const body = document.createElement('div');
         body.className = 'post__body';
         fillBody(body, post, photoSrc);
+
+        // Delegated, so it survives the body being refilled on cancel.
+        // Editing takes precedence: while the letter is open for editing a
+        // click on a picture selects it so it can be deleted, and popping a
+        // lightbox over the top of that would make the photo impossible to
+        // remove.
+        body.addEventListener('click', (event) => {
+            if (body.getAttribute('contenteditable') === 'true') return;
+            const frame = event.target.closest?.(`.${PHOTO_FRAME}`);
+            if (!frame) return;
+            openLightbox(frame.dataset.large, frame.querySelector('img')?.alt ?? '');
+        });
+
         return body;
     }
 
@@ -134,12 +278,52 @@ window.Reader = (function () {
             item.append(link);
             album.append(item);
         }
+
+        // The href stays real -- it is what "open image in new tab" and a
+        // JavaScript-less browser need -- but the ordinary click is taken over
+        // by the lightbox, so a reader who wants a closer look at one photo
+        // does not lose the letter to get it.
+        album.addEventListener('click', (event) => {
+            const link = event.target.closest?.('a');
+            if (!link || !album.contains(link)) return;
+            event.preventDefault();
+            openLightbox(link.href, '');
+        });
+
         return album;
+    }
+
+    // --- one letter -------------------------------------------------------
+    //
+    // Every letter is a disclosure: a heading that is also a button, and a
+    // panel underneath it. Only the newest is open when the page loads.
+    //
+    // The archive this was built for runs to two dozen letters of a thousand
+    // words each, and rendered flat it is a single unbroken column several
+    // metres long -- you cannot see what is in it, and you cannot get to
+    // October without scrolling past September. Collapsed, the whole mission
+    // fits on one screen as a list of dates and subjects, which is the view
+    // people actually asked for.
+    //
+    // Built from a real <button> and `hidden` rather than a <details>, for two
+    // reasons. Search has to be able to open a letter from the outside, and
+    // has to be able to count what is inside a closed one -- content in a
+    // closed <details> is present but its layout is not, so scrolling to a hit
+    // inside one lands in the wrong place. And the summary line wants the date
+    // and a photo count next to the subject, which is fussier than a <summary>
+    // is comfortable holding.
+    function setExpanded(view, open) {
+        view.item.classList.toggle('post--open', open);
+        view.toggle.setAttribute('aria-expanded', String(open));
+        view.panel.hidden = !open;
     }
 
     function renderPost(post, photoSrc, admin) {
         const item = document.createElement('li');
         item.className = 'post';
+        // Read back by search, which finds a mark deep inside a letter and has
+        // to get from there to the view that can open it.
+        item.dataset.post = post.id;
 
         // Owners see held letters; readers never receive them at all. The badge
         // exists so an owner can tell at a glance which is which.
@@ -150,30 +334,83 @@ window.Reader = (function () {
             item.append(badge);
         }
 
-        const date = document.createElement('p');
+        const panel = document.createElement('div');
+        panel.className = 'post__panel';
+        // Ids have to be unique and they have to survive being written into an
+        // attribute. Post ids are dates plus a short hash, so they already are.
+        panel.id = `panel-${post.id}`;
+        panel.hidden = true;
+
+        // The heading wraps the button rather than the other way round: a
+        // <button> may only contain phrasing content, so an <h2> inside one is
+        // invalid, and screen readers navigating by heading would lose the
+        // letters entirely.
+        const subject = document.createElement('h2');
+        subject.className = 'post__subject';
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'post__toggle';
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-controls', panel.id);
+
+        const date = document.createElement('span');
         date.className = 'post__date';
         date.textContent = formatDate(post.originalDate);
 
-        const subject = document.createElement('h2');
-        subject.className = 'post__subject';
-        subject.textContent = post.subject || 'Untitled';
+        const title = document.createElement('span');
+        title.className = 'post__title';
+        title.textContent = post.subject || 'Untitled';
+
+        const meta = document.createElement('span');
+        meta.className = 'post__meta';
+
+        const photoCount = (post.photos ?? []).length;
+        if (photoCount) {
+            const photos = document.createElement('span');
+            photos.className = 'post__count';
+            photos.textContent = photoCount === 1 ? '1 photo' : `${photoCount} photos`;
+            meta.append(photos);
+        }
+
+        // Filled in by search, emptied when the box is cleared. It lives in
+        // the summary line because the question a reader has while scanning a
+        // filtered list is "which of these has what I asked for, and how
+        // much", and that has to be answerable without opening anything.
+        const hits = document.createElement('span');
+        hits.className = 'post__hits';
+        hits.hidden = true;
+        meta.append(hits);
+
+        toggle.append(date, title, meta);
+        subject.append(toggle);
 
         const body = renderBody(post, photoSrc);
-        item.append(date, subject, body);
+        panel.append(body);
 
         const album = renderAlbum(post, photoSrc);
-        if (album) item.append(album);
+        if (album) panel.append(album);
 
         if (post.linkedPhotoServices?.length) {
             const note = document.createElement('p');
             note.className = 'note';
             note.textContent = 'This letter links to a shared photo album.';
-            item.append(note);
+            panel.append(note);
         }
 
-        if (admin) item.append(renderAdmin(post, admin, { subject, body, photoSrc }));
+        // Assembled before the owner controls are built, because those insert
+        // the subject field next to the heading and `insertAdjacentElement`
+        // needs the heading to already have a parent to insert alongside.
+        item.append(subject, panel);
 
-        return item;
+        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc }));
+
+        const view = { id: post.id, item, toggle, panel, body, title, hits };
+        toggle.addEventListener('click', () => {
+            setExpanded(view, toggle.getAttribute('aria-expanded') !== 'true');
+        });
+
+        return view;
     }
 
     // The only formatting on offer. Each produces a tag the sanitizer already
@@ -249,6 +486,15 @@ window.Reader = (function () {
 
         const open = () => {
             field.value = post.subject ?? '';
+
+            // Take the presentation off before handing the letter over. The
+            // photo frames are buttons, which behave badly inside an editable
+            // region, and the search marks are not the owner's words -- if
+            // either were left in place the owner would be editing something
+            // the archive does not actually contain.
+            undecoratePhotos(body);
+            clearMarks(body);
+
             body.setAttribute('contenteditable', 'true');
             body.setAttribute('role', 'textbox');
             body.setAttribute('aria-multiline', 'true');
@@ -290,6 +536,15 @@ window.Reader = (function () {
         // leaves the page exactly as it was.
         const markup = () => {
             const scratch = body.cloneNode(true);
+
+            // Belt and braces. `open()` has already taken both of these out of
+            // the live body, but this is the one function whose output is
+            // written to storage, and a frame or a mark that reached the
+            // server would be stripped by the sanitizer on the way in -- which
+            // for a frame means the photo inside it goes too.
+            undecoratePhotos(scratch);
+            clearMarks(scratch);
+
             for (const img of scratch.querySelectorAll('img[data-photo]')) {
                 img.setAttribute('src', img.getAttribute('data-photo'));
                 img.removeAttribute('data-photo');
@@ -380,11 +635,112 @@ window.Reader = (function () {
         return scratch.content.textContent ?? '';
     }
 
+    // The resting state of the page: the newest letter open, everything else
+    // shut. Applied on load and again whenever the search box is emptied, so
+    // clearing a search puts the page back where it started rather than
+    // leaving every letter the reader happened to visit hanging open.
+    function collapseToNewest(views) {
+        let first = true;
+        for (const view of views.values()) {
+            setExpanded(view, first);
+            first = false;
+        }
+    }
+
+    // --- marking the words themselves -------------------------------------
+    //
+    // MiniSearch answers "which letters" and stops there. That was the whole
+    // of search until now, and it left the reader who asked for a cousin's
+    // name looking at four unopened letters of a thousand words each with no
+    // idea where in them the name appears. These two functions add and remove
+    // the <mark> elements that answer "where".
+    //
+    // Marking is done over the rendered DOM rather than by rebuilding the body
+    // from bodyHtml with the matches wrapped, because the body may be carrying
+    // an owner's unsaved edit and because a string replace over markup would
+    // happily mark a word inside an attribute.
+
+    // Only marks exact matches, and only prefixes of them. MiniSearch's fuzzy
+    // matching can put a letter in the results on a near miss -- which is
+    // wanted, place names are misspelled constantly -- and that letter will
+    // then show as a result with nothing marked inside it. That is the honest
+    // outcome: pretending to know which word was the near miss would mark the
+    // wrong one.
+    function termsPattern(query) {
+        const terms = query
+            .split(/[^\p{L}\p{N}']+/u)
+            // One-character terms match somewhere in every letter ever
+            // written, and marking them makes the page unreadable rather than
+            // searchable.
+            .filter((term) => term.length >= 2)
+            .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+
+        if (!terms.length) return null;
+
+        // Trailing word characters are swept in so a search for "guat" marks
+        // the whole of "Guatemala", matching what prefix search just did when
+        // it decided this letter was a result.
+        return new RegExp(`(?:${terms.join('|')})[\\p{L}\\p{N}]*`, 'giu');
+    }
+
+    function markMatches(root, pattern) {
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const targets = [];
+
+        // Collected first, replaced second. Replacing a text node while the
+        // walker is standing on it invalidates the walk, and the replacement
+        // contains text nodes that would then be walked into and marked again.
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+            // The photo frames carry a "View larger" label that is ours, not
+            // the missionary's. Marking it would put a highlight on every
+            // picture in the archive the moment somebody searched for "view".
+            if (node.parentElement?.closest('.photo__hint')) continue;
+
+            pattern.lastIndex = 0;
+            if (pattern.test(node.nodeValue)) targets.push(node);
+        }
+
+        const marks = [];
+        for (const text of targets) {
+            const value = text.nodeValue;
+            const parts = document.createDocumentFragment();
+            let cursor = 0;
+
+            pattern.lastIndex = 0;
+            for (let match = pattern.exec(value); match; match = pattern.exec(value)) {
+                if (match.index > cursor) parts.append(value.slice(cursor, match.index));
+
+                const mark = document.createElement('mark');
+                mark.className = 'hit';
+                mark.textContent = match[0];
+                parts.append(mark);
+                marks.push(mark);
+
+                cursor = match.index + match[0].length;
+            }
+
+            if (cursor < value.length) parts.append(value.slice(cursor));
+            text.replaceWith(parts);
+        }
+
+        return marks;
+    }
+
+    function clearMarks(root) {
+        const marks = root.querySelectorAll('mark.hit');
+        for (const mark of marks) mark.replaceWith(...mark.childNodes);
+
+        // Marking splits one text node into three; clearing puts three back
+        // where one was. Left unmerged, every keystroke fragments the letter a
+        // little further and the next search has to walk the wreckage.
+        if (marks.length) root.normalize();
+    }
+
     // Search runs entirely in the browser over the payload already in memory.
     // Nothing is sent back, which means a half-typed search for a grandchild's
     // name never leaves the device and there is no query log to protect. It is
     // also what lets the downloaded copy search at all, with no backend.
-    function setUpSearch(posts, nodes, elements) {
+    function setUpSearch(posts, views, elements) {
         const { searchForm, searchInput, searchCount } = elements;
         if (!searchForm || !searchInput) return;
 
@@ -401,12 +757,81 @@ window.Reader = (function () {
             }))
         );
 
+        // Built here rather than in the two page templates that host this
+        // file. The site and the downloaded archive each carry their own copy
+        // of the search form, and anything added to one has to be added by
+        // hand to the other; making it here means there is one of it.
+        const nav = document.createElement('div');
+        nav.className = 'search__nav';
+        nav.hidden = true;
+
+        const stepper = (label, text) => {
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'search__step';
+            el.setAttribute('aria-label', label);
+            el.textContent = text;
+            return el;
+        };
+
+        const previous = stepper('Previous match', '↑');
+        const next = stepper('Next match', '↓');
+
+        const position = document.createElement('span');
+        position.className = 'search__position';
+        position.setAttribute('aria-live', 'polite');
+
+        nav.append(position, previous, next);
+        searchForm.append(nav);
+
+        let marks = [];
+        let at = -1;
+
+        const reset = () => {
+            for (const view of views.values()) {
+                clearMarks(view.body);
+                clearMarks(view.title);
+                view.hits.hidden = true;
+                view.hits.textContent = '';
+                view.item.hidden = false;
+            }
+            marks = [];
+            at = -1;
+        };
+
+        // Moves the reader to a match, opening the letter it lives in. This is
+        // the whole reason the letters collapse rather than hide: a hit in a
+        // closed letter is still a hit, and stepping onto it is what opens it.
+        const goTo = (wanted) => {
+            if (!marks.length) return;
+
+            const index = (wanted + marks.length) % marks.length;
+            if (at >= 0 && marks[at]) marks[at].classList.remove('hit--current');
+            at = index;
+
+            const mark = marks[at];
+            mark.classList.add('hit--current');
+
+            const item = mark.closest('.post');
+            const view = item && views.get(item.dataset.post);
+            if (view) setExpanded(view, true);
+
+            // 'center' rather than the default 'start': the search bar is
+            // sticky, and a hit scrolled to the top of the viewport ends up
+            // underneath it.
+            mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            position.textContent = `${at + 1} of ${marks.length}`;
+        };
+
         const apply = () => {
             const query = searchInput.value.trim();
+            reset();
 
             if (!query) {
-                for (const node of nodes.values()) node.hidden = false;
                 if (searchCount) searchCount.textContent = '';
+                nav.hidden = true;
+                position.textContent = '';
+                collapseToNewest(views);
                 return;
             }
 
@@ -414,22 +839,54 @@ window.Reader = (function () {
             // words and misspells place names, and an archive this small can
             // afford a generous match far better than it can afford an empty
             // result.
-            const hits = new Set(
+            const matched = new Set(
                 index.search(query, { prefix: true, fuzzy: 0.2 }).map((hit) => hit.id)
             );
 
-            for (const [id, node] of nodes) node.hidden = !hits.has(id);
+            const pattern = termsPattern(query);
+
+            // Walked in the order the letters are on the page, so stepping
+            // forward through the matches always moves down the page.
+            for (const view of views.values()) {
+                const keep = matched.has(view.id);
+                view.item.hidden = !keep;
+                if (!keep) continue;
+
+                const found = pattern
+                    ? [...markMatches(view.title, pattern), ...markMatches(view.body, pattern)]
+                    : [];
+                marks.push(...found);
+
+                if (found.length) {
+                    view.hits.hidden = false;
+                    view.hits.textContent =
+                        found.length === 1 ? '1 match' : `${found.length} matches`;
+                }
+            }
 
             if (searchCount) {
                 searchCount.textContent =
-                    hits.size === 0
+                    matched.size === 0
                         ? 'No letters match that.'
-                        : `${hits.size} of ${posts.length} letters match.`;
+                        : `${matched.size} of ${posts.length} letters match.`;
             }
+
+            nav.hidden = marks.length === 0;
+            position.textContent = marks.length ? `${marks.length} matches` : '';
         };
 
+        previous.addEventListener('click', () => goTo(at - 1));
+        next.addEventListener('click', () => goTo(at + 1));
+
         searchInput.addEventListener('input', apply);
-        searchForm.addEventListener('submit', (event) => event.preventDefault());
+
+        // Enter from the search box is a request to see the next match, not to
+        // reload the page with a query string the server has no opinion about.
+        searchForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            goTo(at + 1);
+        });
+
         searchForm.hidden = false;
     }
 
@@ -466,15 +923,41 @@ window.Reader = (function () {
             return;
         }
 
-        const nodes = new Map();
+        const views = new Map();
         for (const post of posts) {
-            const node = renderPost(post, photoSrc, admin);
-            nodes.set(post.id, node);
-            list.append(node);
+            const view = renderPost(post, photoSrc, admin);
+            views.set(post.id, view);
+            list.append(view.item);
+        }
+
+        collapseToNewest(views);
+
+        // One control for the whole list, built here for the same reason the
+        // search stepper is: there are two page templates hosting this file
+        // and only one of this. It earns its place on the archives that are
+        // read rather than scanned -- somebody catching up on a month wants
+        // all of it open and does not want to click eight times to get there.
+        if (posts.length > 1) {
+            const toolbar = document.createElement('div');
+            toolbar.className = 'toolbar';
+
+            const all = document.createElement('button');
+            all.type = 'button';
+            all.className = 'button button--quiet button--compact';
+            all.textContent = 'Expand all';
+
+            all.addEventListener('click', () => {
+                const opening = all.textContent === 'Expand all';
+                for (const view of views.values()) setExpanded(view, opening);
+                all.textContent = opening ? 'Collapse all' : 'Expand all';
+            });
+
+            toolbar.append(all);
+            list.parentNode.insertBefore(toolbar, list);
         }
 
         state.hidden = true;
-        setUpSearch(posts, nodes, elements);
+        setUpSearch(posts, views, elements);
     }
 
     return { mount, formatDate };

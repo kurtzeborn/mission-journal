@@ -286,36 +286,139 @@ button:focus-visible {
 
 .posts {
     list-style: none;
-    margin: 2rem 0 0;
+    margin: 1rem 0 0;
     padding: 0;
 }
 
 .post {
     border-top: 1px solid var(--rule);
-    padding: 1.75rem 0;
 }
 
+/* The whole summary line is the control. A letter closed by mistake has to be
+   trivially reopenable by a grandparent on a phone, so the target is the full
+   width of the column rather than a chevron in a corner. */
+.post__toggle {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 0 0.75rem;
+    width: 100%;
+    min-height: 48px;
+    padding: 1rem 1.6rem 1rem 0;
+    margin: 0;
+    background: none;
+    border: 0;
+    border-radius: var(--radius);
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.post__toggle:hover .post__title {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.post__toggle:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* The arrow is the only part of the summary that says "this opens", so it is
+   drawn rather than left to a font the offline archive does not ship. */
+.post__toggle::after {
+    content: '';
+    position: absolute;
+    right: 0.3rem;
+    width: 0.55rem;
+    height: 0.55rem;
+    margin-top: 0.55rem;
+    border-right: 2px solid var(--ink-soft);
+    border-bottom: 2px solid var(--ink-soft);
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+}
+
+.post--open .post__toggle::after {
+    transform: rotate(-135deg);
+}
+
+.post__subject {
+    position: relative;
+    font-size: 1.4rem;
+    line-height: 1.3;
+    margin: 0;
+}
+
+/* The archive's own title borrows the letter heading's type but not its
+   layout -- it is a plain heading, with nothing to open. */
+#site-title {
+    margin-bottom: 0.9rem;
+}
+
+/* Inside the summary these are spans in a grid, and the date has to sit above
+   the subject rather than beside it. */
 .post__date {
+    grid-column: 1;
     font-family: system-ui, sans-serif;
     font-size: 0.8rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--ink-soft);
-    margin: 0 0 0.3rem;
+    margin: 0;
 }
 
-.post__subject {
-    font-size: 1.4rem;
-    line-height: 1.3;
-    margin: 0 0 0.9rem;
+.post__title {
+    grid-column: 1;
+    grid-row: 2;
+    display: block;
+}
+
+.post__meta {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.2rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+    white-space: nowrap;
+}
+
+.post__hits {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.post__panel {
+    padding: 0 0 1.75rem;
+}
+
+.toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
 }
 
 .post__body {
     overflow-wrap: break-word;
 }
 
+/* Floated photos are taken out of the flow, so without this the letter's own
+   border-top would ride up beside the last picture in the letter above it. */
+.post__body::after {
+    content: '';
+    display: block;
+    clear: both;
+}
+
 /* Letters arrive with their own markup. These rules keep it from breaking the
-   page: photos are inlined at full width and nothing is allowed to overflow. */
+   page: nothing is allowed to overflow, and a photo that was not put through
+   the frame below still lands at a sane size. */
 .post__body img {
     max-width: 100%;
     height: auto;
@@ -334,6 +437,78 @@ button:focus-visible {
     word-break: break-word;
 }
 
+/* --- photos inside a letter --- */
+
+/* A photo pasted into a letter used to render at the full width of the
+   column: it broke the reading line, pushed the paragraphs apart, and gave no
+   sign that a bigger version existed. Floated small with the text wrapping
+   around it, a letter reads as a letter again.
+
+   Floated rather than laid out with grid or flex, because the photo sits in
+   the middle of markup we did not write -- it can be inside a paragraph, a
+   div, a table cell, or nothing at all -- and float is the only mechanism
+   that makes surrounding text wrap without knowing anything about the
+   container it is in. */
+.photo {
+    float: left;
+    position: relative;
+    display: block;
+    width: 45%;
+    max-width: 240px;
+    margin: 0.4rem 1.1rem 0.6rem 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: var(--radius);
+    cursor: zoom-in;
+}
+
+/* Two photos in a row would otherwise stack against each other on a phone and
+   leave a one-word-wide gutter of text down the side. */
+@media (max-width: 30rem) {
+    .photo {
+        float: none;
+        width: 100%;
+        max-width: none;
+        margin: 1rem 0;
+    }
+}
+
+.photo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin: 0;
+    border-radius: var(--radius);
+}
+
+/* The affordance. Always drawn rather than shown on hover, because hover does
+   not exist on the devices most of this archive is read on, and an invitation
+   nobody can see is not one. */
+.photo__hint {
+    position: absolute;
+    left: 0.4rem;
+    bottom: 0.4rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.68rem;
+    letter-spacing: 0.04em;
+    color: #fff;
+    background: rgba(28, 25, 23, 0.72);
+    border-radius: 999px;
+    padding: 0.15rem 0.55rem;
+    pointer-events: none;
+}
+
+.photo:hover .photo__hint,
+.photo:focus-visible .photo__hint {
+    background: var(--accent);
+}
+
+.photo:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+}
+
 .album {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -343,6 +518,17 @@ button:focus-visible {
     list-style: none;
 }
 
+.album a {
+    display: block;
+    border-radius: var(--radius);
+    cursor: zoom-in;
+}
+
+.album a:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+}
+
 .album img {
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -350,6 +536,61 @@ button:focus-visible {
     border-radius: var(--radius);
     background: #eee;
     display: block;
+}
+
+/* --- the lightbox --- */
+
+.lightbox {
+    max-width: 100vw;
+    max-height: 100vh;
+    /* fit-content, not auto. The browser's own dialog rule uses fit-content
+       here, and `auto` is not the same thing: a fixed element pinned to all
+       four edges with an automatic height stretches to fill instead of
+       shrinking to its photo, the automatic margins then resolve to nothing,
+       and the picture ends up jammed against the top of the screen. */
+    width: fit-content;
+    height: fit-content;
+    margin: auto;
+    padding: 0;
+    background: none;
+    border: 0;
+    overflow: visible;
+}
+
+.lightbox::backdrop {
+    background: rgba(28, 25, 23, 0.88);
+}
+
+/* Leaves room for the close button underneath. A photo sized to the full
+   height pushes the button off the bottom of the screen, which on a phone is
+   the only way out that is visible. */
+.lightbox__image {
+    display: block;
+    max-width: 96vw;
+    max-height: 78vh;
+    width: auto;
+    height: auto;
+    border-radius: var(--radius);
+    background: #1c1917;
+}
+
+.lightbox__close {
+    display: block;
+    margin: 0.75rem auto 0;
+    min-height: 44px;
+    padding: 0.5rem 1.4rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+}
+
+.lightbox__close:focus-visible {
+    outline: 3px solid var(--paper);
+    outline-offset: 3px;
 }
 
 .badge {
@@ -669,8 +910,20 @@ h3:target {
 
 /* --- search --- */
 
+/* Sticky, because the reason to search a long archive is to move around
+   inside it, and a next/previous control that scrolls off the top the moment
+   you use it is a control you can use exactly once. The masthead does not
+   scroll with the page, so top: 0 is the top of the viewport. */
 .search {
+    position: sticky;
+    top: 0;
+    z-index: 5;
     margin: 1.5rem 0 0;
+    padding: 0.75rem 0 0.6rem;
+    background: var(--paper);
+    /* The letters underneath have to stop somewhere visible rather than
+       sliding out from behind the box mid-word. */
+    box-shadow: 0 0.6rem 0.6rem -0.6rem rgba(28, 25, 23, 0.18);
 }
 
 .search__label {
@@ -700,6 +953,57 @@ h3:target {
 
 .search__input::placeholder {
     color: #a8a29e;
+}
+
+.search__nav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    margin-top: 0.45rem;
+}
+
+.search__position {
+    font-family: system-ui, sans-serif;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    margin-right: auto;
+}
+
+.search__step {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.search__step:hover {
+    border-color: var(--accent);
+}
+
+.search__step:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* Every match, marked. The plain one is a highlighter; the current one is
+   where the reader is standing, and has to be findable at a glance after the
+   page scrolls to it. */
+.hit {
+    background: #fde68a;
+    color: inherit;
+    border-radius: 3px;
+    padding: 0 0.08em;
+}
+
+.hit--current {
+    background: var(--accent);
+    color: var(--accent-ink);
 }
 
 /* --- owner controls --- */
