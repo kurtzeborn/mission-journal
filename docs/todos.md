@@ -8,41 +8,93 @@ The organising principle: **a task nobody is reminded of is a task that fails si
 
 ## Credentials
 
-### Inventory
+**Bookmark this section.** Everything that expires is listed here with the steps to renew it. Nothing else in the service needs to be touched on a clock.
 
-| Credential | Where the value lives | Where it is used | Expires |
+### What expires, and when
+
+| Due | Credential | Lives in | Breaks, if it lapses |
 |---|---|---|---|
-| `aad-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Microsoft sign-in (Entra app registration) | **2028-08-04** |
-| `cloudflare-api-token` | Key Vault `mj-kv-utfe5uagkbz7q` | Function App outbound mail (`Email Sending: Edit`) | **2027-08-31** |
-| `claim-token-key` | Key Vault `mj-kv-utfe5uagkbz7q` | HMAC for claim links | *none* — see below |
-| `google-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Google sign-in | *none* — checked 2026-08-05, see below |
-| `CLOUDFLARE_API_TOKEN` | GitHub Actions secret | Worker deploy (`Workers Scripts`, `Account Settings`) | **2027-08-01** |
-| `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions secret | Worker deploy | not a secret, does not expire |
-| `AZURE_STATIC_WEB_APPS_API_TOKEN` | GitHub Actions secret | Static Web App deploy | no expiry; rotates if the SWA is recreated |
-| `pdayletters.com` | Registrar (Namecheap) | Everything | **auto-renew on** — no date to track |
+| **2027-08-01** | `CLOUDFLARE_API_TOKEN` | GitHub Actions secret | Worker deploys fail — loudly, in CI |
+| **2027-08-31** | `cloudflare-api-token` | Key Vault `mj-kv-utfe5uagkbz7q` | **All outbound mail, silently.** Claim and invite emails simply stop arriving |
+| **2028-08-04** | `aad-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Microsoft sign-in, silently — Google keeps working |
 
-**⚠️ Two different credentials are called `CLOUDFLARE_API_TOKEN`.** The one in GitHub deploys the Worker; the one in Key Vault sends mail. They are deliberately separate — the deploy token can rewrite the code that receives every inbound letter, and the sending token must never be able to — but the shared name means a rotation done by name rather than by location will update the wrong one and appear to work. Rotating either is a two-place operation: reissue in Cloudflare, then store in *one* named destination.
+Nothing else has a date. `claim-token-key`, `google-client-secret`, `AZURE_STATIC_WEB_APPS_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are covered under [what never rotates](#what-never-rotates).
+
+**⚠️ Two different credentials are called `CLOUDFLARE_API_TOKEN`.** The one in GitHub deploys the Worker; the one in Key Vault sends mail. They are deliberately separate — the deploy token can rewrite the code that receives every inbound letter, and the sending token must never be able to. The shared name means a rotation done by name rather than by location updates the wrong one and appears to work. **Always check which of the two you are holding.**
+
+### How to rotate each one
+
+Every rotation is the same two moves: reissue at the provider, then store in *one* named destination. Reissue first — none of these can be recovered after they are replaced.
+
+#### `cloudflare-api-token` — the mail sender
+
+1. Cloudflare dashboard → **Manage Account** → **API Tokens**. Find the token whose permission is `Email Sending: Edit`.
+2. **Roll** it, or create a replacement with the same single permission and a new end date. Copy the value; it is shown once.
+3. Store it:
+   ```powershell
+   az keyvault secret set --vault-name mj-kv-utfe5uagkbz7q `
+       --name cloudflare-api-token --value '<token>' `
+       --expires '2029-08-01T00:00:00Z' `
+       --subscription 41fbccc1-bb65-416d-816d-30cb2a41dd9b
+   ```
+   Setting `--expires` is what keeps the alert working. A new version without a date is a secret that will never warn again.
+4. The Function App reads this through a **versionless** Key Vault reference, so it picks the new value up on its own within 24 hours. Restart to make it immediate:
+   ```powershell
+   az functionapp restart --name mj-fn-utfe5uagkbz7q --resource-group mission-journal `
+       --subscription 41fbccc1-bb65-416d-816d-30cb2a41dd9b
+   ```
+5. **Prove it works**, because this is the one that fails silently. `functions/tools/send-test-mail.js` sends a real message.
+
+#### `aad-client-secret` — Microsoft sign-in
+
+1. Entra admin center → **App registrations** → the app `3d78e421-0373-4026-be5d-909bc07d455a` → **Certificates & secrets** → **New client secret**. Copy the *Value*, not the Secret ID.
+2. Store it with the matching date:
+   ```powershell
+   az keyvault secret set --vault-name mj-kv-utfe5uagkbz7q `
+       --name aad-client-secret --value '<secret>' `
+       --expires '2030-08-01T00:00:00Z' `
+       --subscription 41fbccc1-bb65-416d-816d-30cb2a41dd9b
+   ```
+3. The Static Web App reads it at sign-in time, so no restart is needed.
+4. **Test by signing in with Microsoft**, in a private window. Google working proves nothing here — the two providers fail independently.
+5. Delete the old secret in Entra only after the test passes.
+
+#### `CLOUDFLARE_API_TOKEN` — the Worker deploy token
+
+1. Cloudflare dashboard → **Manage Account** → **API Tokens**. This is the token with `Workers Scripts: Edit` and `Account Settings: Read` — *not* the mail sender.
+2. Roll it, then:
+   ```powershell
+   gh secret set CLOUDFLARE_API_TOKEN --repo kurtzeborn/mission-journal --body '<token>'
+   ```
+3. **Test by re-running the Worker deploy workflow.** This one fails loudly, so a green run is the whole check.
+
+### What never rotates
+
+- **`claim-token-key`** — ours, not a provider's, so nothing forces a date. Rotating it **invalidates every outstanding claim link**, including ones sitting unread in a missionary's inbox with days left on a 60-day window. That makes it a user-visible event, not maintenance. The right cadence is *never, unless compromised*. Recorded here so a future tidying pass does not rotate it for symmetry.
+- **`google-client-secret`** — **checked in the Google Cloud console on 2026-08-05: no expiry is set.** Recorded as a checked fact rather than an assumption, because "we checked and there is no date" and "we never checked" look identical in a table. Re-check if the client is ever recreated; Google has been tightening this area.
+- **`AZURE_STATIC_WEB_APPS_API_TOKEN`** — no expiry. It changes only if the Static Web App is recreated, in which case read the new one with `az staticwebapp secrets list --name mj-swa-utfe5uagkbz7q`.
+- **`CLOUDFLARE_ACCOUNT_ID`** — not a secret, and inert without a token.
+- **`pdayletters.com`** — auto-renew is on at Namecheap. See the [annual check](#annually); the risk is the card behind it, not the date.
+
+### The alert that reminds you
+
+**Shipped 2026-08-11.** Key Vault raises `SecretNearExpiry` 30 days ahead; an Event Grid system topic on the vault routes that and `SecretExpired` to a `MonitorAlert` at Sev2, which mails `scott@kurtzeborn.org`. All of it is in `infra/main.bicep`, gated on the `alertEmail` parameter.
+
+**It only covers the two Key Vault secrets.** The GitHub-held deploy token is invisible to it — that one needs the calendar entry.
+
+**The notification deliberately does not go through our own mailer.** Every message this service sends uses `cloudflare-api-token`, one of the secrets being watched. An alert about that token expiring, sent with that token, would fail exactly when it mattered. Azure Monitor's email path shares nothing with the system it reports on.
+
+Three things worth remembering about the mechanism:
+
+- **`MonitorAlert` needs `eventDeliverySchema: 'CloudEventSchemaV1_0'`,** which is not the default. Without it the deployment fails naming the schema but not the resource that wanted it. `Microsoft.EventGrid` must also be registered on the subscription first.
+- **`az eventgrid system-topic event-subscription show` cannot read this subscription** — the CLI pins an API version older than the feature. Verify with `az resource show --api-version 2025-02-15` instead.
+- **`SecretNewVersionCreated` is deliberately not subscribed.** The vault emits it on every write, so a rotation — the fix — would raise an alert of its own.
+
+**Key Vault cannot renew any of this,** and serves an expired secret quite happily. Auto-renewal is certificates-only for integrated CAs, and `exp` is advisory rather than enforced on read. So the date is a warning that can never cause an outage of its own, and every rotation above is done by hand.
 
 ### The alignment goal
 
-**Before leaving beta, every credential should expire in the same month, so they roll in one sitting.** Left alone, each one expires on whatever date it happened to be created, and rotation becomes a task that arrives unannounced several times a year and is done under time pressure every time.
-
-**They are already nearly aligned, by accident: August.** `2027-08-01`, `2027-08-31`, `2028-08-04`. Nothing has to be moved far — the work is to make it deliberate, pick a date (early August, so the deadline is not the same week as the reminder), and pull the outliers back. Cloudflare tokens can be reissued with any end date, and an Entra secret can be created short and replaced early, so this costs one afternoon.
-
-**Two secrets have no expiry at all, and that is a decision, not an oversight — but it should be a recorded one:**
-
-- **`claim-token-key`** is ours, not a provider's, so nothing forces a date. Rotating it **invalidates every outstanding claim link**, including ones sitting unread in a missionary's inbox with days left on a 60-day window. That makes rotation a user-visible event rather than a maintenance task, and the right cadence is *never, unless compromised*. Worth writing down so a future tidying pass does not rotate it for symmetry.
-- **`google-client-secret`** — **checked in the Google Cloud console on 2026-08-05: no expiry is set.** Google OAuth client secrets historically did not expire, and this one was not issued with a date. Recorded as a checked fact rather than an assumption, because "we checked and there is no date" and "we never checked" look identical in a table. Worth re-checking if the client is ever recreated, since Google has been tightening this area.
-
-### Automating the reminder
-
-**Shipped 2026-08-11.** The vault is the one place that knows when anything expires, and it now says so out loud.
-
-- **Event Grid system topic `mj-evt-utfe5uagkbz7q`** on the Key Vault, subscribing to `Microsoft.KeyVault.SecretNearExpiry` and `Microsoft.KeyVault.SecretExpired` only.
-- **Destination is `MonitorAlert`, Sev2**, firing action group `mj-ag-utfe5uagkbz7q`, which mails `scott@kurtzeborn.org`. Delivery confirmed with `az monitor action-group test-notifications create`.
-- **All of it is in `infra/main.bicep`**, gated on the `alertEmail` parameter — empty creates none of it, which is the right default for a scratch deployment.
-
-The alert arrives **30 days ahead**, names the vault and the secret, and points here. The table above is what turns that into an action: it says what the credential does and where it is reissued, which the event does not.
+**Before leaving beta, move all three to the same month, so they roll in one sitting.** They are already nearly aligned by accident — `2027-08-01`, `2027-08-31`, `2028-08-04` — so the work is to make it deliberate rather than lucky. Pick an early-August date, so the deadline is not the same week as the reminder. Cloudflare tokens can be reissued with any end date and an Entra secret can be replaced early, so this costs one afternoon.
 
 **The notification deliberately does not go through our own mailer.** Every message this service sends uses `cloudflare-api-token` — one of the secrets being watched. An alert about that token expiring, sent with that token, would fail exactly when it mattered. Azure Monitor's email path shares nothing with the system it reports on.
 
