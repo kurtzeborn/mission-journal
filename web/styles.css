@@ -10,7 +10,29 @@
     --accent-ink: #ffffff;
     --radius: 10px;
     --measure: 34rem;
+    /* The archive is the one page that is read rather than consulted, and the
+       only one with pictures in it. On a desktop the rest of the site is
+       correct at the measure -- a page of instructions does not improve for
+       being wider -- while the archive at the same width looks like a phone
+       stranded in the middle of a monitor. So it gets a container of its own,
+       and widening it moves the photos and the summary lines outward without
+       stretching a line of prose past the point it is comfortable to read.
+       Overridden further down at a desktop width. */
+    --archive: 34rem;
     font-size: 19px;
+}
+
+/* In a media query `rem` is the browser's initial 16px, not the 19px set
+   above -- so this is the usual 1024px, not 1216px. */
+@media (min-width: 64rem) {
+    :root {
+        --archive: 48rem;
+        /* The strip of page the photos live in on a wide screen. Named,
+           because the text has to reserve exactly this much and the photos
+           have to reach back across exactly this much -- two numbers that go
+           wrong in opposite directions the moment they are written twice. */
+        --gutter: 13rem;
+    }
 }
 
 *,
@@ -46,6 +68,11 @@ body {
     max-width: var(--measure);
     margin: 0 auto;
     padding: 1.5rem 1.25rem 4rem;
+}
+
+.wrap--archive,
+.masthead--archive .masthead__inner {
+    max-width: var(--archive);
 }
 
 /* --- masthead --- */
@@ -471,6 +498,30 @@ button:focus-visible {
         width: 100%;
         max-width: none;
         margin: 1rem 0;
+    }
+}
+
+/* On a desktop the extra width goes to the photos rather than to the line
+   length. The letter keeps a measure it is comfortable to read and the
+   pictures move out into the margin beside it, roughly where a photograph
+   would be pasted in an album -- close to the paragraph that mentions it, and
+   no longer interrupting it.
+
+   The text reserves the margin with padding and the photo reaches back across
+   it with a negative margin of the same size, so the two cancel exactly and
+   the photo lands flush with the edge of the page whatever that page happens
+   to be. Written as two independent widths instead, they agree at one window
+   size and overflow at every other. */
+@media (min-width: 64rem) {
+    .post__body {
+        padding-right: var(--gutter);
+    }
+
+    .photo {
+        float: right;
+        width: 11.5rem;
+        max-width: none;
+        margin: 0.4rem calc(-1 * var(--gutter)) 1rem 1rem;
     }
 }
 

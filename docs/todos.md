@@ -128,7 +128,7 @@ Three of the credentials in the table live outside Key Vault, so none of this se
 ### Quarterly
 
 - **`npm audit`.** Permanently red on `mailauth`'s transitive advisories, which were [measured as unreachable](plan.md#phase-8--outbound-mail-and-preferences). That is the hazard: a permanently red audit is one a real advisory gets scrolled past in. Either add an allowlist so the output means something again, or accept that this check requires reading rather than glancing.
-- **Storage growth**, particularly `exports/`, which accumulates and has no lifecycle rule yet.
+- **Storage growth.** `inbox/` and `exports/` both expire on their own now — 30 days and 7 days, set by the `lifecycle` policy in `infra/main.bicep`. What is worth a quarterly look is the containers with no rule at all: `raw/` and `rendered/` grow for as long as the archives live, which is the intended behaviour and the reason the bill will only ever go up.
 
 ### Annually
 
