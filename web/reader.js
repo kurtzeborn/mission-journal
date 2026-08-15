@@ -179,6 +179,51 @@ window.Reader = (function () {
     // the photos with them.
     const PHOTO_FRAME = 'photo';
 
+    // Roughly three lines of the column beside a picture. Under this there is
+    // not enough letter left to wrap and the float stops paying for itself.
+    const FLOW_MIN = 250;
+
+    // Characters of letter after each photo, up to the next photo or the end.
+    //
+    // A float is only worth having when there is prose to flow around it. Two
+    // photos with a caption between them -- which is how most people paste a
+    // burst of pictures -- put two floats side by side and squeeze the text
+    // between them to about sixteen characters on a desktop, which is a ladder
+    // of single words rather than a paragraph. Measuring first is what lets
+    // the second picture opt out of floating instead of ruining the column.
+    //
+    // The walk steps over the frames' own contents: "View larger" is a label
+    // this file added, not something the missionary wrote, and counting it
+    // would credit every photo with room it does not have.
+    function textAfter(root, frames) {
+        const counts = frames.map(() => 0);
+        if (!frames.length) return counts;
+
+        const walker = document.createTreeWalker(
+            root,
+            NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT
+        );
+
+        let at = -1;
+        let node = walker.nextNode();
+        while (node) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                if (node.classList.contains(PHOTO_FRAME)) {
+                    at += 1;
+                    let next = walker.nextNode();
+                    while (next && node.contains(next)) next = walker.nextNode();
+                    node = next;
+                    continue;
+                }
+            } else if (at >= 0) {
+                counts[at] += node.data.trim().length;
+            }
+            node = walker.nextNode();
+        }
+
+        return counts;
+    }
+
     function decoratePhotos(root, photoSrc) {
         for (const img of root.querySelectorAll('img[data-photo]')) {
             if (img.parentElement?.classList.contains(PHOTO_FRAME)) continue;
@@ -198,6 +243,14 @@ window.Reader = (function () {
             img.replaceWith(frame);
             frame.append(img, hint);
         }
+
+        // After the frames exist, not during: the measurement counts the text
+        // between one frame and the next, so they all have to be in place.
+        const frames = [...root.querySelectorAll(`.${PHOTO_FRAME}`)];
+        const room = textAfter(root, frames);
+        frames.forEach((frame, i) => {
+            frame.classList.toggle('photo--block', room[i] < FLOW_MIN);
+        });
     }
 
     function undecoratePhotos(root) {
@@ -249,6 +302,16 @@ window.Reader = (function () {
 
     // Photos the letter already displays inline are not repeated underneath
     // it. Only the ones that arrived attached but unreferenced become an album.
+    //
+    // One row, uniform tiles, scrolled sideways when it does not fit. A grid
+    // that reflowed to the photos' own shapes looked like a pile rather than a
+    // set -- a portrait next to a landscape next to a panorama, in rows of
+    // whatever happened to fit -- and the eye reads a straight line of equal
+    // squares as "here are the pictures" without having to work at it. The
+    // cropping that costs is worth it: the full frame is one tap away.
+    //
+    // No scroll buttons. The links inside are focusable, so tabbing scrolls
+    // the row on its own, and every touch device already knows how to swipe.
     function renderAlbum(post, photoSrc) {
         const inline = post.bodyHtml ?? '';
         const loose = (post.photos ?? []).filter((photo) => !inline.includes(photo.id));
@@ -267,12 +330,6 @@ window.Reader = (function () {
             img.alt = '';
             img.loading = 'lazy';
             img.decoding = 'async';
-            img.loading = 'lazy';
-            // Reserving the space stops the page from jumping as photos arrive.
-            if (photo.width && photo.height) {
-                img.width = photo.width;
-                img.height = photo.height;
-            }
 
             link.append(img);
             item.append(link);

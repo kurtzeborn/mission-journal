@@ -477,6 +477,14 @@ button:focus-visible {
    container it is in. */
 .photo {
     float: left;
+    /* Two floats will happily sit side by side, and floats placed from
+       different paragraphs still see each other, so a picture, one line of
+       caption, and another picture puts them shoulder to shoulder with a
+       sliver of text down the edge. `clear` says a photo always starts below
+       the one before it. reader.js also promotes the tight cases to full
+       width, which handles most of this -- but that reads the letter's text
+       to decide, and this needs no judgement to be right. */
+    clear: left;
     position: relative;
     display: block;
     width: 45%;
@@ -519,6 +527,33 @@ button:focus-visible {
     border-radius: var(--radius);
 }
 
+/* Set by reader.js on a photo with too little letter after it to wrap around:
+   the last picture before another one, or the one at the end above "Love,
+   Declan". It stands on its own instead, centred, still exactly where it was
+   written.
+
+   Last on purpose. These have the same specificity as the rules they undo, so
+   source order is what decides, and that includes the two media queries above
+   -- a photo that cannot be wrapped cannot be wrapped at any screen width.
+
+   `fit-content` rather than a full-width block, and a capped height, because
+   a portrait photo blown up to the width of the column is over a thousand
+   pixels tall and turns one picture into a page of scrolling. Sizing the
+   frame to the picture also keeps the "View larger" pill on the photo instead
+   of stranded in the whitespace beside it. */
+.photo--block {
+    float: none;
+    width: fit-content;
+    max-width: 100%;
+    margin: 1.5rem auto;
+}
+
+.photo--block img {
+    width: auto;
+    max-width: 100%;
+    max-height: 70vh;
+}
+
 /* The affordance. Always drawn rather than shown on hover, because hover does
    not exist on the devices most of this archive is read on, and an invitation
    nobody can see is not one. */
@@ -546,13 +581,35 @@ button:focus-visible {
     outline-offset: 3px;
 }
 
+/* One row of identical squares that scrolls sideways when it runs out of
+   room, rather than a grid that reflowed into rows of whatever fit. Mixed
+   portraits and landscapes at their own proportions read as a pile; a
+   straight line of equal tiles reads as a set.
+
+   `proximity`, not `mandatory`: snapping is a nicety here, and mandatory
+   snapping fights anyone who wants to nudge the row a little, especially with
+   a trackpad. */
 .album {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    display: flex;
     gap: 0.6rem;
     margin: 1.25rem 0 0;
-    padding: 0;
+    padding: 0 0 0.5rem;
     list-style: none;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    /* Stops a swipe that runs off the end of the row from turning into the
+       browser's back gesture or scrolling the page behind it. */
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
+}
+
+.album li {
+    /* No shrinking. A flex item's default is to give up width under pressure,
+       which is exactly the reflow this layout exists to avoid -- eight photos
+       would quietly squeeze to eight slivers instead of scrolling. */
+    flex: 0 0 auto;
+    scroll-snap-align: start;
 }
 
 .album a {
@@ -567,12 +624,21 @@ button:focus-visible {
 }
 
 .album img {
-    width: 100%;
-    aspect-ratio: 1 / 1;
+    display: block;
+    width: 8.5rem;
+    height: 8.5rem;
     object-fit: cover;
     border-radius: var(--radius);
     background: #eee;
-    display: block;
+}
+
+@media (max-width: 37rem) {
+    /* Smaller, so more than two tiles are visible at once -- a row that is cut
+       off mid-photo is the only thing telling a reader there is more of it. */
+    .album img {
+        width: 6.5rem;
+        height: 6.5rem;
+    }
 }
 
 /* --- the lightbox --- */
