@@ -178,6 +178,7 @@ window.Reader = (function () {
     // stored HTML would have them sanitized away on the round trip and take
     // the photos with them.
     const PHOTO_FRAME = 'photo';
+    const PHOTO_ROW = 'photo-row';
 
     // Roughly three lines of the column beside a picture. Under this there is
     // not enough letter left to wrap and the float stops paying for itself.
@@ -192,11 +193,10 @@ window.Reader = (function () {
     // of single words rather than a paragraph. Measuring first is what lets
     // the second picture opt out of floating instead of ruining the column.
     //
-    // The walk steps over the frames' own contents: "View larger" is a label
-    // this file added, not something the missionary wrote, and counting it
-    // would credit every photo with room it does not have.
-    function textAfter(root, frames) {
-        const counts = frames.map(() => 0);
+    // The walk steps over the frames' own contents, so that anything this file
+    // ever puts inside one is counted as the frame rather than as the letter.
+    // A photo must never be credited with room it does not have.
+    function textAfter(root, frames) {        const counts = frames.map(() => 0);
         if (!frames.length) return counts;
 
         const walker = document.createTreeWalker(
@@ -236,12 +236,16 @@ window.Reader = (function () {
             frame.className = PHOTO_FRAME;
             frame.dataset.large = photoSrc(ref.id, 'large');
 
-            const hint = document.createElement('span');
-            hint.className = 'photo__hint';
-            hint.textContent = 'View larger';
+            // The label is for assistive technology only -- sighted readers
+            // get the zoom cursor, and a caption printed over every picture in
+            // the archive was more clutter than invitation. It cannot simply
+            // be dropped, though: this is a <button> whose only content is an
+            // image with empty alt text, and without a name here a screen
+            // reader announces it as "button" and stops.
+            frame.setAttribute('aria-label', 'View larger');
 
             img.replaceWith(frame);
-            frame.append(img, hint);
+            frame.append(img);
         }
 
         // After the frames exist, not during: the measurement counts the text
@@ -251,13 +255,122 @@ window.Reader = (function () {
         frames.forEach((frame, i) => {
             frame.classList.toggle('photo--block', room[i] < FLOW_MIN);
         });
+
+        groupRuns(root, frames, room, photoSrc);
+    }
+
+    // Photos with nothing at all between them are a burst, not a sequence of
+    // illustrations, and stacking them full width turns the end of a letter
+    // into one picture per screen. Real letters do this constantly -- more
+    // than half of them end with two to four photos and no text -- so the run
+    // is collected into the same scrolling row the album at the foot of the
+    // letter uses. The photos do not move relative to the words; the run just
+    // stops being a column and becomes a line.
+    //
+    // Strictly no text, not "almost none". A caption is the one thing that
+    // must not be swallowed, and the difference between a caption and a stray
+    // non-breaking space is not something a character count can be trusted to
+    // judge.
+    function groupRuns(root, frames, room, photoSrc) {
+        let start = 0;
+        while (start < frames.length) {
+            let end = start;
+            while (end + 1 < frames.length && room[end] === 0) end += 1;
+            if (end > start) tile(frames.slice(start, end + 1), photoSrc);
+            start = end + 1;
+        }
+    }
+
+    function tile(run, photoSrc) {
+        // A span, not a div: these photos can be sitting inside a paragraph,
+        // and a block element there is invalid HTML. The DOM would hold it and
+        // it would even render, but nothing else in this file writes markup it
+        // would be embarrassed to serialize.
+        const row = document.createElement('span');
+        row.className = PHOTO_ROW;
+
+        // Everything from the first photo to the last comes out in one piece,
+        // rather than the photos being lifted out and the rest left standing.
+        // There is no text in there by definition, but there is plenty of
+        // markup -- a paragraph around each photo is the common case and a
+        // paragraph with <br> between them the next -- and every bit of it
+        // still prints as blank space once the pictures have gone. A range is
+        // what handles both without knowing which one it is looking at: it
+        // splits whatever containers it has to and takes the span between the
+        // two photos with it.
+        const range = document.createRange();
+        range.setStartBefore(run[0]);
+        range.setEndAfter(run[run.length - 1]);
+        range.extractContents();
+        range.insertNode(row);
+
+        for (const frame of run) {
+            frame.classList.remove('photo--block');
+
+            // The inline src is sized for a picture in the column, which is
+            // several times more image than a tile this size can show. The
+            // original is kept rather than recomputed: `data-photo` holds what
+            // the stored letter said, which is not necessarily a URL this page
+            // can display -- the offline archive resolves photos to relative
+            // file paths -- so it is no good for putting things back.
+            const img = frame.querySelector('img');
+            const ref = photoRefOf(img?.getAttribute('data-photo'));
+            if (ref) {
+                img.dataset.column = img.getAttribute('src');
+                img.src = photoSrc(ref.id, 'thumb');
+            }
+
+            row.append(frame);
+        }
+
+        // Splitting a container leaves the halves behind, and an empty
+        // paragraph is still a blank line. They can only be on the two sides
+        // of the row, because that is where the range was.
+        prune(row, 'previousSibling');
+        prune(row, 'nextSibling');
+    }
+
+    // Deliberately a list of things known to be packaging rather than a test
+    // for emptiness. An <hr> has no text and no picture either, and sanitize.js
+    // goes to some trouble to keep the ones a letter actually contains.
+    const PACKAGING = /^(?:P|DIV|SPAN|FONT|BR|B|I|U|EM|STRONG)$/;
+
+    function prune(row, side) {
+        let node = row[side];
+        while (
+            node &&
+            node.nodeType === Node.ELEMENT_NODE &&
+            PACKAGING.test(node.tagName) &&
+            !node.querySelector('img') &&
+            !node.textContent.trim()
+        ) {
+            const next = node[side];
+            node.remove();
+            node = next;
+        }
     }
 
     function undecoratePhotos(root) {
+        // Rows first. Unwrapping puts the photos back in the flow as siblings,
+        // which is not quite the markup they arrived in -- the empty wrappers
+        // pruned above do not come back -- but they were empty, and an owner
+        // who saves an edit is better off storing the flattened version than
+        // the blank lines it was hiding.
+        for (const row of root.querySelectorAll(`.${PHOTO_ROW}`)) {
+            row.replaceWith(...row.childNodes);
+        }
+
         for (const frame of root.querySelectorAll(`.${PHOTO_FRAME}`)) {
             const img = frame.querySelector('img');
-            if (img) frame.replaceWith(img);
-            else frame.remove();
+            if (img) {
+                if (img.dataset.column) {
+                    img.setAttribute('src', img.dataset.column);
+                    delete img.dataset.column;
+                }
+                frame.replaceWith(img);
+            } else {
+                frame.remove();
+            }
         }
     }
 
@@ -324,6 +437,9 @@ window.Reader = (function () {
             const item = document.createElement('li');
             const link = document.createElement('a');
             link.href = photoSrc(photo.id, 'large');
+            // An anchor whose only content is an image with empty alt text has
+            // no accessible name at all. Same words as the inline frames use.
+            link.setAttribute('aria-label', 'View larger');
 
             const img = document.createElement('img');
             img.src = photoSrc(photo.id, 'thumb');
@@ -748,11 +864,6 @@ window.Reader = (function () {
         // walker is standing on it invalidates the walk, and the replacement
         // contains text nodes that would then be walked into and marked again.
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-            // The photo frames carry a "View larger" label that is ours, not
-            // the missionary's. Marking it would put a highlight on every
-            // picture in the archive the moment somebody searched for "view".
-            if (node.parentElement?.closest('.photo__hint')) continue;
-
             pattern.lastIndex = 0;
             if (pattern.test(node.nodeValue)) targets.push(node);
         }

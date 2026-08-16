@@ -485,7 +485,6 @@ button:focus-visible {
        width, which handles most of this -- but that reads the letter's text
        to decide, and this needs no judgement to be right. */
     clear: left;
-    position: relative;
     display: block;
     width: 45%;
     max-width: 240px;
@@ -538,9 +537,7 @@ button:focus-visible {
 
    `fit-content` rather than a full-width block, and a capped height, because
    a portrait photo blown up to the width of the column is over a thousand
-   pixels tall and turns one picture into a page of scrolling. Sizing the
-   frame to the picture also keeps the "View larger" pill on the photo instead
-   of stranded in the whitespace beside it. */
+   pixels tall and turns one picture into a page of scrolling. */
 .photo--block {
     float: none;
     width: fit-content;
@@ -554,47 +551,38 @@ button:focus-visible {
     max-height: 70vh;
 }
 
-/* The affordance. Always drawn rather than shown on hover, because hover does
-   not exist on the devices most of this archive is read on, and an invitation
-   nobody can see is not one. */
-.photo__hint {
-    position: absolute;
-    left: 0.4rem;
-    bottom: 0.4rem;
-    font-family: system-ui, sans-serif;
-    font-size: 0.68rem;
-    letter-spacing: 0.04em;
-    color: #fff;
-    background: rgba(28, 25, 23, 0.72);
-    border-radius: 999px;
-    padding: 0.15rem 0.55rem;
-    pointer-events: none;
-}
-
-.photo:hover .photo__hint,
-.photo:focus-visible .photo__hint {
-    background: var(--accent);
-}
-
+/* The affordance is the cursor and nothing else. A caption printed over every
+   picture in the archive read as clutter long before it read as an
+   invitation, and a pointer device shows the zoom cursor on hover while a
+   touch device gets people tapping pictures out of habit. The invitation that
+   does survive is the one nobody can see: reader.js puts "View larger" on
+   aria-label, because the frame is a button wrapping an image with empty alt
+   text and would otherwise have no accessible name at all. */
 .photo:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 3px;
 }
+
+/* --- a run of photos, and the album under the letter --- */
 
 /* One row of identical squares that scrolls sideways when it runs out of
    room, rather than a grid that reflowed into rows of whatever fit. Mixed
    portraits and landscapes at their own proportions read as a pile; a
    straight line of equal tiles reads as a set.
 
+   Shared by both places pictures come in quantity -- the album of attached
+   photos under a letter, and a burst the missionary pasted into one with no
+   text between -- because they are the same thing to a reader looking at
+   them, whatever the mail client did on the way in.
+
    `proximity`, not `mandatory`: snapping is a nicety here, and mandatory
    snapping fights anyone who wants to nudge the row a little, especially with
    a trackpad. */
-.album {
+.album,
+.photo-row {
     display: flex;
     gap: 0.6rem;
-    margin: 1.25rem 0 0;
     padding: 0 0 0.5rem;
-    list-style: none;
     overflow-x: auto;
     scroll-snap-type: x proximity;
     /* Stops a swipe that runs off the end of the row from turning into the
@@ -604,12 +592,34 @@ button:focus-visible {
     scrollbar-color: var(--rule) transparent;
 }
 
-.album li {
+.album {
+    margin: 1.25rem 0 0;
+    list-style: none;
+}
+
+.photo-row {
+    /* A run can follow a floated photo from earlier in the letter, and a
+       scrolling row overlapping one would be unusable. */
+    clear: left;
+    margin: 1.5rem 0;
+}
+
+.album li,
+.photo-row .photo {
     /* No shrinking. A flex item's default is to give up width under pressure,
        which is exactly the reflow this layout exists to avoid -- eight photos
        would quietly squeeze to eight slivers instead of scrolling. */
     flex: 0 0 auto;
     scroll-snap-align: start;
+}
+
+/* Undoing the float and the block treatment, both of which are written with a
+   single class and so lose to this on specificity rather than on order. */
+.photo-row .photo {
+    float: none;
+    width: auto;
+    max-width: none;
+    margin: 0;
 }
 
 .album a {
@@ -623,10 +633,12 @@ button:focus-visible {
     outline-offset: 3px;
 }
 
-.album img {
+.album img,
+.photo-row img {
     display: block;
     width: 8.5rem;
     height: 8.5rem;
+    max-height: none;
     object-fit: cover;
     border-radius: var(--radius);
     background: #eee;
@@ -635,7 +647,8 @@ button:focus-visible {
 @media (max-width: 37rem) {
     /* Smaller, so more than two tiles are visible at once -- a row that is cut
        off mid-photo is the only thing telling a reader there is more of it. */
-    .album img {
+    .album img,
+    .photo-row img {
         width: 6.5rem;
         height: 6.5rem;
     }
