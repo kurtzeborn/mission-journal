@@ -1102,11 +1102,12 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Offline archive export, byte-identical reader~~ — [Phase 5](#phase-5--offline-archive-export)
 - [x] ~~`/login` chooser, `401` deep links, `403` refusal panel~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [x] ~~Root archive list and in-site switcher~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
-- [ ] Inline photos with wrapped text and click-to-enlarge — [Reader UI backlog](#reader-ui-backlog)
-- [ ] Search-hit highlighting with next/previous and a floating control — [Reader UI backlog](#reader-ui-backlog)
-- [ ] Collapsible letters, collapsed by default — [Reader UI backlog](#reader-ui-backlog)
-- [ ] Horizontal photo carousel in place of the vertical album — [Reader UI backlog](#reader-ui-backlog)
+- [x] ~~Inline photos with wrapped text and click-to-enlarge~~ — [Reader UI backlog](#reader-ui-backlog)
+- [x] ~~Search-hit highlighting with next/previous and a floating control~~ — [Reader UI backlog](#reader-ui-backlog)
+- [x] ~~Collapsible letters, collapsed by default~~ — [Reader UI backlog](#reader-ui-backlog)
+- [x] ~~Horizontal photo carousel in place of the vertical album~~ — [Reader UI backlog](#reader-ui-backlog)
 - [ ] Any automated test over `reader.js` — [Reader UI backlog](#reader-ui-backlog)
+- [ ] Word cloud over a missionary's letters — [Later features](#later-features)
 
 **Onboarding — a site comes into existence**
 
@@ -1145,6 +1146,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [ ] Dim hidden posts rather than badging them — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [ ] `/manage/last-received` service-wide flow view — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [ ] Ownership-window banner for `missionary.org` owners — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Owners can add pictures to a post — [Later features](#later-features)
 
 **Platform**
 
@@ -1519,6 +1521,14 @@ Phase 12 is [Leaving beta](#phase-12--leaving-beta), and it is deliberately the 
 
 Raised after reading the first real archive end to end. **None of these block anything technically**, and together they block showing the site to family: the page is one long unbroken column, and length is the problem each item attacks from a different side.
 
+**Items 1 to 4 have shipped.** Three things about how they landed are worth keeping, because none of them were in the ask:
+
+- **Item 1 asked for a visible affordance on each photo, and it has been removed again.** A "View larger" pill printed over every picture in the archive read as clutter long before it read as an invitation. The cue is now the zoom cursor and, on touch, the near-universal habit of tapping a picture. The words survive on `aria-label`, because the frame is a button wrapping an image with empty alt text and would otherwise have no accessible name at all.
+- **A photo has to earn its float.** Wrapping text around a small picture is only worth doing when there is text to wrap; measured against the real archive, most photos do not have any. `reader.js` counts the letter between each photo and the next, and under roughly three lines the picture stands on its own at full width instead. Photos also `clear` each other unconditionally, because two floats side by side squeeze the column to about sixteen characters and that guard needs no judgement to be right.
+- **Item 4's carousel serves a case the album never sees.** The row was built for attached photos, and then measurement showed *neither* archive contains a single attached-but-unreferenced photo — every one of Isaac's forty-nine is inline, because his mail client embeds what he attaches. What it actually serves is a burst of inline photos with no text between them, which is how more than half of his letters end. Both now render as the same row, which is right: they are the same thing to a reader, whatever the mail client did on the way in.
+
+What did not ship alongside them is any automated test over the result. Every item above was verified by driving a real page in a browser, which is exactly the gap already recorded at the end of [the editor section](#the-editor-edits-the-letter-not-its-markup) — and there is now a great deal more behaviour sitting behind it than there was.
+
 1. **Inline photos with text wrapped around them.** Show the small rendition in the flow of the letter rather than in a block underneath, with the text wrapping, and put a visible affordance on the image saying that clicking it opens the larger one. Today an image is either inline (because the letter placed it there) or relegated to the album strip at the bottom, and neither says it can be enlarged.
 
    **The split itself is confirmed working.** A letter carrying one pasted inline image and two attachments rendered exactly that way end to end — the pasted one in the flow, the other two in the album. So nothing here is about *which* pictures go where; it is entirely about how the inline one is presented. It currently sits at full width, breaking the column and pushing the text apart, when it should be small, wrapped, and obviously clickable.
@@ -1558,6 +1568,38 @@ Two things had to be built rather than inherited from the browser, both because 
 What the browser produces was checked against the server end to end: a real letter was edited in place — bold, italic and underline applied by shortcut, a photo deleted, the subject changed — and the exact bytes the page sent were run through `applyEdit`. Both remaining photos, all three formatting tags and the album link survived, no empty blocks were left, `bodyText` was dropped, and a second save changed nothing. The photos matter most: the page displays them through whatever URL its host uses — a relative path in the downloaded archive, `/api/photo/...` on the site — so the editor keeps the stored URL on each image and puts it back before sending. Reading the displayed markup back directly would work on the website today and delete every picture in a letter the day it stopped matching, because the sanitizer drops an `<img>` whose `src` it does not recognise.
 
 **Still open: there are no automated tests over any of this.** `reader.js` runs in a browser and nothing in the suite points at it, so the verification above was done by driving a real page and is not repeatable in CI. The `web-dom.js` harness already exists and has never been aimed at `reader.js`.
+
+---
+
+## Later features
+
+Raised after the reader backlog was cleared. Deliberately not phases: neither blocks anything, and both are additions to machinery that already exists rather than new pipelines.
+
+### Word cloud
+
+Show the words a missionary actually uses — the names, the places, the things that come up week after week — as a way into an archive that is otherwise only searchable by someone who already knows what to search for.
+
+- **Clicking a word runs the search.** This is the whole reason it is worth building rather than being decoration. Hit marking and next/previous stepping already exist, so a word in the cloud becomes a way of *discovering* a query for machinery that is already there to answer it.
+- **Client-side, like everything else in the reader.** No `fetch`, no modules, no build step, and it has to work from `file://` in the downloaded archive. Nothing about the letters leaves the device, which is the promise search already makes.
+- **The stop list is the hard part, and it is not just English.** A missionary in Guatemala writes bilingual letters, and `de`, `que`, `la` and `y` will outrank every real word if only an English list is applied. Beyond function words there is a second layer of noise specific to this corpus: `Elder`, `Sister`, `week`, `district`, `transfer`, `love` and the missionary's own name appear in nearly every letter and distinguish nothing.
+- **Frequency is the wrong measure; spread is the right one.** A word repeated thirty times in one letter is a story about that week. A word appearing once in twenty letters out of twenty-four is what the mission was about. Weighting by how many letters a word appears in, rather than how often, is what separates the two — and it is close enough to what MiniSearch already computes for the search index that re-tokenizing the archive a second time may be avoidable.
+- **A list, not a picture.** The rotated, overlapped, tightly packed word cloud is a large amount of code and it is hostile to a screen reader and to a thumb. Words at varying sizes in ordinary flow read the same way, stay selectable, and are buttons rather than a canvas.
+- **It must not undo the work that shortened the page.** Collapsed by default, wherever it lands.
+
+Open: whether it covers the whole site or one letter; whether stemming earns its keep, since `teach`, `teaching` and `taught` are one idea and three words; and whether an owner needs a way to suppress a word that is noise for their missionary and signal for someone else's.
+
+### Owners can add pictures to a post
+
+The bridge from Google Photos. A linked album stops working whenever it is deleted, moved, or its sharing changes, and there is nothing this service can do about that from the outside. The onboarding page now asks missionaries to attach photos rather than link them, but that does nothing for the letters already in the archive that link out. Letting an owner pull the photos down from the shared album and put them into the letter is what closes that gap — before the link rots rather than after.
+
+- **An uploaded photo goes through the same pipeline as an emailed one**, or it is not the same thing: EXIF stripped including GPS, re-encoded to WebP in both sizes, content-addressed under `rendered/{slug}/photos/`. It has to be indistinguishable from an attachment to everything downstream — the album, the offline export, the photo book.
+- **Half the sanitizer work is already done.** `keepPhotoPrefix` exists precisely so an owner's edit can carry `/api/photo/{slug}/` URLs that have no `cid:` left to map, pinned to the slug they own. A newly uploaded photo is the same shape and needs no new exception.
+- **There is no raw original to fall back on.** Every other photo in the system has an untouched copy inside the `.eml` in `raw/`, which is what makes [reprocessing](#photo-handling) and full-resolution download possible. An upload arrives with no message around it, so it needs somewhere of its own or it becomes the one photo in the archive that can never be re-rendered.
+- **Owner-only, `ETag`-guarded, and capped.** The same concurrency guard as the rest of the editor, and a daily cap in the spirit of the ingest cap — the failure mode here is not malice so much as somebody selecting an entire camera roll.
+- **HEIC matters more here than in email.** It is already a defensive branch in the render path, justified there by being rare; a parent uploading straight from an iPhone makes it the expected case rather than the occasional one.
+- **[Restoring a post to its original](#restoring-the-original) has to decide what happens to them.** Restore re-renders from `raw/`, and a photo the owner added was never in `raw/`. Whether it survives or is discarded needs to be a decision rather than whatever the code happens to do.
+
+Open: whether the photo lands at the caret in the editor or simply joins the album; and whether the same mechanism should let an owner replace a dead album *link* with the photos it used to point at, which is the actual story behind the request.
 
 ---
 
