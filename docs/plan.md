@@ -1106,7 +1106,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Search-hit highlighting with next/previous and a floating control~~ — [Reader UI backlog](#reader-ui-backlog)
 - [x] ~~Collapsible letters, collapsed by default~~ — [Reader UI backlog](#reader-ui-backlog)
 - [x] ~~Horizontal photo carousel in place of the vertical album~~ — [Reader UI backlog](#reader-ui-backlog)
-- [ ] Any automated test over `reader.js` — [Reader UI backlog](#reader-ui-backlog)
+- [x] ~~Any automated test over `reader.js`~~ — [Reader UI backlog](#reader-ui-backlog)
 - [ ] Word cloud over a missionary's letters — [Later features](#later-features)
 
 **Onboarding — a site comes into existence**
@@ -1527,7 +1527,7 @@ Raised after reading the first real archive end to end. **None of these block an
 - **A photo has to earn its float.** Wrapping text around a small picture is only worth doing when there is text to wrap; measured against the real archive, most photos do not have any. `reader.js` counts the letter between each photo and the next, and under roughly three lines the picture stands on its own at full width instead. Photos also `clear` each other unconditionally, because two floats side by side squeeze the column to about sixteen characters and that guard needs no judgement to be right.
 - **Item 4's carousel serves a case the album never sees.** The row was built for attached photos, and then measurement showed *neither* archive contains a single attached-but-unreferenced photo — every one of Isaac's forty-nine is inline, because his mail client embeds what he attaches. What it actually serves is a burst of inline photos with no text between them, which is how more than half of his letters end. Both now render as the same row, which is right: they are the same thing to a reader, whatever the mail client did on the way in.
 
-What did not ship alongside them is any automated test over the result. Every item above was verified by driving a real page in a browser, which is exactly the gap already recorded at the end of [the editor section](#the-editor-edits-the-letter-not-its-markup) — and there is now a great deal more behaviour sitting behind it than there was.
+What did not ship alongside them is any automated test over the result. Every item above was verified by driving a real page in a browser, which is exactly the gap already recorded at the end of [the editor section](#the-editor-edits-the-letter-not-its-markup) — and there is now a great deal more behaviour sitting behind it than there was. **That gap is now closed**; see the same section.
 
 1. **Inline photos with text wrapped around them.** Show the small rendition in the flow of the letter rather than in a block underneath, with the text wrapping, and put a visible affordance on the image saying that clicking it opens the larger one. Today an image is either inline (because the letter placed it there) or relegated to the album strip at the bottom, and neither says it can be enlarged.
 
@@ -1567,13 +1567,15 @@ Two things had to be built rather than inherited from the browser, both because 
 
 What the browser produces was checked against the server end to end: a real letter was edited in place — bold, italic and underline applied by shortcut, a photo deleted, the subject changed — and the exact bytes the page sent were run through `applyEdit`. Both remaining photos, all three formatting tags and the album link survived, no empty blocks were left, `bodyText` was dropped, and a second save changed nothing. The photos matter most: the page displays them through whatever URL its host uses — a relative path in the downloaded archive, `/api/photo/...` on the site — so the editor keeps the stored URL on each image and puts it back before sending. Reading the displayed markup back directly would work on the website today and delete every picture in a letter the day it stopped matching, because the sanitizer drops an `<img>` whose `src` it does not recognise.
 
-**Still open: there are no automated tests over any of this.** `reader.js` runs in a browser and nothing in the suite points at it, so the verification above was done by driving a real page and is not repeatable in CI. The `web-dom.js` harness already exists and has never been aimed at `reader.js`.
+**Now tested.** `reader.js` runs in a browser, and the verification above was done by driving a real page, which is not repeatable in CI. `web-dom.js` was never going to reach it — that harness implements a dozen DOM methods by hand, and this file walks the letter with a `TreeWalker`, extracts a `Range` spanning several elements, and parses stored HTML through a `<template>`. `reader-dom.js` runs the real, unmodified script against the real `web/site.html` under **jsdom**, which is a dependency the plan had said to avoid — but two of the three objections it raised were to a *headless browser*: there is no binary to download on every run and no timing to be flaky about. What is left is one devDependency with no native code, against shipping untested DOM surgery to an archive a family cannot re-download.
+
+What the tests found on the first run: **stepping back from a fresh search landed two matches from the end**, because `at` starts at `-1` and `-2` wrapped one place short of the last.
 
 ---
 
 ## Later features
 
-Raised after the reader backlog was cleared. Deliberately not phases: neither blocks anything, and both are additions to machinery that already exists rather than new pipelines.
+Raised after the reader backlog was cleared. Deliberately not phases: none of these blocks anything, and all of them are additions to machinery that already exists rather than new pipelines.
 
 ### Word cloud
 
@@ -1600,6 +1602,15 @@ The bridge from Google Photos. A linked album stops working whenever it is delet
 - **[Restoring a post to its original](#restoring-the-original) has to decide what happens to them.** Restore re-renders from `raw/`, and a photo the owner added was never in `raw/`. Whether it survives or is discarded needs to be a decision rather than whatever the code happens to do.
 
 Open: whether the photo lands at the caret in the editor or simply joins the album; and whether the same mechanism should let an owner replace a dead album *link* with the photos it used to point at, which is the actual story behind the request.
+
+### Two experiments in navigating a long archive
+
+Both of these are **worth building far enough to look at and no further.** Neither is obviously an improvement, and the reason to write them down is that the argument for each is easy to make in the abstract and the objection to each only shows up on screen. Build, look, and be willing to throw away.
+
+- **Letters grouped into collapsible months.** "August 2025" as a heading with the month's letters beneath it, closed by default. The case for it: a full mission is around a hundred letters, and a flat list of a hundred dates is a different problem from the flat wall of prose that collapsing already solved. The case against it: it puts a second thing to click in front of every letter, and the summary lines are already dates — a reader scanning for "sometime in the spring" may find the month headings redundant rather than helpful. Watch what it does to search in particular: a hit inside a closed letter inside a closed month needs *two* things opened to reach it, and the stepper currently opens one.
+- **A floating table of contents down the left.** Dates, sticky, scrolling the letter into view when clicked. The case for it: it is the only proposal that shows where you are in the mission rather than only what is next. The case against it: the layout has just been deliberately narrowed to keep the prose at a comfortable measure, and a left rail either eats into that or pushes the column off-centre — the same argument that killed the right-hand photo gutter, pointed the other way. It also has nowhere to go on a phone, which is where most of this is read, so it would be a desktop-only feature and the desktop is not where the problem is.
+
+Both are cheap to prototype because the reader already has what they need: `views` is an ordered map keyed by post id, `setExpanded` is the only way anything opens, and the dates are already parsed. Neither should ship without seeing the two of them and the plain list side by side.
 
 ---
 

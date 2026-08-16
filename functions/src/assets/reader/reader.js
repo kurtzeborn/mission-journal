@@ -196,7 +196,8 @@ window.Reader = (function () {
     // The walk steps over the frames' own contents, so that anything this file
     // ever puts inside one is counted as the frame rather than as the letter.
     // A photo must never be credited with room it does not have.
-    function textAfter(root, frames) {        const counts = frames.map(() => 0);
+    function textAfter(root, frames) {
+        const counts = frames.map(() => 0);
         if (!frames.length) return counts;
 
         const walker = document.createTreeWalker(
@@ -1043,7 +1044,12 @@ window.Reader = (function () {
             position.textContent = marks.length ? `${marks.length} matches` : '';
         };
 
-        previous.addEventListener('click', () => goTo(at - 1));
+        // `at` is -1 until the reader steps for the first time, and stepping
+        // back from nowhere means the last match rather than one before it.
+        // Passing -2 through the wrap arrives at the second from the end,
+        // which is a strange place to be sent and nothing on screen explains
+        // why.
+        previous.addEventListener('click', () => goTo(at < 0 ? -1 : at - 1));
         next.addEventListener('click', () => goTo(at + 1));
 
         searchInput.addEventListener('input', apply);
