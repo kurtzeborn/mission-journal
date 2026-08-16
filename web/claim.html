@@ -94,6 +94,12 @@
             <h2 id="failed-title">This link cannot be used</h2>
             <p class="lede" id="failed-detail"></p>
             <p class="note" id="failed-help"></p>
+            <!-- Shown only for a link that is merely out of date, where the
+                 letters are still waiting and we can send a working one. -->
+            <p id="failed-resend" hidden>
+                <button class="button" type="button" id="resend">Email me a new link</button>
+            </p>
+            <p class="note" id="resend-result" hidden></p>
         </section>
     </main>
 

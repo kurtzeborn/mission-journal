@@ -5,6 +5,7 @@ import { gate, hardened, contentEtag, matchesEtag } from '../lib/api.js';
 import { ROLE } from '../lib/acl.js';
 import { deletionOf } from '../lib/deletion.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
+import { runRender } from '../lib/render.js';
 
 let cachedStore = null;
 const blobStore = () =>
@@ -157,6 +158,55 @@ async function remove(request, context) {
     return ok({ id: postId, removed: outcome.removed });
 }
 
+// Put a letter back the way it arrived.
+//
+// Destructive and deliberately so: it is the only way anyone reaches what the
+// missionary originally wrote, and it reaches it by *rewriting the rendered
+// post from `raw/`* rather than handing anybody the `.eml`. The text comes
+// back through the sanitizer and the ordinary read path, exactly like a newly
+// ingested letter, so nothing in the storage rules bends to accommodate it.
+//
+// Run in the request rather than queued. A restore is destructive and the
+// owner has just been asked to confirm it, so "it is happening somewhere,
+// probably" is the wrong answer to give them -- and the work is bounded by one
+// message's photos, which are content-addressed and rewrite the same blobs.
+async function restore(request, context) {
+    const gated = await ownerOnly(request, context);
+    if (gated.denied) return gated.denied;
+
+    const { postId } = request.params;
+    const store = blobStore();
+
+    const current = await store.readBlob('rendered', `${gated.slug}/posts.json`);
+    if (!current) return problem(404, 'no such site');
+
+    const posts = JSON.parse(Buffer.from(current.bytes).toString('utf8'));
+    const post = posts.find((entry) => entry.id === postId);
+    if (!post) return problem(404, 'no such post');
+
+    // The path is written at ingest and never edited -- it is not in the
+    // editable set -- so parsing it back is cheaper than carrying the message
+    // id twice on every post.
+    const msgId = /^raw\/[^/]+\/([^/]+)\/message\.eml$/.exec(post.sourceRawPath ?? '')?.[1];
+    if (!msgId) return problem(409, 'this letter has no original to restore from');
+
+    const outcome = await runRender({
+        message: { slug: gated.slug, msgId, postId },
+        store,
+        restore: true,
+        log: context
+    });
+
+    // The raw message is gone, which means the site was deleted underneath
+    // this. Nothing to say beyond that there is no original any more.
+    if (outcome.status !== 'rendered') {
+        return problem(409, 'the original letter is no longer in the archive');
+    }
+
+    context.log('post.restored', { slug: gated.slug, postId, photos: outcome.photos });
+    return ok({ id: postId, restored: true });
+}
+
 app.http('editPost', {
     // As everywhere else, authorization is the ACL check inside the handler;
     // `anonymous` only means no Functions access key, which Static Web Apps
@@ -172,4 +222,11 @@ app.http('deletePost', {
     methods: ['DELETE'],
     route: 'posts/{slug}/{postId}',
     handler: remove
+});
+
+app.http('restorePost', {
+    authLevel: 'anonymous',
+    methods: ['POST'],
+    route: 'posts/{slug}/{postId}/restore',
+    handler: restore
 });

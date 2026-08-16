@@ -709,16 +709,33 @@ button:focus-visible {
     outline-offset: 3px;
 }
 
-.badge {
-    display: inline-block;
-    font-family: system-ui, sans-serif;
-    font-size: 0.75rem;
-    border-radius: 999px;
-    padding: 0.15rem 0.6rem;
-    background: #fdf0d5;
-    border: 1px solid #e8d5a8;
-    color: #6b4f14;
-    margin-bottom: 0.6rem;
+/* A letter that is out of view, seen by an owner.
+
+   Dimmed rather than badged. The badge was a pill on its own line above the
+   heading, which is a lot of page for a state that only says "nobody else can
+   see this one" -- and on an archive with several held letters it turned the
+   list into a column of warnings. Dimming says the same thing without taking
+   any room, and it says it the way every other interface says it, so there is
+   nothing to read in order to understand it.
+
+   Opacity rather than a paler ink, so the pictures dim with the words. A held
+   letter with full-strength photos beside grey text reads as broken. */
+.post--hidden {
+    opacity: 0.55;
+}
+
+/* Except once it is open, where the owner is reading it in order to decide
+   about it and needs it legible. */
+.post--hidden.post--open {
+    opacity: 1;
+}
+
+/* The reason lives in the summary line with the photo count. Dimming can say
+   that a letter is out of view and cannot say why, and why is the whole of
+   what the owner needs in order to do anything about it. */
+.post__held {
+    color: #8a5a12;
+    font-weight: 600;
 }
 
 .note {
@@ -1161,6 +1178,16 @@ h3:target {
 
 .admin__status {
     font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+/* Who last changed the letter. Pushed to the far end of the bar because it is
+   a fact to be looked up rather than a control to be used, and it must not sit
+   where a button is about to appear. */
+.admin__note {
+    margin-left: auto;
+    font-size: 0.8rem;
+    font-style: italic;
     color: var(--ink-soft);
 }
 

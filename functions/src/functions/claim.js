@@ -1,9 +1,11 @@
 import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
 import { createTableStore } from '../lib/tables.js';
+import { createMailer } from '../lib/mail.js';
 import { hardened } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { describeClaim, redeemClaim } from '../lib/claim.js';
+import { resendClaim } from '../lib/offer.js';
 
 // The claim token never appears in a URL.
 //
@@ -28,9 +30,17 @@ import { describeClaim, redeemClaim } from '../lib/claim.js';
 
 let cachedBlobs = null;
 let cachedTables = null;
+let cachedMailer = null;
 const account = () => process.env.STORAGE_ACCOUNT_NAME;
 const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
 const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
+const mailer = () =>
+    (cachedMailer ??= createMailer({
+        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+        token: process.env.CLOUDFLARE_API_TOKEN,
+        allowlist: process.env.MAIL_ALLOWLIST
+    }));
+const baseUrl = () => process.env.PUBLIC_BASE_URL || 'https://pdayletters.com';
 
 const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
 const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
@@ -110,6 +120,31 @@ export async function redeem({ request, context, store, tables, key }) {
     return json(result.status === 'ok' ? 200 : 409, result);
 }
 
+// "Email me a new link", offered on the pages that say a link is dead.
+//
+// Anonymous, because its whole audience is somebody who cannot sign in yet.
+// The dead token in the body is the credential: we signed it, so holding one
+// proves the holder was sent a claim email. The reply never names an address,
+// so this asks that somebody be written to and cannot be used to learn who.
+export async function resend({ request, context, store, mailer: send, key }) {
+    if (!key) return json(503, { status: 'unavailable' });
+
+    const { token } = await body(request);
+    if (!token) return json(400, { status: 'invalid' });
+
+    const result = await resendClaim({
+        store,
+        mailer: send,
+        token,
+        key,
+        baseUrl: baseUrl(),
+        log: context
+    });
+
+    // Always 200, for the reason `describe` is. The body says what happened.
+    return json(200, result);
+}
+
 const describeHandler = (request, context) =>
     describe({ request, context, store: blobStore(), tables: tableStore(), key: signingKey(context) });
 
@@ -137,4 +172,12 @@ app.http('claim-redeem', {
     methods: ['POST'],
     route: 'claim/redeem',
     handler: redeemHandler
+});
+
+app.http('claim-resend', {
+    authLevel: 'anonymous',
+    methods: ['POST'],
+    route: 'claim/resend',
+    handler: (request, context) =>
+        resend({ request, context, store: blobStore(), mailer: mailer(), key: signingKey(context) })
 });

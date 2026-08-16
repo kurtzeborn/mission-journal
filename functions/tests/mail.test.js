@@ -9,7 +9,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createMailer, parseAllowlist, maskAddress } from '../src/lib/mail.js';
-import { offerClaim } from '../src/lib/offer.js';
+import { offerClaim, resendClaim, remindPending, invitationDue } from '../src/lib/offer.js';
 import { holdPending } from '../src/lib/pending.js';
 import { memoryStore } from './memory-store.js';
 
@@ -293,5 +293,283 @@ describe('offering a pending site', () => {
         assert.equal(result.status, 'no-recipient');
         assert.equal(calls.length, 0);
         assert.ok(errors.some((e) => e.m.includes('no sender')));
+    });
+});
+
+// --- "email me a new link" -------------------------------------------------
+
+const at = (iso) => () => new Date(iso);
+const DAY = 24 * 60 * 60 * 1000;
+const later = (days) => at(new Date(NOW().getTime() + days * DAY).toISOString());
+
+// Offer a pending site and hand back the token that went out in the email.
+// Read out of the message rather than minted alongside it, because the token
+// under test is the one a person actually received.
+async function offered(store, mailer, calls, now = NOW) {
+    await offerClaim({ store, mailer, slug: SLUG, key: KEY, baseUrl: 'https://x.com', now, log: quiet });
+    return /\/claim#(\S+)/.exec(calls[calls.length - 1].body.text)[1];
+}
+
+describe('asking for a new claim link', () => {
+    // The shape this exists for: a token minted against the window as it stood
+    // in August, a letter in September that rolls the window forward, and
+    // somebody going looking for the email in November. The link is dead and
+    // the letters are not.
+    async function stale() {
+        const store = await held(memoryStore());
+        const { mailer, calls } = mailerWith([ok, ok]);
+        const token = await offered(store, mailer, calls);
+
+        await holdPending({
+            store, slug: SLUG, ulid: 'u-later', raw: Buffer.from('another letter'),
+            subject: 'Week 8', sender: SENDER, hasDirect: true, now: later(50), log: quiet
+        });
+
+        return { store, mailer, calls, token };
+    }
+
+    test('a stale link brings a working one, sent where the last one went', async () => {
+        const { store, mailer, calls, token } = await stale();
+
+        const result = await resendClaim({
+            store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(70), log: quiet
+        });
+
+        assert.equal(result.status, 'sent');
+        assert.equal(calls.length, 2);
+        assert.equal(calls[1].body.to, SENDER);
+        // A different token, and the manifest now expects the new one -- the
+        // old link has to stop working or every ask doubles the live
+        // credentials.
+        const reissued = /\/claim#(\S+)/.exec(calls[1].body.text)[1];
+        assert.notEqual(reissued, token);
+        assert.equal(manifestOf(store).claimEmailCount, 2);
+    });
+
+    test('nothing about who was written to comes back to the asker', async () => {
+        const { store, mailer, token } = await stale();
+
+        const result = await resendClaim({
+            store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(70), log: quiet
+        });
+
+        // The holder of a dead link may ask that somebody be written to. They
+        // may not find out who that is.
+        assert.deepEqual(Object.keys(result), ['status']);
+    });
+
+    test('a second ask within the hour is refused', async () => {
+        const { store, mailer, calls, token } = await stale();
+        await resendClaim({ store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(70), log: quiet });
+
+        const again = await resendClaim({
+            store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(70), log: quiet
+        });
+
+        assert.equal(again.status, 'recent');
+        assert.equal(calls.length, 2);
+    });
+
+    test('and allowed again once the hour is up', async () => {
+        const { store, mailer, calls, token } = await stale();
+        await resendClaim({ store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(70), log: quiet });
+
+        const again = await resendClaim({
+            store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(71), log: quiet
+        });
+
+        assert.equal(again.status, 'sent');
+        assert.equal(calls.length, 3);
+    });
+
+    test('a site whose own window has run out has nothing to send', async () => {
+        // A fresh link would be born expired, and the letters are already on
+        // the purge job's list.
+        const store = await held(memoryStore());
+        const { mailer, calls } = mailerWith([ok]);
+        const token = await offered(store, mailer, calls);
+
+        const result = await resendClaim({
+            store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(90), log: quiet
+        });
+
+        assert.equal(result.status, 'gone');
+        assert.equal(calls.length, 1);
+    });
+
+    test('a claimed site has nothing to send either', async () => {
+        const store = await held(memoryStore());
+        const { mailer, calls } = mailerWith([ok]);
+        const token = await offered(store, mailer, calls);
+        const current = manifestOf(store);
+        store.blobs.set(`pending/${SLUG}/claim.json`, {
+            bytes: Buffer.from(JSON.stringify({ ...current, claimedAt: '2026-08-05T00:00:00Z' })),
+            etag: 'x'
+        });
+
+        const result = await resendClaim({
+            store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(1), log: quiet
+        });
+
+        assert.equal(result.status, 'gone');
+        assert.equal(calls.length, 1);
+    });
+
+    test('a token we did not sign is refused before anything is read', async () => {
+        const { store, mailer, calls, token } = await stale();
+
+        const result = await resendClaim({
+            store, mailer, token, key: 'b'.repeat(44), baseUrl: 'https://x.com', now: later(70), log: quiet
+        });
+
+        assert.equal(result.status, 'invalid');
+        assert.equal(calls.length, 1);
+    });
+
+    test('a live link may be resent too, and supersedes itself', async () => {
+        // Not the case it was written for, but a person who has mislaid the
+        // email cannot tell a stale link from a live one and should not have
+        // to. The only cost is that the link they mislaid stops working.
+        const store = await held(memoryStore());
+        const { mailer, calls } = mailerWith([ok, ok]);
+        const token = await offered(store, mailer, calls);
+
+        const result = await resendClaim({
+            store, mailer, token, key: KEY, baseUrl: 'https://x.com', now: later(2), log: quiet
+        });
+
+        assert.equal(result.status, 'sent');
+        assert.equal(calls.length, 2);
+    });
+});
+
+// --- chasing a site nobody came back to ------------------------------------
+
+describe('inviting the missionary again', () => {
+    const manifest = (count, sentDaysAgo) => ({
+        claimEmailCount: count,
+        claimEmailSentAt: new Date(NOW().getTime() - sentDaysAgo * 24 * 60 * 60 * 1000).toISOString()
+    });
+
+    test('the first letter always invites', () => {
+        assert.equal(invitationDue({ claimEmailCount: 0 }, NOW()), true);
+    });
+
+    test('the gaps widen: thirty days, then ninety, then a hundred and eighty', () => {
+        assert.equal(invitationDue(manifest(1, 29), NOW()), false);
+        assert.equal(invitationDue(manifest(1, 30), NOW()), true);
+        assert.equal(invitationDue(manifest(2, 89), NOW()), false);
+        assert.equal(invitationDue(manifest(2, 90), NOW()), true);
+        assert.equal(invitationDue(manifest(3, 179), NOW()), false);
+        assert.equal(invitationDue(manifest(3, 180), NOW()), true);
+    });
+
+    test('and stay at a hundred and eighty rather than running off the end', () => {
+        assert.equal(invitationDue(manifest(9, 179), NOW()), false);
+        assert.equal(invitationDue(manifest(9, 180), NOW()), true);
+    });
+
+    test('a count with no stamp behind it invites once more', () => {
+        // A manifest written before any of this existed. Inviting is the safe
+        // direction; the alternative is a site that can never be chased again.
+        assert.equal(invitationDue({ claimEmailCount: 2 }, NOW()), true);
+    });
+});
+
+describe('reminding a forwarder', () => {
+    // A pending site created by a forward rather than a direct send, offered
+    // once, and then left alone.
+    async function forwarded(mailer, calls) {
+        const store = memoryStore();
+        await holdPending({
+            store, slug: SLUG, ulid: 'u', raw: Buffer.from('a letter'),
+            subject: 'Week 1', sender: SENDER, messageId: '<m@x>', hasDirect: false,
+            now: NOW, log: quiet
+        });
+        await offerClaim({
+            store, mailer, slug: SLUG, key: KEY, baseUrl: 'https://x.com',
+            to: 'mum@example.com', forwarded: true, now: NOW, log: quiet
+        });
+        return store;
+    }
+
+    const chase = (store, mailer, days) =>
+        remindPending({ store, mailer, key: KEY, baseUrl: 'https://x.com', now: later(days), log: quiet });
+
+    test('nothing happens for the first week', async () => {
+        const { mailer, calls } = mailerWith([ok, ok]);
+        const store = await forwarded(mailer, calls);
+
+        assert.deepEqual((await chase(store, mailer, 6)).reminded, []);
+        assert.equal(calls.length, 1);
+    });
+
+    test('one reminder goes on the seventh day, to the address that was written to', async () => {
+        const { mailer, calls } = mailerWith([ok, ok]);
+        const store = await forwarded(mailer, calls);
+
+        assert.deepEqual((await chase(store, mailer, 7)).reminded, [SLUG]);
+        assert.equal(calls[1].body.to, 'mum@example.com');
+    });
+
+    test('and only one, however many nights the job runs', async () => {
+        // Keyed to the site's own counter, so there is no "already reminded"
+        // flag to forget to write.
+        const { mailer, calls } = mailerWith([ok, ok, ok]);
+        const store = await forwarded(mailer, calls);
+
+        await chase(store, mailer, 7);
+        assert.deepEqual((await chase(store, mailer, 8)).reminded, []);
+        assert.equal(calls.length, 2);
+    });
+
+    test('a site the missionary writes to directly is left to ingest', async () => {
+        // `hasDirect` means there is somebody to reply to, and replying to a
+        // letter is the tapering series' job. Two chasers on one site would be
+        // two emails a week apart saying the same thing.
+        const { mailer, calls } = mailerWith([ok, ok]);
+        const store = await held(memoryStore());
+        await offerClaim({ store, mailer, slug: SLUG, key: KEY, baseUrl: 'https://x.com', now: NOW, log: quiet });
+
+        assert.deepEqual((await chase(store, mailer, 30)).reminded, []);
+        assert.equal(calls.length, 1);
+    });
+
+    test('a claimed site is not chased', async () => {
+        const { mailer, calls } = mailerWith([ok, ok]);
+        const store = await forwarded(mailer, calls);
+        const current = manifestOf(store);
+        store.blobs.set(`pending/${SLUG}/claim.json`, {
+            bytes: Buffer.from(JSON.stringify({ ...current, claimedAt: '2026-08-06T00:00:00Z' })),
+            etag: 'x'
+        });
+
+        assert.deepEqual((await chase(store, mailer, 7)).reminded, []);
+        assert.equal(calls.length, 1);
+    });
+
+    test('nor one whose letters are already on their way out', async () => {
+        // Forward-only sites hold for fourteen days. A reminder about letters
+        // being deleted tonight is worse than no reminder.
+        const { mailer, calls } = mailerWith([ok, ok]);
+        const store = await forwarded(mailer, calls);
+
+        assert.deepEqual((await chase(store, mailer, 20)).reminded, []);
+        assert.equal(calls.length, 1);
+    });
+
+    test('nor one that was never successfully offered in the first place', async () => {
+        // `claimEmailCount` is zero, which means nobody was ever told. That is
+        // the purge sweep's alarm to raise, not a reminder to send about an
+        // email that does not exist.
+        const store = memoryStore();
+        await holdPending({
+            store, slug: SLUG, ulid: 'u', raw: Buffer.from('a letter'),
+            subject: 'Week 1', sender: SENDER, hasDirect: false, now: NOW, log: quiet
+        });
+        const { mailer, calls } = mailerWith([ok]);
+
+        assert.deepEqual((await chase(store, mailer, 7)).reminded, []);
+        assert.equal(calls.length, 0);
     });
 });

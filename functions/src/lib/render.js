@@ -36,9 +36,14 @@ const textToHtml = (text) =>
  * @param {object} input
  * @param {{slug: string, msgId: string, postId: string}} input.message
  * @param {object} input.store   { readBlob, writeBlob }
+ * @param {boolean} [input.restore] undo every edit as well as rebuilding the
+ *   body. The ordinary pass runs on a letter nobody has touched, so it leaves
+ *   the subject and the edit stamps alone -- a re-render after a sanitizer fix
+ *   must not put an owner's name on a change they did not make. A restore is
+ *   the opposite request: put the letter back the way it arrived.
  * @param {object} [input.log]
  */
-export async function runRender({ message, store, log = console }) {
+export async function runRender({ message, store, restore = false, log = console }) {
     const { slug, msgId, postId } = message;
     if (!slug || !msgId || !postId) return { status: 'rejected', reason: 'incomplete-message' };
 
@@ -76,6 +81,10 @@ export async function runRender({ message, store, log = console }) {
         bodyHtml,
         photos: stored,
         linked: linkedPhotoServices(bodyHtml),
+        restore,
+        // Derived exactly as ingest derives it, so a restored letter is headed
+        // what the original was headed rather than what the last edit left.
+        subject: source.subject ?? extracted.outerSubject ?? '',
         log
     });
 }
@@ -137,7 +146,7 @@ async function renderPhotos({ store, slug, extracted, log }) {
 
 // posts.json is shared by every message on the site, so render contends with
 // ingest for it exactly as two ingests contend with each other.
-async function commitRender({ store, slug, postId, bodyHtml, photos, linked, log }) {
+async function commitRender({ store, slug, postId, bodyHtml, photos, linked, restore, subject, log }) {
     const name = `${slug}/posts.json`;
 
     for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
@@ -149,6 +158,20 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, linked, log
         if (index < 0) return { status: 'missing-post' };
 
         posts[index] = { ...posts[index], bodyHtml, photos, linkedPhotoServices: linked };
+
+        if (restore) {
+            posts[index].subject = subject;
+            // The post matches what arrived again, so a record saying somebody
+            // changed it would be a lie -- and the whole point of keeping it is
+            // that "why does this not match the copy in my inbox?" has an
+            // honest answer years later.
+            posts[index].editedBy = null;
+            posts[index].editedAt = null;
+            // `hidden` and `heldReason` are untouched by the spread above, and
+            // deliberately. Hiding is a moderation decision about the post
+            // rather than a property of its text, and an undo that quietly
+            // republished a hidden letter would be a disclosure.
+        }
 
         // bodyText only ever existed to carry a plain-text letter across the
         // gap between ingest and render. Once bodyHtml is built from it the

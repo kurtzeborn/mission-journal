@@ -64,12 +64,12 @@ const FAILURES = {
     expired: {
         title: 'This link has expired',
         detail: 'Claim links stop working after a while, for the same reason they are only sent to the people the letters were addressed to.',
-        help: 'The next letter that arrives will bring a fresh link.'
+        help: 'If the letters are still waiting, we can send a fresh link to the address the first one went to.'
     },
     superseded: {
         title: 'A newer link was sent',
         detail: 'This link was replaced when a more recent one was issued.',
-        help: 'Look for the most recent message from us and use the link in that one.'
+        help: 'Look for the most recent message from us and use the link in that one, or ask for another.'
     },
     claimed: {
         title: 'This archive has already been set up',
@@ -106,11 +106,51 @@ const FAILURES = {
 // is what a real claimant was actually shown when `unauthenticated` fell
 // through this branch. `unavailable` says the true thing in that situation:
 // something is wrong here, your link is fine, try again.
-function fail(status) {
+// The two refusals where the letters are still there and only the link is
+// wrong. Everything else on this page is either final -- claimed, gone -- or
+// says the link never worked, and offering to resend a link that was never
+// ours to begin with would be an invitation to guess at one.
+const RESENDABLE = new Set(['expired', 'superseded']);
+
+// What comes back from a resend, in the words of the person who asked for it.
+const RESENT = {
+    sent: 'Sent. Look for a new message from us -- it goes to the address the first one did.',
+    recent: 'We sent one within the last hour. Check your inbox, and your spam folder, before asking again.',
+    gone: 'There is nothing left to send a link to. These letters are past the date they were held until.',
+    invalid: 'This link is too damaged to work from. Copy the whole link out of the email and try again.',
+    failed: 'That did not go through. Please try again shortly.',
+    unavailable: 'We cannot send mail at the moment. This is not a problem with your link.'
+};
+
+function offerResend(token) {
+    const button = $('resend');
+    const result = $('resend-result');
+    $('failed-resend').hidden = false;
+
+    button.addEventListener('click', async () => {
+        // Once. A second click sends a second email to somebody who has done
+        // nothing wrong, and the quiet window on the server would refuse it
+        // anyway with a message that reads like a telling-off.
+        button.disabled = true;
+        result.textContent = 'Sending...';
+        result.hidden = false;
+
+        const { body } = await post('/api/claim/resend', { token }).catch(() => ({ body: {} }));
+        result.textContent = RESENT[body?.status] ?? RESENT.failed;
+
+        // Only a refusal that a later attempt could get past is worth trying
+        // again. The rest are settled, and re-enabling the button would be an
+        // invitation to keep pressing it.
+        if (body?.status === 'failed') button.disabled = false;
+    });
+}
+
+function fail(status, token = '') {
     const copy = FAILURES[status] ?? FAILURES.unavailable;
     $('failed-title').textContent = copy.title;
     $('failed-detail').textContent = copy.detail;
     $('failed-help').textContent = copy.help;
+    if (token && RESENDABLE.has(status)) offerResend(token);
     show('failed');
 }
 
@@ -253,8 +293,8 @@ async function start() {
     if (!token) return fail('invalid');
 
     const described = await post('/api/claim/describe', { token });
-    if (!described.ok) return fail(described.body.status ?? 'unavailable');
-    if (described.body.status !== 'ready') return fail(described.body.status);
+    if (!described.ok) return fail(described.body.status ?? 'unavailable', token);
+    if (described.body.status !== 'ready') return fail(described.body.status, token);
 
     const principal = await signedInAs();
     renderReady(described.body, principal);

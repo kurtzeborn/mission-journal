@@ -130,15 +130,33 @@ describe('the summary line', () => {
 });
 
 describe('what a letter says about itself', () => {
-    test('a letter held for review is badged, and says why', () => {
-        // Readers never receive these at all. The badge is for the owner, who
-        // otherwise cannot tell a held letter from a published one.
+    test('a letter held for review is dimmed, and says why', () => {
+        // Readers never receive these at all. The marking is for the owner,
+        // who otherwise cannot tell a held letter from a published one.
         const view = page();
         view.mount({
             posts: [letter('2026-03-25-9CRE', para(200), { hidden: true, heldReason: 'over the daily cap' })]
         });
 
-        assert.equal(view.$('.badge').textContent, 'Held for review — over the daily cap');
+        assert.ok(view.post('2026-03-25-9CRE').classList.contains('post--hidden'));
+        assert.equal(view.$('.post__held').textContent, 'Hidden — over the daily cap');
+    });
+
+    test('a letter hidden by an owner carries no reason but is still marked', () => {
+        // Hiding by hand sets no `heldReason` -- only the ingest guard does --
+        // so the sentence has to read without one.
+        const view = page();
+        view.mount({ posts: [letter('2026-03-25-9CRE', para(200), { hidden: true })] });
+
+        assert.equal(view.$('.post__held').textContent, 'Hidden — by an owner');
+    });
+
+    test('a published letter is neither dimmed nor marked', () => {
+        const view = page();
+        view.mount({ posts: [letter('2026-03-25-9CRE', para(200))] });
+
+        assert.equal(view.post('2026-03-25-9CRE').classList.contains('post--hidden'), false);
+        assert.equal(view.$('.post__held'), null);
     });
 
     test('a letter that links to an album outside the archive says so', () => {

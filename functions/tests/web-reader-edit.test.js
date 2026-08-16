@@ -16,12 +16,19 @@ import { settled } from './web-dom.js';
 const BODY = `${img('p1')}${para(400)}<p>${img('p2')}</p><p>${img('p3')}</p>`;
 
 /** An archive of one letter with owner controls, opened for editing. */
-function owner({ body = BODY, patch = async () => undefined, remove = async () => undefined, confirm = true } = {}) {
+function owner({
+    body = BODY,
+    patch = async () => undefined,
+    remove = async () => undefined,
+    restore = async () => undefined,
+    confirm = true,
+    post = {}
+} = {}) {
     const calls = [];
     const view = page();
 
     view.mount({
-        posts: [letter('2026-03-25-9CRE', body, { subject: 'Antigua at last' })],
+        posts: [letter('2026-03-25-9CRE', body, { subject: 'Antigua at last', ...post })],
         admin: {
             patch: (id, changes) => {
                 // Copied out of the page's realm, so an assertion out here
@@ -33,7 +40,15 @@ function owner({ body = BODY, patch = async () => undefined, remove = async () =
                 calls.push({ verb: 'remove', id });
                 return remove(id);
             },
+            restore: (id) => {
+                calls.push({ verb: 'restore', id });
+                return restore(id);
+            },
             confirmDelete: () => {
+                calls.push({ verb: 'confirm' });
+                return confirm;
+            },
+            confirmRestore: () => {
                 calls.push({ verb: 'confirm' });
                 return confirm;
             }
@@ -272,5 +287,99 @@ describe('editing the letter where it sits', () => {
         const selection = view.window.getSelection();
         assert.equal(selection.rangeCount, 1);
         assert.equal(selection.getRangeAt(0).startContainer, photo.parentElement);
+    });
+});
+
+describe('putting a letter back the way it arrived', () => {
+    const EDITED = { editedBy: 'sarah@example.com', editedAt: '2026-03-27T18:04:00.000Z' };
+
+    test('an untouched letter is not offered a restore', () => {
+        // It would re-render the post into exactly what it already says. A
+        // fourth button on every letter for a no-op is worse than no button.
+        const { view } = owner();
+
+        assert.equal(view.buttons('Restore original').length, 0);
+    });
+
+    test('an edited letter is', () => {
+        const { view } = owner({ post: EDITED });
+
+        assert.equal(view.button('Restore original').hidden, false);
+    });
+
+    test('restoring asks first, and sends nothing if the answer is no', () => {
+        const { view, calls } = owner({ post: EDITED, confirm: false });
+
+        view.click(view.button('Restore original'));
+
+        assert.deepEqual(
+            calls.map((call) => call.verb),
+            ['confirm']
+        );
+    });
+
+    test('restoring sends the post id once the answer is yes', () => {
+        const { view, calls } = owner({ post: EDITED });
+
+        view.click(view.button('Restore original'));
+
+        assert.deepEqual(
+            calls.map((call) => call.verb),
+            ['confirm', 'restore']
+        );
+        assert.equal(calls[1].id, '2026-03-25-9CRE');
+    });
+
+    test('a refused restore says so and leaves the letter alone', async () => {
+        const { view, letterBody } = owner({
+            post: EDITED,
+            restore: async () => 'The original letter is no longer in the archive.'
+        });
+        const before = letterBody.innerHTML;
+
+        view.click(view.button('Restore original'));
+        await settled();
+
+        assert.equal(view.$('.admin__status').textContent, 'The original letter is no longer in the archive.');
+        assert.equal(letterBody.innerHTML, before);
+    });
+
+    test('the restore is put away while the letter is being edited', () => {
+        // Two ways to discard the same text, one of which throws away the
+        // typing in front of them without warning that it was theirs.
+        const { view } = owner({ post: EDITED });
+
+        view.click(view.button('Edit'));
+
+        assert.equal(view.buttons('Restore original')[0].hidden, true);
+    });
+});
+
+describe('who last changed the letter', () => {
+    test('an edited letter names the editor and the day', () => {
+        // Written on every edit and, before this, readable only by opening the
+        // blob.
+        const { view } = owner({
+            post: { editedBy: 'sarah@example.com', editedAt: '2026-03-27T18:04:00.000Z' }
+        });
+
+        const note = view.$('.admin__note').textContent;
+        assert.match(note, /^Edited by sarah@example\.com on /);
+        assert.match(note, /\b27\b/);
+        assert.match(note, /2026/);
+    });
+
+    test('an unattributed edit still says when', () => {
+        // `editedBy` is the principal's address and has always been written,
+        // but a post touched by an older build may not carry one.
+        const { view } = owner({ post: { editedBy: null, editedAt: '2026-03-27T18:04:00.000Z' } });
+
+        assert.match(view.$('.admin__note').textContent, /^Edited by an owner on /);
+    });
+
+    test('an untouched letter says nothing at all', () => {
+        const { view } = owner();
+
+        assert.equal(view.$('.admin__note').textContent, '');
     });
 });

@@ -15,7 +15,7 @@ import { linkedPhotoServices } from './photolinks.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
-import { offerClaim } from './offer.js';
+import { offerClaim, invitationDue } from './offer.js';
 import { nudgeOnce, NUDGE } from './nudge.js';
 import { explainRejection, isTold } from './rejection.js';
 import { withinDailyCap } from './cap.js';
@@ -403,19 +403,29 @@ export async function runIngest({
             log
         });
 
-        // Offered once, on the letter that created the site. Later letters do
-        // not re-offer: a second link invalidates the first, so somebody
-        // writing weekly would be handed a fresh credential every week and
-        // find that the one they had finally got round to clicking had just
-        // stopped working. Chasing an unclaimed site is the reminder series'
-        // job, on its own schedule.
+        // A forwarder is offered the site once and once only: a second link
+        // invalidates the first, so somebody forwarding weekly would be handed
+        // a fresh credential every week and find that the one they had finally
+        // got round to clicking had just stopped working.
+        //
+        // The missionary is chased, on a widening schedule -- see
+        // `invitationDue`. The difference is that a forwarder has already done
+        // the thing we want from them and is waiting on us, whereas the
+        // missionary's own site can sit unclaimed for a year with every letter
+        // he writes piling up unread behind it. Each invitation reports what is
+        // waiting, which is the part that converts: the count comes from the
+        // manifest and grows every week that nothing happens.
         //
         // The count is the condition rather than a flag, which makes a failed
         // send self-healing: nothing was recorded, so the next letter tries
         // again. Swallowed for the same reason the site-activity write is --
         // the letter is already held, and no mail failure justifies making
         // the sender's server redeliver it.
-        if (mailer && (manifest.claimEmailCount ?? 0) === 0) {
+        const due = bootstrapping
+            ? (manifest.claimEmailCount ?? 0) === 0
+            : invitationDue(manifest, now());
+
+        if (mailer && due) {
             try {
                 await offerClaim({
                     store,

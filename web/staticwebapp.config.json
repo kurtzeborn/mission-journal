@@ -147,6 +147,12 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "Asking for a fresh claim link, offered on the page that says the old one is dead. Anonymous for the same reason describe is -- its entire audience is somebody who cannot sign in yet. The dead token in the body is the credential, and the reply never names an address, so it can ask that somebody be written to and cannot be used to learn who.",
+      "route": "/api/claim/resend",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "Same as claim/describe: the invitation page has to say who invited whom before anybody signs in. Accepting is not listed, so it falls through to authenticated.",
       "route": "/api/invite/describe",
       "methods": ["POST"],

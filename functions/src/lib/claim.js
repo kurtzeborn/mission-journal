@@ -47,6 +47,11 @@ async function readClaimBlob(store, slug) {
     return { manifest: JSON.parse(Buffer.from(blob.bytes).toString('utf8')), etag: blob.etag };
 }
 
+/** The pending manifest, or nothing. For callers that only want to read it. */
+export async function claimManifest(store, slug) {
+    return (await readClaimBlob(store, slug))?.manifest ?? null;
+}
+
 async function readMissionaryBlob(store, slug) {
     const safe = validSlug(slug);
     if (!safe) return null;

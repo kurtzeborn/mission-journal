@@ -499,14 +499,11 @@ window.Reader = (function () {
         // to get from there to the view that can open it.
         item.dataset.post = post.id;
 
-        // Owners see held letters; readers never receive them at all. The badge
-        // exists so an owner can tell at a glance which is which.
-        if (post.hidden) {
-            const badge = document.createElement('p');
-            badge.className = 'badge';
-            badge.textContent = `Held for review — ${post.heldReason ?? 'unknown reason'}`;
-            item.append(badge);
-        }
+        // Owners see held letters; readers never receive them at all. Dimmed
+        // rather than badged: a full-width banner above every held letter
+        // shouted at the owner about the ones they were not reading, and the
+        // reason belongs beside the date with the rest of the summary.
+        if (post.hidden) item.classList.add('post--hidden');
 
         const panel = document.createElement('div');
         panel.className = 'post__panel';
@@ -538,6 +535,15 @@ window.Reader = (function () {
 
         const meta = document.createElement('span');
         meta.className = 'post__meta';
+
+        // Dimming says a letter is out of view; it cannot say why, and "why"
+        // is the whole of what an owner needs to decide what to do about it.
+        if (post.hidden) {
+            const held = document.createElement('span');
+            held.className = 'post__held';
+            held.textContent = `Hidden — ${post.heldReason ?? 'by an owner'}`;
+            meta.append(held);
+        }
 
         const photoCount = (post.photos ?? []).length;
         if (photoCount) {
@@ -641,6 +647,30 @@ window.Reader = (function () {
         const save = button('Save', 'admin__button--primary');
         const cancel = button('Cancel');
 
+        // Offered only on a letter somebody has actually changed. On an
+        // untouched one it would re-render the post into exactly what it
+        // already says -- a fourth button, on every letter, for a no-op.
+        const revert = post.editedAt ? button('Restore original') : null;
+
+        // Written on every edit and, until now, readable only by opening the
+        // blob. It is not there to police owners, who are trusted; it is there
+        // so "why does this letter not match the one in my inbox?" has an
+        // answer years later when nobody remembers. Owner-only, like the rest
+        // of this bar -- telling readers a letter was edited would advertise
+        // the anonymisation it mostly exists to perform.
+        const note = document.createElement('span');
+        note.className = 'admin__note';
+        if (post.editedAt) {
+            // The reader's own zone, unlike the letter dates: this is a real
+            // instant rather than a day the missionary wrote at the top of a
+            // page, so there is nothing to preserve by pinning it to UTC.
+            const when = new Date(post.editedAt);
+            const on = Number.isNaN(when.getTime())
+                ? ''
+                : ` on ${when.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`;
+            note.textContent = `Edited by ${post.editedBy || 'an owner'}${on}.`;
+        }
+
         // The subject stays a field of its own. It is a single line that has
         // to survive as one, and an editable heading invites a paragraph
         // break that the data model has nowhere to put.
@@ -652,6 +682,7 @@ window.Reader = (function () {
 
         const showEditing = (editing) => {
             for (const el of [hide, edit, remove]) el.hidden = editing;
+            if (revert) revert.hidden = editing;
             for (const el of [save, cancel]) el.hidden = !editing;
             heading.hidden = editing;
             field.hidden = !editing;
@@ -746,6 +777,11 @@ window.Reader = (function () {
             run('Deleting…', () => admin.remove(post.id));
         });
 
+        revert?.addEventListener('click', () => {
+            if (!admin.confirmRestore(post)) return;
+            run('Restoring…', () => admin.restore(post.id));
+        });
+
         // Escape backs out of an edit begun by accident. Enter commits from
         // the subject line, where a newline has no meaning anyway; inside the
         // letter it starts a paragraph, as it should.
@@ -795,7 +831,9 @@ window.Reader = (function () {
         });
 
         showEditing(false);
-        bar.append(hide, edit, remove, save, cancel, status);
+        bar.append(hide, edit, remove);
+        if (revert) bar.append(revert);
+        bar.append(save, cancel, status, note);
         return bar;
     }
 

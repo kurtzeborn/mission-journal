@@ -338,6 +338,65 @@ test('re-rendering the same message changes nothing', async () => {
     assert.equal(post.photos.length, 3);
 });
 
+// --- restoring the original ------------------------------------------------
+
+// Edit a rendered post the way the API does, without going through the API.
+const editInPlace = async (store, changes) => {
+    const posts = store.json('rendered', `${SLUG}/posts.json`);
+    posts[0] = { ...posts[0], ...changes, editedBy: 'sarah@example.com', editedAt: '2026-08-04T09:00:00.000Z' };
+    await store.writeBlob('rendered', `${SLUG}/posts.json`, Buffer.from(JSON.stringify(posts, null, 2), 'utf8'));
+};
+
+test('a restore puts back the subject, the body and the photos, and clears the stamps', async () => {
+    const { store, message, post } = await pipeline('outlook-web-inline');
+    const original = { subject: post.subject, bodyHtml: post.bodyHtml, photos: post.photos };
+
+    await editInPlace(store, {
+        subject: 'A subject nobody sent',
+        bodyHtml: '<p>Rewritten entirely.</p>',
+        // Stands in for the owner-added pictures that are coming: anything in
+        // `photos` that the original message did not carry.
+        photos: [...post.photos, { id: 'added-by-an-owner', width: 800, height: 600 }]
+    });
+
+    const result = await runRender({ message, store, restore: true, log: silent });
+    assert.equal(result.status, 'rendered');
+
+    const restored = store.json('rendered', `${SLUG}/posts.json`)[0];
+    assert.equal(restored.subject, original.subject);
+    assert.equal(restored.bodyHtml, original.bodyHtml);
+    assert.deepEqual(restored.photos, original.photos);
+    assert.equal(restored.editedBy, null);
+    assert.equal(restored.editedAt, null);
+});
+
+test('a restore leaves a held letter held', async () => {
+    // Hiding is a decision about the post rather than a property of its text,
+    // and an undo that quietly republished one would be a disclosure.
+    const { store, message } = await pipeline('outlook-web-inline');
+    await editInPlace(store, { hidden: true, heldReason: 'over the daily cap', bodyHtml: '<p>Rewritten.</p>' });
+
+    await runRender({ message, store, restore: true, log: silent });
+
+    const restored = store.json('rendered', `${SLUG}/posts.json`)[0];
+    assert.equal(restored.hidden, true);
+    assert.equal(restored.heldReason, 'over the daily cap');
+});
+
+test('an ordinary re-render does not touch the subject or the edit stamps', async () => {
+    // The distinction the flag exists for. Re-rendering after a sanitizer fix
+    // must not put an owner's name on a change they did not make, or undo the
+    // subject they deliberately rewrote.
+    const { store, message } = await pipeline('outlook-web-inline');
+    await editInPlace(store, { subject: 'Trimmed for the family' });
+
+    await runRender({ message, store, log: silent });
+
+    const after = store.json('rendered', `${SLUG}/posts.json`)[0];
+    assert.equal(after.subject, 'Trimmed for the family');
+    assert.equal(after.editedBy, 'sarah@example.com');
+});
+
 test('every rendered post carries a linkedPhotoServices array', async () => {
     // The fixture attaches its photos rather than linking them, so the
     // expected answer is an empty array -- present and empty, not absent.

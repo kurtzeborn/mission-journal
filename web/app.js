@@ -38,7 +38,7 @@
 
     // One call for both owner actions. Returns null on success -- having
     // reloaded the page -- and a sentence the owner can read on failure.
-    async function send(method, postId, body) {
+    async function send(method, postId, body, suffix = '') {
         const headers = {};
         if (body) headers['Content-Type'] = 'application/json';
         if (loadedEtag) headers['If-Match'] = loadedEtag;
@@ -46,7 +46,7 @@
         let response;
         try {
             response = await fetch(
-                `/api/posts/${encodeURIComponent(slug)}/${encodeURIComponent(postId)}`,
+                `/api/posts/${encodeURIComponent(slug)}/${encodeURIComponent(postId)}${suffix}`,
                 {
                     method,
                     redirect: 'manual',
@@ -215,12 +215,27 @@
                 ? {
                       patch: (postId, changes) => send('PATCH', postId, changes),
                       remove: (postId) => send('DELETE', postId),
+                      restore: (postId) => send('POST', postId, null, '/restore'),
                       confirmDelete: (post) =>
                           window.confirm(
                               `Remove "${post.subject || 'Untitled'}" from the site?\n\n` +
                                   'The original letter is kept in the archive, so this can be ' +
                                   'undone by re-forwarding it. To take a letter out of view ' +
                                   'while you decide, use Hide instead.'
+                          ),
+                      // Names whose work is about to go, because it may not be
+                      // this owner's -- an archive can have several, and
+                      // there is no revision history to recover it from
+                      // afterwards. Photos added here rather than emailed go
+                      // with it: the letter is rebuilt from the message that
+                      // arrived, and that message never had them.
+                      confirmRestore: (post) =>
+                          window.confirm(
+                              `Put "${post.subject || 'Untitled'}" back to the letter that ` +
+                                  'arrived?\n\n' +
+                                  `This discards every change made to it${
+                                      post.editedBy ? `, including ${post.editedBy}'s` : ''
+                                  }, and any pictures added to it here. It cannot be undone.`
                           )
                   }
                 : null;
