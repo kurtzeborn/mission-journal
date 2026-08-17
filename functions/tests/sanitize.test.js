@@ -59,6 +59,50 @@ describe('empty block removal', () => {
         assert.equal(sanitizeBody('<div> </div><hr><div> </div>'), '<hr />');
     });
 
+    test('a block holding only a line break is a paragraph break, and is kept', () => {
+        // Gmail's mobile composer writes every paragraph as a bare <div> with
+        // no margin of its own and puts the blank line between them in one of
+        // these. Removing it as empty runs the whole letter together.
+        assert.equal(
+            sanitizeBody('<div>One.</div><div><br></div><div>Two.</div>'),
+            '<div>One.</div><div><br /></div><div>Two.</div>'
+        );
+    });
+
+    test('the same shape survives Gmail opening with a bare text node', () => {
+        // The letter's first line is a text node inside the wrapper rather
+        // than a block of its own, so the break after it is judged before any
+        // block holding text has closed. This is the exact shape of the first
+        // direct send the service received, and the reason the guard watches
+        // text nodes rather than closing tags.
+        const out = sanitizeBody('<div>Hola<div><br></div><div>Next.</div></div>');
+        assert.equal(out, '<div>Hola<div><br /></div><div>Next.</div></div>');
+    });
+
+    test('a break before the letter starts separates nothing', () => {
+        // Outlook for Android opens every message with three of these above
+        // its own advertisement. Honouring them would put blank lines at the
+        // top of almost every forward.
+        assert.equal(sanitizeBody('<div><br></div><div><br></div><p>Hi</p>'), '<p>Hi</p>');
+    });
+
+    test('a break after the letter ends separates nothing either', () => {
+        // Trailing breaks cannot be judged while the document is still being
+        // walked, so they are trimmed from the finished output instead --
+        // including when they are nested, which needs more than one pass.
+        assert.equal(sanitizeBody('<p>Hi</p><div><br></div>'), '<p>Hi</p>');
+        assert.equal(sanitizeBody('<p>Hi</p><div><div><br></div></div>'), '<p>Hi</p>');
+    });
+
+    test('trimming the end stops at the letter', () => {
+        // The trailing pass runs on a string, so the thing worth proving is
+        // that it cannot eat backwards into content.
+        assert.equal(
+            sanitizeBody('<p>One.</p><div><br></div><p>Two.</p><div><br></div>'),
+            '<p>One.</p><div><br /></div><p>Two.</p>'
+        );
+    });
+
     test('a block whose only image was a tracking pixel is removed with it', () => {
         // The pixel is stripped for leaking reader IPs; the wrapper it left
         // behind is exactly the blank line this pass exists to remove.

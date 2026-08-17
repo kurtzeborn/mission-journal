@@ -114,7 +114,35 @@ const PROBE_LENGTH = 50;
 // column open, and an empty heading is more likely to be a real authoring
 // mistake worth seeing -- none of those are safe to remove silently, and none
 // of them appear in the corpus anyway.
+//
+// **A block holding a <br> and nothing else is not empty.** That measurement
+// was taken over forwarded letters, all of them composed on a desktop client
+// that separates paragraphs with margins and emits `<p><o:p>&nbsp;</o:p></p>`
+// as leftover noise. Gmail's mobile composer does the opposite: it writes
+// every paragraph as a bare `<div dir="auto">` with no margin at all, and
+// puts the blank line between them in a `<div dir="auto"><br></div>`. That
+// div *is* the paragraph break, and dropping it as empty ran a missionary's
+// entire letter together into one wall of text -- which is what it did to the
+// first direct send we ever received, and the reason this exception exists.
+//
+// The distinction is real rather than convenient. Nothing needs a <br> to sit
+// alone in a block unless somebody meant a line to be there.
+//
+// **But only once the letter has started.** Outlook for Android opens every
+// message with three of them above its own advertisement, and honouring those
+// would put three blank lines at the top of every forward -- a visible
+// regression on the path almost every letter takes, traded for a fix on the
+// rare one. A break before any text has appeared is separating nothing.
 const EMPTY_BLOCKS = new Set(['p', 'div', 'span']);
+
+// A block holding nothing but breaks and space with nothing but closing tags
+// between it and the end of the letter. Matched against our own output rather
+// than the incoming mail, which is what makes a regex over HTML defensible
+// here: every attribute has been stripped by then, so there is exactly one
+// spelling of each tag to match. The lookahead is what lets a nested one be
+// found -- `<div><div><br /></div></div>` has a closing tag after the block
+// that matters, not the end of the string.
+const TRAILING_BLANK = /<(p|div|span)>(?:\s|<br \/>)*<\/\1>(?=(?:\s*<\/(?:p|div|span)>)*\s*$)/;
 
 const collapse = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
@@ -186,19 +214,30 @@ export function sanitizeBody(
     const probe = squash(redactAccessLinks(letterText)).slice(0, PROBE_LENGTH);
     const dropHeaders = probe.length >= MIN_PROBE;
 
-    // Output positions of horizontal rules that survived. `exclusiveFilter`
-    // runs innermost-first in closing order, and a frame's `tagPosition` is
-    // where its opening tag was written, so at the moment a block is judged
-    // this holds exactly the rules that closed before it did. A rule *inside*
-    // the block therefore sits at a position at or after the block's own, and
-    // a rule before or after it does not. Verified against sanitize-html
-    // rather than assumed.
+    // Output positions of horizontal rules and line breaks that survived.
+    // `exclusiveFilter` runs innermost-first in closing order, and a frame's
+    // `tagPosition` is where its opening tag was written, so at the moment a
+    // block is judged these hold exactly the tags that closed before it did.
+    // One *inside* the block therefore sits at a position at or after the
+    // block's own, and one before or after it does not. Verified against
+    // sanitize-html rather than assumed.
     //
     // Without this, `<div><hr></div>` reads as empty -- no text, no media --
     // and the block would be dropped together with the rule it exists to
-    // show. Images need no such bookkeeping: `mediaChildren` already excludes
-    // the ones this filter removed.
+    // show. `<div><br></div>` has the same problem and costs more, because
+    // it is how Gmail writes a paragraph break. Images need no such
+    // bookkeeping: `mediaChildren` already excludes the ones this filter
+    // removed.
     const rules = [];
+    const breaks = [];
+
+    // Whether any real text has been written yet. `textFilter` runs in
+    // document order as each text node is passed through, which is what makes
+    // it usable from `exclusiveFilter` -- a bare text node opening a letter
+    // (`<div>Hola<div><br></div>...`, Gmail's exact shape) has already been
+    // seen by the time the break after it is judged, even though the block
+    // holding it has not closed. Nothing here rewrites the text.
+    let started = false;
 
     const clean = sanitizeHtmlLib(source, {
         allowedTags: ALLOWED_TAGS,
@@ -222,6 +261,12 @@ export function sanitizeBody(
         allowedSchemes: ['http', 'https', 'mailto'],
         allowedSchemesByTag: { img: [] },
         allowProtocolRelative: false,
+
+        // Read, never written. See `started` above.
+        textFilter: (text) => {
+            if (!started && String(text).trim()) started = true;
+            return text;
+        },
 
         transformTags: {
             // cid: references point at MIME parts, which mean nothing to a
@@ -281,6 +326,10 @@ export function sanitizeBody(
                 rules.push(frame.tagPosition);
                 return false;
             }
+            if (frame.tag === 'br') {
+                breaks.push(frame.tagPosition);
+                return false;
+            }
             if (dropHeaders && isQuotedHeaderBlock(frame.text, probe)) return true;
 
             // Nesting resolves in a single pass: a parent's `text` is the text
@@ -289,7 +338,8 @@ export function sanitizeBody(
             // `&nbsp;` has already been decoded to a space by this point, so
             // trimming catches it.
             if (EMPTY_BLOCKS.has(frame.tag) && !frame.text.trim() && !frame.mediaChildren.length) {
-                return !rules.some((position) => position >= frame.tagPosition);
+                const held = (position) => position >= frame.tagPosition;
+                return !rules.some(held) && !(started && breaks.some(held));
             }
             return false;
         }
@@ -297,7 +347,19 @@ export function sanitizeBody(
 
     // Whatever the removed blocks were indented with is left behind between
     // the surviving tags. It renders as nothing, so this only tidies the ends.
-    return clean.trim();
+    //
+    // The break blocks kept above are the other half of the same tidying. A
+    // break is a separator, and one with nothing after it separates nothing --
+    // but `exclusiveFilter` closes tags in order and cannot see whether more
+    // of the letter is coming, so the only place to answer that is here, on
+    // finished output. Repeated until stable because removing an inner block
+    // leaves an empty wrapper that is now itself last.
+    let trimmed = clean.trim();
+    for (let previous = ''; previous !== trimmed; ) {
+        previous = trimmed;
+        trimmed = trimmed.replace(TRAILING_BLANK, '').trim();
+    }
+    return trimmed;
 }
 
 // The URL the reader fetches a rendition from. Kept here so the sanitizer and
