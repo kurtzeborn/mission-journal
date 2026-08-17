@@ -156,30 +156,15 @@ body {
     flex: none;
 }
 
-/* The same chip on the landing page, where there is a whole line to spend and
-   no controls beside it competing for width -- so let the address run. */
-.signed-in {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-}
-
-.signed-in .account {
-    max-width: none;
-}
-
-/* The archives a signed-in visitor belongs to. Bulleted lists read as prose
-   here, and these are destinations -- so the markers come off and each entry
-   gets enough vertical room to be a comfortable tap target. */
-.site-list {
-    list-style: none;
-    padding: 0;
-    margin: 0.5rem 0 0;
-}
-
-.site-list li {
-    padding: 0.4rem 0;
+/* The landing page carries the most in its masthead -- the account, the
+   archive switcher and the way out -- inside the narrowest one, because unlike
+   the archive it is a page of prose and its container is the measure. Eight
+   rems over is all it takes to wrap, and the item that gives way is the chip:
+   it is the only one there to be read rather than hit, and it is truncated at
+   any width, so a little more truncation costs nothing that a wrapped row of
+   controls would not cost more. */
+.masthead--landing .account {
+    max-width: 8rem;
 }
 
 /* Available to a screen reader, absent from the page. */

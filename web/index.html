@@ -15,26 +15,43 @@
 </head>
 
 <body>
-    <header class="masthead">
+    <header class="masthead masthead--landing">
         <div class="masthead__inner">
             <a class="wordmark" href="/"><img class="wordmark__mark" src="/logo.png" alt="" width="192" height="192">Pday Letters</a>
             <span class="beta">beta</span>
+            <span class="masthead__spacer"></span>
+            <!-- Everything from here on is drawn by home.js once /.auth/me has
+                 answered, and ships hidden. The signed-out page is the one that
+                 works with no JavaScript, because it is the one a stranger
+                 lands on; a signed-in visitor has already proved the browser
+                 can run scripts and talk to the service. -->
+            <span class="account" id="account" hidden>
+                <i class="account__icon" id="account-icon" aria-hidden="true"></i>
+                <span class="visually-hidden" id="account-provider"></span>
+                <span id="account-email"></span>
+            </span>
+            <details class="switcher" id="switcher" hidden>
+                <summary class="button button--quiet button--compact" id="switcher-label">Archives</summary>
+                <ul class="switcher__list" id="switcher-list"></ul>
+            </details>
+            <a class="button button--quiet button--compact" id="sign-out" href="/.auth/logout" hidden>Sign out</a>
         </div>
     </header>
 
     <main class="wrap">
         <p class="lede">
-            Missionary letters arrive by email, scatter across inboxes, and are gone
-            by the time anyone wants to read them again. This keeps them together.
+            Your missionary's letters kept safe, in one place, easily searchable, and
+            privately shareable to family and friends.
         </p>
 
         <h2>How it works</h2>
         <p>
-            Forward a letter to the address below. It is filed, the photos are kept at
-            full size, and the whole archive stays private to the family.
+            After you set up your missionary's archive, they simply add
+            <span class="address">post@pdayletters.com</span> to their emails (To:, CC:,
+            or BCC:) and the rest happens automatically. Letters are filed, photos are
+            kept with the letters, and the private archive becomes a searchable resource
+            for friends, family, and the missionary themselves after they return home.
         </p>
-
-        <p><span class="address">post@pdayletters.com</span></p>
 
         <p><a class="button button--quiet" href="/start">Getting started</a></p>
 
@@ -45,29 +62,19 @@
             sent you.
         </p>
 
-        <!-- Two states. The signed-out one ships in the markup so the page is
-             useful with no JavaScript; home.js swaps it once /.auth/me answers.
-             Telling someone who is already signed in to sign in is a small lie,
-             and this is the page a relative lands on first. -->
-        <p id="signed-out"><a class="button" href="/login.html?post_login_redirect_uri=/">Sign in</a></p>
-
-        <p id="signed-in" class="signed-in" hidden>
-            <span class="account">
-                <i class="account__icon" id="account-icon" aria-hidden="true"></i>
-                <span class="visually-hidden" id="account-provider"></span>
-                <span id="account-email"></span>
-            </span>
-            <a class="button button--quiet button--compact" href="/.auth/logout">Sign out</a>
+        <h2>Cost</h2>
+        <p>
+            Archives are free to set up and use. There are no subscription fees or
+            hidden costs. This was created as a labor of love by a father of a
+            missionary.
         </p>
 
-        <!-- Filled in by home.js from /api/memberships. Hidden until it has an
-             answer: a heading promising archives above an empty list is worse
-             than saying nothing, and it is the failure mode for exactly the
-             people with no archives to show. -->
-        <div id="my-sites" hidden>
-            <h3 id="my-sites-title">Your archive</h3>
-            <ul id="my-sites-list" class="site-list"></ul>
-        </div>
+        <!-- Two states. The signed-out one ships in the markup so the page is
+             useful with no JavaScript; home.js hides it once /.auth/me answers
+             and puts the account in the masthead instead. Telling someone who
+             is already signed in to sign in is a small lie, and this is the
+             page a relative lands on first. -->
+        <p id="signed-out"><a class="button" href="/login.html?post_login_redirect_uri=/">Sign in</a></p>
 
         <p class="note">
             Letters are only ever shown to people the family has added by name.

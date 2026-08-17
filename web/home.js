@@ -4,13 +4,15 @@
 // sees, so the signed-out state is what ships in the markup and works with no
 // JavaScript at all. The swap happens afterwards, once /.auth/me answers.
 //
-// It now goes one step further and offers the archives that address belongs
-// to, which it could not do until `/api/memberships` existed. It offers them
-// rather than redirecting: someone signed in with the wrong account needs to
-// be able to see that, and a page that bounces straight through gives them no
-// opportunity to notice. The list is also the only thing that tells a person
-// with no archives that they have none, which is the state most likely to
-// send them looking for help.
+// It also offers the archives that address belongs to, which it could not do
+// until `/api/memberships` existed. It offers them rather than redirecting:
+// someone signed in with the wrong account needs to be able to see that, and a
+// page that bounces straight through gives them no opportunity to notice.
+//
+// All of it lives in the masthead, the same as every other page. It used to sit
+// in the body under a heading, which made the one page a signed-in person is
+// most likely to arrive at the one page where their account and their letters
+// were somewhere different from everywhere else.
 
 (function () {
     'use strict';
@@ -22,8 +24,9 @@
 
     async function showAccount() {
         const signedOut = document.getElementById('signed-out');
-        const signedIn = document.getElementById('signed-in');
-        if (!signedOut || !signedIn) return;
+        const account = document.getElementById('account');
+        const signOut = document.getElementById('sign-out');
+        if (!signedOut || !account || !signOut) return;
 
         let principal;
         try {
@@ -48,15 +51,28 @@
         document.getElementById('account-email').textContent = principal.userDetails;
 
         signedOut.hidden = true;
-        signedIn.hidden = false;
+        account.hidden = false;
+        signOut.hidden = false;
 
-        await showSites();
+        await showSwitcher();
     }
 
-    async function showSites() {
-        const block = document.getElementById('my-sites');
-        const list = document.getElementById('my-sites-list');
-        if (!block || !list) return;
+    // The archives this account can read, as the same masthead dropdown every
+    // other page uses.
+    //
+    // Nothing is drawn when there are none. That is a change from the heading
+    // this replaced, which said so in a sentence -- but a sentence explaining
+    // an absence needs somewhere to be said and the masthead is not it. The
+    // people it was written for are the ones who have been invited and not yet
+    // added, and the invitation email already tells them what happens next.
+    //
+    // Silent on failure, like the account line: this is a way to letters that
+    // are reachable anyway, not a thing whose absence needs explaining.
+    async function showSwitcher() {
+        const box = document.getElementById('switcher');
+        const label = document.getElementById('switcher-label');
+        const list = document.getElementById('switcher-list');
+        if (!box || !label || !list) return;
 
         let memberships;
         try {
@@ -69,37 +85,28 @@
             return;
         }
 
-        if (!Array.isArray(memberships)) return;
+        if (!Array.isArray(memberships) || memberships.length === 0) return;
 
-        if (memberships.length === 0) {
-            // Said plainly, because the alternative is a signed-in person
-            // staring at a page that looks like it should have their letters
-            // on it and concluding they have lost them.
-            document.getElementById('my-sites-title').textContent = 'No archives yet';
-            const item = document.createElement('li');
-            item.className = 'note';
-            item.textContent =
-                'This address has not been added to an archive. Whoever set one up has to add you by name.';
-            list.appendChild(item);
-            block.hidden = false;
-            return;
-        }
+        // textContent throughout: the display name is typed by whoever claimed
+        // the site, so it is somebody else's text on this page.
+        const name = (membership) => membership.missionaryDisplayName || membership.slug;
 
-        document.getElementById('my-sites-title').textContent =
-            memberships.length === 1 ? 'Your archive' : 'Your archives';
+        // Named when there is one, counted when there are several. The archive
+        // pages hide the switcher for a single membership, because there it can
+        // only say "you are already here"; this page is not an archive, so the
+        // one name is the whole reason most people signed in.
+        label.textContent = memberships.length === 1 ? name(memberships[0]) : 'Archives';
 
         for (const membership of memberships) {
             const item = document.createElement('li');
             const link = document.createElement('a');
-            link.href = `/${membership.slug}/`;
-            // textContent throughout: the display name is typed by whoever
-            // claimed the site, so it is somebody else's text on this page.
-            link.textContent = membership.missionaryDisplayName || membership.slug;
+            link.href = `/${encodeURIComponent(membership.slug)}/`;
+            link.textContent = name(membership);
             item.appendChild(link);
             list.appendChild(item);
         }
 
-        block.hidden = false;
+        box.hidden = false;
     }
 
     showAccount();
