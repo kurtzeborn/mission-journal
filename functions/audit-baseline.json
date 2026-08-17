@@ -10,6 +10,9 @@
     "modules. `undici` accounts for none of them and `nodemailer` for one file,",
     "`lib/addressparser/index.js`, a string parser.",
     "",
+    "`nanoid` is the exception: it is genuinely loaded, and the entry says why the",
+    "vulnerable function is still not reachable.",
+    "",
     "Re-measure with:",
     "  node -e \"const {createRequire}=require('module');const r=createRequire(process.cwd()+'/x.js');r('mailauth/lib/dkim/verify');console.log(Object.keys(require.cache).filter(p=>/node_modules[\\\\/](nodemailer|undici)[\\\\/]/.test(p)))\""
   ],
@@ -31,6 +34,8 @@
     "1130726": "undici — CRLF injection via blob-like body type. Not loaded.",
     "1130729": "undici — whitespace around equals in Cache-Control. Not loaded.",
     "1130731": "undici — cookie attribute injection via unsanitized domain. Not loaded.",
-    "1137242": "undici — response queue poisoning via keep-alive socket reuse. Not loaded."
+    "1137242": "undici — response queue poisoning via keep-alive socket reuse. Not loaded.",
+
+    "1139427": "nanoid — custom generators loop forever when size is 0. Arrives through sanitize-html → postcss, which is loaded. The advisory is about customAlphabet/customRandom; postcss's only call is `nanoid(6)` in lib/input.js, a literal size on the plain generator, and it names an input that has no file. No caller of ours reaches the size argument."
   }
 }

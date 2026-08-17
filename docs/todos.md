@@ -94,7 +94,7 @@ Three things worth remembering about the mechanism:
 
 ### The alignment goal
 
-**Before leaving beta, move all three to the same month, so they roll in one sitting.** They are already nearly aligned by accident — `2027-08-01`, `2027-08-31`, `2028-08-04` — so the work is to make it deliberate rather than lucky. Pick an early-August date, so the deadline is not the same week as the reminder. Cloudflare tokens can be reissued with any end date and an Entra secret can be replaced early, so this costs one afternoon.
+**Tracked in [issue #7](https://github.com/kurtzeborn/mission-journal/issues/7).** The rotation steps above are the reference; the issue holds the decision and the date.
 
 **The notification deliberately does not go through our own mailer.** Every message this service sends uses `cloudflare-api-token` — one of the secrets being watched. An alert about that token expiring, sent with that token, would fail exactly when it mattered. Azure Monitor's email path shares nothing with the system it reports on.
 

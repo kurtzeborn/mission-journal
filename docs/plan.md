@@ -1164,7 +1164,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Surface `editedBy` / `editedAt`~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [x] ~~Dim hidden posts rather than badging them~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [ ] `/manage/last-received` service-wide flow view — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
-- [ ] Ownership-window banner for `missionary.org` owners — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
+- [ ] Standing prompt to get the missionary claimed — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [ ] Owners can add pictures to a post — [Later features](#later-features)
 
 **Platform**
@@ -1174,7 +1174,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Basic publishing credentials refused in the template~~ — [Phase 0](#phase-0--foundation)
 - [x] ~~Expiry date on the Cloudflare send token in Key Vault~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [x] ~~Route `SecretNearExpiry` to a notification~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
-- [ ] Align every credential to one expiry month — [Phase 12](#phase-12--leaving-beta)
+- [ ] Align every credential to one expiry month — [issue #7](https://github.com/kurtzeborn/mission-journal/issues/7)
 
 **Leaving beta**
 
@@ -1519,7 +1519,9 @@ Shipped since, and previously listed here as outstanding:
   - **A name cannot contain a newline.** It is pasted into the subject header of every invitation, which makes an unfiltered newline header injection. Refused at the boundary.
   - **`returnDate` is absent rather than empty when unset**, because absent means "derive it from the letters" and a blank string would make that indistinguishable from "there is no return date".
   - **The gate was factored out rather than copied a third time.** `members.js` carried its own identity/slug/role check because `gate` reads `posts.json` and refuses when it is missing — which would mean "you cannot rename your archive until the first letter renders". That check is now `siteGate` in `api.js`, used by both.
-- **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): ~~enforce `verifiedMissionary` removal protection~~ **(shipped with member removal — the flag is set only by the `claim@` path, and a pending redemption deliberately writes it `false`, because the protection it confers is too strong to hand out on that evidence)**; persistent banner while any owner is on `missionary.org`; standing prompt to get the missionary claimed while their address still works.
+- **Ownership-window UI** per [Ownership and the 60-day window](#ownership-and-the-60-day-window): ~~enforce `verifiedMissionary` removal protection~~ **(shipped with member removal — the flag is set only by the `claim@` path, and a pending redemption deliberately writes it `false`, because the protection it confers is too strong to hand out on that evidence)**; ~~persistent banner while any owner is on `missionary.org`~~ **(dropped — the condition can never be true)**; standing prompt to get the missionary claimed while their address still works.
+  - **Nothing ever writes a `missionary.org` address into `acl.json`.** Every path that creates an owner — claim redemption, relay redemption, invitation acceptance — records the *signed-in* identity, and a missionary cannot sign in as themselves: mailbox access runs through the Church's own sign-in and a link across into Gmail, so they have no Google credential to hand an OAuth consent screen, quite apart from whether the tenant permits third-party OAuth at all. The mailbox proves who they are; the personal account holds the role. A banner keyed on "any owner is on `missionary.org`" would therefore render for nobody, ever.
+  - **The standing prompt survives, and is aimed at the parent instead.** It is the parent running the site who needs to be told that the missionary's address stops working sixty days after they come home, because the parent is the one who can nag them into claiming it. That is a different message on a different page to a different person, which is why the banner's removal costs nothing.
 - **Operator authorization** per [Service operators](#service-operators): `OPERATOR_EMAILS` resolves to `owner` inside the shared authorization function from Phase 3, above the `acl.json` lookup and with no write to `acl.json` or `memberships`. Includes the `/manage/last-received` service-wide view, the "acting as operator" banner, `OperatorAction` telemetry on reads as well as writes, operator site deletion with a recorded reason, and `verifiedMissionary` removal blocked for operators exactly as for owners. The email path is untouched — forwarding rights stay `acl.json`-only.
   - **Shipped 2026-08-06**, minus `/manage/last-received` and operator site deletion. The `verifiedMissionary` protection already applies to operators for free, because an operator is an owner by the time `members.js` sees them and that rule refuses owners.
   - **The authorization function returns `{ role, viaOperator }` rather than a role.** The flag carries what a bare role cannot: that some or all of this authority came from an app setting rather than from the family's own list. It drives both the banner and the audit event. **The ACL is read first**, so the answer for everybody who is not an operator is byte-for-byte what it was before operators existed.
