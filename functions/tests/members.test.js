@@ -240,12 +240,12 @@ describe('telling an owner that somebody is not hearing from us', () => {
     // owner is shown it on the page they will never learn it.
     test('a member whose mail bounced is marked, and the rest are not', async () => {
         const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);
-        await recordDelivery({ tables: store, email: READER, status: 'suppressed', slug: SLUG, now: NOW, log: silent });
+        await recordDelivery({ tables: store, email: READER, status: 'failed', slug: SLUG, now: NOW, log: silent });
 
         const listed = await listMembers({ store, tables: store, slug: SLUG, actor: OWNER });
         const by = Object.fromEntries(listed.map((m) => [m.email, m]));
 
-        assert.equal(by[READER].delivery, 'suppressed');
+        assert.equal(by[READER].delivery, 'failed');
         assert.equal(by[READER].deliveryAt, '2026-08-05T12:00:00.000Z');
         assert.equal(by[OWNER].delivery, '', 'nothing was ever wrong with this one');
     });

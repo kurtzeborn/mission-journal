@@ -29,19 +29,21 @@
             ...init
         });
 
-    // What each delivery outcome means to the person reading it, in the terms
-    // they can act in. Not the provider's vocabulary: "suppressed" is a fact
-    // about Cloudflare's account list, and the owner's question is only ever
-    // "is my mother getting these".
+    // What an undeliverable address looks like to the person reading it, in
+    // the terms they can act in. Not the provider's vocabulary: "suppressed"
+    // is a fact about Cloudflare's account list, and the owner's question is
+    // only ever "is my mother getting these".
     //
-    // Every one of them is deliberately non-accusatory about the recipient and
-    // ends somewhere useful, because the most likely cause is that they pressed
-    // a spam button once, years ago, on something else entirely.
-    const UNDELIVERED = {
-        suppressed: 'Mail is not reaching this address. It bounced or was reported as spam, so it has been blocked for everyone.',
-        bounced: 'Mail to this address bounced. Check the spelling, or use another address.',
-        failed: 'The last message to this address could not be sent.'
-    };
+    // One sentence for every cause. There were briefly three -- a bounce, a
+    // suppression and a plain failure -- and the split did not survive contact
+    // with the fact that we cannot reliably tell them apart. It also does not
+    // matter: the remedy an owner has is the same in all three cases, which is
+    // to check the address and then ask the person directly.
+    //
+    // Deliberately non-accusatory about the recipient, because the most likely
+    // cause is that they pressed a spam button once, years ago, on something
+    // else entirely.
+    const UNDELIVERED = 'Mail is not reaching this address. Check the spelling, or ask them for another one.';
 
     // Kept out of the markup. Every one of these strings is either an address
     // somebody typed or a name somebody typed, so nothing here builds HTML.
@@ -163,7 +165,7 @@
         if (person.delivery) {
             const undelivered = document.createElement('span');
             undelivered.className = 'people__undelivered';
-            undelivered.textContent = UNDELIVERED[person.delivery] ?? UNDELIVERED.failed;
+            undelivered.textContent = UNDELIVERED;
             item.appendChild(undelivered);
         }
 

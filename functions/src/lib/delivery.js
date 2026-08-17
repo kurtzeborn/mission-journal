@@ -50,7 +50,11 @@ export const deliveryKey = (email) => createHash('sha256').update(lower(email), 
 // The outcomes worth showing somebody. `blocked` is ours -- the allowlist --
 // and says nothing about the recipient, so it is not recorded: while the
 // allowlist is narrow it would mark half the world as unreachable.
-const TROUBLE = new Set(['bounced', 'suppressed', 'failed']);
+//
+// Suppression is not a status of its own. Cloudflare's REST API publishes no
+// code for it, so telling it apart from any other rejection would mean
+// guessing at wording -- and the page says the same useful thing either way.
+const TROUBLE = new Set(['bounced', 'failed']);
 
 /**
  * Write down how the last send to this address went.

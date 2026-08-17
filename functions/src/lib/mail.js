@@ -108,35 +108,6 @@ export function parseAllowlist(setting) {
 const permitted = (allowlist, to) => allowlist.open || allowlist.addresses.has(lower(to));
 
 /**
- * Does this rejection mean the address itself is finished?
- *
- * **A guess, deliberately, and the design does not rest on it.** Cloudflare
- * suppresses an address account-wide after a hard bounce or a spam complaint,
- * and every later send to it fails -- but the REST API's published error table
- * has no code for that. `E_RECIPIENT_SUPPRESSED` is a *Workers binding* string
- * error, and we do not use the binding. So there is no documented shape to
- * match on, and the honest options were to match on something plausible or to
- * pretend the case does not exist.
- *
- * This matches on the word, because Cloudflare's messages are dotted
- * machine-readable strings in one namespace (`email.sending.error.*`) and any
- * code they add for this will almost certainly contain it. When it does not,
- * the send lands in `failed` instead -- and `failed` is *also* recorded against
- * the address and *also* shown to the owner. The distinction buys a more
- * specific sentence, never the difference between telling somebody and not.
- *
- * The reliable signal is elsewhere and is not going to be built: Cloudflare
- * publishes `message.bounced` and `message.complained` through Queues, which
- * is the only mechanism that can catch a spam complaint at all -- those arrive
- * hours or days after a send that succeeded, so no response to any request
- * will ever carry one. That needs a Queue, a consumer Worker and a callback
- * into this app, which is more machinery than this service's volume justifies.
- * What we get instead is the *next* send to a suppressed address, which is
- * late but is not nothing.
- */
-const suppression = (detail) => /suppress/i.test(String(detail ?? ''));
-
-/**
  * A mailer.
  *
  * @param {object} input
@@ -156,7 +127,7 @@ export function createMailer({ accountId, token, allowlist = '', fetch: doFetch 
      * has already done the thing that mattered -- the letter is stored -- and
      * none of them should turn a mail failure into a lost message.
      *
-     * @returns {Promise<{status: 'sent'|'blocked'|'bounced'|'suppressed'|'failed', detail?: string}>}
+     * @returns {Promise<{status: 'sent'|'blocked'|'bounced'|'failed', detail?: string}>}
      */
     async function send({ from, to, subject, text, html, headers = {}, log = console }) {
         if (!permitted(allowed, to)) {
@@ -207,7 +178,15 @@ export function createMailer({ accountId, token, allowlist = '', fetch: doFetch 
                 httpStatus: response.status,
                 detail: detail || 'no error detail'
             });
-            return { status: suppression(detail) ? 'suppressed' : 'failed', detail: detail || `http ${response.status}` };
+            // One status for every rejection, including suppression -- an
+            // address Cloudflare has blocked account-wide after a hard bounce
+            // or a spam complaint. There was briefly a `suppressed` status
+            // matching on the word, and it was removed: the REST API publishes
+            // no code for it, so the match was a guess, and all it ever bought
+            // was a differently-worded sentence on a page that was already
+            // going to say this address is not receiving mail. `detail` still
+            // carries whatever Cloudflare said, for anyone reading logs.
+            return { status: 'failed', detail: detail || `http ${response.status}` };
         }
 
         // A permanent bounce is a successful API call that delivered nothing.

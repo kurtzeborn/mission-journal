@@ -386,34 +386,28 @@ describe('showing that somebody is not getting their mail', () => {
     const classesOn = (view, i) => view.el('people').children[i].classList.added;
 
     test('the row is dimmed and says why, in words nobody has to look up', async () => {
-        const view = await people({ answer: undeliverable('suppressed') });
+        const view = await people({ answer: undeliverable('failed') });
 
         assert.ok(classesOn(view, 1).includes('people__row--undelivered'));
         assert.match(view.lines('people')[1], /Mail is not reaching this address/);
-        assert.match(view.lines('people')[1], /blocked for everyone/);
-    });
-
-    test('a bounce is described as a bounce, and suggests the fix', async () => {
-        // Different causes, different remedies. A bounce is usually a typo the
-        // owner can correct; suppression is not, and telling them to check the
-        // spelling would send them looking for a mistake they did not make.
-        const view = await people({ answer: undeliverable('bounced') });
-
-        assert.match(view.lines('people')[1], /bounced/);
         assert.match(view.lines('people')[1], /Check the spelling/);
     });
 
-    test('a status we have never seen still says something true', async () => {
-        const view = await people({ answer: undeliverable('something-new') });
+    test('one sentence, whatever the provider called it', async () => {
+        // The three-way split came out again: we cannot reliably tell a
+        // suppression from a bounce over this API, and the owner's remedy is
+        // the same either way.
+        const bounced = await people({ answer: undeliverable('bounced') });
+        const failed = await people({ answer: undeliverable('failed') });
 
-        assert.match(view.lines('people')[1], /could not be sent/);
+        assert.equal(bounced.lines('people')[1], failed.lines('people')[1]);
     });
 
     test('everybody else looks exactly as they did', async () => {
         const view = await people({ answer: undeliverable('bounced') });
 
         assert.deepEqual(classesOn(view, 0), []);
-        assert.doesNotMatch(view.lines('people')[0], /bounced/);
+        assert.doesNotMatch(view.lines('people')[0], /not reaching/);
     });
 
     test('a healthy list is unmarked from top to bottom', async () => {

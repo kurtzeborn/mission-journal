@@ -36,7 +36,7 @@ describe('writing down how a send went', () => {
         // "why did grandmother stop hearing from us", and a table of hashes
         // cannot answer it.
         const store = memoryStore();
-        await recordDelivery({ tables: store, email: 'MiXeD@Example.COM', status: 'suppressed', now: NOW, log: quiet });
+        await recordDelivery({ tables: store, email: 'MiXeD@Example.COM', status: 'failed', now: NOW, log: quiet });
 
         const row = await rowFor(store, 'mixed@example.com');
         assert.equal(row.email, 'mixed@example.com');
@@ -89,11 +89,11 @@ describe('asking which of these people we cannot reach', () => {
     test('only the ones in trouble come back', async () => {
         const store = memoryStore();
         await recordDelivery({ tables: store, email: 'fine@example.com', status: 'sent', now: NOW, log: quiet });
-        await recordDelivery({ tables: store, email: THEM, status: 'suppressed', now: NOW, log: quiet });
+        await recordDelivery({ tables: store, email: THEM, status: 'failed', now: NOW, log: quiet });
 
         const found = await trouble(store, ['fine@example.com', THEM, 'never.written.to@example.com']);
         assert.deepEqual([...found.keys()], [THEM]);
-        assert.equal(found.get(THEM).status, 'suppressed');
+        assert.equal(found.get(THEM).status, 'failed');
         assert.equal(found.get(THEM).at, '2026-08-16T09:00:00.000Z');
     });
 
