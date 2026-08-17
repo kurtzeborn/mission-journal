@@ -115,6 +115,7 @@ describe('what goes into the archive', () => {
             'reader.js',
             'offline.js',
             'styles.css',
+            'logo.png',
             'minisearch.js',
             'archive.js',
             'posts.json'
@@ -213,6 +214,7 @@ describe('the packaged reader is the site reader', () => {
     const shared = [
         [join(repo, 'web', 'reader.js'), join(assets, 'reader.js')],
         [join(repo, 'web', 'styles.css'), join(assets, 'styles.css')],
+        [join(repo, 'web', 'logo.png'), join(assets, 'logo.png')],
         [join(repo, 'web', 'vendor', 'minisearch.js'), join(assets, 'minisearch.js')]
     ];
 

@@ -62,10 +62,10 @@ export const HUMAN_ADDRESS = 'hello@pdayletters.com';
  * is the one place a name belongs, so `sender()` is applied at the one place
  * `from:` is written.
  *
- * `P-Day Letters` needs no quoting -- RFC 5322 atext admits `-`, and the
- * rendering was checked against a real client rather than assumed.
+ * `Pday Letters` needs no quoting -- RFC 5322 atext admits every character in
+ * it, and the rendering was checked against a real client rather than assumed.
  */
-export const SENDER_NAME = 'P-Day Letters';
+export const SENDER_NAME = 'Pday Letters';
 
 export const mailFrom = (address) => `${SENDER_NAME} <${address}>`;
 

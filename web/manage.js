@@ -23,7 +23,7 @@
     const reveal = () => {
         $('loading').hidden = true;
         $('tooling').hidden = false;
-        document.title = 'Deleted archives \u2014 P-Day Letters';
+        document.title = 'Deleted archives \u2014 Pday Letters';
     };
 
     // What a stranger sees, and what an operator sees if they mistype: the

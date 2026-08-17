@@ -34,7 +34,7 @@ import { TABLES } from './tables.js';
 import { POST_ADDRESS } from './offer.js';
 import { mailFrom } from './mail.js';
 
-const SIGNATURE = 'P-Day Letters';
+const SIGNATURE = 'Pday Letters';
 
 // The rejection reasons a member can actually cause, and the only ones this
 // answers. `forwarder-not-on-acl` is absent on purpose -- by definition that
@@ -84,7 +84,7 @@ export function rejectionEmail({ reason, author = '', baseUrl = '' }) {
             : noOriginal();
 
     const text = [
-        'You forwarded a letter to P-Day Letters and it was not added to the',
+        'You forwarded a letter to Pday Letters and it was not added to the',
         'archive. Here is why, so you can send it again.',
         '',
         ...cause.text,
@@ -101,7 +101,7 @@ export function rejectionEmail({ reason, author = '', baseUrl = '' }) {
 
     const html = [
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
-        '<p>You forwarded a letter to P-Day Letters and it was not added to the archive. Here is why, so you can send it again.</p>',
+        '<p>You forwarded a letter to Pday Letters and it was not added to the archive. Here is why, so you can send it again.</p>',
         ...cause.html,
         '<p>Nothing was lost and nothing else was affected. The archive is exactly as it was, and you can forward the same letter as many times as you like &mdash; we recognise one we already have, so a second try can only help.</p>',
         `<p><a href="${escape(faq)}">More about forwards that do not arrive</a></p>`,

@@ -177,7 +177,7 @@
         // and the slug is the one label that always exists.
         const heading = payload.name || payload.slug;
         title.textContent = heading;
-        document.title = `${heading} — P-Day Letters`;
+        document.title = `${heading} — Pday Letters`;
 
         const download = document.getElementById('download');
         if (download) {

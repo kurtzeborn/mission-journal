@@ -52,7 +52,7 @@ import { PURPOSE, verifyClaimToken, issueClaimToken } from './claimtoken.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { validSlug } from './paths.js';
 
-const SIGNATURE = 'P-Day Letters';
+const SIGNATURE = 'Pday Letters';
 
 /**
  * The grant record, alongside `missionary-claim.json` and for the same reason:

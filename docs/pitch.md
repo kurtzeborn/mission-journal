@@ -1,4 +1,4 @@
-# P-Day Letters
+# Pday Letters
 
 **Your missionary's weekly emails, saved in one place — automatically.**
 
@@ -36,7 +36,7 @@ No app. No login for the missionary. No setup form. Nothing new to remember on a
 
 ## Testers needed
 
-P-Day Letters is an idea right now, and it needs real families and missionaries to try it before it's offered to anyone else.
+Pday Letters is an idea right now, and it needs real families and missionaries to try it before it's offered to anyone else.
 
 Testing means: add one address to the weekly email, forward whatever old letters you've saved, and tell us what's confusing, broken, or missing. That's it. It's free, your letters stay private, and you can walk away with your full archive at any time.
 

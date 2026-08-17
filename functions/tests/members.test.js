@@ -361,7 +361,7 @@ describe('inviting somebody who has never signed in', () => {
         assert.equal(result.ok, true);
         assert.equal(mailer.sent.length, 1);
         assert.equal(mailer.sent[0].to, READER);
-        assert.equal(mailer.sent[0].from, 'P-Day Letters <hello@pdayletters.com>');
+        assert.equal(mailer.sent[0].from, 'Pday Letters <hello@pdayletters.com>');
         // Nothing yet. An invitation is an offer, and an offer that granted
         // access before it was accepted would be an ACL entry with extra
         // steps.

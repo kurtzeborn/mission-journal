@@ -27,7 +27,7 @@
 //   visible on a lock screen and in every mail server between here and the
 //   recipient; the body is at least behind a login.
 
-const SIGNATURE = 'P-Day Letters';
+const SIGNATURE = 'Pday Letters';
 
 // Written as a date the recipient can act on. Deliberately not localised:
 // a month name cannot be misread the way 03/08 can.
@@ -142,7 +142,7 @@ export function missionaryClaimEmail({ baseUrl, token, expiresAt, alreadyOwned =
     const link = `${baseUrl.replace(/\/$/, '')}/claim#${token}`;
     const deadline = readableDate(expiresAt);
 
-    const subject = 'Your P-Day Letters access link';
+    const subject = 'Your Pday Letters access link';
 
     // Said in both versions, because it is the single most consequential
     // sentence in the message: an owner entry keyed on the missionary address

@@ -31,6 +31,7 @@ const ASSETS = {
     'reader.js': asset('reader.js'),
     'offline.js': asset('offline.js'),
     'styles.css': asset('styles.css'),
+    'logo.png': asset('logo.png'),
     'minisearch.js': asset('minisearch.js')
 };
 

@@ -27,7 +27,7 @@
 //   invitation is not yet entitled to anything, and forwarded mail is how
 //   they most often come to hold one.
 
-const SIGNATURE = 'P-Day Letters';
+const SIGNATURE = 'Pday Letters';
 
 const readableDate = (iso) =>
     new Date(iso).toLocaleDateString('en-US', {

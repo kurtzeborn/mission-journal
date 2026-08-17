@@ -53,7 +53,7 @@ describe('advising a forwarder who quoted instead of attaching', () => {
         // A stranger's mail arriving from a bare address reads as spam. The
         // name is the difference between "who is this" and "this is the thing
         // I just wrote to".
-        assert.equal(mailer.sent[0].from, 'P-Day Letters <post@pdayletters.com>');
+        assert.equal(mailer.sent[0].from, 'Pday Letters <post@pdayletters.com>');
     });
 
     test('says nothing at all the second time', async () => {

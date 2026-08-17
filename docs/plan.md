@@ -1,4 +1,4 @@
-# P-Day Letters — Design Plan
+# Pday Letters — Design Plan
 
 ## Vision
 
@@ -642,7 +642,7 @@ Access *policy* is above. This section is the reader-facing half: how someone wh
 
 #### Invitations
 
-**Shipped.** An owner pastes one or more addresses and picks a role; each invitee gets exactly one email, from `P-Day Letters <hello@pdayletters.com>`, naming the human who invited them.
+**Shipped.** An owner pastes one or more addresses and picks a role; each invitee gets exactly one email, from `Pday Letters <hello@pdayletters.com>`, naming the human who invited them.
 
 - **An invitation is an email, not just an ACL write.** Adding an address to `acl.json` grants access but tells nobody.
 - **The link is a signed, single-use HMAC token**, bound to one slug, one role and one purpose, expiring in 14 days.
@@ -1456,7 +1456,7 @@ Shipped since, and previously listed here as outstanding:
     - **Muted for six hours after it fires.** A loop emits this line on every message, and an action group that mails on each one buries the first — the only one that had to be read.
   - **`arrivals` rows still have no sweep.** They accumulate one per letter, forever.
 - **Sending limits start low and rise with reputation.** Total outbound message size is 5 MiB against 25 MiB inbound, which matters if an ack ever quotes a letter back.
-- ~~**Outbound mail must carry a display name.**~~ **Shipped 2026-08-05.** `from` takes an ordinary RFC 5322 phrase — `P-Day Letters <address>` — passed straight through to Cloudflare's REST body. The name lives in a `mailFrom()` helper rather than in the address constants, because those constants are also *identity* and something may one day compare an incoming recipient against them. The tests pin the literal string a mail client parses.
+- ~~**Outbound mail must carry a display name.**~~ **Shipped 2026-08-05.** `from` takes an ordinary RFC 5322 phrase — `Pday Letters <address>` — passed straight through to Cloudflare's REST body. The name lives in a `mailFrom()` helper rather than in the address constants, because those constants are also *identity* and something may one day compare an incoming recipient against them. The tests pin the literal string a mail client parses.
 - **The sending identity is split, and `post@` is no longer used for system mail.** Mail *to* `post@` becomes a post, so sending *from* it inverts that contract at the moment a person is most likely to hit reply: a missionary answering the claim email with "what is this?" would have the reply published to their own archive. `no-reply@` would trade one silent failure for another.
   - **`hello@pdayletters.com` exists, routes to a human, and sends invitations.** Cloudflare authorises outbound sending per *domain*, not per address, so no dashboard configuration was needed for a second sender.
   - **`post@` and `claim@` remain the senders for the mail they answer.** A claim email must come from `claim@` for deliverability: it threads into correspondence the missionary started, and moving the sender mid-conversation is what makes a reply land somewhere nobody is reading. Threading is unaffected by the sender, since `In-Reply-To` and `References` key on `Message-ID`.

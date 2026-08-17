@@ -158,7 +158,7 @@ describe('a message copied to both verbs', () => {
                 `From: Elder Example <${SLUG}@missionary.org>`,
                 'To: claim@pdayletters.com',
                 'Cc: post@pdayletters.com',
-                'Subject: Re: Your P-Day Letters access link',
+                'Subject: Re: Your Pday Letters access link',
                 'Content-Type: text/plain; charset=utf-8',
                 '',
                 'test',
@@ -322,7 +322,7 @@ describe('a verified missionary', () => {
         assert.equal(message.to, `${SLUG}@missionary.org`);
         // From the address they wrote to, threading onto the message they sent:
         // both are the prior-correspondence argument, not decoration.
-        assert.equal(message.from, 'P-Day Letters <claim@pdayletters.com>');
+        assert.equal(message.from, 'Pday Letters <claim@pdayletters.com>');
         assert.equal(message.headers['In-Reply-To'], '<ask-1@missionary.org>');
 
         const token = message.text.match(/#([\w.-]+)/)[1];

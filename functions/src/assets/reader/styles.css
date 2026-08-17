@@ -98,6 +98,25 @@ body {
     text-decoration: none;
 }
 
+/* The mark beside the name.
+
+   Left as an ordinary inline image rather than making the wordmark a flex
+   box, because the masthead aligns its children on the baseline and an
+   inline-flex wordmark would offer the flex box's own baseline instead --
+   which moves the name relative to the `beta` pill next to it. A nudge below
+   the baseline is what sits it level with the capitals.
+
+   `alt` is empty on purpose: the link already says the words, and a screen
+   reader announcing "Pday Letters logo, link, Pday Letters" is worse than
+   silence. Width and height are the file's own, so the row does not jump
+   while it loads. */
+.wordmark__mark {
+    width: 1.5em;
+    height: 1.5em;
+    vertical-align: -0.4em;
+    margin-right: 0.4rem;
+}
+
 .beta {
     font-family: system-ui, sans-serif;
     font-size: 0.62rem;

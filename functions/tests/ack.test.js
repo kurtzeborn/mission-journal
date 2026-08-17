@@ -122,7 +122,7 @@ describe('sending it', () => {
         await ack(store, mailer, { messageId: '<their-forward@example.com>' });
 
         assert.equal(mailer.sent.length, 1);
-        assert.equal(mailer.sent[0].from, 'P-Day Letters <post@pdayletters.com>');
+        assert.equal(mailer.sent[0].from, 'Pday Letters <post@pdayletters.com>');
         assert.equal(mailer.sent[0].headers['In-Reply-To'], '<their-forward@example.com>');
         assert.equal(mailer.sent[0].headers.References, '<their-forward@example.com>');
         // A reply to a receipt must reach a person, not the ingest pipeline.

@@ -1,4 +1,4 @@
-# P-Day Letters
+# Pday Letters
 
 An automatic weekly-letters archive for LDS missionaries.
 

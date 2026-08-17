@@ -15,6 +15,11 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The masthead mark. Beside styles.css because it is the same kind of thing: every page carries it, including the ones a signed-out visitor is meant to see, and the catch-all below would otherwise turn it into a 401 rewritten to the sign-in page.",
+      "route": "/logo.png",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/login.html",
       "allowedRoles": ["anonymous", "authenticated"]
     },

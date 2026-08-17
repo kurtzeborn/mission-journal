@@ -35,7 +35,7 @@ import { TABLES } from './tables.js';
 import { POST_ADDRESS } from './offer.js';
 import { mailFrom } from './mail.js';
 
-const SIGNATURE = 'P-Day Letters';
+const SIGNATURE = 'Pday Letters';
 
 // Two things can go wrong on the way to a first letter, and they need
 // different answers.

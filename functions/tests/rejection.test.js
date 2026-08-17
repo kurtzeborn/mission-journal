@@ -127,7 +127,7 @@ describe('who gets told', () => {
 
         assert.equal(result.status, 'sent');
         assert.equal(mailer.sent.length, 1);
-        assert.equal(mailer.sent[0].from, 'P-Day Letters <post@pdayletters.com>');
+        assert.equal(mailer.sent[0].from, 'Pday Letters <post@pdayletters.com>');
         assert.equal(mailer.sent[0].headers['Auto-Submitted'], 'auto-replied');
     });
 

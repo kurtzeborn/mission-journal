@@ -21,7 +21,7 @@
     };
 
     document.getElementById('site-title').textContent = archive.slug;
-    document.title = `${archive.slug} — P-Day Letters`;
+    document.title = `${archive.slug} — Pday Letters`;
 
     // Relative, with no leading slash: a leading slash on file:// resolves to
     // the root of the disk rather than to this folder.
