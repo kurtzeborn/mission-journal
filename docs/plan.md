@@ -1148,7 +1148,6 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Acknowledgement email on a successful forward~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [x] ~~Suppression is visible to owners on the people page~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [x] ~~Store `Message-ID` so acks thread~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
-- [ ] Bounce and complaint events from Cloudflare Queues — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [ ] Per-user notification preferences page — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [ ] Monthly digest of new letters — [Phase 10](#phase-10--new-letter-notifications)
 - [ ] Text messages — [Phase 10](#phase-10--new-letter-notifications) *(stretch)*
@@ -1429,9 +1428,9 @@ Shipped since, and previously listed here as outstanding:
 
 **Still to build:**
 
-- **Bounce and complaint events, over Cloudflare Queues.** This is the mechanism that actually reports delivery outcomes: an event subscription delivering `cf.email.sending.message.bounced` (with `payload.bounce.type` of `hard` or `soft`) and `cf.email.sending.message.complained`, each carrying `payload.recipient`. It is **the only way a spam complaint is ever visible**, because a complaint arrives hours or days after a send that returned success — no synchronous response can carry it. Needs a Queue, a consumer Worker and an authenticated callback into the Function App, and would replace the string match described below with the real signal.
 - ~~**Suppression has to be visible to owners, not just to us.**~~ **Shipped 2026-08-06**, as `delivery.js` and the `deliveries` table, keyed by SHA-256 of the address exactly as `optouts` is.
   - **The observation first: Cloudflare's REST error table has no suppression code.** The documented codes run 10000–10203 and none of them is suppression; `E_RECIPIENT_SUPPRESSED` is a *Workers-binding* string error and this service uses the REST API. So `mail.js` matches `/suppress/i` against the returned detail, which is a forward bet on wording we have not seen. **The design does not rest on it.** A miss lands in `failed`, which is also recorded and also shown; the classification buys a more specific sentence and never the difference between telling somebody and not.
+  - **A spam complaint is not visible at all, by any means we have.** It arrives at the provider hours or days after a send that returned success, so no synchronous response can carry it. The only thing that would surface it is an asynchronous event feed from Cloudflare, which is a Queue, a consumer Worker and an authenticated callback — **deliberately not being built**, and not worth the machinery for this service's volume. What this does catch is the *next* send to that address, once suppression has taken effect.
   - **Suppression is account-wide and permanent-ish.** Cloudflare adds an address on a hard bounce, on repeated soft bounces, or on a spam complaint, and rate-limits manual removal of complaint suppressions. It therefore compounds across archives and across years — a grandmother who pressed the spam button on something unrelated in 2026 silently stops receiving invitations from a different family's archive in 2028.
   - **Every outcome is recorded, not just the failures**, so a send that succeeds clears a stale warning. An owner who sees a warning that never goes away learns to ignore the one that matters.
   - **It is advisory and nothing reads it to make a decision.** A second copy of Cloudflare's judgement could only ever be wrong in the direction of silently declining to write to somebody whose address started working again.

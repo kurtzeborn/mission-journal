@@ -125,11 +125,14 @@ const permitted = (allowlist, to) => allowlist.open || allowlist.addresses.has(l
  * the address and *also* shown to the owner. The distinction buys a more
  * specific sentence, never the difference between telling somebody and not.
  *
- * The reliable signal is elsewhere and is not built: Cloudflare publishes
- * `message.bounced` and `message.complained` through Queues, which is the only
- * mechanism that can catch a spam complaint at all -- those arrive hours or
- * days after a send that succeeded, so no response to any request will ever
- * carry one. See the plan.
+ * The reliable signal is elsewhere and is not going to be built: Cloudflare
+ * publishes `message.bounced` and `message.complained` through Queues, which
+ * is the only mechanism that can catch a spam complaint at all -- those arrive
+ * hours or days after a send that succeeded, so no response to any request
+ * will ever carry one. That needs a Queue, a consumer Worker and a callback
+ * into this app, which is more machinery than this service's volume justifies.
+ * What we get instead is the *next* send to a suppressed address, which is
+ * late but is not nothing.
  */
 const suppression = (detail) => /suppress/i.test(String(detail ?? ''));
 
