@@ -7,7 +7,7 @@
 
 import { extractOriginal } from './extract.js';
 import { redactAccessLinks, sanitizeBody, photoUrl } from './sanitize.js';
-import { transcode, isPhotoType } from './photos.js';
+import { storePhoto, isPhotoType } from './photos.js';
 import { photoId } from './paths.js';
 import { linkedPhotoServices } from './photolinks.js';
 
@@ -119,7 +119,7 @@ async function renderPhotos({ store, slug, extracted, log }) {
             continue;
         }
 
-        const out = await transcode(bytes);
+        const out = await storePhoto({ store, slug, bytes });
         if (!out) {
             log.info?.('render: dropped an undecodable or undersized image', {
                 slug,
@@ -129,16 +129,8 @@ async function renderPhotos({ store, slug, extracted, log }) {
             continue;
         }
 
-        const prefix = `${slug}/photos/${id}`;
-        await store.writeBlob('rendered', `${prefix}/large.webp`, out.large, {
-            contentType: 'image/webp'
-        });
-        await store.writeBlob('rendered', `${prefix}/thumb.webp`, out.thumb, {
-            contentType: 'image/webp'
-        });
-
         seen.add(id);
-        rendered.push({ id, width: out.width, height: out.height, cid });
+        rendered.push({ ...out, cid });
     }
 
     return rendered;
@@ -157,7 +149,17 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, linked, res
         const index = posts.findIndex((p) => p.id === postId);
         if (index < 0) return { status: 'missing-post' };
 
-        posts[index] = { ...posts[index], bodyHtml, photos, linkedPhotoServices: linked };
+        // Pictures an owner added here were never in the message, so re-reading
+        // the message cannot produce them -- and must not be allowed to remove
+        // them either. They are carried across instead, which costs nothing:
+        // their renditions are still in `rendered/`, because nothing in this
+        // pipeline deletes a blob. A restore is the one exception, and
+        // deliberately so: putting a letter back the way it arrived means back
+        // to the pictures that arrived with it.
+        const added = restore ? [] : (posts[index].photos ?? []).filter((photo) => photo.addedAt);
+        const all = [...photos, ...added];
+
+        posts[index] = { ...posts[index], bodyHtml, photos: all, linkedPhotoServices: linked };
 
         if (restore) {
             posts[index].subject = subject;
@@ -183,7 +185,7 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, linked, res
                 contentType: 'application/json',
                 ifMatch: current.etag
             });
-            return { status: 'rendered', photos: photos.length };
+            return { status: 'rendered', photos: all.length };
         } catch (err) {
             if (!isConflict(err)) throw err;
             log.info?.('render: posts.json conflict, retrying', { slug, postId, attempt });

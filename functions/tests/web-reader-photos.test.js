@@ -9,6 +9,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { page, img, para, letter, stored } from './reader-dom.js';
+import { settled } from './web-dom.js';
 
 /** An archive of one letter, drawn and opened. */
 function only(bodyHtml, extra) {
@@ -247,5 +248,124 @@ describe('the album under the letter', () => {
         });
 
         assert.equal(view.$('.album'), null);
+    });
+});
+
+describe('pictures an owner adds', () => {
+    const ADDED = { id: 'a2', addedAt: '2026-08-05T10:00:00.000Z' };
+
+    /** The archive as an owner sees it, with the calls recorded. */
+    function owner({ photos = [{ id: 'a1' }, ADDED], removePhoto = async () => undefined } = {}) {
+        const calls = [];
+        const view = page();
+
+        view.mount({
+            posts: [letter('2026-03-25-9CRE', para(400), { photos })],
+            admin: {
+                patch: async () => undefined,
+                remove: async () => undefined,
+                restore: async () => undefined,
+                confirmDelete: () => true,
+                confirmRestore: () => true,
+                addPhotos: (id, files) => {
+                    // Copied out of the page's realm, so an assertion out here
+                    // compares values rather than prototypes.
+                    calls.push({ verb: 'add', id, names: [...files].map((file) => file.name) });
+                    return undefined;
+                },
+                removePhoto: (id, photoId) => {
+                    calls.push({ verb: 'remove', id, photoId });
+                    return removePhoto(id, photoId);
+                }
+            }
+        });
+
+        return { view, calls };
+    }
+
+    /** What the file picker hands back, which cannot be assigned to directly. */
+    const choose = (view, names) => {
+        const picker = view.$('.admin input[type="file"]');
+        const files = names.map(
+            (name) => new view.window.File([Buffer.from('bytes')], name, { type: 'image/jpeg' })
+        );
+        Object.defineProperty(picker, 'files', { value: files, configurable: true });
+        picker.dispatchEvent(new view.window.Event('change', { bubbles: true }));
+        return picker;
+    };
+
+    test('a reader is offered nothing at all', () => {
+        const view = page();
+        view.mount({ posts: [letter('2026-03-25-9CRE', para(400), { photos: [ADDED] })] });
+
+        assert.equal(view.$('.album__remove'), null);
+        assert.equal(view.$('.admin'), null);
+    });
+
+    test('only the ones an owner added can be taken back off', () => {
+        // `a1` arrived with the letter. Removing that is what `Restore
+        // original` is for, and the server refuses it here regardless.
+        const { view } = owner();
+
+        const tiles = view.$$('.album li');
+        assert.equal(tiles[0].querySelector('.album__remove'), null);
+        assert.equal(tiles[1].querySelector('.album__remove').getAttribute('aria-label'), 'Remove this picture');
+    });
+
+    test('removing one names the picture and disables the button while it runs', async () => {
+        const { view, calls } = owner();
+
+        const drop = view.$('.album__remove');
+        view.click(drop);
+
+        assert.deepEqual(calls, [{ verb: 'remove', id: '2026-03-25-9CRE', photoId: 'a2' }]);
+        assert.equal(drop.disabled, true);
+        await settled();
+        // A success reloads the page, so the button staying disabled is right.
+        assert.equal(drop.disabled, true);
+    });
+
+    test('a refusal is said out loud and the button comes back', async () => {
+        const { view } = owner({ removePhoto: async () => 'Refused: that picture came with the letter' });
+
+        const drop = view.$('.album__remove');
+        view.click(drop);
+        await settled();
+
+        assert.equal(view.$('.admin__status').textContent, 'Refused: that picture came with the letter');
+        assert.equal(drop.disabled, false);
+    });
+
+    test('choosing files hands them over and says how many', async () => {
+        const { view, calls } = owner();
+
+        view.click(view.button('Add pictures'));
+        const picker = choose(view, ['antigua.jpg', 'lake.jpg']);
+        await settled();
+
+        assert.deepEqual(calls, [
+            { verb: 'add', id: '2026-03-25-9CRE', names: ['antigua.jpg', 'lake.jpg'] }
+        ]);
+        // Cleared so the same file can be chosen again after a failure.
+        assert.equal(picker.value, '');
+    });
+
+    test('cancelling the picker asks for nothing', async () => {
+        const { view, calls } = owner();
+
+        choose(view, []);
+        await settled();
+
+        assert.deepEqual(calls, []);
+    });
+
+    test('adding is not offered while the letter is being edited', () => {
+        // Every other control in that bar is one save of one document. An
+        // upload is several commits, and Cancel cannot take those back.
+        const { view } = owner();
+
+        view.click(view.button('Edit'));
+
+        assert.equal(view.buttons('Add pictures')[0].hidden, true);
     });
 });

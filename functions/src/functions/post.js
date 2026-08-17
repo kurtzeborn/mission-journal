@@ -5,6 +5,7 @@ import { gate, hardened, contentEtag, matchesEtag } from '../lib/api.js';
 import { ROLE } from '../lib/acl.js';
 import { deletionOf } from '../lib/deletion.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
+import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES } from '../lib/photos.js';
 import { runRender } from '../lib/render.js';
 
 let cachedStore = null;
@@ -37,8 +38,8 @@ const ok = (body) => ({
 });
 
 // The read gate plus the one extra question these endpoints ask.
-async function ownerOnly(request, context) {
-    const result = await gate({ store: blobStore(), request, log: context });
+async function ownerOnly(request, context, store = blobStore()) {
+    const result = await gate({ store, request, log: context });
     if (result.denied) return result;
 
     // 403 rather than the gate's 404. A reader is genuinely entitled to this
@@ -207,6 +208,161 @@ async function restore(request, context) {
     return ok({ id: postId, restored: true });
 }
 
+// Pictures an owner adds to a letter themselves.
+//
+// One picture per request, raw bytes in the body with a content type on it --
+// no multipart, because there is exactly one field and parsing a form to find
+// it would be work done for nothing. The browser sends the `File` object
+// straight through.
+//
+// Everything about the picture is decided by the same code that handles an
+// attachment: the same format allowlist, the same EXIF stripping, the same
+// renditions, the same content-addressed id. The only difference in the stored
+// record is `addedAt`, and it is there to answer two questions -- whether a
+// re-render may drop this picture, and whether an owner may.
+//
+// **No address is recorded on the photo.** `photos` is projected to every
+// reader verbatim, and an archive can have several owners; stamping one of
+// their email addresses onto a picture would publish it.
+//
+// **And no `If-Match`.** Every other write here replaces a document the
+// browser composed from a copy of the site, which is why they carry the
+// staleness claim. These two do not: one appends an entry whose id is the hash
+// of the bytes, the other names a single id to drop. Neither can undo an edit
+// it never saw, and enforcing it would break the ordinary case of adding two
+// pictures in a row -- the first one moves the ETag the second was holding.
+const TOO_MANY = 'this letter already has as many added pictures as it can hold';
+const MAX_ADDED = 24;
+
+export async function addPhoto({ request, context, store }) {
+    const gated = await ownerOnly(request, context, store);
+    if (gated.denied) return gated.denied;
+
+    const { postId } = request.params;
+
+    // Checked before a byte is decoded. `sharp` sniffs the container itself,
+    // so this is not the security boundary -- it is how a browser that sent a
+    // PDF gets told what went wrong instead of "that picture could not be
+    // read".
+    if (!isPhotoType(request.headers.get('content-type'))) {
+        return problem(415, 'that is not a kind of picture this site can show');
+    }
+
+    const bytes = Buffer.from(await request.arrayBuffer());
+    if (!bytes.length) return problem(400, 'no picture was sent');
+    if (bytes.length > MAX_UPLOAD_BYTES) {
+        return problem(413, 'that picture is too large to add');
+    }
+
+    // Read from the copy the gate already loaded. Both of these are refusals,
+    // and refusing before spending a transcode on bytes that cannot be stored
+    // is the whole reason to look.
+    const existing = (gated.posts ?? []).find((post) => post.id === postId);
+    if (!existing) return problem(404, 'no such post');
+    if ((existing.photos ?? []).filter((photo) => photo.addedAt).length >= MAX_ADDED) {
+        return problem(409, TOO_MANY);
+    }
+
+    // Before `commitPosts`, never inside it: its `mutate` is called
+    // synchronously and may be called more than once, so a transcode in there
+    // would return a promise the error check would sail straight past.
+    const stored = await storePhoto({ store, slug: gated.slug, bytes });
+    if (!stored) return problem(415, 'that picture could not be read');
+
+    const photo = { ...stored, addedAt: new Date().toISOString() };
+    let added = false;
+
+    const outcome = await commitPosts({
+        store,
+        slug: gated.slug,
+        log: context,
+        mutate: (posts) => {
+            const index = posts.findIndex((post) => post.id === postId);
+            if (index < 0) return { error: 'not found' };
+
+            const photos = posts[index].photos ?? [];
+            // The id is the hash of the bytes, so adding a picture the letter
+            // already carries is a no-op rather than a duplicate -- and that
+            // covers the double-click as well as the honest mistake.
+            if (photos.some((entry) => entry.id === photo.id)) return { posts };
+
+            if (photos.filter((entry) => entry.addedAt).length >= MAX_ADDED) {
+                return { error: TOO_MANY };
+            }
+
+            added = true;
+            const next = [...posts];
+            next[index] = { ...next[index], photos: [...photos, photo] };
+            return { posts: next };
+        }
+    });
+
+    if (outcome.error) {
+        if (outcome.error === 'not found') return problem(404, 'no such post');
+        return problem(409, outcome.error);
+    }
+
+    context.log('post.photoAdded', { slug: gated.slug, postId, photo: photo.id, added });
+    return ok({ id: postId, photo: photo.id, added });
+}
+
+// Taking one back out.
+//
+// Only pictures that were added here. A picture that came with the letter is
+// part of what the missionary sent, and removing one of those is a restore
+// away from being unrecoverable -- so it stays under `Restore original`, which
+// asks first and says what it is about to discard.
+//
+// The renditions are left in `rendered/`, exactly as a deleted post's are:
+// they are content-addressed, so another letter quoting the same picture is
+// pointing at the same blob, and a photo nothing lists is already unfetchable
+// because `photoIsVisible` resolves ids by scanning the posts.
+const NOT_YOURS = 'that picture came with the letter';
+
+export async function removePhoto({ request, context, store }) {
+    const gated = await ownerOnly(request, context, store);
+    if (gated.denied) return gated.denied;
+
+    const { postId, photoId } = request.params;
+
+    let removed = false;
+
+    const outcome = await commitPosts({
+        store,
+        slug: gated.slug,
+        log: context,
+        mutate: (posts) => {
+            const index = posts.findIndex((post) => post.id === postId);
+            if (index < 0) return { error: 'not found' };
+
+            const photos = posts[index].photos ?? [];
+            const target = photos.find((entry) => entry.id === photoId);
+            // Idempotent on the way out, same as deleting a post: a repeated
+            // request is a double-click, and a 404 for the second one would
+            // make a successful removal look like a failure.
+            if (!target) return { posts };
+            if (!target.addedAt) return { error: NOT_YOURS };
+
+            removed = true;
+            const next = [...posts];
+            next[index] = {
+                ...next[index],
+                photos: photos.filter((entry) => entry.id !== photoId)
+            };
+            return { posts: next };
+        }
+    });
+
+    if (outcome.error) {
+        if (outcome.error === 'not found') return problem(404, 'no such post');
+        if (outcome.error === NOT_YOURS) return problem(403, NOT_YOURS);
+        return problem(400, outcome.error);
+    }
+
+    context.log('post.photoRemoved', { slug: gated.slug, postId, photo: photoId, removed });
+    return ok({ id: postId, photo: photoId, removed });
+}
+
 app.http('editPost', {
     // As everywhere else, authorization is the ACL check inside the handler;
     // `anonymous` only means no Functions access key, which Static Web Apps
@@ -215,6 +371,20 @@ app.http('editPost', {
     methods: ['PATCH'],
     route: 'posts/{slug}/{postId}',
     handler: edit
+});
+
+app.http('addPostPhoto', {
+    authLevel: 'anonymous',
+    methods: ['POST'],
+    route: 'posts/{slug}/{postId}/photos',
+    handler: (request, context) => addPhoto({ request, context, store: blobStore() })
+});
+
+app.http('removePostPhoto', {
+    authLevel: 'anonymous',
+    methods: ['DELETE'],
+    route: 'posts/{slug}/{postId}/photos/{photoId}',
+    handler: (request, context) => removePhoto({ request, context, store: blobStore() })
 });
 
 app.http('deletePost', {

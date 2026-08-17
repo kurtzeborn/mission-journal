@@ -628,6 +628,48 @@ button:focus-visible {
     cursor: zoom-in;
 }
 
+/* The owner's way of taking back a picture they added. Positioned against the
+   tile, which is why the list item needs to be a containing block -- and only
+   the item, not `.album li` in general, would be the same rule written twice.
+   Sits over the corner of the photo rather than beside it: a row of tiles with
+   a control under some of them and not others reflows as soon as one is
+   removed, and nothing that only owners see is worth that. */
+.album li {
+    position: relative;
+}
+
+.album__remove {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    /* Dark rather than tinted. It has to read against whatever photograph is
+       underneath it, and a white sky is as likely as a night street. */
+    background: rgba(0, 0, 0, 0.65);
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.album__remove:hover {
+    background: rgba(0, 0, 0, 0.85);
+}
+
+.album__remove:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.album__remove[disabled] {
+    cursor: progress;
+    opacity: 0.6;
+}
+
 .album a:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 3px;

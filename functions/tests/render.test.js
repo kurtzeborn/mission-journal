@@ -16,7 +16,7 @@ import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { runRender } from '../src/lib/render.js';
 import { sanitizeBody, photoUrl } from '../src/lib/sanitize.js';
 import { linkedPhotoServices } from '../src/lib/photolinks.js';
-import { transcode, MIN_PHOTO_EDGE, LARGE_EDGE, THUMB_EDGE } from '../src/lib/photos.js';
+import { transcode, storePhoto, MIN_PHOTO_EDGE, LARGE_EDGE, THUMB_EDGE } from '../src/lib/photos.js';
 import { memoryStore } from './memory-store.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
@@ -395,6 +395,61 @@ test('an ordinary re-render does not touch the subject or the edit stamps', asyn
     const after = store.json('rendered', `${SLUG}/posts.json`)[0];
     assert.equal(after.subject, 'Trimmed for the family');
     assert.equal(after.editedBy, 'sarah@example.com');
+});
+
+// --- pictures an owner added -----------------------------------------------
+
+/** The one field that says a picture was not in the message. */
+const ADDED = { id: 'p_addedbyowner', width: 800, height: 600, addedAt: '2026-08-05T10:00:00.000Z' };
+
+test('a re-render keeps the pictures an owner added and puts them last', async () => {
+    // Re-rendering re-reads the message, and the message never had these. The
+    // pipeline is re-run for sanitizer fixes and layout fixes on letters that
+    // are years old by then; if that quietly deleted an owner's photographs it
+    // would do so without anybody asking for it and without saying so.
+    const { store, message, post } = await pipeline('outlook-web-inline');
+    await editInPlace(store, { photos: [...post.photos, ADDED] });
+
+    await runRender({ message, store, log: silent });
+
+    const after = store.json('rendered', `${SLUG}/posts.json`)[0];
+    assert.equal(after.photos.length, post.photos.length + 1);
+    assert.deepEqual(after.photos.at(-1), ADDED);
+    // And the message's own pictures still come first, which is what puts the
+    // added ones at the end of the album the reader draws.
+    assert.deepEqual(after.photos.slice(0, -1).map((photo) => photo.id), post.photos.map((photo) => photo.id));
+});
+
+test('a restore drops the pictures an owner added', async () => {
+    // Deliberately the other way, and the only place the two differ. Putting a
+    // letter back the way it arrived means back to the pictures that arrived
+    // with it; the button says so before it is pressed.
+    const { store, message, post } = await pipeline('outlook-web-inline');
+    await editInPlace(store, { photos: [...post.photos, ADDED] });
+
+    await runRender({ message, store, restore: true, log: silent });
+
+    const after = store.json('rendered', `${SLUG}/posts.json`)[0];
+    assert.deepEqual(after.photos.map((photo) => photo.id), post.photos.map((photo) => photo.id));
+});
+
+test('storePhoto writes both renditions and refuses what is not a photo', async () => {
+    const store = memoryStore();
+    const bytes = await sharp({ create: { width: 900, height: 600, channels: 3, background: '#336699' } })
+        .jpeg()
+        .toBuffer();
+
+    const out = await storePhoto({ store, slug: SLUG, bytes });
+    assert.equal(out.width, 900);
+    assert.equal(out.height, 600);
+    assert.match(out.id, /^p_[0-9a-f]{12}$/);
+    assert.equal(store.blobs.get(`rendered/${SLUG}/photos/${out.id}/large.webp`).contentType, 'image/webp');
+    assert.ok(store.blobs.has(`rendered/${SLUG}/photos/${out.id}/thumb.webp`));
+
+    // The same refusal `transcode` makes, passed through rather than thrown --
+    // the upload handler turns it into a 415 and nothing is written.
+    assert.equal(await storePhoto({ store, slug: SLUG, bytes: Buffer.from('not an image') }), null);
+    assert.equal(store.blobs.size, 2);
 });
 
 test('every rendered post carries a linkedPhotoServices array', async () => {

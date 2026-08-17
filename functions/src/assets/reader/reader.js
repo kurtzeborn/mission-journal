@@ -415,7 +415,11 @@ window.Reader = (function () {
     }
 
     // Photos the letter already displays inline are not repeated underneath
-    // it. Only the ones that arrived attached but unreferenced become an album.
+    // it. Only the ones that arrived attached but unreferenced become an album
+    // -- along with any an owner added afterwards, which are appended to the
+    // same list and are meant to sit in the same row. A separate group for
+    // them would draw a line through the letter's pictures on behalf of a
+    // distinction the reader has no use for.
     //
     // One row, uniform tiles, scrolled sideways when it does not fit. A grid
     // that reflowed to the photos' own shapes looked like a pile rather than a
@@ -426,7 +430,7 @@ window.Reader = (function () {
     //
     // No scroll buttons. The links inside are focusable, so tabbing scrolls
     // the row on its own, and every touch device already knows how to swipe.
-    function renderAlbum(post, photoSrc) {
+    function renderAlbum(post, photoSrc, admin, status) {
         const inline = post.bodyHtml ?? '';
         const loose = (post.photos ?? []).filter((photo) => !inline.includes(photo.id));
         if (!loose.length) return null;
@@ -450,6 +454,34 @@ window.Reader = (function () {
 
             link.append(img);
             item.append(link);
+
+            // Only on the pictures an owner put here, and only for an owner.
+            // A picture that came with the letter belongs to the letter, and
+            // taking one of those out is what `Restore original` undoes -- so
+            // it is not offered next to a thumbnail with nothing to warn about
+            // it. `addedAt` is the whole of the distinction, and the server
+            // makes it again on the way in.
+            if (admin && photo.addedAt) {
+                const drop = document.createElement('button');
+                drop.type = 'button';
+                drop.className = 'album__remove';
+                drop.textContent = '×';
+                drop.title = 'Remove this picture';
+                drop.setAttribute('aria-label', 'Remove this picture');
+                drop.addEventListener('click', async () => {
+                    drop.disabled = true;
+                    if (status) status.textContent = 'Removing…';
+                    // A success reloads the page, so anything that comes back
+                    // is a failure the owner needs to read -- and the button
+                    // has to come back with it, or the picture is stuck.
+                    const failed = await admin.removePhoto(post.id, photo.id);
+                    if (!failed) return;
+                    drop.disabled = false;
+                    if (status) status.textContent = failed;
+                });
+                item.append(drop);
+            }
+
             album.append(item);
         }
 
@@ -568,7 +600,18 @@ window.Reader = (function () {
         const body = renderBody(post, photoSrc);
         panel.append(body);
 
-        const album = renderAlbum(post, photoSrc);
+        // One status line for everything an owner does to this letter. It is
+        // created here rather than inside the owner bar because the album is
+        // built first and writes to it too, and two of them -- one above the
+        // pictures and one below -- would be a message in whichever place the
+        // owner happened not to be looking.
+        const status = admin ? document.createElement('span') : null;
+        if (status) {
+            status.className = 'admin__status';
+            status.setAttribute('role', 'status');
+        }
+
+        const album = renderAlbum(post, photoSrc, admin, status);
         if (album) panel.append(album);
 
         if (post.linkedPhotoServices?.length) {
@@ -583,7 +626,7 @@ window.Reader = (function () {
         // needs the heading to already have a parent to insert alongside.
         item.append(subject, panel);
 
-        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc }));
+        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc, status }));
 
         const view = { id: post.id, item, toggle, panel, body, title, hits };
         toggle.addEventListener('click', () => {
@@ -617,14 +660,10 @@ window.Reader = (function () {
     // contenteditable scaffolds with are removed by the same pass that cleans
     // up after Outlook.
     function renderAdmin(post, admin, view) {
-        const { subject: heading, body, photoSrc } = view;
+        const { subject: heading, body, photoSrc, status } = view;
 
         const bar = document.createElement('div');
         bar.className = 'admin';
-
-        const status = document.createElement('span');
-        status.className = 'admin__status';
-        status.setAttribute('role', 'status');
 
         const button = (label, extra) => {
             const el = document.createElement('button');
@@ -646,6 +685,29 @@ window.Reader = (function () {
         const remove = button('Delete');
         const save = button('Save', 'admin__button--primary');
         const cancel = button('Cancel');
+
+        // Adding pictures.
+        //
+        // Deliberately not part of the Edit mode. Everything else in that mode
+        // is one save of one document, which either sticks or does not; an
+        // upload is several round trips that each either stick or do not, and
+        // mixing the two would mean Cancel undoing some of what just happened
+        // and none of the rest. So it sits beside Edit rather than inside it,
+        // and each picture is committed on its own.
+        //
+        // The <input> is the thing that opens the file picker -- a browser
+        // will not open one from script without a real click on a real file
+        // input -- so it is present and hidden rather than replaced by the
+        // button. `accept` is a hint the picker uses to grey out documents;
+        // the format allowlist that matters is on the server.
+        const add = button('Add pictures');
+        const picker = document.createElement('input');
+        picker.type = 'file';
+        picker.accept = 'image/*';
+        picker.multiple = true;
+        picker.hidden = true;
+        picker.setAttribute('aria-hidden', 'true');
+        picker.tabIndex = -1;
 
         // Offered only on a letter somebody has actually changed. On an
         // untouched one it would re-render the post into exactly what it
@@ -681,7 +743,7 @@ window.Reader = (function () {
         heading.insertAdjacentElement('afterend', field);
 
         const showEditing = (editing) => {
-            for (const el of [hide, edit, remove]) el.hidden = editing;
+            for (const el of [hide, edit, remove, add]) el.hidden = editing;
             if (revert) revert.hidden = editing;
             for (const el of [save, cancel]) el.hidden = !editing;
             heading.hidden = editing;
@@ -772,6 +834,19 @@ window.Reader = (function () {
         cancel.addEventListener('click', discard);
         save.addEventListener('click', commit);
 
+        add.addEventListener('click', () => picker.click());
+        picker.addEventListener('change', () => {
+            const files = [...picker.files];
+            // Cleared straight away so choosing the same file twice still
+            // fires a change event -- otherwise a failed upload cannot be
+            // retried without picking something else in between.
+            picker.value = '';
+            if (!files.length) return;
+
+            const many = files.length > 1 ? ` (${files.length})` : '';
+            run(`Adding pictures${many}…`, () => admin.addPhotos(post.id, files));
+        });
+
         remove.addEventListener('click', () => {
             if (!admin.confirmDelete(post)) return;
             run('Deleting…', () => admin.remove(post.id));
@@ -831,7 +906,7 @@ window.Reader = (function () {
         });
 
         showEditing(false);
-        bar.append(hide, edit, remove);
+        bar.append(hide, edit, remove, add, picker);
         if (revert) bar.append(revert);
         bar.append(save, cancel, status, note);
         return bar;

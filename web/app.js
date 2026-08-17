@@ -43,16 +43,22 @@
         if (body) headers['Content-Type'] = 'application/json';
         if (loadedEtag) headers['If-Match'] = loadedEtag;
 
+        return call(method, postId, suffix, {
+            headers,
+            body: body ? JSON.stringify(body) : undefined
+        });
+    }
+
+    // The wire half of `send`, without the assumption that the body is JSON or
+    // that the page has a version to defend. Pictures are sent as raw bytes,
+    // and adding two in a row would fail on the second if it carried the ETag
+    // the first one had just moved -- see the note on the API side.
+    async function call(method, postId, suffix, init, reload = true) {
         let response;
         try {
             response = await fetch(
                 `/api/posts/${encodeURIComponent(slug)}/${encodeURIComponent(postId)}${suffix}`,
-                {
-                    method,
-                    redirect: 'manual',
-                    headers,
-                    body: body ? JSON.stringify(body) : undefined
-                }
+                { method, redirect: 'manual', ...init }
             );
         } catch {
             return 'Could not reach the server. Nothing was changed.';
@@ -66,6 +72,10 @@
             return 'This page is out of date — someone changed these letters after it loaded. Reload and try again; nothing was changed.';
         }
 
+        if (response.status === 413) {
+            return 'That picture is too big. Nothing was changed.';
+        }
+
         if (!response.ok) {
             // The API explains a 400 in its own words -- "not editable:
             // originalFrom" is more use than "something went wrong".
@@ -77,6 +87,38 @@
 
         // Re-reading is what keeps the page honest: the server decides what a
         // letter now says, including what its sanitizer removed from an edit.
+        if (reload) window.location.reload();
+        return null;
+    }
+
+    // Pictures go up one at a time and the page is reloaded once at the end,
+    // because each upload is its own commit and reloading between them would
+    // throw away the rest of the selection. The first failure stops the run
+    // and is reported with what did get through, since "three of five" is the
+    // only honest thing to say and the owner needs to know which to retry.
+    async function addPhotos(postId, files) {
+        let done = 0;
+
+        for (const file of files) {
+            const failed = await call(
+                'POST',
+                postId,
+                '/photos',
+                {
+                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+                    body: file
+                },
+                false
+            );
+
+            if (failed) {
+                if (!done) return failed;
+                window.location.reload();
+                return null;
+            }
+            done += 1;
+        }
+
         window.location.reload();
         return null;
     }
@@ -216,6 +258,9 @@
                       patch: (postId, changes) => send('PATCH', postId, changes),
                       remove: (postId) => send('DELETE', postId),
                       restore: (postId) => send('POST', postId, null, '/restore'),
+                      addPhotos,
+                      removePhoto: (postId, photoId) =>
+                          call('DELETE', postId, `/photos/${encodeURIComponent(photoId)}`, {}),
                       confirmDelete: (post) =>
                           window.confirm(
                               `Remove "${post.subject || 'Untitled'}" from the site?\n\n` +

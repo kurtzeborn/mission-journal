@@ -5,6 +5,7 @@
 // what makes re-rendering history after a fix safe.
 
 import sharp from 'sharp';
+import { photoId } from './paths.js';
 
 // Formats accepted as photos. An allowlist rather than a bare `image/*` test,
 // specifically to exclude SVG: it is an XML document that can carry script,
@@ -34,6 +35,12 @@ export const MAX_PIXELS = 100_000_000;
 // dropped from the body, since a letter rendered with three social-media
 // icons inline reads as spam.
 export const MIN_PHOTO_EDGE = 200;
+
+// The largest single picture an owner may upload. Well above what a phone
+// camera produces and comfortably below `MAX_RAW_BYTES`, which is the whole
+// message an ingest has to hold; one picture arriving through the browser has
+// no business being larger than an entire letter with its attachments.
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 export const isPhotoType = (mimeType) =>
     PHOTO_TYPES.has(String(mimeType ?? '').toLowerCase().split(';')[0].trim());
@@ -80,4 +87,37 @@ export async function transcode(bytes) {
     } catch {
         return null;
     }
+}
+
+/**
+ * Transcode one picture and write both renditions under a slug.
+ *
+ * The identity is the hash of the bytes that arrived, so writing the same
+ * picture twice writes the same two blobs and costs nothing -- which is what
+ * makes re-rendering a letter safe, and what makes an owner adding a photo
+ * that is already in the letter a no-op rather than a duplicate.
+ *
+ * Returns null when the bytes are not a usable photo. Every caller drops that
+ * one and carries on with the rest.
+ *
+ * @param {object} input
+ * @param {{writeBlob: Function}} input.store
+ * @param {string} input.slug
+ * @param {Buffer|Uint8Array} input.bytes
+ * @returns {Promise<{id: string, width: number, height: number}|null>}
+ */
+export async function storePhoto({ store, slug, bytes }) {
+    const out = await transcode(bytes);
+    if (!out) return null;
+
+    const id = photoId(bytes);
+    const prefix = `${slug}/photos/${id}`;
+    await store.writeBlob('rendered', `${prefix}/large.webp`, out.large, {
+        contentType: 'image/webp'
+    });
+    await store.writeBlob('rendered', `${prefix}/thumb.webp`, out.thumb, {
+        contentType: 'image/webp'
+    });
+
+    return { id, width: out.width, height: out.height };
 }
