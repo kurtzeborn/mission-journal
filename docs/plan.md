@@ -1112,7 +1112,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Photos that arrive as links rather than attachments~~ — [Phase 2](#phase-2--render-pipeline)
 - [x] ~~Direct sends from `@missionary.org` classify and publish~~ — [Phase 6](#phase-6--direct-ingest)
 - [ ] One live end-to-end run from a real `@missionary.org` account — [Phase 6](#phase-6--direct-ingest) *(externally gated)*
-- [ ] Alert rule on the daily ingest cap — [Phase 12](#phase-12--leaving-beta)
+- [x] ~~Alert rule on the daily ingest cap~~ — [Phase 12](#phase-12--leaving-beta)
 
 **Reading — the family gets in**
 
