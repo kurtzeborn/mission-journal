@@ -77,10 +77,10 @@ export async function list({ request, context, store, tables }) {
     const gated = await ownerOf({ request, store, context });
     if (gated.denied) return gated.denied;
 
-    const members = await listMembers({ store, slug: gated.slug, actor: gated.principal.email });
+    const members = await listMembers({ store, tables, slug: gated.slug, actor: gated.principal.email, log: context });
     if (!members) return DENIED;
 
-    const invites = await listInvites({ tables, slug: gated.slug });
+    const invites = await listInvites({ tables, slug: gated.slug, log: context });
 
     return json(200, { members, invites });
 }

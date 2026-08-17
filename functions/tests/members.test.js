@@ -13,6 +13,7 @@ import { ROLE, resolveRole } from '../src/lib/acl.js';
 import { listMembers, removeMember, setMemberRole, validEmail } from '../src/lib/members.js';
 import { acceptInvite, describeInvite, inviteMember, INVITES_PER_DAY, listInvites, revokeInvite } from '../src/lib/invite.js';
 import { membershipsFor, recordMembership } from '../src/lib/memberships.js';
+import { recordDelivery } from '../src/lib/delivery.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../src/lib/claimtoken.js';
 
 const silent = { info() {}, warn() {}, error() {} };
@@ -228,6 +229,69 @@ describe('the missionary cannot be evicted from their own archive', () => {
         assert.equal(by[OWNER].removable, false, 'your own row');
         assert.equal(by[MISSIONARY].removable, false, 'the verified missionary');
         assert.equal(by[READER].removable, true);
+    });
+});
+
+// --- whose mail is not arriving -------------------------------------------
+
+describe('telling an owner that somebody is not hearing from us', () => {
+    // Undeliverable mail is the only failure here whose symptom is silence.
+    // Nobody complains about an archive they cannot tell exists, so unless the
+    // owner is shown it on the page they will never learn it.
+    test('a member whose mail bounced is marked, and the rest are not', async () => {
+        const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);
+        await recordDelivery({ tables: store, email: READER, status: 'suppressed', slug: SLUG, now: NOW, log: silent });
+
+        const listed = await listMembers({ store, tables: store, slug: SLUG, actor: OWNER });
+        const by = Object.fromEntries(listed.map((m) => [m.email, m]));
+
+        assert.equal(by[READER].delivery, 'suppressed');
+        assert.equal(by[READER].deliveryAt, '2026-08-05T12:00:00.000Z');
+        assert.equal(by[OWNER].delivery, '', 'nothing was ever wrong with this one');
+    });
+
+    test('an archive still lists without the table that says so', async () => {
+        // The annotation is worth having and is not worth the page. An owner
+        // locked out of seeing who has access, because a side table is down,
+        // would be a much worse day than a missing warning.
+        const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);
+
+        const listed = await listMembers({ store, slug: SLUG, actor: OWNER });
+
+        assert.equal(listed.length, 2);
+        assert.equal(listed[0].delivery, '');
+    });
+
+    test('an invitation that never arrived is marked too', async () => {
+        // The sharpest case the annotation exists for: the owner is looking at
+        // a row that says "invited" and waiting for somebody who was never
+        // written to.
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = { sent: [], send: async (m) => (mailer.sent.push(m), { status: 'bounced' }) };
+
+        await inviteMember({
+            store, tables: store, mailer, slug: SLUG, actor: OWNER,
+            email: READER, key: KEY, baseUrl: BASE, now: NOW, log: silent
+        });
+        const [pending] = await listInvites({ tables: store, slug: SLUG, now: NOW, log: silent });
+
+        assert.equal(pending.email, READER);
+        assert.equal(pending.delivery, 'bounced');
+        assert.ok(pending.deliveryAt);
+    });
+
+    test('an invitation that went through says nothing at all', async () => {
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await inviteMember({
+            store, tables: store, mailer, slug: SLUG, actor: OWNER,
+            email: READER, key: KEY, baseUrl: BASE, now: NOW, log: silent
+        });
+        const [pending] = await listInvites({ tables: store, slug: SLUG, now: NOW, log: silent });
+
+        assert.equal(pending.delivery, '');
+        assert.equal(pending.deliveryAt, '');
     });
 });
 

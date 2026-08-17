@@ -29,11 +29,31 @@
             ...init
         });
 
+    // What each delivery outcome means to the person reading it, in the terms
+    // they can act in. Not the provider's vocabulary: "suppressed" is a fact
+    // about Cloudflare's account list, and the owner's question is only ever
+    // "is my mother getting these".
+    //
+    // Every one of them is deliberately non-accusatory about the recipient and
+    // ends somewhere useful, because the most likely cause is that they pressed
+    // a spam button once, years ago, on something else entirely.
+    const UNDELIVERED = {
+        suppressed: 'Mail is not reaching this address. It bounced or was reported as spam, so it has been blocked for everyone.',
+        bounced: 'Mail to this address bounced. Check the spelling, or use another address.',
+        failed: 'The last message to this address could not be sent.'
+    };
+
     // Kept out of the markup. Every one of these strings is either an address
     // somebody typed or a name somebody typed, so nothing here builds HTML.
     function row(person) {
         const item = document.createElement('li');
         item.className = 'people__row';
+
+        // Dimmed rather than badged, like a hidden letter: the row is still a
+        // real person with real access, and the point is that the eye lands on
+        // it without the list acquiring a column that is blank for everybody
+        // else.
+        if (person.delivery) item.classList.add('people__row--undelivered');
 
         const who = document.createElement('span');
         who.className = 'people__who';
@@ -135,6 +155,18 @@
 
         item.appendChild(controls);
         item.appendChild(trouble);
+
+        // Last, so it reads as a note under the whole row rather than as a
+        // failure of whichever button happens to sit above it. It is not put in
+        // `trouble`, which belongs to the buttons and is cleared on the next
+        // press -- this one is a standing fact about the address.
+        if (person.delivery) {
+            const undelivered = document.createElement('span');
+            undelivered.className = 'people__undelivered';
+            undelivered.textContent = UNDELIVERED[person.delivery] ?? UNDELIVERED.failed;
+            item.appendChild(undelivered);
+        }
+
         return item;
     }
 

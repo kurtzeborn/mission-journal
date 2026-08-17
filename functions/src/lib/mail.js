@@ -108,6 +108,32 @@ export function parseAllowlist(setting) {
 const permitted = (allowlist, to) => allowlist.open || allowlist.addresses.has(lower(to));
 
 /**
+ * Does this rejection mean the address itself is finished?
+ *
+ * **A guess, deliberately, and the design does not rest on it.** Cloudflare
+ * suppresses an address account-wide after a hard bounce or a spam complaint,
+ * and every later send to it fails -- but the REST API's published error table
+ * has no code for that. `E_RECIPIENT_SUPPRESSED` is a *Workers binding* string
+ * error, and we do not use the binding. So there is no documented shape to
+ * match on, and the honest options were to match on something plausible or to
+ * pretend the case does not exist.
+ *
+ * This matches on the word, because Cloudflare's messages are dotted
+ * machine-readable strings in one namespace (`email.sending.error.*`) and any
+ * code they add for this will almost certainly contain it. When it does not,
+ * the send lands in `failed` instead -- and `failed` is *also* recorded against
+ * the address and *also* shown to the owner. The distinction buys a more
+ * specific sentence, never the difference between telling somebody and not.
+ *
+ * The reliable signal is elsewhere and is not built: Cloudflare publishes
+ * `message.bounced` and `message.complained` through Queues, which is the only
+ * mechanism that can catch a spam complaint at all -- those arrive hours or
+ * days after a send that succeeded, so no response to any request will ever
+ * carry one. See the plan.
+ */
+const suppression = (detail) => /suppress/i.test(String(detail ?? ''));
+
+/**
  * A mailer.
  *
  * @param {object} input
@@ -127,7 +153,7 @@ export function createMailer({ accountId, token, allowlist = '', fetch: doFetch 
      * has already done the thing that mattered -- the letter is stored -- and
      * none of them should turn a mail failure into a lost message.
      *
-     * @returns {Promise<{status: 'sent'|'blocked'|'bounced'|'failed', detail?: string}>}
+     * @returns {Promise<{status: 'sent'|'blocked'|'bounced'|'suppressed'|'failed', detail?: string}>}
      */
     async function send({ from, to, subject, text, html, headers = {}, log = console }) {
         if (!permitted(allowed, to)) {
@@ -178,7 +204,7 @@ export function createMailer({ accountId, token, allowlist = '', fetch: doFetch 
                 httpStatus: response.status,
                 detail: detail || 'no error detail'
             });
-            return { status: 'failed', detail: detail || `http ${response.status}` };
+            return { status: suppression(detail) ? 'suppressed' : 'failed', detail: detail || `http ${response.status}` };
         }
 
         // A permanent bounce is a successful API call that delivered nothing.

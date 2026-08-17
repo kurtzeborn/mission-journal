@@ -995,6 +995,26 @@ h3:target {
     color: var(--ink-soft);
 }
 
+/* An address our mail is not reaching. Dimmed the same way and by the same
+   amount as a hidden letter, because it means the same thing to the eye: still
+   here, still real, not currently working. The row keeps all its controls at
+   full contrast -- Resend is very often the thing to press next, and dimming
+   the remedy along with the problem would be the wrong half. */
+.people__row--undelivered .people__who,
+.people__row--undelivered .people__what {
+    opacity: 0.55;
+}
+
+/* Full-width for the same reason `.people__trouble` is, and warm rather than
+   red: nobody has done anything wrong, and an alarming colour beside a
+   grandmother's address reads as an accusation. */
+.people__undelivered {
+    flex: 1 0 100%;
+    margin: 0;
+    font-size: 0.85rem;
+    color: #8a5a12;
+}
+
 /* The address box on the people page. Wide and tall enough that a pasted
    list of a dozen relatives is visible as a list, which is what makes a typo
    findable before it is sent. */

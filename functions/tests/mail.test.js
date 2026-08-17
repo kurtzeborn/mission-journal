@@ -170,6 +170,37 @@ describe('sending', () => {
         assert.equal((await bare.send({ ...message, log: quiet })).status, 'failed');
         assert.equal(calls.length, 0);
     });
+
+    // A suppressed address is the failure this service is least able to
+    // notice: it is silence, and silence is what a quiet week looks like.
+    test('a rejection that names suppression is called that', async () => {
+        const suppressed = {
+            ok: false,
+            status: 400,
+            json: { success: false, errors: [{ code: 10250, message: 'email.sending.error.email.suppressed' }] }
+        };
+        const { mailer } = mailerWith([suppressed]);
+        const result = await mailer.send({ ...message, log: quiet });
+
+        assert.equal(result.status, 'suppressed');
+        assert.match(result.detail, /suppressed/);
+    });
+
+    test('anything else is still a failure, and still recorded as one', async () => {
+        // The whole point of the split. Cloudflare publishes no suppression
+        // code for this API, so the match above is a forward bet -- and when it
+        // loses, the send lands here, which is also shown to the owner. The
+        // distinction buys a better sentence, never the difference between
+        // telling somebody and not.
+        const throttled = {
+            ok: false,
+            status: 429,
+            json: { success: false, errors: [{ code: 10004, message: 'email.sending.error.throttled' }] }
+        };
+        const { mailer } = mailerWith([throttled]);
+
+        assert.equal((await mailer.send({ ...message, log: quiet })).status, 'failed');
+    });
 });
 
 // --- offering a pending site ----------------------------------------------

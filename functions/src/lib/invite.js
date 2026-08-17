@@ -29,6 +29,7 @@ import { claimTokenHash, issueClaimToken, PURPOSE, verifyClaimToken } from './cl
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { inviteEmail } from './invitemail.js';
 import { HUMAN_ADDRESS, mailFrom } from './mail.js';
+import { recordDelivery, deliveryTrouble } from './delivery.js';
 import { recordMembership } from './memberships.js';
 import { issueOptOut, optedOut, unsubscribeHeaders } from './optout.js';
 import { validSlug } from './paths.js';
@@ -198,6 +199,11 @@ export async function inviteMember({
         log.error?.('invite: could not deliver', { slug: safe, status: result.status });
     }
 
+    // Written down as well as logged, because the owner is the person who can
+    // act on it and the owner does not read our telemetry. `delivery` below
+    // reports this one send; the row is what still says so tomorrow.
+    await recordDelivery({ tables, email: them, status: result.status, slug: safe, now, log });
+
     return { ok: true, slug: safe, email: them, role, expiresAt, delivery: result.status };
 }
 
@@ -209,22 +215,29 @@ export async function inviteMember({
  * secret they do not hold, which is exactly why the table stores that rather
  * than the token.
  */
-export async function listInvites({ tables, slug, now = () => new Date() }) {
+export async function listInvites({ tables, slug, now = () => new Date(), log = console }) {
     const safe = validSlug(slug);
     if (!safe) return [];
 
     const at = now().getTime();
     const rows = await tables.listEntities(TABLES.invites, { partitionKey: safe });
 
-    return rows
-        .filter((row) => !row.acceptedAt && !row.revokedAt && Date.parse(row.expiresAt) > at)
+    const live = rows.filter((row) => !row.acceptedAt && !row.revokedAt && Date.parse(row.expiresAt) > at);
+    const trouble = await deliveryTrouble({ tables, emails: live.map((row) => row.email), log });
+
+    return live
         .map((row) => ({
             id: row.rowKey,
             email: row.email,
             role: row.role,
             invitedBy: row.invitedBy ?? '',
             createdAt: row.createdAt ?? '',
-            expiresAt: row.expiresAt ?? ''
+            expiresAt: row.expiresAt ?? '',
+            // The invitation that never arrived is the sharpest case this
+            // annotation exists for: the owner is looking at a row that says
+            // "invited" and waiting for somebody who was never written to.
+            delivery: trouble.get(lower(row.email))?.status ?? '',
+            deliveryAt: trouble.get(lower(row.email))?.at ?? ''
         }))
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
@@ -362,6 +375,8 @@ export async function resendInvite({
     if (result.status !== 'sent') {
         log.error?.('invite: could not redeliver', { slug: safe, status: result.status });
     }
+
+    await recordDelivery({ tables, email: them, status: result.status, slug: safe, now, log });
 
     return { ok: true, slug: safe, id: hash, email: them, role: row.role, expiresAt, delivery: result.status };
 }

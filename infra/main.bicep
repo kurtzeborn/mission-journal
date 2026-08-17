@@ -290,6 +290,11 @@ var tableNames = [
   // the blobs are all still there, but they would be stranded -- nothing would
   // ever erase them, and nothing would know to offer them back.
   'deletions'
+  // One row per address we have sent to, holding the outcome of the last
+  // attempt. Derived -- Cloudflare's suppression list is the authority -- and
+  // it exists to be shown to an owner, so that "grandmother never hears from
+  // us" is a visible fact rather than a KQL query nobody thinks to run.
+  'deliveries'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [
@@ -553,6 +558,86 @@ resource secretExpiryAlert 'Microsoft.EventGrid/systemTopics/eventSubscriptions@
     retryPolicy: {
       maxDeliveryAttempts: 4
       eventTimeToLiveInMinutes: 120
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The daily ingest cap
+//
+// `withinDailyCap` refuses a letter once an archive has taken 200 in a UTC
+// day, and logs `ingest: daily cap reached` at error level when it does. Until
+// this rule existed that line was visible only to somebody already looking at
+// the logs, which is nobody -- and the failure it reports is precisely the one
+// that produces no other symptom for weeks. A forwarding loop is silent from
+// the outside: mail keeps arriving, posts keep appearing, and the first
+// evidence anybody has is a storage bill or an owner asking why their archive
+// has four thousand copies of the same letter.
+//
+// **The cap firing is never routine.** 200 is set far above the largest honest
+// day -- a family forwarding two years of letters in one sitting clears it with
+// room to spare -- so a single occurrence means either a loop or a person
+// having a very bad time, and both want a human. Hence a threshold of zero
+// rather than a rate, and Sev1: this one is costing money for as long as it is
+// ignored, unlike the credential warnings which have thirty days of slack.
+//
+// **It also fires on the honest overrun**, and that is intended rather than
+// tolerated. A real family who hit the cap have had letters refused, and while
+// nothing is destroyed -- the raw message keeps its 30-day life in `inbox/` --
+// somebody has to re-enqueue them, and nobody can do that without being told.
+//
+// Fifteen minutes, evaluated every fifteen. A tighter window would cost more
+// query evaluations to tell us the same thing an hour sooner about a condition
+// that has, by definition, already been running for a while.
+// ---------------------------------------------------------------------------
+
+resource ingestCapAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = if (!empty(alertEmail)) {
+  name: '${namePrefix}-cap-${suffix}'
+  location: location
+  properties: {
+    displayName: 'Daily ingest cap reached'
+    description: 'An archive hit its daily letter cap. Usually a mail forwarding loop. See docs/plan.md, Phase 8, for the cap and how to replay refused letters.'
+    severity: 1
+    enabled: true
+    scopes: [
+      appInsights.id
+    ]
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          // `has` rather than `==`. The Node worker prefixes and decorates
+          // trace messages in ways that have changed between host versions,
+          // and an alert that silently stops matching is worse than no alert
+          // -- it looks like everything is fine. The phrase is distinctive
+          // enough that a substring cannot collide with anything else we log.
+          query: 'traces | where message has "daily cap reached"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: {
+            numberOfEvaluationPeriods: 1
+            minFailingPeriodsToAlert: 1
+          }
+        }
+      ]
+    }
+    // Fire once and stay quiet for six hours. A loop generates this line on
+    // every message, and an alert group that mails on each one buries the
+    // first -- which is the only one that had to be read.
+    //
+    // `autoMitigate` is false because the platform refuses the two together,
+    // and because self-resolving is wrong here anyway: the condition is "an
+    // archive was refused letters", and fifteen quiet minutes afterwards is
+    // not evidence that anybody dealt with it. This one gets closed by hand,
+    // by somebody who looked.
+    autoMitigate: false
+    muteActionsDuration: 'PT6H'
+    actions: {
+      actionGroups: [
+        alertGroup.id
+      ]
     }
   }
 }

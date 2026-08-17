@@ -17,6 +17,7 @@ import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
 import { offerClaim, invitationDue } from './offer.js';
 import { nudgeOnce, NUDGE } from './nudge.js';
+import { acknowledgeForward } from './ack.js';
 import { explainRejection, isTold } from './rejection.js';
 import { withinDailyCap } from './cap.js';
 import { RELAY_TTL_DAYS } from './relay.js';
@@ -450,7 +451,48 @@ export async function runIngest({
         return { status: 'pending', ulid, slug };
     }
 
-    return commitLetter({ store, tables, slug, ulid, raw, extracted, envelope, verdict, now, log });
+    const committed = await commitLetter({ store, tables, slug, ulid, raw, extracted, envelope, verdict, now, log });
+
+    // Thank the forwarder.
+    //
+    // Only a forward, because only a forward has somebody waiting to hear. A
+    // direct send is the missionary's own letter arriving at their own archive
+    // and answering it would be telling them what they just did.
+    //
+    // `duplicate` counts as arrival. The sender forwarded a letter and the
+    // letter is in the archive; that somebody else got there first is a fact
+    // about our storage, not about their errand.
+    //
+    // Deliberately here and not in `commitLetter`, which is the one thing
+    // promotion also calls. A claimed site replaying a year of held letters
+    // must not mail anybody -- the person who claimed it is looking at those
+    // letters on screen, and the forwarders would be thanked months late for
+    // something they had long forgotten.
+    if (mailer && verdict.forwarder && (committed.status === 'stored' || committed.status === 'duplicate')) {
+        try {
+            await acknowledgeForward({
+                tables,
+                mailer,
+                to: verdict.forwarder,
+                slug,
+                author: verdict.author ?? '',
+                baseUrl: config.baseUrl,
+                // Read here rather than taken from the committed post, because
+                // the duplicate path has no post to take it from. The same
+                // header, read the same way, and stored on the post as
+                // `receivedMessageId` for whatever wants to reply later.
+                messageId: headerValue(extracted.headers, 'message-id'),
+                now,
+                log
+            });
+        } catch (error) {
+            // The letter is stored and archived. A receipt that failed costs a
+            // courtesy, and must never make the sender's server redeliver.
+            log.error?.('ingest: could not acknowledge the forward', { slug, error: error.message });
+        }
+    }
+
+    return committed;
 }
 
 /**
@@ -523,6 +565,21 @@ export async function commitLetter({ store, tables = null, slug, ulid, raw, extr
         editedBy: null,
         editedAt: null,
         originalMessageId: original.messageId ?? null,
+        // The `Message-ID` of the message *we* were sent, which on a forward is
+        // the forwarder's own and not the letter's. Both are needed and they
+        // are not interchangeable: `originalMessageId` identifies the letter,
+        // and is what dedup compares; this one identifies the conversation, and
+        // is what a reply has to name in `In-Reply-To` to land in the right
+        // thread in the right person's client.
+        //
+        // Stored rather than read back out of `raw/` when a reply is wanted.
+        // The acknowledgement below happens to be sent while the header is
+        // still in hand, but anything sent later -- a digest, a note that an
+        // owner edited the letter -- would otherwise have to open and reparse
+        // the whole `.eml` to thread onto it. Cloudflare will not let us set a
+        // `Message-ID` on our own mail, so an inbound one is the only handle
+        // any of this ever gets.
+        receivedMessageId: headerValue(extracted.headers, 'message-id') || null,
         originalFrom: original.from ?? null,
         forwardedBy: verdict.forwarder ?? null,
         photos: [],

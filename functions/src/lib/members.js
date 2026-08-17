@@ -35,6 +35,7 @@
 
 import { readAcl, ROLE } from './acl.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
+import { deliveryTrouble } from './delivery.js';
 import { forgetMembership, recordMembership } from './memberships.js';
 import { validSlug } from './paths.js';
 
@@ -62,13 +63,20 @@ export const validEmail = (value) => {
  * `you` is marked rather than filtered out, because the page has to render the
  * actor's own row -- with its controls disabled -- instead of leaving them
  * wondering why they are missing from a list they are looking at.
+ *
+ * `tables` is optional and the delivery annotation is simply absent without
+ * it. This list is how an owner sees who can read the archive, and that has to
+ * keep working when the side table telling them whose mail is bouncing does
+ * not.
  */
-export async function listMembers({ store, slug, actor }) {
+export async function listMembers({ store, tables = null, slug, actor, log = console }) {
     const safe = validSlug(slug);
     if (!safe) return null;
 
     const members = await readAcl(store, safe);
     if (!members) return null;
+
+    const trouble = await deliveryTrouble({ tables, emails: members.map((m) => m.email), log });
 
     const me = lower(actor);
     return members.map((m) => ({
@@ -82,6 +90,10 @@ export async function listMembers({ store, slug, actor }) {
         // before somebody presses Remove.
         invitedEmail: lower(m.invitedEmail) === lower(m.email) ? '' : lower(m.invitedEmail),
         you: lower(m.email) === me,
+        // Empty when the last thing we sent them arrived, which is almost
+        // always. See delivery.js.
+        delivery: trouble.get(lower(m.email))?.status ?? '',
+        deliveryAt: trouble.get(lower(m.email))?.at ?? '',
         // Precomputed rather than left to the client. The client may not
         // reimplement the policy -- it would drift, and it would drift in the
         // direction of showing a button that then fails.

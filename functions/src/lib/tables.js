@@ -48,7 +48,13 @@ export const TABLES = {
     // the one table here that is *not* a derived index -- nothing else records
     // that somebody asked us to stop, so losing it would silently resume mail
     // to people who told us not to.
-    optouts: 'optouts'
+    optouts: 'optouts',
+    // PartitionKey = 'delivery', RowKey = SHA-256 of the address. Same shape
+    // as `optouts` and for the same reason, but recording the opposite kind of
+    // silence: not "they asked us to stop" but "we tried and it did not
+    // arrive". Derived -- Cloudflare's suppression list is the authority and
+    // this is our readable copy of what it did to us. See delivery.js.
+    deliveries: 'deliveries'
 };
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {
