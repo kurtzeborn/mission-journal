@@ -1,0 +1,198 @@
+Received: from mail-ed1-x542.google.com (2a00:1450:4864:20::542)
+        by cloudflare-email.net (cloudflare) id 5S4yVXHQvyRm
+        for <post@pdayletters.com>; Fri, 14 Aug 2026 18:59:25 +0000
+ARC-Seal: i=2; a=rsa-sha256; s=cf2024-1; d=cloudflare-email.net; cv=pass;
+	b=halF1A/CvwmAaU2jhM9sNHLyyz6gH4+YrBgCkP1+ZbDp8Cz7EdZFzb08QNjYf1Wj0vbKhBYXx
+	HzHdSQ9S2RGX41imltPM6zLIN593siDDV/HcSeLXAmlfGwwJVEpYLkv6Vta3XkO+/1zs9YT4Iqx
+	Nxef/kZdXNsyF2P7REE31nvqd9eTg5VbKxaf4wEOibjgbn8jZpuFc6L8zs3pTeMFh1/iAMDtJ1R
+	kSLJB6Mo3pP41oqdsEdtoWYhK2cWDvrkF9mQUwwV5n1xmiMSbNKefPp8ouSEpwNEEkERd/RylYx
+	zLzLCCLb0v6yDc6toYOoZaCOX+CPWgabZIM0C9wTvuJg==;
+ARC-Message-Signature: i=2; a=rsa-sha256; s=cf2024-1; d=cloudflare-email.net; c=relaxed/relaxed;
+	h=To:Subject:Date:From:from:reply-to:cc:resent-date:resent-from:resent-to
+	:resent-cc:in-reply-to:references:list-id:list-help:list-subscribe
+	:list-post:list-owner:list-archive; t=1786733966; x=1787338766; bh=+NWbdExE
+	Npm1liy9/Op6lPVwPIf8AHBxBrZfiKKvCLo=; b=VrsCZEAUSuwz6eJaXnAF6l/etjFg5+OhgwJ
+	7BE4AXY7fnJ33XcX9osnIgJOG6EqpaJXVn0Eo0h7Xxxz+vAiFljEuco0MLv+Rz9hRz1PDglSC8H
+	9h3LRcLaLCP1Nij4ZlwC6QBb7Z0zmBX5zu9uE0gWyCF5soEKVdFjP1U/gzMgF9M1HgexcNfSvQ3
+	PgTLMEs5r/yX+tNdq4ZmALEJs140DfiJrg0w3gmOeADl6NoZqp+okMX89aUcZJ1JF0pnLmZdb+x
+	L8jRRdSEMxGXOokcym8VJy9iksGW5E+o9hvpkH9z5qf6fJNPTVXzVoVFpjizOAjhrCJZdqm1pu+
+	c+aql8g==;
+ARC-Authentication-Results: i=2; mx.cloudflare.net;
+	dkim=pass header.d=missionary.org header.s=google header.b=PKEiVEcx;
+	dmarc=pass header.from=missionary.org policy.dmarc=quarantine;
+	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-ed1-x542.google.com) smtp.helo=mail-ed1-x542.google.com;
+	spf=pass (mx.cloudflare.net: domain of elder.example@missionary.org designates 2a00:1450:4864:20::542 as permitted sender) smtp.mailfrom=elder.example@missionary.org;
+	arc=pass smtp.remote-ip="2a00:1450:4864:20::542"
+Received-SPF: pass (mx.cloudflare.net: domain of elder.example@missionary.org designates 2a00:1450:4864:20::542 as permitted sender)
+	receiver=mx.cloudflare.net; client-ip=2a00:1450:4864:20::542; envelope-from="elder.example@missionary.org"; helo=mail-ed1-x542.google.com;
+Authentication-Results: mx.cloudflare.net;
+	dkim=pass header.d=missionary.org header.s=google header.b=PKEiVEcx;
+	dmarc=pass header.from=missionary.org policy.dmarc=quarantine;
+	spf=none (mx.cloudflare.net: no SPF records found for postmaster@mail-ed1-x542.google.com) smtp.helo=mail-ed1-x542.google.com;
+	spf=pass (mx.cloudflare.net: domain of elder.example@missionary.org designates 2a00:1450:4864:20::542 as permitted sender) smtp.mailfrom=elder.example@missionary.org;
+	arc=pass smtp.remote-ip="2a00:1450:4864:20::542"
+X-CF-SpamH-Score: 0
+Received: by mail-ed1-x542.google.com with SMTP id 4fb4d7f45d1cf-6a3819e8be8so2472050a12.0
+        for <post@pdayletters.com>; Fri, 14 Aug 2026 11:59:25 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1786733965; cv=none;
+        d=google.com; s=arc-20260327;
+        b=HS1jWrMLnB4Oe6Uyrrchrplmz6iYgcSV+S+luJ/sJeaY7kFAjnHoNrRpGyGnOPlU2g
+         248fNA4HaWMlpu0/aCl//WdTH+nSOlKv4fDuHQ5yZKTXgO14pasu3H5/pDa4/Jef1q3i
+         Sb138lyNCEHq6BlWdBh4TLNfVU0kQ+fZjdzyoWfvLTZOoTiGEaDsOTgU8YKbog7LqJFp
+         7ncF1WOcgrE2bSW3oRUVaOVvbsUptNkKs1N8MRQKkZJUxU7kFvMvIHkln/Mnrknwus/S
+         nc7FtmluZmixbUjCpi1nSZ9kn6j0/KxhacSQMYnUXUSk6yB4WvRmb2gJ1S0xqpalB90r
+         6ukw==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20260327;
+        h=to:subject:message-id:date:from:mime-version:dkim-signature;
+        bh=+NWbdExENpm1liy9/Op6lPVwPIf8AHBxBrZfiKKvCLo=;
+        fh=9tQFgNr+L691kKBvHxR0xmbnAyt/QB6AJSfdLRuYb1Q=;
+        b=lSwRFsovhmeDwMFSl6n3QYXIU/Mp0ujzHKDjRuPJNmeVUU16pRZhK1MtHSRdQV+AE5
+         9X+gxtGuulPOX0P2oWLi8dQ5NqxyXH5fjOCpaRFHAYIEiDySYaF6Ho7R796dUA3TXMpO
+         yFr+Z7IcveD03BRkO5iKJeYKubYlO6EFjOsZ/4jf62LeaQMphi9J5B2LE9Gi/Eo5NBWL
+         VkZQO6uRjUXQXbLOOEixQYMFRChTblrleuJjAml/wNSn0SSMRtjBo00Mxzuj/Ymue4IL
+         LH1IaeMxma9KTo3NRb4es+ng1AJhmSNfA8oADAIar0ze87LrUl2aZHraWin4JDaxaClC
+         YXeg==;
+        darn=pdayletters.com
+ARC-Authentication-Results: i=1; mx.google.com; arc=none
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=missionary.org; s=google; t=1786733965; x=1787338765; darn=pdayletters.com;
+        h=content-type:to:subject:message-id:date:from:mime-version:from:to
+         :cc:subject:date:message-id:reply-to:content-type;
+        bh=+NWbdExENpm1liy9/Op6lPVwPIf8AHBxBrZfiKKvCLo=;
+        b=PKEiVEcxo8dN42Aq+me24mRxG7pEcTLUDvWEmMhDA62vhfREEAs+BvRXP8g7OlQXv4
+         RxcYEf91EC5Lr2S0/+0CyctSc5+dpeKSe551cOUdkMVqBDefgZnYtRkbeLyT/qchSpDn
+         QwwVbJYijUp58nyXrqtzil/cxglQDX1PGBHcWfbg5+ovCfBtXUiomHL1ET5eqEPLzJEQ
+         XW5WstaPKpk3EbQ1D1cUeBUF4UOApPgw0eJ9DeAQAQKH4yqLuOUWOsfferJiLray808I
+         aXpUN3PsJ1cTn67+Wwury140cVXdmGMvYB8tTkVEl7iOP8XCTBbIV/HlB3ymqQ+tkapQ
+         +fzQ==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20251104; t=1786733965; x=1787338765;
+        h=content-type:to:subject:message-id:date:from:mime-version:x-gm-gg
+         :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to
+         :content-type;
+        bh=+NWbdExENpm1liy9/Op6lPVwPIf8AHBxBrZfiKKvCLo=;
+        b=qidHfHdHZHlDhgSel5ObKcT8EfnvNQJ6qi3U3LsXP9fzgTy0nc0irU2RDS5wWfFQUB
+         fhgNBiyXPkdbDY1ZD49uazTx1/r3GEpIVtRuJnCiQ9119pRgWPkYbvRJhCR5QCICDrAc
+         ljkTPuA5zJvMbvkIAN6MuGiG0U/xs0qXe8/MZtsnULIutedlNCWa9eOrbhtrjqBJ4XoL
+         ooAMSJSP61pTQufS9/q58pJ91iTYCwrBjvQYsjMWXpm8H516Y2S1vbfrhmBeHVr4dk8G
+         4XIt/A3nL0v+HBrpLArJlv85zI/rO3ZSIWtLIXWM3yUdY/hHA0/d14YC8cXxf9Wq2/Mf
+         oBWA==
+X-Forwarded-Encrypted: i=1; AHgh+Rrh/AfSeRx+JL42Bk+LA0Vh0/u+hypt3c9W3hIADKueW2ByXkbirY18fWF39CQHDjoISlIX@pdayletters.com
+X-Gm-Message-State: AOJu0Yyxrvp3L92/m/ZxEM28wlzQXKe7eIQG+HSsdvlB7R304MeBwhnt
+	2gfGCkxBPGCum5M7//BbQSH6VTHnHu1wpflON7A3EuhrBbzIjF6oKVn8tp7WNr2U59zGyumRMJR
+	Zk8n51KoV19yshRDDTYyjWqaKaUrYHmhBTXZa/4VpVji/VPDEttYLEfAu4axVm6ufbFV+vMvbUk
+	ML17PNMZceyEhVWmhSf+TG/Ld6wIM6H1fAaHIdJjoThEzcR0OK4YQVzHaXj3olSK0EZd6A1o8BO
+	pMcwoq6QnwFt0/A5i0Fe2eGMaebEu//uZZ6D0aLTKyIQsE8wDHAQLF27A==
+X-Gm-Gg: AR+sD11xOyhLh+4I3wkZ+RPj/XS7+E9Q16UFAkrKlmOH8RV+YqrUjmLQXAUaZIfJHGn
+	hL9P7dBNKsAoQ1HQ4QrHf4vFRBoHTCcGpJwQc/Htyd9SXlLdVKSIkLBEPTIhWam8GsxbiCS1YJH
+	RomNjkH6mAi4Pszbhnff/lbEJZJP+DaNWlFeZgZCL3Kjy8hpHbdzmYV7xrYKVY3agfbPX6Ljb+l
+	vxcGNpfGs5YwgIiEPwvtHvDZdB+Ffp6R1fczRlh9rxedl1RomvIXvml27ea0e1vc3zn6B7jh399
+	7ZnXVHeiXzcPohJXRtmLmSFZnMq4eHO4Z2E4sX+nvhKzLu0=
+X-Received: by 2002:a05:6402:4286:b0:6a3:603a:745c with SMTP id
+ 4fb4d7f45d1cf-6a381740c6fmr7900628a12.5.1786733964940; Fri, 14 Aug 2026
+ 11:59:24 -0700 (PDT)
+MIME-Version: 1.0
+From: Elder Example <elder.example@missionary.org>
+Date: Fri, 14 Aug 2026 12:59:13 -0600
+X-Gm-Features: AUfX_mzBSyFnMrZZmWhO0O-_JlCJwHnkyrpiExKNnVmo4wVtxbo3F2pFHeXuUIU
+Message-ID: <CAGQrEk09rPD6qmxcwaYJe3bZxu=6_kUeOqXAOi4hJk=4iRL7-g@mail.gmail.com>
+Subject: =?UTF-8?Q?Adi=C3=B3s_a_la_carne_fresca?=
+To: undisclosed-recipients:;
+Content-Type: multipart/alternative; boundary="00000000000049e1ed0659066b36"
+Bcc: post@pdayletters.com
+X-CLOUD-SEC-AV-Sent: true
+X-CLOUD-SEC-AV-Info: missionarymail,google_mail,monitor
+X-Gm-Spam: 0
+X-Gm-Phishy: 0
+
+--00000000000049e1ed0659066b36
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hola familia
+
+I have officially been here a week, which means I am no longer the newest
+one in the house (welcome to Hermana Ejemplo, who got in yesterday). It has
+been a good week and a lot has happened.
+
+The district and the house are both good and everyone is easy to be around.
+My companion got called as district leader, which makes me a house leader,
+which mostly means being dragged along to his meetings. There are
+twenty-five of us in six rooms and something happens every night. This week
+somebody took our shower door off its hinges, so we put his bed on the
+roof. Nobody takes any of it personally.
+
+Spanish is coming along. I have already passed everything I learned in two
+years of classes at school. During gym we play futsal, which is soccer on a
+court inside a cage. I found out this week that the president I am going to
+is strict about phones, so if the photo album stops updating for a while
+that is why.
+
+On Tuesday I had to go back to the airport because there was a problem with
+my documents. I missed language class, which is actually the fun part, but
+I got to see a lot of M=C3=A9xico and practice with the officers at the cou=
+nter.
+I saw the temple too, and went back again with my district today.
+
+I think for each of these I will do a word of the week and a verse of the
+week, so the letters have a little structure.
+
+Word of the week:
+cohete -- rocket, firework
+
+Verse of the week:
+Alma 17:22-23
+Ammon asked to stay among the people he had been sent to, for a time, and
+perhaps until the day he died.
+
+I miss everyone and I read all of the emails. Please write. I cannot always
+answer during the week; the latest I get back to people is on Pday.=C2=A0
+
+Hasta luego
+Elder Example
+
+Also happy birthday to Grandpa
+
+Google Photos:
+https://photos.app.goo.gl/ExampleAlbum1234
+
+--00000000000049e1ed0659066b36
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div dir=3D"auto">Hola familia<div dir=3D"auto"><br></div><div dir=3D"auto"=
+>I have officially been here a week, which means I am no longer the newest =
+one in the house (welcome to Hermana Ejemplo, who got in yesterday). It has=
+ been a good week and a lot has happened.</div><div dir=3D"auto"><br></div>=
+<div dir=3D"auto">The district and the house are both good and everyone is =
+easy to be around. My companion got called as district leader, which makes =
+me a house leader, which mostly means being dragged along to his meetings. =
+There are twenty-five of us in six rooms and something happens every night.=
+ This week somebody took our shower door off its hinges, so we put his bed =
+on the roof. Nobody takes any of it personally.</div><div dir=3D"auto"><br>=
+</div><div dir=3D"auto">Spanish is coming along. I have already passed ever=
+ything I learned in two years of classes at school. During gym we play futs=
+al, which is soccer on a court inside a cage. I found out this week that th=
+e president I am going to is strict about phones, so if the photo album sto=
+ps updating for a while that is why.</div><div dir=3D"auto"><br></div><div =
+dir=3D"auto">On Tuesday I had to go back to the airport because there was a=
+ problem with my documents. I missed language class, which is actually the =
+fun part, but I got to see a lot of M=C3=A9xico and practice with the offic=
+ers at the counter. I saw the temple too, and went back again with my distr=
+ict today.</div><div dir=3D"auto"><br></div><div dir=3D"auto">I think for e=
+ach of these I will do a word of the week and a verse of the week, so the l=
+etters have a little structure.</div><div dir=3D"auto"><br></div><div dir=
+=3D"auto">Word of the week:</div><div dir=3D"auto">cohete -- rocket, firewo=
+rk</div><div dir=3D"auto"><br></div><div dir=3D"auto">Verse of the week:</d=
+iv><div dir=3D"auto">Alma 17:22-23</div><div dir=3D"auto">Ammon asked to st=
+ay among the people he had been sent to, for a time, and perhaps until the =
+day he died.</div><div dir=3D"auto"><br></div><div dir=3D"auto">I miss ever=
+yone and I read all of the emails. Please write. I cannot always answer dur=
+ing the week; the latest I get back to people is on Pday.=C2=A0</div><div d=
+ir=3D"auto"><br></div><div dir=3D"auto">Hasta luego</div><div dir=3D"auto">=
+Elder Example</div><div dir=3D"auto"><br></div><div dir=3D"auto">Also happy=
+ birthday to Grandpa</div><div dir=3D"auto"><br></div><div dir=3D"auto">Goo=
+gle Photos:</div><div dir=3D"auto"><a href=3D"https://photos.app.goo.gl/Exa=
+mpleAlbum1234">https://photos.app.goo.gl/ExampleAlbum1234</a></div><div dir=
+=3D"auto"><br></div></div>
+--00000000000049e1ed0659066b36--

@@ -201,7 +201,9 @@ function Convert-EncodedWords {
 
         $nb = $script:Latin1.GetBytes($replaced)
         if ($scheme -eq 'B') {
-            return "=?$charset?B?" + [Convert]::ToBase64String($nb) + '?='
+            # Braced. `?` is legal in a PowerShell variable name, so "=?$charset?B?"
+            # asks for a variable called `charset?B?` and throws.
+            return "=?${charset}?B?" + [Convert]::ToBase64String($nb) + '?='
         }
         # Encoded-word Q is stricter than body quoted-printable: space becomes
         # '_' and '?' '_' '=' must be encoded.
@@ -213,7 +215,7 @@ function Convert-EncodedWords {
             }
             else { [void]$sb.Append('=' + ('{0:X2}' -f $b)) }
         }
-        return "=?$charset?Q?" + $sb.ToString() + '?='
+        return "=?${charset}?Q?" + $sb.ToString() + '?='
     })
 }
 
@@ -389,7 +391,9 @@ function Convert-Message {
 # ---------------------------------------------------------------------------
 
 $dir = Resolve-Path -LiteralPath $Path
-$files = Get-ChildItem -LiteralPath $dir -Filter *.eml
+# Wrapped, because a directory holding exactly one capture makes Get-ChildItem
+# return a bare FileInfo, which has no .Count and takes the whole run down.
+$files = @(Get-ChildItem -LiteralPath $dir -Filter *.eml)
 if (-not $files) {
     Write-Warning "No .eml files under $dir"
     return

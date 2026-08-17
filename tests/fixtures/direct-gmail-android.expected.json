@@ -1,0 +1,36 @@
+{
+  "description": "Missionary's own send, composed on the Gmail Android app and BCC'd to the ingest address. The paragraph-shape specimen: this client separates paragraphs with an empty block holding a single <br>, and nothing else in the corpus does.",
+  "client": "gmail-android",
+  "capture": "direct",
+  "deliveryPath": "cloudflare",
+  "classification": "direct",
+  "extractionSource": null,
+  "embeddedPartType": null,
+  "original": {
+    "from": "elder.example@missionary.org",
+    "subject": "Adiós a la carne fresca",
+    "date": "2026-08-14T12:59:13-06:00",
+    "messageId": "<CAGQrEk09rPD6qmxcwaYJe3bZxu=6_kUeOqXAOi4hJk=4iRL7-g@mail.gmail.com>",
+    "datePrecision": "second"
+  },
+  "attachmentCount": 0,
+  "attachmentNames": [],
+  "inlineImageCount": 0,
+  "inlineCids": [],
+  "authentication": {
+    "authservId": "mx.cloudflare.net",
+    "dmarc": "pass",
+    "dmarcPolicy": "quarantine"
+  },
+  "dkimOnPristine": "pass",
+  "notes": [
+    "The letter body is a flat run of <div dir=\"auto\"> blocks with no margins on them, and every blank line between paragraphs is a separate <div dir=\"auto\"><br></div>. Deleting those as empty publishes the whole letter as one paragraph, which is exactly what happened to a real message before this capture existed.",
+    "The corpus could not have caught that, because every other capture is a forward and a forward is re-composed by the forwarder's desktop client, which spaces paragraphs with margins instead. Only a real send characterises the sending client.",
+    "The first line is a bare text node inside the outer div rather than a block of its own, so a body has started before the first break block closes.",
+    "Adjacent line blocks with no break between them appear three times -- label and value, the verse block, and the sign-off -- so a rule that inserts spacing per block would be wrong here.",
+    "The body ends with a trailing <div dir=\"auto\"><br></div> inside the outer div. Trimming has to reach through the closing tag to remove it.",
+    "multipart/alternative with no multipart/related and no attachments: the simplest possible tree, from the client with the most awkward markup.",
+    "To: is undisclosed-recipients:; and Bcc: post@pdayletters.com survives in this copy, same as the Gmail web BCC capture.",
+    "The Google Photos album link in the body is what linked-photo-service detection reads. Both of the first real letters carried one."
+  ]
+}
