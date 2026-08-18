@@ -350,6 +350,32 @@ describe('setting a whole book', () => {
         assert.equal(written.length, result.pages);
     });
 
+    it('marks the reviewing copy without moving a single page of it', async () => {
+        // The whole claim the proof makes is that it is the book. If the mark
+        // pushed anything about the layout around then approving the proof
+        // would be approving a different object to the one that gets bound,
+        // and the contents page in the owner's hand would cite folios that
+        // are not the folios in the parcel.
+        const plain = build();
+        const marked = build({ proof: true });
+
+        const [plainBytes, printed] = await Promise.all([readPdf(plain.stream), plain.done]);
+        const [markedBytes, proofed] = await Promise.all([readPdf(marked.stream), marked.done]);
+
+        assert.equal(proofed.pages, printed.pages);
+        assert.deepEqual(proofed.opens, printed.opens);
+
+        // And it is actually written somewhere, on every sheet including the
+        // covers -- each page's resources gain the graphics state that holds
+        // the wash of grey. Counted there rather than in the content stream
+        // because the content streams are compressed, and searched for the
+        // state rather than the words because the text is drawn from a subset
+        // font and the words are not in the file as words.
+        const washes = markedBytes.toString('latin1').match(/\/ExtGState/g) ?? [];
+        assert.ok(washes.length >= proofed.pages, `only ${washes.length} marks`);
+        assert.equal((plainBytes.toString('latin1').match(/\/ExtGState/g) ?? []).length, 0);
+    });
+
     it('opens every letter on a left-hand page', async () => {
         // Which is what puts a one-page letter's photographs on the leaf
         // facing it. It also has to survive the front matter: the title page

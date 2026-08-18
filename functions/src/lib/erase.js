@@ -39,11 +39,12 @@ import { DELETION_RECORD, deletedAclPath } from './deletion.js';
 // rule at thirty days regardless, and is not addressed by slug at all -- its
 // blobs are named by ULID, so there is no prefix to aim at.
 //
-// `books` will belong here when Journal Publish ships. It has no container
-// yet; when it gets one it must be added to this list *and* to
-// `purgeContainerNames` in main.bicep, or this will fail on a permission
-// rather than quietly skip it -- which is the right way round.
-export const ERASED_CONTAINERS = ['raw', 'rendered', 'config', 'exports', 'pending'];
+// `books` is here even though nothing else ever deletes from it. Keeping a
+// printed book alive for a reprint is a promise made to a live archive; a
+// family who asked to be erased is owed the opposite, and a hardcover of
+// their letters sitting in storage afterwards is the single worst thing this
+// service could leave behind.
+export const ERASED_CONTAINERS = ['raw', 'rendered', 'config', 'exports', 'pending', 'books'];
 
 /**
  * Erase one archive, if it is still right to.

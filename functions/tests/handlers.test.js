@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
 import { redeem, describe as describeClaimHandler } from '../src/functions/claim.js';
 import { memberships } from '../src/functions/memberships.js';
-import { publish, progress, deliver } from '../src/functions/book.js';
+import { publish, progress, deliver, review } from '../src/functions/book.js';
 import { holdPending } from '../src/lib/pending.js';
 import { attachClaimToken } from '../src/lib/claim.js';
 
@@ -294,15 +294,17 @@ describe('the book handlers', () => {
         assert.equal(response.status, 404);
     });
 
-    test('an unfinished book cannot be downloaded', async () => {
+    test('an unfinished book cannot be fetched in either form', async () => {
         const store = printable();
         await publish({ request: asOwner(), context: silent, store });
 
         // No readUrl on the fake, so reaching for a link at all would throw
         // rather than return a status -- which is the assertion underneath
         // this one: a building book must be refused before that point.
-        const response = await deliver({ request: asOwner(), context: silent, store });
+        const print = await deliver({ request: asOwner(), context: silent, store });
+        const proof = await review({ request: asOwner(), context: silent, store });
 
-        assert.equal(response.status, 404);
+        assert.equal(print.status, 404);
+        assert.equal(proof.status, 404);
     });
 });

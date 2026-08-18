@@ -138,6 +138,35 @@ const aspectOf = (photo) =>
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 
+// What a press needs, and what a screen needs, and the gap between them is
+// the whole reason there are two renditions of every book. At 300 the column
+// carries about 1875 pixels; at 110 it carries 690, which is more than any
+// laptop will show of a page and about a fifteenth of the file size.
+const PRINT_DPI = 300;
+const PROOF_DPI = 110;
+
+// Written across every page of the reviewing copy.
+//
+// Diagonal, pale, and set over the text rather than under it, which is worth
+// the machinery in `stampProof` further down. Under the text it would vanish
+// beneath any photograph on the page, and a mark that is absent from exactly
+// the pages somebody would want to steal is not a mark.
+//
+// The wording matters as much as the ink. "Draft" invites a reply about
+// typos; this copy is not a draft of anything, it is the finished book at a
+// resolution deliberately too low to print, and the sentence says so.
+const PROOF = {
+    text: 'PROOF \u00b7 NOT FOR PRINT',
+    size: 34,
+    ink: '#8a8a8a',
+    opacity: 0.22,
+    angle: -32,
+    // Three courses down the page. One is easy to crop out of a screenshot;
+    // filling the page would make the letters unreadable, which defeats the
+    // point of showing somebody their book.
+    rows: [0.26, 0.5, 0.74]
+};
+
 const INDENT_STEP = 18;
 
 // A picture the letter mentioned, with the text running round it.
@@ -258,7 +287,7 @@ const LEFT = MARGIN.inside;
  * `withoutEnlargement` keeps a small picture from being blown up into
  * something blurry to satisfy an arithmetic target.
  */
-export async function printPhoto({ store, slug, photoId, widthPoints, dpi = 300 }) {
+export async function printPhoto({ store, slug, photoId, widthPoints, dpi = PRINT_DPI }) {
     const blob = await store.readBlob('rendered', `${slug}/photos/${photoId}/large.webp`);
     if (!blob) return null;
 
@@ -289,6 +318,46 @@ export function photoBox({ width, height, column = COLUMN }) {
 }
 
 /**
+ * Write the proof mark across the page that is about to be left behind.
+ *
+ * Called on the way out of a page rather than on the way in, which is the
+ * only way to get ink on top of the content while still streaming. Drawing it
+ * from `pageAdded` would put it underneath, where a photograph hides it; the
+ * usual alternative -- `bufferPages` and a second visit with
+ * `switchToPage` -- keeps every page of the book in memory to the end, which
+ * is the one thing this design exists to avoid.
+ *
+ * So the two methods that can end a page are wrapped instead, in `openBook`.
+ */
+function stampProof(doc) {
+    // Nothing has been drawn yet: `autoFirstPage` is off, so the first
+    // `addPage` has no outgoing page to mark.
+    if (!doc.page) return;
+
+    doc.save();
+
+    // Zeroed for the same reason the furniture zeroes them. This writes clear
+    // across the sheet, and pdfkit answers a write that crosses a margin by
+    // adding a page -- from inside the call that was adding a page.
+    doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+    doc.rotate(PROOF.angle, { origin: [PAGE.width / 2, PAGE.height / 2] });
+    doc.font('semibold').fontSize(PROOF.size).fillColor(PROOF.ink).fillOpacity(PROOF.opacity);
+
+    // Started half a page to the left and given twice the page's width, so
+    // that centring the line centres it on the page rather than on the part
+    // of the rotated axis that happens to fall inside the sheet.
+    for (const row of PROOF.rows) {
+        doc.text(PROOF.text, -PAGE.width / 2, PAGE.height * row, {
+            width: PAGE.width * 2,
+            align: 'center',
+            lineBreak: false
+        });
+    }
+
+    doc.restore();
+}
+
+/**
  * A document with the fonts registered and the furniture wired up.
  *
  * The running heads and folios are drawn from the `pageAdded` event rather
@@ -306,6 +375,24 @@ function openBook({ title, state }) {
     });
 
     for (const [name, bytes] of Object.entries(FONTS)) doc.registerFont(name, bytes);
+
+    // The two ways a page can be finished: another one starts, or the
+    // document does. Wrapped rather than called from the dozen places that
+    // add a page, because one of them would eventually be added without it
+    // and the missing mark would be on whichever page somebody photographed.
+    if (state.proof) {
+        const addPage = doc.addPage.bind(doc);
+        doc.addPage = (...args) => {
+            stampProof(doc);
+            return addPage(...args);
+        };
+
+        const end = doc.end.bind(doc);
+        doc.end = (...args) => {
+            stampProof(doc);
+            return end(...args);
+        };
+    }
 
     doc.on('pageAdded', () => {
         // A cover is not a page of the book, and almost nothing below applies
@@ -1289,7 +1376,7 @@ function printWidths(post, slug) {
     return widths;
 }
 
-const freshState = (madeAt) => ({
+const freshState = (madeAt, proof) => ({
     page: 0,
     head: '',
     furniture: false,
@@ -1299,6 +1386,7 @@ const freshState = (madeAt) => ({
     indent: 0,
     float: null,
     side: 'left',
+    proof,
     madeAt
 });
 
@@ -1321,9 +1409,26 @@ const freshState = (madeAt) => ({
  * that is the number their spine calculation is fed. The folios in `opens`
  * number the book instead, so the two do not agree and are not meant to.
  *
+ * `proof` marks the reviewing copy and drops it to screen resolution, and
+ * those two go together on purpose -- which is why one flag sets both. A
+ * marked book at press resolution is a hundred megabytes nobody can open in a
+ * browser, and an unmarked one at screen resolution is a book somebody can
+ * hand to a cheaper printer. Neither changes the layout by a point, which is
+ * what lets a proof be trusted as a proof of the thing that will be bound.
+ *
  * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number, opens: {id: string, page: number}[]}>}}
  */
-export function buildInterior({ store, slug, posts, profile = {}, madeAt, least = SHEET_LEAST, log }) {
+export function buildInterior({
+    store,
+    slug,
+    posts,
+    profile = {},
+    madeAt,
+    least = SHEET_LEAST,
+    proof = false,
+    dpi = proof ? PROOF_DPI : PRINT_DPI,
+    log
+}) {
     const ordered = inReadingOrder(posts);
     const title = profile.displayName || slug;
 
@@ -1338,7 +1443,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, least 
     // and nothing else, and it is thrown away the moment it has answered the
     // one question it was asked.
     const measured = (async () => {
-        const state = freshState(madeAt);
+        const state = freshState(madeAt, proof);
         const draft = openBook({ title, state });
 
         // Drained and discarded. Nothing here is the book; the only output
@@ -1361,7 +1466,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, least 
         return starts;
     })();
 
-    const state = freshState(madeAt);
+    const state = freshState(madeAt, proof);
     const doc = openBook({ title, state });
 
     const done = (async () => {
@@ -1388,7 +1493,8 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, least 
                             store,
                             slug,
                             photoId,
-                            widthPoints
+                            widthPoints,
+                            dpi
                         });
                         if (bytes) map.set(photoId, bytes);
                     } catch (error) {

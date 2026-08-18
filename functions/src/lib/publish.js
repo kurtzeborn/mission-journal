@@ -31,6 +31,7 @@ export const BOOK_QUEUE = 'book';
 export const bookFolder = (slug, id) => `${slug}/${id}`;
 export const statusName = (slug, id) => `${bookFolder(slug, id)}/status.json`;
 export const bookName = (slug, id) => `${bookFolder(slug, id)}/book.pdf`;
+export const proofName = (slug, id) => `${bookFolder(slug, id)}/proof.pdf`;
 export const manifestName = (slug, id) => `${bookFolder(slug, id)}/manifest.json`;
 
 // The states a book can be in, and there are only three. A fourth -- ordered
@@ -251,29 +252,18 @@ export async function runBook({ message, store, madeAt = new Date().toISOString(
 }
 
 /**
- * Lay the book out and put it in storage.
+ * Lay one rendition out and put it in storage.
  *
- * Built from the reader's projection of the letters, not the owner's, and
- * that is the whole of the hidden-post rule for books. A letter the owner has
- * held is one they decided not to publish; a bound object is the last place
- * to bring it back, and it would arrive there without them noticing. The same
- * choice keeps `heldReason`, `originalFrom` and the rest of the owner-only
- * fields out of a file that is destined for a third party's printer.
+ * @returns {Promise<{pages: number, opens: {id: string, page: number}[]}>}
  */
-async function assemble({ store, slug, id, madeAt, log }) {
-    const blob = await store.readBlob('rendered', `${slug}/posts.json`);
-    const stored = blob ? JSON.parse(Buffer.from(blob.bytes).toString('utf8')) : [];
-    const posts = presentPosts(Array.isArray(stored) ? stored : [], ROLE.reader);
-
-    if (!posts.length) throw new Error('there are no letters to print yet');
-
-    const { profile } = await readProfile({ store, slug });
+async function render({ store, slug, name, posts, profile, madeAt, proof, log }) {
     const { stream, done } = buildInterior({
         store,
         slug,
         posts,
-        profile: coverProfile(profile, posts),
+        profile,
         madeAt,
+        proof,
         log
     });
 
@@ -281,18 +271,22 @@ async function assemble({ store, slug, id, madeAt, log }) {
     // success, so a build that throws would leave the upload waiting forever
     // for bytes that are not coming. Destroyed with no argument, because a
     // stream emitting an error nobody is listening for takes the process down
-    // -- the real reason is rethrown from `outcome` below instead.
+    // -- the real reason is rethrown from `outcomes` below instead.
     const built = done.catch((error) => {
         stream.destroy();
         throw error;
     });
 
-    const upload = store.uploadStream(BOOKS, bookName(slug, id), stream, {
+    const upload = store.uploadStream(BOOKS, name, stream, {
         contentType: 'application/pdf',
-        // Named for the missionary rather than for the book id, because the
-        // one person who ever downloads it is looking at a folder of PDFs
-        // trying to work out which is theirs.
-        contentDisposition: `inline; filename="${slug}-letters.pdf"`
+        // The proof is looked at rather than kept, so it opens in the browser;
+        // the print file is a thing to hand over and is named for the
+        // missionary rather than for the book id, because the one person who
+        // ever downloads it is looking at a folder of PDFs trying to work out
+        // which is theirs.
+        contentDisposition: proof
+            ? 'inline; filename="proof.pdf"'
+            : `attachment; filename="${slug}-letters.pdf"`
     });
 
     // allSettled rather than all: when one of these fails the other is about
@@ -304,7 +298,38 @@ async function assemble({ store, slug, id, madeAt, log }) {
     const failure = outcomes.find((outcome) => outcome.status === 'rejected');
     if (failure) throw failure.reason ?? new Error('the book could not be built');
 
-    const result = outcomes[1].value;
+    return outcomes[1].value;
+}
+
+/**
+ * Lay the book out and put it in storage.
+ *
+ * Built from the reader's projection of the letters, not the owner's, and
+ * that is the whole of the hidden-post rule for books. A letter the owner has
+ * held is one they decided not to publish; a bound object is the last place
+ * to bring it back, and it would arrive there without them noticing. The same
+ * choice keeps `heldReason`, `originalFrom` and the rest of the owner-only
+ * fields out of a file that is destined for a third party's printer.
+ *
+ * Two renditions come out of it. The print file is the thing that gets bound;
+ * the proof is the same book at screen resolution with "not for print" across
+ * every page, and it is the only one that is ever allowed near a browser.
+ * Built one after the other rather than at once, because each holds a
+ * photograph and a PDF in memory and the instance this runs on has two
+ * gigabytes for everything.
+ */
+async function assemble({ store, slug, id, madeAt, log }) {
+    const blob = await store.readBlob('rendered', `${slug}/posts.json`);
+    const stored = blob ? JSON.parse(Buffer.from(blob.bytes).toString('utf8')) : [];
+    const posts = presentPosts(Array.isArray(stored) ? stored : [], ROLE.reader);
+
+    if (!posts.length) throw new Error('there are no letters to print yet');
+
+    const { profile } = await readProfile({ store, slug });
+    const shared = { store, slug, posts, profile: coverProfile(profile, posts), madeAt, log };
+
+    const result = await render({ ...shared, name: bookName(slug, id), proof: false });
+    await render({ ...shared, name: proofName(slug, id), proof: true });
 
     return {
         pages: result.pages,

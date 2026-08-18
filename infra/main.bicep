@@ -1042,6 +1042,7 @@ var purgeContainerNames = [
   'config'
   'exports'
   'pending'
+  'books'
 ]
 
 resource purgeRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = [

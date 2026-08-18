@@ -326,6 +326,15 @@
             settings.hidden = false;
         }
 
+        // Owners only for the same reason, and for one more: making a book is
+        // the act that puts a permanent object into the world with the
+        // family's name on it.
+        const book = document.getElementById('book');
+        if (book && payload.role === 'owner') {
+            book.href = `/book/${encodeURIComponent(payload.slug)}`;
+            book.hidden = false;
+        }
+
         // Not awaited: the letters are the point, and a masthead control that
         // appears a moment later costs nothing. Awaiting it would put a second
         // round trip in front of the content on every visit.

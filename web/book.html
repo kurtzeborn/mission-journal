@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Print a book — Pday Letters</title>
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/"><img class="wordmark__mark" src="/logo.png" alt="" width="192" height="192">Pday Letters</a>
+            <span class="beta">beta</span>
+            <span class="masthead__spacer"></span>
+            <a class="button button--quiet button--compact" id="back" href="/">Back to the letters</a>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <h1>Print a book</h1>
+
+        <!--
+            Its own page rather than a panel on the archive, for the same
+            reason settings and people have their own pages: this is a thing
+            somebody comes to do deliberately, once or twice in two years,
+            and everything on it is noise to somebody who came to read the
+            letters.
+        -->
+        <div id="state" class="state">Loading&hellip;</div>
+
+        <section id="everything" hidden>
+            <p>
+                This gathers every letter in the archive, in order, with the photographs, and
+                lays them out as a hardcover book &mdash; a title page, a contents by date, and
+                a chapter for each letter.
+            </p>
+            <p class="note">
+                Letters you have hidden are left out, exactly as they are for everyone else
+                reading the archive. Nothing is ordered or paid for here: what you get at the
+                end is the book itself, to look at.
+            </p>
+
+            <!--
+                The mission name is a prompt rather than a refusal. It is
+                printed under the name on the cover and the book reads oddly
+                without it, but an owner who does not know which mission to
+                write should still be able to make the book.
+            -->
+            <p class="note" id="wanting" hidden>
+                No mission is recorded for this archive, so the cover will carry the name and
+                the dates alone. You can <a id="wanting-link" href="/">add one in settings</a>
+                first if you would rather.
+            </p>
+
+            <p>
+                <button class="button" type="button" id="make">Make the book</button>
+            </p>
+
+            <!--
+                One line, and it is the only thing on the page that changes.
+                Polite rather than assertive: a build takes minutes and a
+                screen reader interrupting whatever the owner went off to do
+                every few seconds would be worse than saying nothing.
+            -->
+            <p class="note" id="said" role="status" aria-live="polite"></p>
+
+            <div id="finished" hidden>
+                <hr class="rule">
+
+                <h2>Your book</h2>
+                <p id="about"></p>
+
+                <p>
+                    <a class="button" id="proof" href="/" target="_blank" rel="noopener">Look at it</a>
+                    <a class="button button--quiet" id="print" href="/">Download the print file</a>
+                </p>
+                <p class="note">
+                    The copy you look at has <strong>proof &middot; not for print</strong> written
+                    across every page and is at screen resolution, so it opens quickly. The print
+                    file underneath it is the real one: full resolution, nothing written on it,
+                    and far larger.
+                </p>
+            </div>
+        </section>
+    </main>
+
+    <script src="/book.js"></script>
+</body>
+
+</html>

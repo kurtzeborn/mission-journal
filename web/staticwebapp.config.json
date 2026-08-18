@@ -72,6 +72,12 @@
       "allowedRoles": ["authenticated"]
     },
     {
+      "comment": "Making a hardcover of an archive. Same treatment again: the markup is served to anyone signed in and the API refuses anyone who is not an owner of the named slug.",
+      "route": "/book/*",
+      "rewrite": "/book.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
       "comment": "Operator tooling: archives that have been deleted and not yet erased. `authenticated` is all this rule can say -- Static Web Apps roles are not where OPERATOR_EMAILS lives -- so the markup is served to any signed-in visitor and the API behind it returns 404 to everyone else. The page therefore renders nothing at all until that API confirms the caller, because an earlier version showed every signed-in visitor the heading, the explanation, and a promise that nobody else could see it. What remains is that a signed-in stranger can still read manage.html and manage.js as files; closing that needs a custom roles provider, not a route rule. Nothing links here.",
       "route": "/manage",
       "rewrite": "/manage.html",

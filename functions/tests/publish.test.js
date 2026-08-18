@@ -9,6 +9,7 @@ import {
     latestBook,
     manifestName,
     missingForBook,
+    proofName,
     readBook,
     requestBook,
     runBook,
@@ -152,6 +153,27 @@ describe('building the book', () => {
             manifest.posts.map((entry) => entry.id),
             ['a', 'b', 'c']
         );
+    });
+
+    it('leaves a copy that can be shown to somebody as well as one that can be printed', async () => {
+        const store = seed(letters);
+        const { id } = await requestBook({ store, slug: SLUG, log: quiet });
+
+        await runBook({ message: { slug: SLUG, id }, store, log: quiet });
+
+        const print = store.blobs.get(`${BOOKS}/${bookName(SLUG, id)}`);
+        const proof = store.blobs.get(`${BOOKS}/${proofName(SLUG, id)}`);
+
+        assert.ok(proof, 'no proof was written');
+        assert.equal(proof.contentType, 'application/pdf');
+
+        // The mark is the difference, and it is the only difference that is
+        // safe to assert on here -- these letters carry no photographs, so
+        // the resolution the proof also drops changes nothing about the
+        // bytes. `ExtGState` is the wash of grey it is written in, and the
+        // print file has no transparency in it anywhere.
+        assert.ok(proof.bytes.toString('latin1').includes('/ExtGState'));
+        assert.ok(!print.bytes.toString('latin1').includes('/ExtGState'));
     });
 
     it('keeps a held letter out of a permanent object', async () => {

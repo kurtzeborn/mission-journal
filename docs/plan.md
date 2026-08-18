@@ -428,9 +428,11 @@ config/
 books/                                 Journal Publish output. Built on
   {missionary-slug}/                   demand, reconstructible from
     {book-id}/                         rendered/. See Journal Publish.
-      interior.pdf · cover.pdf
-      manifest.json                    Posts + photos included, provider,
-                                       order id
+      book.pdf                         Print file: 300 dpi, covers included
+      proof.pdf                        The same book, screen resolution,
+                                       marked -- the only one a browser sees
+      status.json                      building / ready / failed
+      manifest.json                    Which letters, and where each opens
 ```
 
 Plus one **Storage Queue** (`ingest`) carrying `inbox` ULIDs from the Email Worker to the ingest Function, and one (`render`) carrying accepted `{slug}/{msgId}` pairs to the render Function.
@@ -1022,7 +1024,7 @@ Assemble a physical hardcover photo book from a missionary's journal — all pos
    - Contents by date.
    - One chapter per letter, opening on a left-hand page, with inline photographs floated into the margin and unplaced ones given the facing leaf.
    - Blank leaves as needed to reach Peecho's 24-page floor and an even count, then the back cover.
-3. The owner reviews a watermarked preview in the reader. The unwatermarked 300 dpi file never reaches the browser.
+3. The owner reviews a watermarked preview in the reader. The unwatermarked 300 dpi file never reaches the browser. Both renditions come out of the same layout pass, so the proof is a proof of the thing that will be bound rather than an approximation of it.
 4. On approval the PDF goes to Peecho's Print API as a product listing-publication, and the owner is sent to the checkout page it returns.
 5. Peecho takes the payment, prints, ships, and handles the customer. We are told the order exists and nothing more.
 
@@ -1488,7 +1490,7 @@ Shipped since, and previously listed here as outstanding:
   - **Which creates a thirty-day fuse, and the guard for it is `acl.json`.** A recreated site claimed on day twenty promotes into `raw/` and `rendered/` under the same slug, and the outstanding appointment would destroy a new family's letters. So the eraser refuses if an ACL exists, logs it as an error, and *cancels* the record rather than retrying — the appointment will never become appropriate again. `restoreSite` refuses on the same condition, with a `409`, for the same reason.
   - **No owner-facing undo, on purpose.** A visible undo button would make "it cannot be undone" a lie, and families would start treating deletion as reversible. What exists is a silent safety net with an operator-only door: `/manage` lists what is still recoverable, soonest to expire first, and restores it. Nothing links to that page and the API answers `404` to everyone not on `OPERATOR_EMAILS`.
   - **Nobody else on the ACL is emailed**, matching member removal. And **any owner may delete** — the `verifiedMissionary` protection guards membership, not the archive itself.
-  - **`books/{slug}/` is listed in the code and not yet in the sweep**, because the container does not exist until Journal Publish. When it is created it must be added to `ERASED_CONTAINERS` *and* to `purgeContainerNames` in `main.bicep`, in that order, so a miss fails on a permission rather than silently skipping a container.
+  - **`books/{slug}/` is in both the code and the sweep.** It is the one container with no lifecycle rule — a printer may refetch an ordered book to make a reprint — so erasure is the only thing that ever removes a book, and it must stay listed in `ERASED_CONTAINERS` *and* in `purgeContainerNames` in `main.bicep` or the sweep fails on a permission rather than silently skipping it.
   - **Still outstanding:** operator-initiated deletion of somebody else's archive is only available through the owner path an operator already resolves into.
   - **A deleted archive says so.** Deletion removes `acl.json`, and `resolveAccess` grants `owner` from `OPERATOR_EMAILS` *after* the ACL yields nothing — so an operator reads a deleted archive in full, which is wanted, since somebody about to restore one needs to look at it first. The page said nothing about it: the ordinary operator banner, the letters, the photos, and no hint that everything on screen would be destroyed on a named date. `deletionOf` is a point read taken only when `viaOperator` is true.
     - **It had to go into the ETag salt.** Deletion writes nothing to `posts.json`, so the blob ETag is unchanged, and `viaOperator` was already true — the two responses were indistinguishable to the cache. An operator with the page open from a minute earlier would have revalidated into a `304` and been handed back the copy with no notice on it.
@@ -1561,9 +1563,9 @@ Shipped since, and previously listed here as outstanding:
 - Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
 - Full design in [Journal Publish](#journal-publish); the provider comparison, and why the wholesale APIs were all ruled out, is in [printing.md](printing.md).
 
-**Done:** the book layout engine (`functions/src/lib/book.js`), sized and paginated to Peecho's hardcover specification; the publish pipeline (`functions/src/lib/publish.js`) and its endpoints (`functions/src/functions/book.js`) — request, poll, download — with the build running on the `book` queue and its state in `books/{slug}/{id}/status.json`.
+**Done:** the book layout engine (`functions/src/lib/book.js`), sized and paginated to Peecho's hardcover specification, and able to render a marked screen-resolution proof of the same layout; the publish pipeline (`functions/src/lib/publish.js`) and its endpoints (`functions/src/functions/book.js`) — request, poll, fetch either rendition — with the build running on the `book` queue and its state in `books/{slug}/{id}/status.json`; the owner-only page at `/book/{slug}` that asks for a book, watches it build, and links to the proof.
 
-**Next:** a watermarked preview rendition to review in the browser, the reader UI to ask for a book and watch it build, notification when it is ready, then the Peecho publication and its two webhooks.
+**Next:** telling an owner their book is ready without them sitting on the page, then the Peecho publication and its two webhooks.
 
 Phase 12 is [Leaving beta](#phase-12--leaving-beta), and it is deliberately the last section of this document rather than the next heading — see the note there.
 

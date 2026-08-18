@@ -5,6 +5,7 @@ import {
     BOOKS,
     bookName,
     latestBook,
+    proofName,
     readBook,
     requestBook,
     runBook,
@@ -105,31 +106,32 @@ export async function progress({ request, context, store }) {
 }
 
 /**
- * The finished book.
+ * One of the two renditions of a finished book.
  *
  * Redirected to storage rather than served down this connection, for the same
  * reason the archive export is: holding a response open for the length of
  * somebody's download outlasts the platform's window and cannot be resumed.
  *
- * This is the print file, at full resolution and with nothing written across
- * it, so it is owners only and behind a link that dies in a quarter of an
- * hour. What a reader is eventually shown inline will be a different
- * rendition, and it is not this.
+ * Both are owners only and both are behind a link that dies in a quarter of
+ * an hour, but for different reasons. The print file is a press-ready object
+ * with nothing written across it. The proof is only a review copy, and the
+ * short link is there so a URL later found in a browser history is already
+ * dead rather than because the file is precious.
  */
-export async function deliver({ request, context, store }) {
+async function handOver({ request, context, store, pick, rendition }) {
     const gated = await siteGate({ store, request, ownersOnly: true, log: context });
     if (gated.denied) return gated.denied;
 
     const found = await wanted({ store, slug: gated.slug, id: request.params.id });
     if (found?.state !== STATE.ready) {
-        return json(404, { error: 'there is no finished book to download' });
+        return json(404, { error: 'there is no finished book to look at' });
     }
 
-    const url = await store.readUrl(BOOKS, bookName(gated.slug, found.id), {
+    const url = await store.readUrl(BOOKS, pick(gated.slug, found.id), {
         minutes: LINK_MINUTES
     });
 
-    context.log?.('book.downloaded', { slug: gated.slug, id: found.id });
+    context.log?.('book.fetched', { slug: gated.slug, id: found.id, rendition });
 
     return {
         status: 302,
@@ -143,6 +145,21 @@ export async function deliver({ request, context, store }) {
     };
 }
 
+/**
+ * The print file: full resolution, unmarked, the thing that gets bound.
+ */
+export const deliver = (args) => handOver({ ...args, pick: bookName, rendition: 'book' });
+
+/**
+ * The review copy: the same book, at screen resolution, marked on every page.
+ *
+ * This is the only rendition that is ever put in front of a browser, and the
+ * distinction is the point of there being two. What the owner approves has to
+ * be the book they will receive, and what they can save off the screen has to
+ * be no use to anybody else's printer.
+ */
+export const review = (args) => handOver({ ...args, pick: proofName, rendition: 'proof' });
+
 app.http('book-request', {
     // `anonymous` is the Functions access key, not the identity check: Static
     // Web Apps forwards to a linked backend without one. The identity check is
@@ -154,12 +171,19 @@ app.http('book-request', {
 });
 
 // Registered before the status route because that one ends in an optional
-// segment and would otherwise swallow this one.
+// segment and would otherwise swallow these two.
 app.http('book-download', {
     authLevel: 'anonymous',
     methods: ['GET'],
     route: 'book/{slug}/{id}/letters.pdf',
     handler: (request, context) => deliver({ request, context, store: blobStore() })
+});
+
+app.http('book-proof', {
+    authLevel: 'anonymous',
+    methods: ['GET'],
+    route: 'book/{slug}/{id}/proof.pdf',
+    handler: (request, context) => review({ request, context, store: blobStore() })
 });
 
 app.http('book-status', {
