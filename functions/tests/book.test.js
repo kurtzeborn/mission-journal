@@ -5,6 +5,8 @@ import {
     COLUMN,
     MARGIN,
     PAGE,
+    albumRows,
+    albumTarget,
     buildInterior,
     contentsPages,
     dateLine,
@@ -140,6 +142,59 @@ describe('preparing a photograph for the press', () => {
     });
 });
 
+describe('laying photographs out in an album', () => {
+    const wide = { id: 'w', width: 2400, height: 1600 };
+    const tall = { id: 't', width: 1600, height: 2400 };
+
+    const stacked = (rows) => rows.reduce((sum, row) => sum + row.height, 0) + 10 * (rows.length - 1);
+
+    it('fills the column exactly on every full row', () => {
+        const rows = albumRows([wide, wide, wide, wide, wide, wide], { target: 120 });
+
+        for (const row of rows.slice(0, -1)) {
+            const used =
+                row.photos.reduce((sum, photo) => sum + row.height * (photo.width / photo.height), 0) +
+                10 * (row.photos.length - 1);
+            assert.ok(Math.abs(used - COLUMN) < 0.01, `row came to ${used}`);
+        }
+    });
+
+    it('never stretches a lone leftover across the page', () => {
+        const rows = albumRows([wide, wide, wide, tall], { target: 120 });
+        const last = rows.at(-1);
+
+        assert.ok(last.height <= 120);
+    });
+
+    it('keeps every photograph, in the order they arrived', () => {
+        const photos = [wide, tall, wide, wide, tall, wide, wide];
+        const flat = albumRows(photos, { target: 110 }).flatMap((row) => row.photos);
+
+        assert.deepEqual(flat, photos);
+    });
+
+    it('makes the pictures as large as one page will take', () => {
+        const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
+        const photos = [wide, wide, wide, tall];
+        const target = albumTarget(photos, { height: usable });
+
+        assert.ok(stacked(albumRows(photos, { target })) <= usable);
+        // And is maximal: nudging the target up regroups the rows into
+        // something that no longer fits. Asserting a share of the page filled
+        // would be asserting something untrue -- rows must span the column
+        // exactly, so four pictures come out as two rows of two and leave a
+        // third of the leaf over whatever target is chosen.
+        assert.ok(stacked(albumRows(photos, { target: target * 1.1 })) > usable);
+    });
+
+    it('stops shrinking rather than turning a mission into contact sheets', () => {
+        const many = Array.from({ length: 60 }, () => wide);
+        const target = albumTarget(many, { height: PAGE.height - MARGIN.top - MARGIN.bottom });
+
+        assert.ok(target >= 84);
+    });
+});
+
 describe('setting a whole book', () => {
     const posts = [
         post('c', '2026-03-08', 'Transfers again'),
@@ -168,10 +223,51 @@ describe('setting a whole book', () => {
         const { stream, done } = build();
         const [, result] = await Promise.all([readPdf(stream), done]);
 
-        // Title, contents, three letters each opening on a fresh page, and a
-        // colophon. The exact number is layout's business; that there is one,
-        // and that it is at least this, is the spine's.
+        // Title, colophon, contents, and three letters each opening on a
+        // fresh leaf. The exact number is layout's business; that there is
+        // one, and that it is at least this, is the spine's.
         assert.ok(result.pages >= 6, `expected a book, got ${result.pages} pages`);
+    });
+
+    it('opens every letter on a left-hand page', async () => {
+        // Which is what puts a one-page letter's photographs on the leaf
+        // facing it. It also has to survive the front matter: the title page
+        // and colophon are there partly to land the first letter correctly.
+        const { stream, done } = build();
+        const [, result] = await Promise.all([readPdf(stream), done]);
+
+        for (const opened of result.opens) {
+            assert.equal(opened.page % 2, 0, `${opened.id} opened on page ${opened.page}`);
+        }
+    });
+
+    it('opens every letter on a left-hand page however many photographs it carries', async () => {
+        // The padding is what makes this hold, and padding is only needed
+        // when a letter and its album come to an odd number of pages -- so it
+        // takes an album to exercise at all.
+        const { stream, done } = build({
+            posts: posts.map((entry, index) => ({
+                ...entry,
+                photos: Array.from({ length: index * 3 }, (_, n) => ({
+                    id: `${entry.id}-${n}`,
+                    width: 2400,
+                    height: 1600
+                }))
+            }))
+        });
+        const [, result] = await Promise.all([readPdf(stream), done]);
+
+        for (const opened of result.opens) {
+            assert.equal(opened.page % 2, 0, `${opened.id} opened on page ${opened.page}`);
+        }
+    });
+
+    it('never puts two letters on the same page', async () => {
+        const { stream, done } = build();
+        const [, result] = await Promise.all([readPdf(stream), done]);
+
+        const seen = new Set(result.opens.map((opened) => opened.page));
+        assert.equal(seen.size, result.opens.length);
     });
 
     it('names the book on the file itself', async () => {

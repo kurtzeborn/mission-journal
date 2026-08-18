@@ -33,6 +33,13 @@ const FILE = (slug) => `${slug}/profile.json`;
 // cannot break the masthead or the subject line it is pasted into.
 const NAME_MAX = 60;
 
+// "Argentina Buenos Aires North Mission" and its longer cousins, with room to
+// spare. Deliberately unvalidated beyond its length: missions are renamed,
+// merged and created faster than any list shipped in this repo would keep up
+// with, and a dropdown that is missing somebody's mission is worse than a
+// text box that will accept anything.
+const MISSION_MAX = 80;
+
 /**
  * Read a site's profile.
  *
@@ -64,12 +71,12 @@ export async function readProfile({ store, slug }) {
 // into an email -- but a name containing a newline breaks the subject header
 // it is pasted into, and that is a header-injection shape worth refusing at
 // the boundary rather than trusting six call sites to handle.
-const tidy = (value) =>
+const tidy = (value, limit = NAME_MAX) =>
     String(value ?? '')
         .replace(/[\u0000-\u001f\u007f]/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, NAME_MAX);
+        .slice(0, limit);
 
 // A calendar day, not a timestamp. The three things these feed -- scheduling
 // the ownership prompts, printing mission dates on a book cover, and counting
@@ -104,9 +111,20 @@ const validDate = (value) => {
  *
  * @returns {Promise<{error: string} | {profile: object, etag: string}>}
  */
-export async function saveProfile({ store, tables, slug, displayName, startDate, returnDate, log }) {
+export async function saveProfile({
+    store,
+    tables,
+    slug,
+    displayName,
+    mission,
+    startDate,
+    returnDate,
+    log
+}) {
     const name = tidy(displayName);
     if (!name) return { error: 'a display name is required' };
+
+    const where = tidy(mission, MISSION_MAX);
 
     const began = validDate(startDate);
     if (began === null) return { error: 'the start date must be a date, like 2025-06-15' };
@@ -124,10 +142,12 @@ export async function saveProfile({ store, tables, slug, displayName, startDate,
         // "derive it from the letters", which is a different statement from
         // "there is no return date", and a blank string would make the two
         // indistinguishable.
+        ...(where ? { mission: where } : {}),
         ...(began ? { startDate: began } : {}),
         ...(when ? { returnDate: when } : {}),
         updatedAt: new Date().toISOString()
     };
+    if (!where) delete next.mission;
     if (!began) delete next.startDate;
     if (!when) delete next.returnDate;
 

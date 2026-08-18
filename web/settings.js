@@ -60,6 +60,7 @@
 
         const payload = await response.json();
         $('displayName').value = payload.displayName ?? '';
+        $('mission').value = payload.mission ?? '';
         $('startDate').value = payload.startDate ?? '';
         $('returnDate').value = payload.returnDate ?? '';
 
@@ -82,6 +83,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     displayName: $('displayName').value,
+                    mission: $('mission').value,
                     startDate: $('startDate').value,
                     returnDate: $('returnDate').value
                 })
@@ -110,10 +112,11 @@
         // stored -- otherwise a name silently cut at sixty characters looks
         // saved in full until the next visit.
         $('displayName').value = body.displayName ?? '';
+        $('mission').value = body.mission ?? '';
         $('startDate').value = body.startDate ?? '';
         $('returnDate').value = body.returnDate ?? '';
         // Says nothing about which field changed, because this one form now
-        // saves three of them and naming the wrong one is worse than naming
+        // saves four of them and naming the wrong one is worse than naming
         // none. Somebody who has just corrected a start date and is told the
         // archive's name has changed has to go and check that it has not.
         said.textContent = 'Settings saved.';

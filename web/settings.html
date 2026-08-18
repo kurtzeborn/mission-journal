@@ -38,6 +38,16 @@
                 </p>
 
                 <p>
+                    <label for="mission">Which mission <span class="note">(if known)</span></label><br>
+                    <input id="mission" name="mission" type="text" maxlength="80" autocomplete="off"
+                        placeholder="Argentina Buenos Aires North Mission">
+                </p>
+                <p class="note">
+                    Printed on the cover if you order a book, along with the dates below. Write it
+                    however you say it &mdash; nothing checks it against a list.
+                </p>
+
+                <p>
                     <label for="startDate">When the mission started <span class="note">(if known)</span></label><br>
                     <input id="startDate" name="startDate" type="date">
                 </p>
@@ -52,8 +62,8 @@
                     <input id="returnDate" name="returnDate" type="date">
                 </p>
                 <p class="note">
-                    Only used to work out when to remind you about things &mdash; nobody reading the
-                    archive is shown it.
+                    Used to work out when to remind you about things, and printed on the cover if
+                    you order a book. Nobody reading the archive is shown it.
                 </p>
 
                 <p><button class="button" type="submit" id="save">Save</button></p>

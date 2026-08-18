@@ -68,6 +68,7 @@ export async function read({ request, context, store, tables }) {
     return json(200, {
         slug: gated.slug,
         displayName,
+        mission: profile.mission ?? '',
         // No row fallback for the dates. Only this form has ever written
         // either of them, so the file is the only place they can have come
         // from, and an empty field here is the truth rather than an omission.
@@ -92,6 +93,7 @@ export async function write({ request, context, store, tables }) {
         tables,
         slug: gated.slug,
         displayName: body.displayName,
+        mission: body.mission,
         startDate: body.startDate,
         returnDate: body.returnDate,
         log: context
@@ -101,6 +103,7 @@ export async function write({ request, context, store, tables }) {
 
     context.log('site.renamed', {
         slug: gated.slug,
+        hasMission: Boolean(result.profile.mission),
         hasStartDate: Boolean(result.profile.startDate),
         hasReturnDate: Boolean(result.profile.returnDate)
     });
@@ -108,6 +111,7 @@ export async function write({ request, context, store, tables }) {
     return json(200, {
         slug: gated.slug,
         displayName: result.profile.displayName,
+        mission: result.profile.mission ?? '',
         startDate: result.profile.startDate ?? '',
         returnDate: result.profile.returnDate ?? ''
     });

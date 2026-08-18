@@ -92,6 +92,60 @@ describe('renaming', () => {
     });
 });
 
+describe('which mission it was', () => {
+    test('is kept as it was written', async () => {
+        const store = memoryStore();
+
+        await save(store, {
+            displayName: 'Elder Example',
+            mission: 'Argentina Buenos Aires North Mission'
+        });
+
+        assert.equal(
+            store.json('config', `${SLUG}/profile.json`).mission,
+            'Argentina Buenos Aires North Mission'
+        );
+    });
+
+    test('takes whatever it is given, because no list of missions is current for long', async () => {
+        const store = memoryStore();
+
+        await save(store, { displayName: 'Elder Example', mission: 'the one with the mountains' });
+
+        assert.equal(
+            store.json('config', `${SLUG}/profile.json`).mission,
+            'the one with the mountains'
+        );
+    });
+
+    test('is tidied on the way in', async () => {
+        // It goes on a cover. A newline in it would break the line it is set
+        // on rather than being visible as a mistake.
+        const store = memoryStore();
+
+        await save(store, { displayName: 'Elder Example', mission: '  Chile\n  Santiago  East ' });
+
+        assert.equal(store.json('config', `${SLUG}/profile.json`).mission, 'Chile Santiago East');
+    });
+
+    test('is absent rather than empty when nobody said', async () => {
+        const store = memoryStore();
+
+        await save(store, { displayName: 'Elder Example' });
+
+        assert.equal('mission' in store.json('config', `${SLUG}/profile.json`), false);
+    });
+
+    test('can be cleared again', async () => {
+        const store = memoryStore();
+        await save(store, { displayName: 'Elder Example', mission: 'Chile Santiago East' });
+
+        await save(store, { displayName: 'Elder Example', mission: '' });
+
+        assert.equal('mission' in store.json('config', `${SLUG}/profile.json`), false);
+    });
+});
+
 describe('the return date', () => {
     test('is kept when it is a date', async () => {
         const store = memoryStore();

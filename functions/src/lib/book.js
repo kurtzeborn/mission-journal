@@ -28,7 +28,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 
 import sharp from 'sharp';
-import { flowBody } from './bookflow.js';
+import { flowBody, inlinePhotoIds } from './bookflow.js';
 
 // pdfkit publishes no ESM entry point, so it comes in through require the way
 // yazl does in archive.js.
@@ -91,6 +91,20 @@ const PHOTO_MAX_HEIGHT = 0.62;
 // derived from the first pass would move in the second.
 const CONTENTS_PER_PAGE = 32;
 
+// The album that faces a letter. `MIN_ROW` is the point at which a row of
+// photographs stops being a row of photographs and becomes a strip of
+// thumbnails; below it the album spills onto another page instead of
+// shrinking further.
+const ALBUM_GAP = 10;
+const ALBUM_MIN_ROW = 84;
+
+// Four by three when nothing was recorded. Ingest measures every photograph it
+// stores, so this is for the handful that predate it -- and a picture with no
+// shape still has to be given one, because the alternative is a division by
+// zero in the middle of a page.
+const aspectOf = (photo) =>
+    photo?.width > 0 && photo?.height > 0 ? photo.width / photo.height : 4 / 3;
+
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 
@@ -114,6 +128,21 @@ export const dateLine = (post) => {
 };
 
 const shortDate = (post) => String(post.originalDate ?? '').slice(0, 10);
+
+// A calendar day for the cover: "June 15, 2025". `dateLine` names the weekday
+// too, which is what a letter wants over it and far more than a cover does.
+const coverDate = (stamp) => {
+    const [year, month, day] = String(stamp).split('-').map(Number);
+    const at = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(at.getTime())) return '';
+
+    return at.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        timeZone: 'UTC'
+    });
+};
 
 // Oldest first. `presentPosts` sorts newest-first because that is what a
 // reader arriving at a live site wants; a book wants the mission in the order
@@ -248,7 +277,11 @@ function openBook({ title, state }) {
         // Front matter carries no furniture. A running head over a title page
         // is a printing error rather than a feature, and a folio on the
         // contents would number pages that are not yet the book.
-        if (state.furniture) {
+        //
+        // Neither does a page left blank to bring the next letter round onto
+        // a left-hand page. A blank leaf with a page number on it reads as a
+        // page whose contents failed to print.
+        if (state.furniture && !state.blank) {
             // A chapter opening takes the folio but not the running head. The
             // head answers "where am I" on a page that has already told you,
             // in nineteen-point type an inch below it -- so on this one page
@@ -262,14 +295,19 @@ function openBook({ title, state }) {
                 });
             }
 
+            // The folio *is* the physical page number, front matter included
+            // in the count even though it prints none of its own. Numbering
+            // the letters separately from page one was the first arrangement
+            // and it put odd numbers on left-hand pages, which is the one
+            // thing about page numbers everybody notices without being able
+            // to say why it looks wrong.
             doc.font('regular').fontSize(10).fillColor(QUIET);
-            doc.text(String(state.folio), LEFT, PAGE.height - MARGIN.bottom + 26, {
+            doc.text(String(state.page), LEFT, PAGE.height - MARGIN.bottom + 26, {
                 width: COLUMN,
                 align: 'center',
                 lineBreak: false
             });
 
-            state.folio += 1;
             state.opening = false;
         }
 
@@ -345,15 +383,104 @@ function setBox(doc, state, indent = 0) {
 }
 
 /**
- * Set one letter, starting on its own page.
+ * Arrange photographs into rows that fill the width.
  *
- * `photos` is a map of id to JPEG buffer, and is empty for the whole of the
- * measuring pass. Nothing else differs between the passes, which is the
+ * The row height is what varies: pictures are added to a row until scaling
+ * them to fill the column would push them below `target`, at which point the
+ * row is closed and the next one starts. Every picture in a row shares a
+ * height, every row is exactly the column wide, and nothing is cropped -- the
+ * arrangement newspapers and photo albums have used for a century, for the
+ * reason that it wastes no space and never distorts a face.
+ *
+ * Pure, and driven off the recorded dimensions rather than the files, because
+ * the measuring pass has to reach the same arrangement without reading a
+ * single byte.
+ */
+export function albumRows(photos, { target, width = COLUMN, gap = ALBUM_GAP }) {
+    const rows = [];
+    let row = [];
+    let aspects = 0;
+
+    for (const photo of photos) {
+        row.push(photo);
+        aspects += aspectOf(photo);
+
+        const height = (width - gap * (row.length - 1)) / aspects;
+        if (height <= target) {
+            rows.push({ photos: row, height });
+            row = [];
+            aspects = 0;
+        }
+    }
+
+    // The last row is short, so it keeps the target height rather than being
+    // stretched across the column. A single leftover picture blown up to the
+    // full width is the classic tell of a grid that stopped thinking.
+    if (row.length) {
+        rows.push({
+            photos: row,
+            height: Math.min(target, (width - gap * (row.length - 1)) / aspects)
+        });
+    }
+
+    return rows;
+}
+
+const albumHeight = (rows) =>
+    rows.reduce((total, row) => total + row.height, 0) + ALBUM_GAP * (rows.length - 1);
+
+/**
+ * The largest row height at which the whole album still fits one page.
+ *
+ * Searched rather than solved. The packing is a step function -- nudging the
+ * target moves a picture between rows and the total height jumps -- so there
+ * is no closed form to invert, and twenty-odd halvings settle it to well
+ * under a point.
+ */
+export function albumTarget(photos, { height, width = COLUMN }) {
+    let low = ALBUM_MIN_ROW;
+    let high = height;
+
+    if (albumHeight(albumRows(photos, { target: low, width })) > height) return low;
+
+    for (let step = 0; step < 24; step += 1) {
+        const mid = (low + high) / 2;
+        if (albumHeight(albumRows(photos, { target: mid, width })) <= height) low = mid;
+        else high = mid;
+    }
+
+    return low;
+}
+
+/**
+ * Bring the next page round onto a left-hand one.
+ *
+ * Every letter opens on a verso so that a letter short enough to fit a single
+ * page has its own photographs facing it across the spread -- which is most
+ * of them. The cost is a blank leaf whenever a letter and its album come to
+ * an odd number of pages, and that cost is real: it is paper, and the reader
+ * pays the printer for it.
+ */
+function padToVerso(doc, state) {
+    if ((state.page + 1) % 2 === 0) return;
+
+    state.blank = true;
+    doc.addPage();
+    state.blank = false;
+}
+
+/**
+ * Set one letter, opening on a left-hand page.
+ *
+ * `images` is a map of photo id to JPEG buffer, and is empty for the whole of
+ * the measuring pass. Nothing else differs between the passes, which is the
  * entire reason the contents page can be trusted.
  *
- * @returns {number} the folio the letter opened on
+ * @returns {number} the page the letter opened on
  */
-function setLetter(doc, { post, slug, photos, state }) {
+function setLetter(doc, { post, slug, images, state }) {
+    padToVerso(doc, state);
+
     // All three set before the page is added, because the handler draws the
     // furniture and places the text box the moment it is, and cannot be told
     // any of this afterwards.
@@ -362,7 +489,7 @@ function setLetter(doc, { post, slug, photos, state }) {
     state.indent = 0;
     doc.addPage();
 
-    const opened = state.folio - 1;
+    const opened = state.page;
 
     // A chapter opening drops below the top margin. It is the oldest signal
     // in book typography that something has started, and it costs an inch of
@@ -387,22 +514,76 @@ function setLetter(doc, { post, slug, photos, state }) {
     for (const block of blocks) {
         if (block.kind === 'photo') {
             placed.add(block.photoId);
-            setPhoto(doc, { photoId: block.photoId, post, photos, state });
+            setPhoto(doc, { photoId: block.photoId, post, images, state });
             continue;
         }
         setBlock(doc, { block, state });
     }
 
     // Anything attached but never placed in the text. The reader shows these
-    // as an album under the letter and the book does the same, for the same
-    // reason: they belong to this letter and to no other, and dropping them
-    // would lose pictures the family sent.
-    for (const photo of post.photos ?? []) {
-        if (placed.has(photo.id)) continue;
-        setPhoto(doc, { photoId: photo.id, post, photos, state });
-    }
+    // as an album under the letter and the book gives them the facing page,
+    // for the same reason: they belong to this letter and to no other, and
+    // dropping them would lose pictures the family sent.
+    setAlbum(doc, {
+        photos: (post.photos ?? []).filter((photo) => !placed.has(photo.id)),
+        images,
+        state
+    });
 
     return opened;
+}
+
+/**
+ * The photographs a letter carried but never mentioned, given their own page.
+ *
+ * Starts a page rather than continuing under the text, which is what makes
+ * the spread work: a letter that fits one page is on the left and its
+ * pictures are on the right, facing it. A longer letter still gets its album,
+ * just further along.
+ */
+function setAlbum(doc, { photos, images, state }) {
+    if (!photos.length) return;
+
+    setBox(doc, state, 0);
+    doc.addPage();
+
+    const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
+    const target = albumTarget(photos, { height: usable });
+    const rows = albumRows(photos, { target });
+
+    // Centred vertically when it does not fill the page, which is usually.
+    // Rows have to span the column exactly, so their heights are decided by
+    // how the pictures group rather than by how much room is going -- four
+    // photographs come out as two rows of two and leave a third of the leaf
+    // over no matter what target is chosen. Pushed to the top that reads as a
+    // page that ran out; balanced, it reads as a plate.
+    const total = albumHeight(rows);
+    let y = MARGIN.top + (total < usable ? (usable - total) / 2 : 0);
+
+    for (const row of rows) {
+        // Only when the album is larger than one page will this ever fire,
+        // which takes a letter with a great many attachments.
+        if (y + row.height > PAGE.height - MARGIN.bottom) {
+            doc.addPage();
+            y = MARGIN.top;
+        }
+
+        let x = LEFT;
+        for (const photo of row.photos) {
+            const width = row.height * aspectOf(photo);
+            const bytes = images.get(photo.id);
+
+            if (bytes) doc.image(bytes, x, y, { width, height: row.height });
+            else doc.save().rect(x, y, width, row.height).fillOpacity(0.06).fill(BLACK).restore();
+
+            x += width + ALBUM_GAP;
+        }
+
+        y += row.height + ALBUM_GAP;
+    }
+
+    doc.y = y;
+    doc.fillColor(BLACK);
 }
 
 function setBlock(doc, { block, state }) {
@@ -459,7 +640,7 @@ function setBlock(doc, { block, state }) {
     doc.moveDown(pre ? 0.4 : 0.45);
 }
 
-function setPhoto(doc, { photoId, post, photos, state }) {
+function setPhoto(doc, { photoId, post, images, state }) {
     const meta = (post.photos ?? []).find((photo) => photo.id === photoId) ?? {};
     const rect = photoBox({ width: meta.width ?? 4, height: meta.height ?? 3 });
 
@@ -474,7 +655,7 @@ function setPhoto(doc, { photoId, post, photos, state }) {
     const x = LEFT + (COLUMN - rect.width) / 2;
     const y = doc.y + 6;
 
-    const bytes = photos.get(photoId);
+    const bytes = images.get(photoId);
     if (bytes) {
         doc.image(bytes, x, y, { width: rect.width, height: rect.height });
     } else {
@@ -497,20 +678,28 @@ function setTitlePage(doc, { title, profile, state }) {
     doc.font('semibold').fontSize(30).fillColor(BLACK);
     doc.text(title, LEFT, doc.y, { width: COLUMN, align: 'center' });
 
+    // The mission stands on its own line rather than being folded into a
+    // sentence. "Letters from the" plus whatever somebody typed reads well
+    // for "Argentina Buenos Aires North Mission" and badly for "the one with
+    // the mountains", and the field is free text on purpose -- so the cover
+    // does not try to make grammar out of it.
     doc.moveDown(0.6);
     doc.font('italic').fontSize(13).fillColor(QUIET);
-    doc.text('Letters from the mission', LEFT, doc.y, { width: COLUMN, align: 'center' });
+    doc.text(profile.mission || 'Letters from the mission', LEFT, doc.y, {
+        width: COLUMN,
+        align: 'center'
+    });
 
-    // Years rather than full dates, and de-duplicated, so a mission inside a
-    // single calendar year reads "2026" instead of "2026-2026". Both dates
-    // are optional and either may be missing, which is why this is built from
-    // whatever survives the filter rather than from a fixed pair.
-    const years = [...new Set([profile.startDate, profile.returnDate].filter(Boolean).map((d) => d.slice(0, 4)))];
+    // Full dates rather than years. This is what a cover is for: the two days
+    // that bound the whole thing. Both are optional and either may be
+    // missing, which is why this is built from whatever survives the filter
+    // rather than from a fixed pair.
+    const span = [profile.startDate, profile.returnDate].filter(Boolean).map(coverDate);
 
-    if (years.length) {
+    if (span.length) {
         doc.moveDown(1.4);
         doc.font('regular').fontSize(12);
-        doc.text(years.join('\u2013'), LEFT, doc.y, { width: COLUMN, align: 'center' });
+        doc.text(span.join(' \u2013 '), LEFT, doc.y, { width: COLUMN, align: 'center' });
     }
 }
 
@@ -566,6 +755,14 @@ function setContents(doc, { entries, state }) {
     }
 }
 
+/**
+ * The back of the title page.
+ *
+ * Which is where a colophon belongs, and putting it there solves a second
+ * problem for free. Letters open on left-hand pages, so the front matter has
+ * to end on a right-hand one; a title page alone would leave its own verso
+ * blank and push everything out of phase.
+ */
 function setColophon(doc, { title, slug, madeAt, state }) {
     state.indent = 0;
     doc.addPage();
@@ -591,31 +788,65 @@ function setColophon(doc, { title, slug, madeAt, state }) {
  *
  * @returns {Promise<Map<string, number>>} post id to the folio it opened on
  */
-async function setBook(doc, { slug, posts, profile, title, entries, photosFor, state }) {
+async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, state }) {
     setTitlePage(doc, { title, profile, state });
+    setColophon(doc, { title, slug, madeAt: state.madeAt, state });
     setContents(doc, { entries, state });
 
     state.furniture = true;
     const starts = new Map();
 
     for (const post of posts) {
-        starts.set(post.id, setLetter(doc, { post, slug, photos: await photosFor(post), state }));
+        starts.set(post.id, setLetter(doc, { post, slug, images: await imagesFor(post), state }));
     }
-
-    state.furniture = false;
-    setColophon(doc, { title, slug, madeAt: state.madeAt, state });
 
     return starts;
 }
 
-const NO_PHOTOS = new Map();
+const NO_IMAGES = new Map();
+
+/**
+ * How wide each of a letter's photographs will actually be printed.
+ *
+ * Worked out before any of them are fetched, because the answer decides how
+ * much of each file is worth reading. Sizing every picture to the full column
+ * was the first version and it was quietly expensive: an album photograph
+ * printed three to a row is about a third of the column, so transcoding it at
+ * the column's width put nine times the pixels into the book than any press
+ * could resolve -- across four hundred photographs, on an instance with two
+ * gigabytes to its name.
+ *
+ * Reached the same way the drawing code reaches it, from `flowBody` and the
+ * same packing, so the two cannot disagree about which pictures ended up in
+ * the album.
+ */
+function printWidths(post, slug) {
+    const inline = new Set(inlinePhotoIds(flowBody(post.bodyHtml ?? '', slug)));
+    const photos = post.photos ?? [];
+    const widths = new Map();
+
+    for (const photo of photos) {
+        if (!inline.has(photo.id)) continue;
+        widths.set(photo.id, photoBox({ width: photo.width, height: photo.height }).width);
+    }
+
+    const album = photos.filter((photo) => !inline.has(photo.id));
+    if (album.length) {
+        const target = albumTarget(album, { height: PAGE.height - MARGIN.top - MARGIN.bottom });
+        for (const row of albumRows(album, { target })) {
+            for (const photo of row.photos) widths.set(photo.id, row.height * aspectOf(photo));
+        }
+    }
+
+    return widths;
+}
 
 const freshState = (madeAt) => ({
     page: 0,
-    folio: 1,
     head: '',
     furniture: false,
     opening: false,
+    blank: false,
     indent: 0,
     madeAt
 });
@@ -628,7 +859,7 @@ const freshState = (madeAt) => ({
  * that promise resolves, and a hardcover's spine is as thick as the paper
  * inside it -- so the cover cannot be drawn until this has finished.
  *
- * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number}>}}
+ * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number, opens: {id: string, page: number}[]}>}}
  */
 export function buildInterior({ store, slug, posts, profile = {}, madeAt, log }) {
     const ordered = inReadingOrder(posts);
@@ -659,7 +890,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
             profile,
             title,
             entries,
-            photosFor: () => NO_PHOTOS,
+            imagesFor: () => NO_IMAGES,
             state
         });
 
@@ -676,7 +907,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
             entries[index].page = starts.get(ordered[index].id) ?? 0;
         }
 
-        await setBook(doc, {
+        const printed = await setBook(doc, {
             slug,
             posts: ordered,
             profile,
@@ -685,19 +916,18 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
             // One letter's pictures at a time, and one picture at a time
             // within that. Fetching the book's photographs up front is how a
             // 2 GB instance meets a 500 MB archive.
-            photosFor: async (post) => {
+            imagesFor: async (post) => {
                 const map = new Map();
 
-                for (const photo of post.photos ?? []) {
-                    const rect = photoBox({ width: photo.width, height: photo.height });
+                for (const [photoId, widthPoints] of printWidths(post, slug)) {
                     try {
                         const bytes = await printPhoto({
                             store,
                             slug,
-                            photoId: photo.id,
-                            widthPoints: rect.width
+                            photoId,
+                            widthPoints
                         });
-                        if (bytes) map.set(photo.id, bytes);
+                        if (bytes) map.set(photoId, bytes);
                     } catch (error) {
                         // A missing or unreadable rendition is not worth
                         // failing a whole book over, exactly as in the zip
@@ -705,7 +935,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
                         // the pagination the contents page promised holds.
                         log?.warn?.('book.photoFailed', {
                             slug,
-                            photoId: photo.id,
+                            photoId,
                             error: error.message
                         });
                     }
@@ -717,7 +947,15 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
         });
 
         doc.end();
-        return { pages: state.page };
+
+        // `opens` is the same map the contents page was built from, checked
+        // against the book that was actually printed rather than the one that
+        // was measured. They agree or the two-pass design has failed, which
+        // is worth being able to assert from outside this file.
+        return {
+            pages: state.page,
+            opens: ordered.map((post) => ({ id: post.id, page: printed.get(post.id) ?? 0 }))
+        };
     })();
 
     return { stream: doc, done };
