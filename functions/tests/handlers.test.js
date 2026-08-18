@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
 import { redeem, describe as describeClaimHandler } from '../src/functions/claim.js';
 import { memberships } from '../src/functions/memberships.js';
+import { publish, progress, deliver } from '../src/functions/book.js';
 import { holdPending } from '../src/lib/pending.js';
 import { attachClaimToken } from '../src/lib/claim.js';
 
@@ -37,10 +38,11 @@ function principalHeader({ userDetails, identityProvider = 'aad' }) {
     ).toString('base64');
 }
 
-function request({ principal = null, body = {} } = {}) {
+function request({ principal = null, body = {}, params = {} } = {}) {
     const headers = principal ? { 'x-ms-client-principal': principalHeader(principal) } : {};
     return {
         headers: { get: (name) => headers[name.toLowerCase()] ?? null },
+        params,
         json: async () => body
     };
 }
@@ -219,5 +221,88 @@ describe('the memberships handler', () => {
         const response = await memberships({ request: request(), tables: store });
 
         assert.equal(response.status, 401);
+    });
+});
+
+describe('the book handlers', () => {
+    const OWNER = 'mum@example.com';
+    const READER = 'gran@example.com';
+
+    const printable = () => {
+        const store = memoryStore();
+        store.acl(SLUG, [
+            { email: OWNER, role: 'owner' },
+            { email: READER, role: 'reader' }
+        ]);
+        store.blobs.set(`config/${SLUG}/profile.json`, {
+            bytes: Buffer.from(JSON.stringify({ slug: SLUG, displayName: 'Elder Example' }), 'utf8'),
+            metadata: {},
+            etag: 'etag-profile'
+        });
+        return store;
+    };
+
+    const asOwner = (extra = {}) =>
+        request({ principal: { userDetails: OWNER }, params: { slug: SLUG }, ...extra });
+
+    test('an owner is handed a build to watch', async () => {
+        const store = printable();
+        const response = await publish({ request: asOwner(), context: silent, store });
+
+        assert.equal(response.status, 202);
+        assert.equal(response.jsonBody.state, 'building');
+        assert.equal(store.queues.get('book').length, 1);
+    });
+
+    test('a reader cannot commit the family to a printed object', async () => {
+        const store = printable();
+        const response = await publish({
+            request: request({ principal: { userDetails: READER }, params: { slug: SLUG } }),
+            context: silent,
+            store
+        });
+
+        assert.equal(response.status, 403);
+        assert.equal(store.queues.get('book'), undefined);
+    });
+
+    test('a stranger is not told whether the site exists', async () => {
+        const store = printable();
+        const response = await publish({
+            request: request({ principal: { userDetails: 'nobody@example.com' }, params: { slug: SLUG } }),
+            context: silent,
+            store
+        });
+
+        assert.equal(response.status, 404);
+    });
+
+    test('the status of a build says nothing about who asked for it', async () => {
+        const store = printable();
+        await publish({ request: asOwner(), context: silent, store });
+
+        const response = await progress({ request: asOwner(), context: silent, store });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.jsonBody.state, 'building');
+        assert.equal('requestedBy' in response.jsonBody, false);
+    });
+
+    test('a site nobody has published yet says so rather than failing', async () => {
+        const response = await progress({ request: asOwner(), context: silent, store: printable() });
+
+        assert.equal(response.status, 404);
+    });
+
+    test('an unfinished book cannot be downloaded', async () => {
+        const store = printable();
+        await publish({ request: asOwner(), context: silent, store });
+
+        // No readUrl on the fake, so reaching for a link at all would throw
+        // rather than return a status -- which is the assertion underneath
+        // this one: a building book must be refused before that point.
+        const response = await deliver({ request: asOwner(), context: silent, store });
+
+        assert.equal(response.status, 404);
     });
 });

@@ -73,6 +73,23 @@ export function memoryStore() {
             if (!queues.has(queue)) queues.set(queue, []);
             queues.get(queue).push(text);
         },
+        // Drains the stream into an ordinary blob, which is the part of the
+        // real method worth faking: everything else about it -- the buffer
+        // size, the concurrency, the fact that bytes leave before the last
+        // one arrives -- is storage's business. What a caller can get wrong,
+        // and what this makes visible, is handing over a stream that never
+        // ends or one that is destroyed before it does.
+        async uploadStream(container, name, stream, options = {}) {
+            const chunks = [];
+            for await (const chunk of stream) chunks.push(chunk);
+
+            blobs.set(`${container}/${name}`, {
+                bytes: Buffer.concat(chunks),
+                metadata: {},
+                contentType: options.contentType ?? null,
+                etag: `etag-${++seq}`
+            });
+        },
 
         // --- tables -------------------------------------------------------
         async getEntity(table, partitionKey, rowKey) {

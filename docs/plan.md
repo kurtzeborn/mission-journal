@@ -1193,7 +1193,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 **Shipped.** Running in production on `pdayletters.com`.
 
 - Create the Azure resource group.
-- Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `inbox/` blobs at 30 days. Set `allowPermanentDelete` on the blob service delete-retention policy — without it no version can ever be removed on demand, only aged out. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Peecho secrets are Stage 2 and are not created yet.
+- Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/`, `pending/`, `exports/`, `books/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest`, `render` and `book`. Lifecycle rules deleting `inbox/` blobs at 30 days and `exports/` at 7; **`books/` deliberately has none**, because a printer may refetch an ordered book to make a reprint. Set `allowPermanentDelete` on the blob service delete-retention policy — without it no version can ever be removed on demand, only aged out. The Peecho secrets are the only part of Stage 2 still missing.
 - App Insights instance (for rejection logging and general telemetry).
 - Key Vault for later secrets. No provider API key is needed yet — nothing sends until Phase 8. Note that **Key Vault references don't work with SWA managed Functions at all** — the Functions must call Key Vault from their own code, using the managed identity.
 - **Point `pdayletters.com` at Cloudflare nameservers.** It is on Namecheap today. Do this first — MX and DKIM both depend on it, and propagation is the one step that can't be hurried. The other three registered domains are not used; see [Domains](#domains).
@@ -1555,11 +1555,15 @@ Shipped since, and previously listed here as outstanding:
 - **Stretch — SMS.** Not started until the digest ships and the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch) have answers. Per-post rather than digested, default off, number confirmed by a round-trip code.
 
 ### Phase 11 — Journal Publish
-**Not started.**
+**In progress.** The layout engine and the pipeline that drives it are built; nothing talks to a printer yet.
 
 - Assemble a hardcover photo book from a missionary's posts + photos, hand it to Peecho's Print API, and send the buyer into Peecho's own checkout.
 - Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
 - Full design in [Journal Publish](#journal-publish); the provider comparison, and why the wholesale APIs were all ruled out, is in [printing.md](printing.md).
+
+**Done:** the book layout engine (`functions/src/lib/book.js`), sized and paginated to Peecho's hardcover specification; the publish pipeline (`functions/src/lib/publish.js`) and its endpoints (`functions/src/functions/book.js`) — request, poll, download — with the build running on the `book` queue and its state in `books/{slug}/{id}/status.json`.
+
+**Next:** a watermarked preview rendition to review in the browser, the reader UI to ask for a book and watch it build, notification when it is ready, then the Peecho publication and its two webhooks.
 
 Phase 12 is [Leaving beta](#phase-12--leaving-beta), and it is deliberately the last section of this document rather than the next heading — see the note there.
 

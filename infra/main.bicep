@@ -235,6 +235,14 @@ var containerNames = [
   // never served -- a pending site has no ACL, so there is nobody it could
   // be served to. Promotion into raw/ arrives with the claim flow.
   'pending'
+  // Finished books, and the one derived container with no expiry rule on it.
+  // Once a book has been ordered the printer may fetch it again to make a
+  // reprint, so a lifecycle rule aimed here would break an order months
+  // after anybody remembered making it. They are small in number -- one per
+  // time an owner presses publish -- and large individually, which is the
+  // opposite shape from `exports` and the reason it is a separate container
+  // rather than a prefix inside one.
+  'books'
 ]
 
 resource containers 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = [
@@ -307,6 +315,12 @@ resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-
 var queueNames = [
   'ingest'
   'render'
+  // Book assembly. Its own queue rather than a message type on `render`,
+  // because the two have nothing in common but the word: a render is one
+  // letter and takes a second, a book is the whole archive and takes
+  // minutes, and sharing a queue would let one book hold up every letter
+  // arriving behind it.
+  'book'
 ]
 
 resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-01' = [
