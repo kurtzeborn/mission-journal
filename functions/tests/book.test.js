@@ -5,6 +5,7 @@ import {
     COLUMN,
     MARGIN,
     PAGE,
+    SHEET_LEAST,
     albumPageCount,
     albumRows,
     albumSpread,
@@ -323,14 +324,30 @@ describe('setting a whole book', () => {
         assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
     });
 
-    it('reports the page count the cover will need', async () => {
+    it('hands the printer a page count it will accept', async () => {
         const { stream, done } = build();
         const [, result] = await Promise.all([readPdf(stream), done]);
 
-        // Title, colophon, contents, and three letters each opening on a
-        // fresh leaf. The exact number is layout's business; that there is
-        // one, and that it is at least this, is the spine's.
-        assert.ok(result.pages >= 6, `expected a book, got ${result.pages} pages`);
+        // Both of these are Peecho's rules rather than ours, and both of them
+        // are refusals: a book under two dozen sheets has no spine to bind
+        // and an odd count has nowhere to print the back cover. Three short
+        // letters come nowhere near the floor, so this is the padding being
+        // exercised as much as the count.
+        assert.ok(result.pages >= SHEET_LEAST, `only ${result.pages} pages`);
+        assert.equal(result.pages % 2, 0, `${result.pages} pages is odd`);
+    });
+
+    it('counts the covers, because the printer does', async () => {
+        // The page total is what the spine is calculated from, so it has to
+        // mean sheets of paper rather than leaves of the book -- and the only
+        // way to know it is telling the truth is to count the pages in the
+        // file. The folios in `opens` number the book instead and stop two
+        // short of this, which is the covers.
+        const { stream, done } = build();
+        const [bytes, result] = await Promise.all([readPdf(stream), done]);
+
+        const written = bytes.toString('latin1').match(/\/Type\s*\/Page[^s]/g) ?? [];
+        assert.equal(written.length, result.pages);
     });
 
     it('opens every letter on a left-hand page', async () => {
@@ -382,13 +399,17 @@ describe('setting a whole book', () => {
         // the height of the whole picture. Wrapping has to be the shorter of
         // the two or it is not doing anything.
         const photo = '<img src="/api/photo/isaac.backman/p1/large.webp">';
-        const words = `<p>${'We walked out early and the streets were still wet. '.repeat(20)}</p>`;
+        const words = `<p>${'We walked out early and the streets were still wet. '.repeat(44)}</p>`;
         const letter = (bodyHtml) => [
             { ...post('a', '2026-01-04', 'Week one'), bodyHtml, photos: [{ id: 'p1', width: 2400, height: 1600 }] }
         ];
 
         const set = async (bodyHtml) => {
-            const { stream, done } = build({ posts: letter(bodyHtml) });
+            // Measuring layout, so the printer's rules are turned off. Padded
+            // up to two dozen pages and rounded to an even count, both books
+            // would come to the same length and the difference this test
+            // exists to see would be paper.
+            const { stream, done } = build({ posts: letter(bodyHtml), least: 0 });
             const [, result] = await Promise.all([readPdf(stream), done]);
             return result.pages;
         };

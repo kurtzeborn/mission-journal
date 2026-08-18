@@ -59,14 +59,25 @@ A Dutch print-on-demand platform, now part of the Prodigi group. Category A, and
 - **Non-competition for two years** after the term, covering their printers. Irrelevant unless we ever wanted to go direct, which we do not.
 - **Liability capped at EUR 10,000**, Dutch law, Amsterdam courts. Fine at this scale.
 
-**Still unknown, and needs a free account to answer:**
+**What their specification actually says, now that there is an account to read it from:**
 
-- Which trim sizes are actually offered. Our 8×10 came out of Lulu's catalogue and may not survive.
-- Whether hardcover requires a page count that is a multiple of four. The interior already pads to an even count so every letter opens on a left-hand page; a multiple-of-four rule extends that arithmetic.
-- Payout currency, almost certainly euros.
-- Bleed and safe-area figures for the cover spread, which the cover generator needs before it can be written.
+- **Trim sizes.** Hardcovers come in A5 either way up, A4 either way up, US Letter portrait (216 × 280 mm, 8.5 × 11 in), 11 × 8.5 in landscape, and two squares at 8.3 in and 11.6 in. That is the whole list. The 8 × 10 this book was first laid out to is not on it and never was — it came out of Lulu's catalogue, which is what comes of choosing a trim before choosing a printer. **Letter portrait** is the only portrait shape on the list an American reader would recognise, so that is what the interior is set to now.
+- **One PDF, covers included.** *"Save your print file as one PDF document containing front cover, content, and back cover, as single pages and in this order."* This deletes a whole task: there is no separate cover spread to generate, and no wraparound geometry to get right. The spine is Peecho's — they calculate it from the page count, the paper and whichever facility ends up printing it.
+- **Page count: 24 to 500, and even.** *"If you submit an odd number of pages, the back cover will be white."* Not a multiple of four, so the parity the interior already keeps is enough — but the floor of 24 is new, and a mission with three letters in it does not reach it. The interior pads up to it with blank leaves.
+- **No bleed, no crop marks.** *"Do not add bleed or cut marks, as our system will automatically generate these."* The opposite of the assumption a printer usually forces.
+- **10 mm minimum margin** on every side of both cover and content. Ours is an inch at the narrowest, so there is nothing to do here.
+- **300 dpi, RGB, all fonts embedded, transparencies flattened.** RGB is worth noting: they do their own separation, which means a press profile chosen per facility rather than one guessed here. PDF/X-4 against coated FOGRA 39 is their preference.
+- **Page two lands on the right.** *"This is page two of your PDF, and it will appear on the right-hand side."* Pages two and three of the physical object are the binding sheets and cannot be printed on. So with the cover as PDF page one, interior leaf one is a recto and the mirrored margins fall the way they already do.
+- **Payout.** USD is among the supported currencies. Threshold is EUR 100 before a withdrawal can be made.
 
-They have a designated test environment, and their terms are explicit that orders not meant to be printed must not go to production.
+**The one distinction in the API that decides the architecture.** There are two ways to get a book made, and they are not variants of each other:
+
+- **A product listing-publication** returns an id, and `peecho.com/print/{id}` is a checkout page for it. The buyer pays Peecho; Peecho pays us the margin. This is Category A, and it is our path.
+- **Create order plus order payment** runs on prepaid credits bought from the dashboard — `MERCH_INSUFFICIENT_BALANCE` is a real error code. That is the wholesale shape: we would be taking the money and the card fraud and the refunds. Not our path, and worth writing down because the endpoint names make it look like the obvious one.
+
+Authentication is a Merchant API key on most endpoints, with a separate secret key used to SHA-256 sign the things that matter. Webhooks post JSON with a `signature` that is `sha256(secretKey + order_id)`, which is the same shape as the HMAC the invite links already use. The test environment is a genuinely separate account at `test.www.peecho.com` with its own key; orders placed there never print and never charge.
+
+**Still blocked.** Their company-details form requires a VAT number, and without it the API returns `APP_NO_COMP_DETAILS` — *"Company details are required for tax calculations"* — and the webhook settings will not save either. A US sole trader has no VAT number and the field is VIES-validated, so inventing one is not an option. This needs a support ticket.
 
 ### Blurb Bookstore — the fallback
 
@@ -74,7 +85,7 @@ Category A, and the terms read well: *"Keep 100% of profits when you sell your b
 
 Rejected as first choice on automation, not economics. There is no public order API worth building against today, so creating the listing is a manual step in a browser — which puts a human between the owner pressing the button and the book existing. Their other routes, Amazon and Ingram, add distribution fees and make the book public.
 
-Worth keeping in mind precisely because the economics are good. If Peecho's trim sizes or margins turn out wrong, this is where we go.
+Worth keeping in mind precisely because the economics are good. If Peecho's sizes or margins turn out wrong, this is where we go.
 
 ### Lulu — rejected, and it used to be the recommendation
 
@@ -134,7 +145,7 @@ Shape is the column that is not here, because it is the one that decides everyth
 
 | Provider | US-based | Money back to us | API — quality and fit | Things to consider |
 | --- | --- | --- | --- | --- |
-| **Peecho** — recommended | No. Netherlands, Prodigi group | Margin over their cost; no fixed percentage, no cookie window, no approval | Purpose-built for this: Print API plus hosted checkout, test environment | Trim sizes, page-count parity, bleed and payout currency all unconfirmed. Their terms need a matching IP and portrait-rights warranty in ours |
+| **Peecho** — recommended | No. Netherlands, Prodigi group | Margin over their cost; no fixed percentage, no cookie window, no approval | Purpose-built for this: Print API plus hosted checkout, test environment | Letter portrait, 24–500 even pages, no bleed, one PDF including covers. Their terms need a matching IP and portrait-rights warranty in ours, and the VAT field blocks the account today |
 | **Blurb Bookstore** — fallback | Yes. San Francisco | "100% of profits" — our own markup over their cost | No usable order API; the listing is created by hand in a browser | Good economics, manual step. Amazon and Ingram routes make the book public |
 | **Lulu Bookstore** | Yes. Raleigh | 80% royalty, free to publish, no ISBN needed | None for this route | Public storefront. Fatal for family letters |
 | **Lulu Print API** | Yes. Raleigh | None. We would mark up and bill | Excellent — documented, free, sandboxed, thousands of configurations. Wrong shape | Payload demands the reader's full address and their card charges ours. Markets "Retain Customer Data" as a feature |
@@ -155,8 +166,8 @@ Two things fall out of reading down the columns. The API column is close to inve
 
 ## Where this leaves us
 
-Build against **Peecho**: Print API for the upload, hosted checkout for the sale. Cover the file-format questions with a free account before the cover generator is written, since the trim size and the bleed feed straight into it.
+Build against **Peecho**: Print API for the upload, hosted checkout for the sale. The file-format questions are answered — the interior is set to Letter portrait, covers and all, and pads to their 24-page floor.
 
-Keep **Blurb Bookstore** as the fallback if the trim sizes do not work out, and accept the manual listing step if it comes to that.
+Keep **Blurb Bookstore** as the fallback if the account never clears, and accept the manual listing step if it comes to that.
 
-Nothing here commits the layout engine to a provider. The interior it produces is an ordinary PDF at 300 dpi with a mirrored gutter; the only provider-shaped decisions in it are the page size and the parity rule, and both are constants at the top of `functions/src/lib/book.js`.
+Nothing here commits the layout engine to a provider. The interior it produces is an ordinary PDF at 300 dpi with a mirrored gutter; the only provider-shaped decisions in it are the page size and the page-count rules, and all of them are constants at the top of `functions/src/lib/book.js`.

@@ -38,17 +38,29 @@ const PDFDocument = require('pdfkit');
 
 const INCH = 72;
 
-// Lulu hardcover, 8"x10", premium colour -- the trim named in the plan. Held
-// as points because that is the only unit a PDF has; every dimension below is
-// derived from it rather than typed twice.
-export const PAGE = { width: 8 * INCH, height: 10 * INCH };
+// US Letter hardcover, 8.5"x11". Not a preference -- it is the only portrait
+// trim on Peecho's hardcover list that an American reader would recognise.
+// They bind A5, A4, Letter, and two squares, and nothing else; the 8"x10"
+// this file was first written against is not among them and never was, which
+// is what comes of choosing a trim before choosing a printer.
+//
+// Held as points because that is the only unit a PDF has; every dimension
+// below is derived from it rather than typed twice.
+export const PAGE = { width: 8.5 * INCH, height: 11 * INCH };
 
 // Asymmetric on purpose, and the asymmetry is the point. A hardcover's inner
 // edge disappears into the binding, so the gutter margin has to be the widest
-// one or the last few characters of every line curve out of sight. Lulu's own
-// floor is half an inch from the trim on all four sides; nothing here is
-// closer than three quarters.
-export const MARGIN = { top: 60, bottom: 66, inside: 78, outside: 54 };
+// one or the last few characters of every line curve out of sight. Peecho's
+// floor is 10mm from the trim on all four sides; the narrowest here is an
+// inch, which is nearly three times that.
+//
+// The extra half-inch of width Letter brought over the old trim went entirely
+// into these rather than into the text, which is why `COLUMN` below is the
+// same 444pt it has always been. A wider page is an argument for wider
+// margins, not for longer lines: the measure was tuned to sixty-five
+// characters because that is what reads well, and the page getting bigger
+// does not change what reads well.
+export const MARGIN = { top: 66, bottom: 72, inside: 96, outside: 72 };
 
 export const COLUMN = PAGE.width - MARGIN.inside - MARGIN.outside;
 const TEXT_BOTTOM = PAGE.height - MARGIN.bottom;
@@ -57,8 +69,8 @@ const TEXT_BOTTOM = PAGE.height - MARGIN.bottom;
 //
 // It is here rather than being one of pdfkit's built-in fonts because the
 // built-ins are the PDF Standard 14, which are by definition *not* embedded --
-// they name a font and trust the reader to own it. Lulu rejects an interior
-// with unembedded fonts outright, so the choice was never between faces, it
+// they name a font and trust the reader to own it. Peecho asks for every font
+// embedded, as every printer does, so the choice was never between faces, it
 // was between shipping one and having no book.
 const FACES = {
     regular: 'CrimsonText-Regular.ttf',
@@ -91,6 +103,21 @@ const PHOTO_MAX_HEIGHT = 0.62;
 // measured: the reservation has to be identical in both passes, and a value
 // derived from the first pass would move in the second.
 const CONTENTS_PER_PAGE = 32;
+
+// The fewest sheets a hardcover can be bound from, counting the two covers,
+// and it has to be an even number besides. Both are Peecho's rules rather
+// than ours: below two dozen there is not enough paper for a spine to hold,
+// and an odd count would leave the back cover printed on the wrong side of
+// the last leaf. A book with less in it than this is padded up to it, which
+// costs blank paper -- see `padToPrinter`, which explains why that is still
+// the least bad answer.
+export const SHEET_LEAST = 24;
+
+// Front and back. Named because the number turns up in three unrelated sums
+// -- the printer's floor, the page total, and the parity of the last leaf --
+// and a bare 2 in any of them reads as a coincidence rather than as the same
+// two sheets of card.
+const COVERS = 2;
 
 // The album that faces a letter. `MIN_ROW` is the point at which a row of
 // photographs stops being a row of photographs and becomes a strip of
@@ -217,8 +244,12 @@ const LEFT = MARGIN.inside;
  *
  * `rendered/` holds WebP, and PDF cannot embed WebP at all -- so this is a
  * transcode, not a copy. It goes to JPEG rather than PNG because these are
- * photographs: PNG would store them losslessly at several times the size and
- * put a 400-photograph book past what Lulu will accept as an upload.
+ * photographs: PNG would store them losslessly at several times the size, and
+ * a 400-photograph book has to travel to the printer as one file.
+ *
+ * Left in RGB rather than converted to CMYK because Peecho asks for RGB and
+ * does its own separation -- a press profile they choose per facility beats
+ * one guessed here.
  *
  * Resized down to what the page can actually show at 300 dpi. The stored
  * rendition is 2400px on its long edge, and a picture printed across this
@@ -277,6 +308,30 @@ function openBook({ title, state }) {
     for (const [name, bytes] of Object.entries(FONTS)) doc.registerFont(name, bytes);
 
     doc.on('pageAdded', () => {
+        // A cover is not a page of the book, and almost nothing below applies
+        // to it. It takes no folio and no running head, it is not counted in
+        // the numbering the contents page refers to, and it is not mirrored:
+        // the front and back covers are printed on one wrapped sheet, so
+        // neither of them has a gutter to lean away from. Bailing out here
+        // rather than guarding each rule separately keeps the page count
+        // meaning one thing -- leaves of the book -- everywhere else.
+        if (state.cover) {
+            // Margins zeroed for the same reason the furniture below zeroes
+            // them, and it bit just as hard. A cover is drawn at absolute
+            // positions, but pdfkit reads a write that crosses the bottom
+            // margin as an overflow and answers it by adding a page -- from
+            // inside this handler, while `state.cover` is still set, so the
+            // new page is never counted. The line at the foot of the front
+            // cover cleared the margin by a fraction of a point, which was
+            // enough to put a twenty-fifth sheet in a twenty-four sheet book
+            // that nothing in the returned page total knew about.
+            doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
+            doc.x = MARGIN.outside;
+            doc.y = MARGIN.top;
+            doc.fillColor(BLACK);
+            return;
+        }
+
         state.page += 1;
         const recto = state.page % 2 === 1;
 
@@ -628,6 +683,38 @@ function padToVerso(doc, state) {
 }
 
 /**
+ * Blank leaves at the end, up to what the printer will actually bind.
+ *
+ * Two rules, and both of them are the press's rather than the book's. The
+ * page count including covers has to be even, because the leaves are printed
+ * on both sides and there is no half a sheet of paper. And it has to reach
+ * `SHEET_LEAST`, because a spine needs a certain thickness of paper to hold
+ * at all.
+ *
+ * Padding is not the obvious answer -- refusing to print a book with three
+ * letters in it would be tidier, and would spend nobody's money on blank
+ * paper. But the threshold is not three letters, it is twenty-two pages, and
+ * that is not a number anybody can be told in advance: it depends on how long
+ * the letters run and how many photographs they carry, which is not known
+ * until the book has been set. A reader who is told "not yet" would have no
+ * way to find out how much more was needed. Blank leaves at the back of a
+ * thin book are what every short print-on-demand title has always done.
+ */
+function padToPrinter(doc, state, least) {
+    // Zero means there is no printer -- both rules below are the press's, so
+    // both go together, and code measuring the layout itself wants neither.
+    if (!least) return;
+
+    const wanted = Math.max(least - COVERS, 0);
+
+    while (state.page < wanted || state.page % 2 !== 0) {
+        state.blank = true;
+        doc.addPage();
+        state.blank = false;
+    }
+}
+
+/**
  * Set one letter, opening on a left-hand page.
  *
  * `images` is a map of photo id to JPEG buffer, and is empty for the whole of
@@ -954,37 +1041,101 @@ function textAfter(blocks, from) {
     return count;
 }
 
-function setTitlePage(doc, { title, profile, state }) {
-    state.indent = 0;
-    doc.addPage();
-
-    doc.y = PAGE.height * 0.3;
-    doc.font('semibold').fontSize(30).fillColor(BLACK);
-    doc.text(title, LEFT, doc.y, { width: COLUMN, align: 'center' });
+/**
+ * The title, the mission and the dates, centred in a box.
+ *
+ * Drawn twice -- once on the cover and once on the title page a few leaves
+ * behind it -- because that is what books do, and from one function because
+ * the alternative is two copies that agree until the day somebody edits one.
+ * Sizes are given as a share of the title's so a cover can simply ask for
+ * larger type and have the rest follow.
+ */
+function setNameplate(doc, { title, profile, x, width, size }) {
+    doc.font('semibold').fontSize(size).fillColor(BLACK);
+    doc.text(title, x, doc.y, { width, align: 'center' });
 
     // The mission stands on its own line rather than being folded into a
     // sentence. "Letters from the" plus whatever somebody typed reads well
     // for "Argentina Buenos Aires North Mission" and badly for "the one with
-    // the mountains", and the field is free text on purpose -- so the cover
-    // does not try to make grammar out of it.
+    // the mountains", and the field is free text on purpose -- so this does
+    // not try to make grammar out of it.
     doc.moveDown(0.6);
-    doc.font('italic').fontSize(13).fillColor(QUIET);
-    doc.text(profile.mission || 'Letters from the mission', LEFT, doc.y, {
-        width: COLUMN,
-        align: 'center'
-    });
+    doc.font('italic').fontSize(size * 0.43).fillColor(QUIET);
+    doc.text(profile.mission || 'Letters from the mission', x, doc.y, { width, align: 'center' });
 
     // Full dates rather than years. This is what a cover is for: the two days
     // that bound the whole thing. Both are optional and either may be
     // missing, which is why this is built from whatever survives the filter
     // rather than from a fixed pair.
     const span = [profile.startDate, profile.returnDate].filter(Boolean).map(coverDate);
+    if (!span.length) return;
 
-    if (span.length) {
-        doc.moveDown(1.4);
-        doc.font('regular').fontSize(12);
-        doc.text(span.join(' \u2013 '), LEFT, doc.y, { width: COLUMN, align: 'center' });
-    }
+    doc.moveDown(1.4);
+    doc.font('regular').fontSize(size * 0.4);
+    doc.text(span.join(' \u2013 '), x, doc.y, { width, align: 'center' });
+}
+
+/**
+ * The front cover, which is simply page one.
+ *
+ * Peecho takes the whole book as a single PDF -- front cover, then every leaf
+ * in order, then back cover -- and works the spine out itself from the page
+ * count, the paper and the facility that ends up printing it. So there is no
+ * second document to build, no spine width to calculate and no bleed to add:
+ * they say plainly not to add bleed or crop marks because their system
+ * generates both. A cover here is a page of the same size as every other,
+ * drawn first.
+ *
+ * Centred rather than mirrored, because a cover has no gutter to lean away
+ * from -- it is one wrapped sheet of card, not a leaf of the block.
+ */
+function setFrontCover(doc, { title, profile, state }) {
+    state.cover = true;
+    doc.addPage();
+
+    const width = PAGE.width - MARGIN.outside * 2;
+
+    doc.y = PAGE.height * 0.26;
+    setNameplate(doc, { title, profile, x: MARGIN.outside, width, size: 34 });
+
+    doc.font('italic').fontSize(11).fillColor(QUIET);
+    doc.text('pdayletters.com', MARGIN.outside, PAGE.height - MARGIN.bottom - 14, {
+        width,
+        align: 'center',
+        lineBreak: false
+    });
+
+    state.cover = false;
+}
+
+/**
+ * The back cover, which is simply the last page.
+ *
+ * Nearly bare on purpose. A trade paperback puts a blurb and a barcode here
+ * because it has to sell itself off a shelf; this book has already been
+ * bought, by somebody who knows exactly what is in it. All it owes the reader
+ * is where the rest of it lives.
+ */
+function setBackCover(doc, { slug, state }) {
+    state.cover = true;
+    doc.addPage();
+
+    doc.font('italic').fontSize(11).fillColor(QUIET);
+    doc.text(`pdayletters.com/${slug}`, MARGIN.outside, PAGE.height * 0.78, {
+        width: PAGE.width - MARGIN.outside * 2,
+        align: 'center',
+        lineBreak: false
+    });
+
+    state.cover = false;
+}
+
+function setTitlePage(doc, { title, profile, state }) {
+    state.indent = 0;
+    doc.addPage();
+
+    doc.y = PAGE.height * 0.3;
+    setNameplate(doc, { title, profile, x: LEFT, width: COLUMN, size: 30 });
 }
 
 function setContents(doc, { entries, state }) {
@@ -1072,7 +1223,8 @@ function setColophon(doc, { title, slug, madeAt, state }) {
  *
  * @returns {Promise<Map<string, number>>} post id to the folio it opened on
  */
-async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, state }) {
+async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, least, state }) {
+    setFrontCover(doc, { title, profile, state });
     setTitlePage(doc, { title, profile, state });
     setColophon(doc, { title, slug, madeAt: state.madeAt, state });
     setContents(doc, { entries, state });
@@ -1083,6 +1235,10 @@ async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, s
     for (const post of posts) {
         starts.set(post.id, setLetter(doc, { post, slug, images: await imagesFor(post), state }));
     }
+
+    state.furniture = false;
+    padToPrinter(doc, state, least);
+    setBackCover(doc, { slug, state });
 
     return starts;
 }
@@ -1139,6 +1295,7 @@ const freshState = (madeAt) => ({
     furniture: false,
     opening: false,
     blank: false,
+    cover: false,
     indent: 0,
     float: null,
     side: 'left',
@@ -1146,16 +1303,27 @@ const freshState = (madeAt) => ({
 });
 
 /**
- * Build the interior of the book.
+ * Build the book.
  *
- * Returns the PDF's own output stream immediately, plus a promise that
- * settles when the last page has been set. The page total only exists once
- * that promise resolves, and a hardcover's spine is as thick as the paper
- * inside it -- so the cover cannot be drawn until this has finished.
+ * One PDF, covers included, which is the form Peecho asks for. Returns the
+ * document's own output stream immediately, plus a promise that settles when
+ * the last page has been set -- so the bytes can be uploaded while the rest
+ * of the book is still being written, and a four-hundred-photograph mission
+ * never has to exist in memory at once.
+ *
+ * `least` is the printer's page floor and is worth being able to override:
+ * it belongs to whoever is binding the book, not to the book. Zero turns the
+ * press's rules off altogether -- no floor and no parity -- which is what
+ * code measuring the layout wants, since twenty blank leaves and a rounding
+ * to the next even number hide whatever it was trying to see.
+ *
+ * `pages` counts what the printer counts -- every leaf, both covers -- since
+ * that is the number their spine calculation is fed. The folios in `opens`
+ * number the book instead, so the two do not agree and are not meant to.
  *
  * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number, opens: {id: string, page: number}[]}>}}
  */
-export function buildInterior({ store, slug, posts, profile = {}, madeAt, log }) {
+export function buildInterior({ store, slug, posts, profile = {}, madeAt, least = SHEET_LEAST, log }) {
     const ordered = inReadingOrder(posts);
     const title = profile.displayName || slug;
 
@@ -1185,6 +1353,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
             title,
             entries,
             imagesFor: () => NO_IMAGES,
+            least,
             state
         });
 
@@ -1237,6 +1406,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
 
                 return map;
             },
+            least,
             state
         });
 
@@ -1247,7 +1417,7 @@ export function buildInterior({ store, slug, posts, profile = {}, madeAt, log })
         // was measured. They agree or the two-pass design has failed, which
         // is worth being able to assert from outside this file.
         return {
-            pages: state.page,
+            pages: state.page + COVERS,
             opens: ordered.map((post) => ({ id: post.id, page: printed.get(post.id) ?? 0 }))
         };
     })();

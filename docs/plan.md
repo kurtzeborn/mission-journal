@@ -534,7 +534,7 @@ All blob containers are private, with public access disabled at the account leve
 - **Full-resolution downloads:** served on-demand by a small Function that reads the raw attachment, strips EXIF in-flight, and streams it back as JPEG. Downloads are rare enough that on-demand generation is cheaper than storing an EXIF-stripped copy of every photo. This is the one place a client receives bytes derived from `raw/`, and it is a single photo re-emitted through a transform — not the message, its HTML, or its headers. It is subject to the same ACL check and hidden-post filter as `/api/photo/`.
 - Because raw is preserved, we can always reprocess (different sizes, HEIC → WebP, face detection later) without asking the missionary for anything.
 
-**Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip ([Phase 5](#phase-5--offline-archive-export) — a 2-year mission's ~1000 photos, ~400–500 MB as WebP against ~600–700 MB as JPEG), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint and by the photo-book PDF generator in Phase 11.
+**Why WebP over JPEG for the renditions?** WebP compresses photos ~25–35% smaller than JPEG at visually-equivalent quality, which shows up in three places we care about: post-page load times over cellular, the size of the offline archive zip ([Phase 5](#phase-5--offline-archive-export) — a 2-year mission's ~1000 photos, ~400–500 MB as WebP against ~600–700 MB as JPEG), and monthly Blob egress. Compatibility isn't a concern in 2026: every modern browser, iOS 14+, Android, and standalone photo viewers open `.webp` natively. The raw archive stays in whatever format the phone produced (almost always JPEG), so JPEG is always available upstream — used by the on-demand download endpoint. The photo-book generator does *not* need it: `large.webp` is 2400px on its long edge, which is 300 dpi at eight inches wide, and sharp transcodes WebP to JPEG on the way into the PDF. Building the book off the rendered surface rather than the archive also means it inherits the EXIF stripping and the hidden-post filter for free, instead of having to reimplement both.
 
 #### Photos that arrive as links, not attachments
 
@@ -1017,21 +1017,34 @@ Assemble a physical hardcover photo book from a missionary's journal — all pos
 #### The flow
 
 1. Any ACL member clicks "Publish this journal as a book" in the reader UI.
-2. A book-assembly Function builds a print-ready interior PDF from the missionary's posts:
-   - Title page and colophon.
+2. A book-assembly Function builds one print-ready PDF from the missionary's posts:
+   - Front cover, then title page and colophon.
    - Contents by date.
    - One chapter per letter, opening on a left-hand page, with inline photographs floated into the margin and unplaced ones given the facing leaf.
-   - A cover spread whose spine thickness comes from the finished page count.
+   - Blank leaves as needed to reach Peecho's 24-page floor and an even count, then the back cover.
 3. The owner reviews a watermarked preview in the reader. The unwatermarked 300 dpi file never reaches the browser.
-4. On approval the interior and cover go to Peecho's Print API, and the owner is sent into Peecho's hosted checkout.
+4. On approval the PDF goes to Peecho's Print API as a product listing-publication, and the owner is sent to the checkout page it returns.
 5. Peecho takes the payment, prints, ships, and handles the customer. We are told the order exists and nothing more.
 
 **Pricing model on our side:** the price shown in Peecho's checkout is ours to set; Peecho deducts production, shipping, tax and transaction fees and holds the remainder as withdrawable profit. Aim it at covering the Azure and Cloudflare bill, not at a margin.
 
+#### What their specification settles
+
+Read off Peecho's own upload requirements, and all of it is already in `functions/src/lib/book.js`:
+
+- **US Letter portrait**, 216 × 280 mm. Their hardcover list is A5, A4, Letter, 11 × 8.5 in landscape and two squares — the 8 × 10 this engine was first written against is not on it.
+- **One PDF containing front cover, content and back cover, in that order.** There is no separate cover file to build, and no spine to measure: Peecho generates it from the page count, the paper and the facility.
+- **24 to 500 pages, even.** An odd count silently prints a white back cover. Short missions are padded up with blank leaves.
+- **No bleed and no crop marks** — their system adds them. Minimum margin 10 mm all round, against our narrowest inch.
+- **300 dpi, RGB, fonts embedded, transparencies flattened.** RGB rather than CMYK because they separate per facility.
+- **PDF page two lands on the right-hand side**, so with the cover as page one the interior's first leaf is a recto and the mirrored gutter falls the way it already does.
+
+And the distinction that decides the integration: a **product listing-publication** returns an id whose checkout page the buyer pays on, while **create-order plus order-payment** runs on prepaid credits and would make us the merchant. The first is the one we want; the second is the one whose endpoint names look obvious.
+
 #### Before this can ship
 
 - A line in the site's own terms backing the intellectual-property and portrait-rights warranty Peecho's seller terms require. A book of somebody else's letters containing photographs of somebody else's children needs this to be explicit.
-- Trim size, bleed, and whether hardcover requires a page count that is a multiple of four — all of which feed the cover generator and the parity rule. A free Peecho account answers them.
+- A VAT number, or a support ticket explaining why there is not one. Peecho's company-details form will not save without it, which blocks the webhook settings and makes the API return `APP_NO_COMP_DETAILS`.
 - A gate for the interior PDF that survives Peecho refetching it for a reprint, which rules out a short-lived SAS URL on its own.
 
 #### Implementation notes
@@ -1039,17 +1052,18 @@ Assemble a physical hardcover photo book from a missionary's journal — all pos
 - Assembly cannot happen inside an HTTP request — a book of four hundred photographs will not finish inside the 230-second ceiling. It is a queue trigger writing a status blob, in the same shape as the archive export.
 - Reuse the *same rendered content* the reader UI uses. Regeneration is idempotent; if new posts arrive after publish, the owner can regenerate.
 - Cover design and layout: start with a single "classic" template. Expand to multiple templates only if there's demand.
-- Use Peecho's test environment for CI and any trial orders. Their terms are explicit that orders not meant to be printed must not be sent to production.
+- Use Peecho's test environment for CI and any trial orders. It is a separate account at `test.www.peecho.com` with its own API key, and orders placed there never print and are never charged. Their terms are explicit that orders not meant to be printed must not be sent to production.
+- Webhooks post JSON carrying `signature`, `order_id`, `order_reference`, `old_status`, `new_status` and tracking fields. The signature is `sha256(secretKey + order_id)` — the same shape as the invite links, so the verification helper is already written.
 
 #### Data-model additions
 
-- `books/{missionary-slug}/{book-id}/` blob path stores generated interior/cover PDFs and a `manifest.json` recording which posts + photos were included and which provider + order ID was used.
+- `books/{missionary-slug}/{book-id}/` blob path stores the generated PDF and a `manifest.json` recording which posts + photos were included and which provider + order ID was used.
 - Per-book records in the missionary's profile for order history: `bookOrders: [{ id, provider, orderId, orderedAt, status, trackingUrl }]`.
 
 #### Open questions for this feature
 
 - Pass-through pricing, or add a small service fee?
-- Fixed trim size / template initially, or configurable?
+- One trim size or several? Peecho binds six other shapes, and a landscape Letter would suit photograph-heavy missions better. Letter portrait first, and only branch if somebody asks.
 
 ---
 
