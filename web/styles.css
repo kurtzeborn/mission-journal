@@ -997,12 +997,6 @@ h3:target {
     margin-bottom: 0;
 }
 
-.steps ul {
-    padding-left: 1.2rem;
-    color: var(--ink-soft);
-    font-size: 0.95rem;
-}
-
 /* --- who can read an archive --- */
 
 .people {
