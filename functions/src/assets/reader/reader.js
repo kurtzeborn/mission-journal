@@ -461,6 +461,11 @@ window.Reader = (function () {
             // it is not offered next to a thumbnail with nothing to warn about
             // it. `addedAt` is the whole of the distinction, and the server
             // makes it again on the way in.
+            //
+            // Built visible and hidden a moment later by the owner bar's
+            // `showEditing(false)`, which runs before any of this is in the
+            // document. Hiding it here as well would be the same fact written
+            // in two places, and the two would eventually disagree.
             if (admin && photo.addedAt) {
                 const drop = document.createElement('button');
                 drop.type = 'button';
@@ -626,7 +631,7 @@ window.Reader = (function () {
         // needs the heading to already have a parent to insert alongside.
         item.append(subject, panel);
 
-        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc, status }));
+        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc, status, album }));
 
         const view = { id: post.id, item, toggle, panel, body, title, hits };
         toggle.addEventListener('click', () => {
@@ -660,7 +665,7 @@ window.Reader = (function () {
     // contenteditable scaffolds with are removed by the same pass that cleans
     // up after Outlook.
     function renderAdmin(post, admin, view) {
-        const { subject: heading, body, photoSrc, status } = view;
+        const { subject: heading, body, photoSrc, status, album } = view;
 
         const bar = document.createElement('div');
         bar.className = 'admin';
@@ -742,14 +747,35 @@ window.Reader = (function () {
         field.setAttribute('aria-label', 'Subject');
         heading.insertAdjacentElement('afterend', field);
 
+        // The crosses on the owner's own pictures, which are drawn with the
+        // album and belong to this bar's idea of what is going on.
+        //
+        // They used to sit on the thumbnails permanently, and an owner reading
+        // their own archive has a small dark × over the corner of every
+        // picture they ever added -- on a page whose entire purpose is looking
+        // at the pictures. Nothing else an owner can do to a letter is offered
+        // before they have said they want to change it, and there is no reason
+        // this one should be.
+        const drops = album ? [...album.querySelectorAll('.album__remove')] : [];
+
         const showEditing = (editing) => {
             for (const el of [hide, edit, remove, add]) el.hidden = editing;
             if (revert) revert.hidden = editing;
             for (const el of [save, cancel]) el.hidden = !editing;
+            for (const el of drops) el.hidden = !editing;
             heading.hidden = editing;
             field.hidden = !editing;
             body.classList.toggle('post__body--editing', editing);
         };
+
+        // What the letter said when Edit was pressed, so the guard on the
+        // crosses can tell a letter somebody has changed from one they have
+        // only opened. Null while not editing, which is also the answer to
+        // "has anything been typed".
+        let asOpened = null;
+        const dirty = () =>
+            asOpened !== null &&
+            (body.innerHTML !== asOpened || field.value !== (post.subject ?? ''));
 
         const open = () => {
             field.value = post.subject ?? '';
@@ -761,6 +787,7 @@ window.Reader = (function () {
             // the archive does not actually contain.
             undecoratePhotos(body);
             clearMarks(body);
+            asOpened = body.innerHTML;
 
             body.setAttribute('contenteditable', 'true');
             body.setAttribute('role', 'textbox');
@@ -787,6 +814,7 @@ window.Reader = (function () {
             body.removeAttribute('role');
             body.removeAttribute('aria-multiline');
             body.removeAttribute('aria-label');
+            asOpened = null;
             showEditing(false);
             status.textContent = '';
         };
@@ -856,6 +884,30 @@ window.Reader = (function () {
             if (!admin.confirmRestore(post)) return;
             run('Restoring…', () => admin.restore(post.id));
         });
+
+        // Taking a picture out is committed on its own and reloads the page
+        // the moment the server says yes -- which takes anything typed into
+        // the letter down with it. That was harmless while the crosses were
+        // only reachable outside Edit; now that they are only reachable inside
+        // it, this is the one action in the bar that can lose an owner's work
+        // without saying so. `Add pictures` avoids the problem by staying
+        // hidden while editing, and the crosses cannot, since being visible
+        // while editing is the whole of the change.
+        //
+        // Bound in the capture phase because that is what runs before the
+        // button's own handler, so stopping the event here stops the removal
+        // rather than merely apologising for it afterwards. Only asked when
+        // there is something to lose: an owner who pressed Edit purely to get
+        // at a cross is the common case, and a question there is noise.
+        album?.addEventListener(
+            'click',
+            (event) => {
+                if (!event.target.closest?.('.album__remove')) return;
+                if (!dirty() || admin.confirmPhotoDrop()) return;
+                event.stopPropagation();
+            },
+            true
+        );
 
         // Escape backs out of an edit begun by accident. Enter commits from
         // the subject line, where a newline has no meaning anyway; inside the

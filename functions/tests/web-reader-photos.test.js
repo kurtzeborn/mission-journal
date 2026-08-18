@@ -255,7 +255,11 @@ describe('pictures an owner adds', () => {
     const ADDED = { id: 'a2', addedAt: '2026-08-05T10:00:00.000Z' };
 
     /** The archive as an owner sees it, with the calls recorded. */
-    function owner({ photos = [{ id: 'a1' }, ADDED], removePhoto = async () => undefined } = {}) {
+    function owner({
+        photos = [{ id: 'a1' }, ADDED],
+        removePhoto = async () => undefined,
+        confirmPhotoDrop = true
+    } = {}) {
         const calls = [];
         const view = page();
 
@@ -267,6 +271,10 @@ describe('pictures an owner adds', () => {
                 restore: async () => undefined,
                 confirmDelete: () => true,
                 confirmRestore: () => true,
+                confirmPhotoDrop: () => {
+                    calls.push({ verb: 'confirm' });
+                    return confirmPhotoDrop;
+                },
                 addPhotos: (id, files) => {
                     // Copied out of the page's realm, so an assertion out here
                     // compares values rather than prototypes.
@@ -312,8 +320,22 @@ describe('pictures an owner adds', () => {
         assert.equal(tiles[1].querySelector('.album__remove').getAttribute('aria-label'), 'Remove this picture');
     });
 
+    test('the cross keeps out of the way until the letter is being edited', () => {
+        const { view } = owner();
+        const drop = view.$('.album__remove');
+
+        assert.equal(drop.hidden, true);
+
+        view.click(view.button('Edit'));
+        assert.equal(drop.hidden, false);
+
+        view.click(view.button('Cancel'));
+        assert.equal(drop.hidden, true);
+    });
+
     test('removing one names the picture and disables the button while it runs', async () => {
         const { view, calls } = owner();
+        view.click(view.button('Edit'));
 
         const drop = view.$('.album__remove');
         view.click(drop);
@@ -327,6 +349,7 @@ describe('pictures an owner adds', () => {
 
     test('a refusal is said out loud and the button comes back', async () => {
         const { view } = owner({ removePhoto: async () => 'Refused: that picture came with the letter' });
+        view.click(view.button('Edit'));
 
         const drop = view.$('.album__remove');
         view.click(drop);
@@ -334,6 +357,36 @@ describe('pictures an owner adds', () => {
 
         assert.equal(view.$('.admin__status').textContent, 'Refused: that picture came with the letter');
         assert.equal(drop.disabled, false);
+    });
+
+    // The removal reloads the page, and an edit in progress does not survive
+    // that. Nothing else reachable from inside Edit can lose an owner's words.
+    // The test above covers the quiet case: opening an edit and going straight
+    // for a cross asks nothing, because there is nothing yet to lose.
+    test('an unsaved edit is worth asking about first', () => {
+        const { view, calls } = owner();
+        view.click(view.button('Edit'));
+        view.$('.post__body').innerHTML = '<p>Something else entirely.</p>';
+
+        view.click(view.$('.album__remove'));
+
+        assert.deepEqual(calls, [
+            { verb: 'confirm' },
+            { verb: 'remove', id: '2026-03-25-9CRE', photoId: 'a2' }
+        ]);
+    });
+
+    test('saying no leaves the picture and the edit alone', () => {
+        const { view, calls } = owner({ confirmPhotoDrop: false });
+        view.click(view.button('Edit'));
+        view.$('.admin__subject').value = 'A better subject';
+
+        const drop = view.$('.album__remove');
+        view.click(drop);
+
+        assert.deepEqual(calls, [{ verb: 'confirm' }]);
+        assert.equal(drop.disabled, false);
+        assert.equal(view.$('.admin__subject').value, 'A better subject');
     });
 
     test('choosing files hands them over and says how many', async () => {

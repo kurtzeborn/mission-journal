@@ -357,6 +357,19 @@
                                   `This discards every change made to it${
                                       post.editedBy ? `, including ${post.editedBy}'s` : ''
                                   }, and any pictures added to it here. It cannot be undone.`
+                          ),
+                      // Asked only when the letter has been typed into, by the
+                      // reader itself -- removing a picture is its own commit
+                      // and reloads the page, and the edit in progress does
+                      // not survive that. Says what is about to be lost rather
+                      // than what is about to happen, because the picture
+                      // going is the part the owner already asked for.
+                      confirmPhotoDrop: () =>
+                          window.confirm(
+                              'Remove this picture now?\n\n' +
+                                  'The letter reloads straight afterwards, so the changes you ' +
+                                  'have not saved yet will be lost. Save first if you want to ' +
+                                  'keep them.'
                           )
                   }
                 : null;
