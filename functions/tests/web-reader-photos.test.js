@@ -255,35 +255,26 @@ describe('pictures an owner adds', () => {
     const ADDED = { id: 'a2', addedAt: '2026-08-05T10:00:00.000Z' };
 
     /** The archive as an owner sees it, with the calls recorded. */
-    function owner({
-        photos = [{ id: 'a1' }, ADDED],
-        removePhoto = async () => undefined,
-        confirmPhotoDrop = true
-    } = {}) {
+    function owner({ photos = [{ id: 'a1' }, ADDED], patch = async () => undefined } = {}) {
         const calls = [];
         const view = page();
 
         view.mount({
             posts: [letter('2026-03-25-9CRE', para(400), { photos })],
             admin: {
-                patch: async () => undefined,
+                patch: (id, changes, dropPhotos) => {
+                    // Copied out of the page's realm, so an assertion out here
+                    // compares values rather than prototypes.
+                    calls.push({ verb: 'patch', id, dropPhotos: [...dropPhotos] });
+                    return patch(id, changes, dropPhotos);
+                },
                 remove: async () => undefined,
                 restore: async () => undefined,
                 confirmDelete: () => true,
                 confirmRestore: () => true,
-                confirmPhotoDrop: () => {
-                    calls.push({ verb: 'confirm' });
-                    return confirmPhotoDrop;
-                },
                 addPhotos: (id, files) => {
-                    // Copied out of the page's realm, so an assertion out here
-                    // compares values rather than prototypes.
                     calls.push({ verb: 'add', id, names: [...files].map((file) => file.name) });
                     return undefined;
-                },
-                removePhoto: (id, photoId) => {
-                    calls.push({ verb: 'remove', id, photoId });
-                    return removePhoto(id, photoId);
                 }
             }
         });
@@ -333,60 +324,77 @@ describe('pictures an owner adds', () => {
         assert.equal(drop.hidden, true);
     });
 
-    test('removing one names the picture and disables the button while it runs', async () => {
+    test('crossing one off takes the tile away without asking the server', () => {
         const { view, calls } = owner();
         view.click(view.button('Edit'));
-
-        const drop = view.$('.album__remove');
-        view.click(drop);
-
-        assert.deepEqual(calls, [{ verb: 'remove', id: '2026-03-25-9CRE', photoId: 'a2' }]);
-        assert.equal(drop.disabled, true);
-        await settled();
-        // A success reloads the page, so the button staying disabled is right.
-        assert.equal(drop.disabled, true);
-    });
-
-    test('a refusal is said out loud and the button comes back', async () => {
-        const { view } = owner({ removePhoto: async () => 'Refused: that picture came with the letter' });
-        view.click(view.button('Edit'));
-
-        const drop = view.$('.album__remove');
-        view.click(drop);
-        await settled();
-
-        assert.equal(view.$('.admin__status').textContent, 'Refused: that picture came with the letter');
-        assert.equal(drop.disabled, false);
-    });
-
-    // The removal reloads the page, and an edit in progress does not survive
-    // that. Nothing else reachable from inside Edit can lose an owner's words.
-    // The test above covers the quiet case: opening an edit and going straight
-    // for a cross asks nothing, because there is nothing yet to lose.
-    test('an unsaved edit is worth asking about first', () => {
-        const { view, calls } = owner();
-        view.click(view.button('Edit'));
-        view.$('.post__body').innerHTML = '<p>Something else entirely.</p>';
 
         view.click(view.$('.album__remove'));
 
+        assert.equal(view.$$('.album li')[1].hidden, true);
+        assert.deepEqual(calls, []);
+    });
+
+    test('Cancel puts the picture back', () => {
+        const { view, calls } = owner();
+        view.click(view.button('Edit'));
+        view.click(view.$('.album__remove'));
+
+        view.click(view.button('Cancel'));
+
+        assert.equal(view.$$('.album li')[1].hidden, false);
+        assert.deepEqual(calls, []);
+    });
+
+    test('Save sends the letter and the pictures crossed off it together', () => {
+        const { view, calls } = owner();
+        view.click(view.button('Edit'));
+        view.click(view.$('.album__remove'));
+
+        view.click(view.button('Save'));
+
         assert.deepEqual(calls, [
-            { verb: 'confirm' },
-            { verb: 'remove', id: '2026-03-25-9CRE', photoId: 'a2' }
+            { verb: 'patch', id: '2026-03-25-9CRE', dropPhotos: ['a2'] }
         ]);
     });
 
-    test('saying no leaves the picture and the edit alone', () => {
-        const { view, calls } = owner({ confirmPhotoDrop: false });
+    test('an edit that crossed nothing off says so', () => {
+        const { view, calls } = owner();
         view.click(view.button('Edit'));
-        view.$('.admin__subject').value = 'A better subject';
+
+        view.click(view.button('Save'));
+
+        assert.deepEqual(calls, [{ verb: 'patch', id: '2026-03-25-9CRE', dropPhotos: [] }]);
+    });
+
+    test('a picture crossed off twice is only asked for once', () => {
+        const { view, calls } = owner();
+        view.click(view.button('Edit'));
 
         const drop = view.$('.album__remove');
         view.click(drop);
+        view.click(drop);
+        view.click(view.button('Save'));
 
-        assert.deepEqual(calls, [{ verb: 'confirm' }]);
-        assert.equal(drop.disabled, false);
-        assert.equal(view.$('.admin__subject').value, 'A better subject');
+        assert.deepEqual(calls, [
+            { verb: 'patch', id: '2026-03-25-9CRE', dropPhotos: ['a2'] }
+        ]);
+    });
+
+    test('a refusal leaves the tile hidden and the edit open', async () => {
+        const { view } = owner({
+            patch: async () => 'The letter was saved, but a picture could not be taken off it.'
+        });
+        view.click(view.button('Edit'));
+        view.click(view.$('.album__remove'));
+
+        view.click(view.button('Save'));
+        await settled();
+
+        assert.equal(
+            view.$('.admin__status').textContent,
+            'The letter was saved, but a picture could not be taken off it.'
+        );
+        assert.equal(view.button('Save').hidden, false);
     });
 
     test('choosing files hands them over and says how many', async () => {

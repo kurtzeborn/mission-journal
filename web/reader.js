@@ -430,7 +430,7 @@ window.Reader = (function () {
     //
     // No scroll buttons. The links inside are focusable, so tabbing scrolls
     // the row on its own, and every touch device already knows how to swipe.
-    function renderAlbum(post, photoSrc, admin, status) {
+    function renderAlbum(post, photoSrc, admin) {
         const inline = post.bodyHtml ?? '';
         const loose = (post.photos ?? []).filter((photo) => !inline.includes(photo.id));
         if (!loose.length) return null;
@@ -462,6 +462,12 @@ window.Reader = (function () {
             // it. `addedAt` is the whole of the distinction, and the server
             // makes it again on the way in.
             //
+            // Drawn here and driven from the owner bar, which is where Save
+            // and Cancel are. Pressing one of these does not remove anything;
+            // it marks the tile, and the mark means nothing until the edit it
+            // belongs to is saved. The id travels on the button because that
+            // is the only thing the bar gets handed when one is clicked.
+            //
             // Built visible and hidden a moment later by the owner bar's
             // `showEditing(false)`, which runs before any of this is in the
             // document. Hiding it here as well would be the same fact written
@@ -470,20 +476,10 @@ window.Reader = (function () {
                 const drop = document.createElement('button');
                 drop.type = 'button';
                 drop.className = 'album__remove';
+                drop.dataset.photo = photo.id;
                 drop.textContent = '×';
                 drop.title = 'Remove this picture';
                 drop.setAttribute('aria-label', 'Remove this picture');
-                drop.addEventListener('click', async () => {
-                    drop.disabled = true;
-                    if (status) status.textContent = 'Removing…';
-                    // A success reloads the page, so anything that comes back
-                    // is a failure the owner needs to read -- and the button
-                    // has to come back with it, or the picture is stuck.
-                    const failed = await admin.removePhoto(post.id, photo.id);
-                    if (!failed) return;
-                    drop.disabled = false;
-                    if (status) status.textContent = failed;
-                });
                 item.append(drop);
             }
 
@@ -605,18 +601,7 @@ window.Reader = (function () {
         const body = renderBody(post, photoSrc);
         panel.append(body);
 
-        // One status line for everything an owner does to this letter. It is
-        // created here rather than inside the owner bar because the album is
-        // built first and writes to it too, and two of them -- one above the
-        // pictures and one below -- would be a message in whichever place the
-        // owner happened not to be looking.
-        const status = admin ? document.createElement('span') : null;
-        if (status) {
-            status.className = 'admin__status';
-            status.setAttribute('role', 'status');
-        }
-
-        const album = renderAlbum(post, photoSrc, admin, status);
+        const album = renderAlbum(post, photoSrc, admin);
         if (album) panel.append(album);
 
         if (post.linkedPhotoServices?.length) {
@@ -631,7 +616,7 @@ window.Reader = (function () {
         // needs the heading to already have a parent to insert alongside.
         item.append(subject, panel);
 
-        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc, status, album }));
+        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc, album }));
 
         const view = { id: post.id, item, toggle, panel, body, title, hits };
         toggle.addEventListener('click', () => {
@@ -665,10 +650,17 @@ window.Reader = (function () {
     // contenteditable scaffolds with are removed by the same pass that cleans
     // up after Outlook.
     function renderAdmin(post, admin, view) {
-        const { subject: heading, body, photoSrc, status, album } = view;
+        const { subject: heading, body, photoSrc, album } = view;
 
         const bar = document.createElement('div');
         bar.className = 'admin';
+
+        // One status line for everything an owner does to this letter. Two of
+        // them -- one above the pictures and one below -- would be a message
+        // in whichever place the owner happened not to be looking.
+        const status = document.createElement('span');
+        status.className = 'admin__status';
+        status.setAttribute('role', 'status');
 
         const button = (label, extra) => {
             const el = document.createElement('button');
@@ -699,6 +691,12 @@ window.Reader = (function () {
         // mixing the two would mean Cancel undoing some of what just happened
         // and none of the rest. So it sits beside Edit rather than inside it,
         // and each picture is committed on its own.
+        //
+        // Taking a picture off is inside Edit, which looks like the opposite
+        // ruling and is the same one. A removal is an id in a list until Save
+        // sends it, so nothing has happened for Cancel to fail to undo. An
+        // upload cannot be deferred that way: the bytes have to reach the
+        // server before anyone knows whether they were a picture.
         //
         // The <input> is the thing that opens the file picker -- a browser
         // will not open one from script without a real click on a real file
@@ -758,6 +756,17 @@ window.Reader = (function () {
         // this one should be.
         const drops = album ? [...album.querySelectorAll('.album__remove')] : [];
 
+        // Pictures the owner has crossed off but not yet saved.
+        //
+        // Marking rather than removing is what lets the crosses live inside
+        // Edit at all. A removal that went to the server the moment it was
+        // clicked would reload the page on the way back and take the half
+        // written letter with it, and Cancel would undo the typing but not the
+        // picture -- two things called "editing" that mean different amounts
+        // of committed. Held here instead, they are undone by Cancel like
+        // everything else and committed by Save with everything else.
+        const dropped = new Set();
+
         const showEditing = (editing) => {
             for (const el of [hide, edit, remove, add]) el.hidden = editing;
             if (revert) revert.hidden = editing;
@@ -768,14 +777,23 @@ window.Reader = (function () {
             body.classList.toggle('post__body--editing', editing);
         };
 
-        // What the letter said when Edit was pressed, so the guard on the
-        // crosses can tell a letter somebody has changed from one they have
-        // only opened. Null while not editing, which is also the answer to
-        // "has anything been typed".
-        let asOpened = null;
-        const dirty = () =>
-            asOpened !== null &&
-            (body.innerHTML !== asOpened || field.value !== (post.subject ?? ''));
+        // Delegated, because the buttons themselves are the album's and it has
+        // no business knowing what a pending edit is.
+        album?.addEventListener('click', (event) => {
+            const drop = event.target.closest?.('.album__remove');
+            if (!drop) return;
+            dropped.add(drop.dataset.photo);
+            // The tile goes rather than dimming. The row is what the letter
+            // will look like once this is saved, and a picture greyed out in
+            // place is a question -- is it going, is it broken -- where an
+            // absence is an answer. Cancel puts it back.
+            drop.closest('li').hidden = true;
+        });
+
+        const restoreTiles = () => {
+            dropped.clear();
+            for (const el of drops) el.closest('li').hidden = false;
+        };
 
         const open = () => {
             field.value = post.subject ?? '';
@@ -787,7 +805,6 @@ window.Reader = (function () {
             // the archive does not actually contain.
             undecoratePhotos(body);
             clearMarks(body);
-            asOpened = body.innerHTML;
 
             body.setAttribute('contenteditable', 'true');
             body.setAttribute('role', 'textbox');
@@ -814,7 +831,7 @@ window.Reader = (function () {
             body.removeAttribute('role');
             body.removeAttribute('aria-multiline');
             body.removeAttribute('aria-label');
-            asOpened = null;
+            restoreTiles();
             showEditing(false);
             status.textContent = '';
         };
@@ -851,7 +868,7 @@ window.Reader = (function () {
 
         const commit = () =>
             run('Saving…', () =>
-                admin.patch(post.id, { subject: field.value, bodyHtml: markup() })
+                admin.patch(post.id, { subject: field.value, bodyHtml: markup() }, [...dropped])
             );
 
         hide.addEventListener('click', () =>
@@ -884,30 +901,6 @@ window.Reader = (function () {
             if (!admin.confirmRestore(post)) return;
             run('Restoring…', () => admin.restore(post.id));
         });
-
-        // Taking a picture out is committed on its own and reloads the page
-        // the moment the server says yes -- which takes anything typed into
-        // the letter down with it. That was harmless while the crosses were
-        // only reachable outside Edit; now that they are only reachable inside
-        // it, this is the one action in the bar that can lose an owner's work
-        // without saying so. `Add pictures` avoids the problem by staying
-        // hidden while editing, and the crosses cannot, since being visible
-        // while editing is the whole of the change.
-        //
-        // Bound in the capture phase because that is what runs before the
-        // button's own handler, so stopping the event here stops the removal
-        // rather than merely apologising for it afterwards. Only asked when
-        // there is something to lose: an owner who pressed Edit purely to get
-        // at a cross is the common case, and a question there is noise.
-        album?.addEventListener(
-            'click',
-            (event) => {
-                if (!event.target.closest?.('.album__remove')) return;
-                if (!dirty() || admin.confirmPhotoDrop()) return;
-                event.stopPropagation();
-            },
-            true
-        );
 
         // Escape backs out of an edit begun by accident. Enter commits from
         // the subject line, where a newline has no meaning anyway; inside the

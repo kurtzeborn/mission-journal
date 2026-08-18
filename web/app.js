@@ -110,17 +110,24 @@
     // write so the server can refuse one composed against a stale copy.
     let loadedEtag = null;
 
-    // One call for both owner actions. Returns null on success -- having
-    // reloaded the page -- and a sentence the owner can read on failure.
-    async function send(method, postId, body, suffix = '') {
+    // One call for both owner actions. Returns null on success and a sentence
+    // the owner can read on failure. Reloads the page on the way out unless
+    // the caller has more to do first.
+    async function send(method, postId, body, suffix = '', reload = true) {
         const headers = {};
         if (body) headers['Content-Type'] = 'application/json';
         if (loadedEtag) headers['If-Match'] = loadedEtag;
 
-        return call(method, postId, suffix, {
-            headers,
-            body: body ? JSON.stringify(body) : undefined
-        });
+        return call(
+            method,
+            postId,
+            suffix,
+            {
+                headers,
+                body: body ? JSON.stringify(body) : undefined
+            },
+            reload
+        );
     }
 
     // The wire half of `send`, without the assumption that the body is JSON or
@@ -162,6 +169,49 @@
         // Re-reading is what keeps the page honest: the server decides what a
         // letter now says, including what its sanitizer removed from an edit.
         if (reload) window.location.reload();
+        return null;
+    }
+
+    // Saving an edit: the letter, then the pictures crossed off during it.
+    //
+    // The order is not a preference. The letter is the only one of these that
+    // carries an If-Match, and every photo removal moves the version it would
+    // be holding -- send them the other way round and any edit that also
+    // dropped a picture would come back a 412 against a copy that was current
+    // when the owner pressed Save. They go one at a time rather than together
+    // for the reason on `addPhotos` below: each is a read-modify-write of the
+    // same list, and a handful in flight at once would spend the time
+    // colliding and retrying.
+    //
+    // One reload, at the end. That is the whole point of collecting the
+    // removals rather than sending each as it is clicked -- the old behaviour
+    // reloaded on every one, which cannot be done from inside an edit without
+    // throwing the edit away.
+    async function savePost(postId, changes, dropPhotos) {
+        const failed = await send('PATCH', postId, changes, '', !dropPhotos.length);
+        if (failed || !dropPhotos.length) return failed;
+
+        for (const photoId of dropPhotos) {
+            const stopped = await call(
+                'DELETE',
+                postId,
+                `/photos/${encodeURIComponent(photoId)}`,
+                {},
+                false
+            );
+
+            // Deliberately not the sentence `call` produced. Every one of
+            // those ends in some version of "nothing was changed", which was
+            // true of a removal standing on its own and is a lie here -- the
+            // letter went in a moment ago. Left on screen rather than reloaded
+            // away, so the owner finds out that the two halves of one Save did
+            // not both land.
+            if (stopped) {
+                return 'The letter was saved, but a picture could not be taken off it. Reload the page and try that part again.';
+            }
+        }
+
+        window.location.reload();
         return null;
     }
 
@@ -331,12 +381,11 @@
         const admin =
             payload.role === 'owner'
                 ? {
-                      patch: (postId, changes) => send('PATCH', postId, changes),
+                      patch: (postId, changes, dropPhotos = []) =>
+                          savePost(postId, changes, dropPhotos),
                       remove: (postId) => send('DELETE', postId),
                       restore: (postId) => send('POST', postId, null, '/restore'),
                       addPhotos,
-                      removePhoto: (postId, photoId) =>
-                          call('DELETE', postId, `/photos/${encodeURIComponent(photoId)}`, {}),
                       confirmDelete: (post) =>
                           window.confirm(
                               `Remove "${post.subject || 'Untitled'}" from the site?\n\n` +
@@ -357,19 +406,6 @@
                                   `This discards every change made to it${
                                       post.editedBy ? `, including ${post.editedBy}'s` : ''
                                   }, and any pictures added to it here. It cannot be undone.`
-                          ),
-                      // Asked only when the letter has been typed into, by the
-                      // reader itself -- removing a picture is its own commit
-                      // and reloads the page, and the edit in progress does
-                      // not survive that. Says what is about to be lost rather
-                      // than what is about to happen, because the picture
-                      // going is the part the owner already asked for.
-                      confirmPhotoDrop: () =>
-                          window.confirm(
-                              'Remove this picture now?\n\n' +
-                                  'The letter reloads straight afterwards, so the changes you ' +
-                                  'have not saved yet will be lost. Save first if you want to ' +
-                                  'keep them.'
                           )
                   }
                 : null;
