@@ -23,10 +23,17 @@
     <main class="wrap">
         <h1>Getting started</h1>
 
-        <p>
-            <a href="#family">I'm a parent, family member or friend</a><br>
-            <a href="#missionary">I'm the missionary</a>
-        </p>
+        <!-- The same box the questions page uses, and deliberately so: both
+             pages open by asking the reader to pick which of them they are,
+             and a component that looks the same in both places is one fewer
+             thing to work out on arrival. -->
+        <nav class="contents" aria-labelledby="contents-title">
+            <h2 id="contents-title">On this page</h2>
+            <ul>
+                <li><a href="#family">I'm a parent, family member or friend</a></li>
+                <li><a href="#missionary">I'm the missionary</a></li>
+            </ul>
+        </nav>
 
         <h2 id="family">If you're a parent, family member or friend</h2>
 

@@ -921,12 +921,19 @@ button:focus-visible {
     max-width: 18rem;
 }
 
-/* --- the questions page --- */
+/* --- jump links --- */
 
-/* The list of questions at the top. Every question below it has an id, so a
-   refusal elsewhere in the service can link to the one answer that explains
-   it, and a browser's find-in-page reaches all of them because none of the
-   answers are hidden. */
+/* The box at the top of a page that offers to send you further down it. Shared
+   by the questions page and the getting-started page, which is the reason it
+   lives up here rather than with either of them: both open by asking the
+   reader to say which of several things they are, and the answer to that
+   question should not look like a different control depending on which page
+   asked it.
+
+   Links rather than a fold-out, because every heading below one of these has
+   an id and is linked to from elsewhere in the service -- a refusal on the
+   People page can point at the one answer that explains it -- and because
+   find-in-page only reaches text a browser has already laid out. */
 .contents {
     background: #faf8f4;
     border: 1px solid var(--rule);
@@ -942,6 +949,8 @@ button:focus-visible {
     color: var(--ink-soft);
 }
 
+/* Groups within the box. The getting-started page has too few links to need
+   them; the questions page would be a wall of forty without. */
 .contents h3 {
     font-size: 1rem;
     margin-bottom: 0.3rem;
@@ -955,6 +964,8 @@ button:focus-visible {
 .contents li {
     margin-bottom: 0.35rem;
 }
+
+/* --- the questions page --- */
 
 /* The topic headings between groups of questions. Quieter than the questions
    themselves, which are what somebody is actually scanning for. */
