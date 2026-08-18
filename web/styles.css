@@ -223,11 +223,11 @@ a {
     cursor: not-allowed;
 }
 
-/* The 44px rule above is for controls a reader has to find and hit. These two
-   sit in the masthead beside an email address, and at full size they wrapped
-   onto their own line on a phone and pushed the letters below the fold. They
-   are deliberately smaller; the sign-in buttons, which a first-time visitor
-   must hit, are not. */
+/* The 44px rule above is for controls a reader has to find and hit. These sit
+   in the masthead beside an email address, and at full size they wrapped onto
+   their own line on a phone and pushed the letters below the fold. They are
+   deliberately smaller; the provider buttons on the sign-in page, which are the
+   only thing on that page and have to be hit with certainty, are not. */
 .button--compact {
     display: inline-flex;
     align-items: center;

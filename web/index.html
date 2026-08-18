@@ -40,11 +40,12 @@
                 <ul class="switcher__list" id="switcher-list"></ul>
             </details>
             <a class="button button--quiet button--compact" id="sign-out" href="/.auth/logout" hidden>Sign out</a>
-            <!-- Full size, not compact like its neighbours. They are for people
-                 who already know where they are; this is the one control on the
-                 whole site a first-time visitor has to find and hit, and it has
-                 the room here because when it shows, the others do not. -->
-            <a class="button" id="signed-out" href="/login.html?post_login_redirect_uri=/">Sign in</a>
+            <!-- Compact like its neighbours, and the only green one. The colour
+                 is what makes it findable, not the size -- it sits alone in the
+                 corner when it shows, against nothing but a wordmark, so
+                 building it larger than the control it replaces bought
+                 emphasis the page was not short of. -->
+            <a class="button button--compact" id="signed-out" href="/login.html?post_login_redirect_uri=/">Sign in</a>
         </div>
     </header>
 
