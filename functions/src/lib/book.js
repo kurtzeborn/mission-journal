@@ -29,6 +29,7 @@ import { readFileSync } from 'node:fs';
 
 import sharp from 'sharp';
 import { flowBody, inlinePhotoIds } from './bookflow.js';
+import { fillLine, segments } from './typeset.js';
 
 // pdfkit publishes no ESM entry point, so it comes in through require the way
 // yazl does in archive.js.
@@ -111,6 +112,25 @@ const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 
 const INDENT_STEP = 18;
+
+// A picture the letter mentioned, with the text running round it.
+//
+// The site floats these at 45% of its column. The book's column is 444pt,
+// which is a good deal narrower, and the same share would leave about 34
+// characters beside the picture -- right at the width where a paragraph stops
+// being a paragraph and becomes a ladder of single words down the page. Two
+// fifths leaves 37, which is the least that still reads as prose.
+const FLOAT_SHARE = 0.4;
+const FLOAT_GUTTER = 12;
+
+// Characters of letter left after a picture, counted up to the next picture
+// or the end. Below this there is not enough text to wrap and the float stops
+// paying for itself -- three lines beside a photograph and then a mile of
+// white -- so the picture is centred on its own instead.
+//
+// The site uses 250 against a wider column. The threshold has to rise as the
+// column narrows, because the same number of characters makes more lines.
+const FLOW_MIN = 320;
 
 export const dateLine = (post) => {
     const stamp = String(post.originalDate ?? '').slice(0, 10);
@@ -260,6 +280,12 @@ function openBook({ title, state }) {
         state.page += 1;
         const recto = state.page % 2 === 1;
 
+        // A float belongs to one sheet of paper. Cleared here rather than at
+        // the half-dozen places that add a page, because one of them would
+        // eventually forget and the text on the new page would then flow
+        // around a picture that is not on it.
+        state.float = null;
+
         // Everything on a left-hand page, furniture included, slides across
         // together. Applied before anything is drawn, and never undone,
         // because each page carries its own content stream and starts from an
@@ -332,41 +358,120 @@ function openBook({ title, state }) {
     return doc;
 }
 
-// Runs are written with `continued`, which is how pdfkit is told the next
-// call carries on the same line rather than starting a new one. The last run
-// of a block has to close it, or the block after this one joins the sentence.
-//
-// Nothing here is given an x or a width. Both come from the page's margins,
-// which `setBox` has already put where this block wants them, and that is not
-// a stylistic preference -- it is the only arrangement that survives a page
-// break.
-//
-// Passing an explicit x was the first attempt and it was wrong in a way that
-// took a measurement to see. pdfkit takes the position once, at the start of
-// the block; when the block then overflows onto the next page it carries that
-// same x with it. On a mirrored layout the next page's text box is on the
-// other side of the leaf, so every paragraph that spanned a break printed
-// into the previous page's margin -- the gutter on the wrong edge, on roughly
-// half the pages of every letter longer than one.
-function writeRuns(doc, runs, options = {}) {
+/**
+ * The horizontal room a line has, given what is floating beside it.
+ *
+ * This is the whole of the float model, and it is deliberately the whole of
+ * it: one picture at a time, rectangular, on one side. CSS has to cope with
+ * several floats stacking, shapes that are not rectangles, and boxes that
+ * establish new contexts. A letter home has one photograph in the margin.
+ *
+ * A line clears the picture when it starts below it. It does not have to
+ * clear it to *begin* below it -- a line whose top is above the picture's
+ * bottom is still beside it, even if most of the line hangs below -- which is
+ * why the test is on the line's top edge and not its middle.
+ */
+export function reserve({ float, y, height, indent = 0 }) {
+    const x = LEFT + indent;
+    const width = COLUMN - indent;
+
+    if (!float || y + height <= float.top || y >= float.bottom) return { x, width };
+
+    const taken = float.width + FLOAT_GUTTER;
+    return float.side === 'left' ? { x: x + taken, width: width - taken } : { x, width: width - taken };
+}
+
+/**
+ * Set styled runs down the page, one line at a time.
+ *
+ * This replaces what pdfkit does for you, and it has to, because pdfkit's own
+ * `text` takes a single width for a whole call: it has no notion of a line
+ * being narrower than the one above it, which is all a float is. There is no
+ * package that fills the gap either -- everything in reach either has no
+ * layout at all or needs a browser to get one.
+ *
+ * So: ask where this line may go, fill it, draw it, move down, repeat. Each
+ * piece is drawn at an explicit x with `lineBreak: false`, so pdfkit never
+ * makes a wrapping decision and never carries a stale one across a page
+ * break, which is the failure the first version of this file shipped with.
+ */
+function setLines(doc, runs, options = {}) {
+    const { state } = options;
     const size = options.size ?? BODY.size;
+    const leading = options.leading ?? BODY.leading;
+    const indent = options.indent ?? 0;
+    const color = options.color ?? BLACK;
 
-    runs.forEach((run, index) => {
-        const font = run.bold ? 'bold' : run.italic ? 'italic' : options.font ?? 'regular';
+    const dress = (run) => {
+        const font = run?.bold ? 'bold' : run?.italic ? 'italic' : options.font ?? 'regular';
+        doc.font(font).fontSize(run?.small ? size * 0.82 : size);
+        return doc;
+    };
 
-        doc.font(font)
-            .fontSize(run.small ? size * 0.82 : size)
-            .fillColor(options.color ?? BLACK);
+    const measure = (text, run) => (text ? dress(run).widthOfString(text) : 0);
+    const pieces = segments(runs);
+    const room = () => reserve({ float: state.float, y: doc.y, height: leading, indent });
 
-        doc.text(run.text, {
-            continued: index < runs.length - 1,
-            underline: run.underline,
-            strike: run.strike,
-            link: run.link ?? null,
-            align: options.align ?? 'left',
-            lineGap: (options.leading ?? BODY.leading) - size
-        });
-    });
+    // An orphan: the first line of a paragraph left alone at the foot of a
+    // page while the rest of it turns over. Cheap to prevent here because
+    // nothing has been drawn yet -- start the paragraph on the next page
+    // instead, unless it was only one line long anyway.
+    if (pieces.length && doc.y + leading * 2 > TEXT_BOTTOM) {
+        if (fillLine(pieces, 0, { measure, width: room().width }) < pieces.length) turnPage(doc, state);
+    }
+
+    let at = 0;
+    while (at < pieces.length) {
+        if (doc.y + leading > TEXT_BOTTOM) turnPage(doc, state);
+
+        const band = room();
+        let to = fillLine(pieces, at, { measure, width: band.width });
+
+        // A widow: the last line of a paragraph alone at the top of the next
+        // page. Caught with a single line of lookahead -- if this line is the
+        // last that fits here and exactly one follows, both go over together.
+        if (to < pieces.length && doc.y + leading * 2 > TEXT_BOTTOM) {
+            if (fillLine(pieces, to, { measure, width: band.width }) >= pieces.length) {
+                turnPage(doc, state);
+                continue;
+            }
+        }
+
+        let x = band.x;
+        const y = doc.y;
+
+        for (let n = at; n < to; n += 1) {
+            const piece = pieces[n];
+            const text = n === to - 1 ? piece.tail : piece.text;
+            if (!text) continue;
+
+            dress(piece.run).fillColor(color);
+            doc.text(text, x, y, {
+                lineBreak: false,
+                underline: piece.run?.underline,
+                strike: piece.run?.strike,
+                link: piece.run?.link ?? null
+            });
+
+            x += doc.widthOfString(piece.text);
+        }
+
+        doc.y = y + leading;
+        at = to;
+    }
+
+    doc.fillColor(BLACK);
+}
+
+/**
+ * Start a fresh page mid-text.
+ *
+ * A float never survives the turn. It is a picture on a particular sheet of
+ * paper, and the text on the next sheet has the whole column to itself.
+ */
+function turnPage(doc, state) {
+    doc.addPage();
+    state.float = null;
 }
 
 /**
@@ -558,20 +663,50 @@ function setLetter(doc, { post, slug, images, state }) {
         doc.text(written, LEFT, doc.y + 3, { width: COLUMN });
     }
 
-    doc.moveDown(1.2);
+    doc.y += 20;
     doc.fillColor(BLACK);
 
     const blocks = flowBody(post.bodyHtml ?? '', slug);
+    const shot = (id) => (post.photos ?? []).find((photo) => photo.id === id) ?? { id };
     const placed = new Set();
 
-    for (const block of blocks) {
-        if (block.kind === 'photo') {
-            placed.add(block.photoId);
-            setPhoto(doc, { photoId: block.photoId, post, images, state });
+    // Pictures alternate sides down a letter and the first one hangs left.
+    state.side = 'left';
+
+    for (let n = 0; n < blocks.length; n += 1) {
+        const block = blocks[n];
+
+        if (block.kind !== 'photo') {
+            setBlock(doc, { block, state });
             continue;
         }
-        setBlock(doc, { block, state });
+
+        // Pictures with nothing between them are one thing, not several. Left
+        // as separate floats they would alternate sides down the page with a
+        // line of text wedged between, which is not what somebody who pasted
+        // three photographs in a row meant. The reader gathers them into a
+        // row; so does this.
+        const run = [];
+        while (n < blocks.length && blocks[n].kind === 'photo') {
+            run.push(shot(blocks[n].photoId));
+            placed.add(blocks[n].photoId);
+            n += 1;
+        }
+        n -= 1;
+
+        if (run.length > 1 || textAfter(blocks, n) < FLOW_MIN) {
+            setPlate(doc, { photos: run, images, state });
+            continue;
+        }
+
+        setFloat(doc, { photoId: run[0].id, meta: run[0], images, state });
     }
+
+    // Whatever the last float was, the letter ends below it rather than
+    // beside it -- the album that may follow is a fresh page anyway, but the
+    // page count this letter reports has to include the picture.
+    if (state.float) doc.y = Math.max(doc.y, state.float.bottom);
+    state.float = null;
 
     // Anything attached but never placed in the text. The reader shows these
     // as an album under the letter and the book gives them the facing page,
@@ -651,23 +786,33 @@ function setBlock(doc, { block, state }) {
     const x = LEFT + indent;
     const width = COLUMN - indent;
 
+    // Only running prose wraps round a picture. A list beside a float puts
+    // the marker on one edge of the page and the item it belongs to on the
+    // other; a heading beside one reads as a caption it is not. So anything
+    // with structure of its own clears the picture and starts underneath, the
+    // same call `clear` makes on the site.
+    if (block.kind !== 'para' && state.float) {
+        doc.y = Math.max(doc.y, state.float.bottom);
+        state.float = null;
+    }
+
     if (block.kind === 'rule') {
-        if (doc.y + 26 > TEXT_BOTTOM) doc.addPage();
-        doc.moveDown(0.5);
+        if (doc.y + 26 > TEXT_BOTTOM) turnPage(doc, state);
+        doc.y += 8;
         doc.strokeColor('#cccccc')
             .lineWidth(0.5)
             .moveTo(x + width * 0.35, doc.y)
             .lineTo(x + width * 0.65, doc.y)
             .stroke();
-        doc.moveDown(0.9);
+        doc.y += 14;
         return;
     }
 
     if (block.kind === 'head') {
         const size = HEAD_SIZES[block.level] ?? 13;
-        doc.moveDown(0.6);
-        writeRuns(doc, block.runs, { font: 'semibold', size, leading: size + 4 });
-        doc.moveDown(0.25);
+        doc.y += 10;
+        setLines(doc, block.runs, { state, font: 'semibold', size, leading: size + 4, indent });
+        doc.y += 4;
         return;
     }
 
@@ -679,54 +824,134 @@ function setBlock(doc, { block, state }) {
         doc.font('regular').fontSize(BODY.size).fillColor(BLACK);
         doc.text(block.marker ?? '\u2022', x, top, { width: INDENT_STEP - 4, lineBreak: false });
 
-        setBox(doc, state, indent + INDENT_STEP);
         doc.y = top;
-        writeRuns(doc, block.runs);
-        doc.moveDown(0.2);
+        setLines(doc, block.runs, { state, indent: indent + INDENT_STEP });
+        doc.y += 3;
         return;
     }
 
     if (block.kind === 'quote') {
-        writeRuns(doc, block.runs, { font: 'italic', color: '#444444' });
-        doc.moveDown(0.4);
+        setLines(doc, block.runs, { state, font: 'italic', color: '#444444', indent });
+        doc.y += 7;
         return;
     }
 
     // `pre` is set in the text face, because there is no other one. The
     // spacing carried the meaning; the typeface never did.
     const pre = block.kind === 'pre';
-    writeRuns(doc, block.runs, { size: pre ? BODY.size - 1 : BODY.size });
-    doc.moveDown(pre ? 0.4 : 0.45);
+    setLines(doc, block.runs, { state, size: pre ? BODY.size - 1 : BODY.size, indent });
+    doc.y += pre ? 7 : 8;
 }
 
-function setPhoto(doc, { photoId, post, images, state }) {
-    const meta = (post.photos ?? []).find((photo) => photo.id === photoId) ?? {};
-    const rect = photoBox({ width: meta.width ?? 4, height: meta.height ?? 3 });
+/**
+ * Draw a picture into a rectangle, or reserve the rectangle if it is missing.
+ *
+ * The measuring pass has no bytes for anything, and once in a while a
+ * rendition has genuinely gone. Both want the same rectangle held: the first
+ * so the contents page is right, the second so a lost picture leaves an
+ * obvious gap rather than silently reflowing the book around it.
+ */
+function drawImage(doc, { bytes, x, y, width, height }) {
+    if (bytes) doc.image(bytes, x, y, { width, height });
+    else doc.save().rect(x, y, width, height).fillOpacity(0.06).fill(BLACK).restore();
+}
 
-    // Back to the full column before the break is considered, so the page it
-    // may add lands with an unindented box rather than inheriting whatever
-    // the last list item was using.
+/**
+ * A picture the letter mentioned, floated into the margin.
+ *
+ * The side alternates down the letter, which is what the reader does and for
+ * the same reason: three pictures stacked against one edge turn the column
+ * into a staircase. It restarts at every chapter opening, because a letter
+ * whose first photograph hangs on the right looks like a mistake.
+ *
+ * Nothing is drawn if there is not room for the picture *and* a couple of
+ * lines beside it -- past that point the page turns first, because a float
+ * two lines from the foot of a page is a float nothing flows around.
+ */
+function setFloat(doc, { photoId, meta, images, state }) {
+    const width = Math.round(COLUMN * FLOAT_SHARE);
+    const height = width / aspectOf(meta);
+
+    if (doc.y + BODY.leading * 2 > TEXT_BOTTOM) turnPage(doc, state);
+
+    // A float already open means two pictures close together with a scrap of
+    // text between them. The second one waits until the first has been
+    // cleared, which is exactly the clean break the reader gets from
+    // `clear: left` -- otherwise they overlap in the same margin.
+    if (state.float) doc.y = Math.max(doc.y, state.float.bottom);
+    if (doc.y + height > TEXT_BOTTOM) turnPage(doc, state);
+
+    const side = state.side;
+    state.side = side === 'left' ? 'right' : 'left';
+
+    const top = doc.y + 2;
+    const x = side === 'left' ? LEFT : LEFT + COLUMN - width;
+
+    drawImage(doc, { bytes: images.get(photoId), x, y: top, width, height });
+
+    state.float = { side, top, bottom: top + height + 8, width };
+    doc.fillColor(BLACK);
+}
+
+/**
+ * A picture set across the column on its own, with nothing beside it.
+ *
+ * What a photograph gets when there is too little letter left to wrap around
+ * it, and what a run of photographs with no text between them gets whatever
+ * the length -- the same two rules the reader uses, for the same reasons.
+ */
+function setPlate(doc, { photos, images, state }) {
+    if (state.float) doc.y = Math.max(doc.y, state.float.bottom);
+    state.float = null;
     setBox(doc, state, 0);
 
-    // A picture is never split, so it moves to the next page whole rather
-    // than being clipped at the bottom of this one.
-    if (doc.y + rect.height + 14 > TEXT_BOTTOM) doc.addPage();
-    const x = LEFT + (COLUMN - rect.width) / 2;
-    const y = doc.y + 6;
+    const rows =
+        photos.length > 1
+            ? albumRows(photos, {
+                  target: albumTarget(photos, {
+                      height: (PAGE.height - MARGIN.top - MARGIN.bottom) * PHOTO_MAX_HEIGHT
+                  })
+              })
+            : [{ photos, height: photoBox({ width: photos[0].width, height: photos[0].height }).height }];
 
-    const bytes = images.get(photoId);
-    if (bytes) {
-        doc.image(bytes, x, y, { width: rect.width, height: rect.height });
-    } else {
-        // The measuring pass, and also a photograph whose bytes have gone
-        // missing. Both want the same rectangle reserved: the first so the
-        // contents page is right, the second so a lost picture leaves an
-        // obvious gap rather than silently reflowing the book around it.
-        doc.save().rect(x, y, rect.width, rect.height).fillOpacity(0.06).fill(BLACK).restore();
+    for (const row of rows) {
+        const widths = row.photos.map((photo) => row.height * aspectOf(photo));
+        const total = widths.reduce((sum, width) => sum + width, 0) + ALBUM_GAP * (row.photos.length - 1);
+
+        // Never split, so it turns the page whole rather than being clipped.
+        if (doc.y + row.height + 14 > TEXT_BOTTOM) turnPage(doc, state);
+
+        let x = LEFT + (COLUMN - total) / 2;
+        const y = doc.y + 6;
+
+        row.photos.forEach((photo, index) => {
+            drawImage(doc, { bytes: images.get(photo.id), x, y, width: widths[index], height: row.height });
+            x += widths[index] + ALBUM_GAP;
+        });
+
+        doc.y = y + row.height + 14;
     }
 
-    doc.y = y + rect.height + 14;
     doc.fillColor(BLACK);
+}
+
+/**
+ * How much letter is left after a picture, in characters.
+ *
+ * Counted up to the next picture or the end of the letter, never past one,
+ * because text on the far side of another photograph is not text this one can
+ * wrap around. The reader walks the DOM to work this out; here the blocks are
+ * already flat, so it is a loop.
+ */
+function textAfter(blocks, from) {
+    let count = 0;
+
+    for (let n = from + 1; n < blocks.length; n += 1) {
+        if (blocks[n].kind === 'photo') break;
+        for (const run of blocks[n].runs ?? []) count += run.text.length;
+    }
+
+    return count;
 }
 
 function setTitlePage(doc, { title, profile, state }) {
@@ -875,9 +1100,14 @@ const NO_IMAGES = new Map();
  * could resolve -- across four hundred photographs, on an instance with two
  * gigabytes to its name.
  *
- * Reached the same way the drawing code reaches it, from `flowBody` and the
- * same packing, so the two cannot disagree about which pictures ended up in
- * the album.
+ * An upper bound rather than the exact rectangle, and deliberately so. An
+ * inline picture prints at two fifths of the column when the text wraps round
+ * it and at up to the full column when it does not, and which of those
+ * happens depends on how much letter follows -- so the larger is taken.
+ * Album pictures are capped at the column for the same kind of reason: how
+ * many leaves the album gets is not settled until the letter above it has
+ * been set. Erring high costs a few pixels; erring low would print a
+ * photograph soft, which no amount of memory saved is worth.
  */
 function printWidths(post, slug) {
     const inline = new Set(inlinePhotoIds(flowBody(post.bodyHtml ?? '', slug)));
@@ -910,6 +1140,8 @@ const freshState = (madeAt) => ({
     opening: false,
     blank: false,
     indent: 0,
+    float: null,
+    side: 'left',
     madeAt
 });
 

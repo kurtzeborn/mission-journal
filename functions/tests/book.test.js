@@ -15,7 +15,8 @@ import {
     inReadingOrder,
     mirror,
     photoBox,
-    printPhoto
+    printPhoto,
+    reserve
 } from '../src/lib/book.js';
 import { memoryStore } from './memory-store.js';
 
@@ -253,6 +254,51 @@ describe('laying photographs out in an album', () => {
     });
 });
 
+describe('the room a line has beside a picture', () => {
+    const float = { side: 'left', top: 100, bottom: 200, width: 180 };
+    const at = (y, over = {}) => reserve({ float, y, height: 16, ...over });
+
+    it('gives a line the whole column when nothing is floating', () => {
+        assert.deepEqual(reserve({ float: null, y: 300, height: 16 }), { x: MARGIN.inside, width: COLUMN });
+    });
+
+    it('pushes a line clear of a picture hanging on the left', () => {
+        const band = at(120);
+
+        assert.ok(band.x > MARGIN.inside, 'the line should start right of the picture');
+        assert.equal(band.x + band.width, MARGIN.inside + COLUMN, 'and still end at the column edge');
+    });
+
+    it('shortens a line beside a picture hanging on the right without moving it', () => {
+        const band = reserve({ float: { ...float, side: 'right' }, y: 120, height: 16 });
+
+        assert.equal(band.x, MARGIN.inside);
+        assert.ok(band.width < COLUMN);
+    });
+
+    it('gives back the column once the line has cleared the picture', () => {
+        assert.equal(at(200).width, COLUMN);
+    });
+
+    it('keeps the column for a line that finishes above the picture', () => {
+        assert.equal(at(80).width, COLUMN);
+    });
+
+    it('counts a line that only just overlaps as being beside it', () => {
+        // Ninety plus a line's leading reaches into the picture, so the line
+        // is beside it even though most of the line is not. Anything laxer
+        // and the first line of a wrap prints straight through the photograph.
+        assert.ok(at(90).width < COLUMN);
+    });
+
+    it('takes the indent of a list off the column as well', () => {
+        assert.deepEqual(reserve({ float: null, y: 300, height: 16, indent: 18 }), {
+            x: MARGIN.inside + 18,
+            width: COLUMN - 18
+        });
+    });
+});
+
 describe('setting a whole book', () => {
     const posts = [
         post('c', '2026-03-08', 'Transfers again'),
@@ -326,6 +372,31 @@ describe('setting a whole book', () => {
 
         const seen = new Set(result.opens.map((opened) => opened.page));
         assert.equal(seen.size, result.opens.length);
+    });
+
+    it('runs the letter round a picture rather than under it', async () => {
+        // The same letter twice, differing only in where its photograph sits.
+        // With plenty of text after it the picture hangs in the margin and
+        // the words fill the space beside it; with nothing after it there is
+        // nothing to wrap, so it is set across the column instead and costs
+        // the height of the whole picture. Wrapping has to be the shorter of
+        // the two or it is not doing anything.
+        const photo = '<img src="/api/photo/isaac.backman/p1/large.webp">';
+        const words = `<p>${'We walked out early and the streets were still wet. '.repeat(20)}</p>`;
+        const letter = (bodyHtml) => [
+            { ...post('a', '2026-01-04', 'Week one'), bodyHtml, photos: [{ id: 'p1', width: 2400, height: 1600 }] }
+        ];
+
+        const set = async (bodyHtml) => {
+            const { stream, done } = build({ posts: letter(bodyHtml) });
+            const [, result] = await Promise.all([readPdf(stream), done]);
+            return result.pages;
+        };
+
+        const wrapped = await set(photo + words);
+        const stacked = await set(words + photo);
+
+        assert.ok(wrapped < stacked, `wrapped ${wrapped}, stacked ${stacked}`);
     });
 
     it('names the book on the file itself', async () => {
