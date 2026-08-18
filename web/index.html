@@ -20,11 +20,16 @@
             <a class="wordmark" href="/"><img class="wordmark__mark" src="/logo.png" alt="" width="192" height="192">Pday Letters</a>
             <span class="beta">beta</span>
             <span class="masthead__spacer"></span>
-            <!-- Everything from here on is drawn by home.js once /.auth/me has
-                 answered, and ships hidden. The signed-out page is the one that
-                 works with no JavaScript, because it is the one a stranger
-                 lands on; a signed-in visitor has already proved the browser
-                 can run scripts and talk to the service. -->
+            <!-- Two states, in the same corner. The signed-out one -- the way
+                 in -- ships visible and works with no JavaScript, because it is
+                 the one a stranger lands on; everything else is drawn by
+                 home.js once /.auth/me has answered, and a signed-in visitor
+                 has already proved the browser can run scripts and talk to the
+                 service.
+
+                 The way in and the way out share the corner deliberately. It is
+                 where every other page keeps them, and it is the first place
+                 somebody looks once they have been to an archive even once. -->
             <span class="account" id="account" hidden>
                 <i class="account__icon" id="account-icon" aria-hidden="true"></i>
                 <span class="visually-hidden" id="account-provider"></span>
@@ -35,6 +40,11 @@
                 <ul class="switcher__list" id="switcher-list"></ul>
             </details>
             <a class="button button--quiet button--compact" id="sign-out" href="/.auth/logout" hidden>Sign out</a>
+            <!-- Full size, not compact like its neighbours. They are for people
+                 who already know where they are; this is the one control on the
+                 whole site a first-time visitor has to find and hit, and it has
+                 the room here because when it shows, the others do not. -->
+            <a class="button" id="signed-out" href="/login.html?post_login_redirect_uri=/">Sign in</a>
         </div>
     </header>
 
@@ -67,17 +77,6 @@
             Archives are free to set up and use. There are no subscription fees or
             hidden costs. This was created as a labor of love by a father of a
             missionary.
-        </p>
-
-        <!-- Two states. The signed-out one ships in the markup so the page is
-             useful with no JavaScript; home.js hides it once /.auth/me answers
-             and puts the account in the masthead instead. Telling someone who
-             is already signed in to sign in is a small lie, and this is the
-             page a relative lands on first. -->
-        <p id="signed-out"><a class="button" href="/login.html?post_login_redirect_uri=/">Sign in</a></p>
-
-        <p class="note">
-            Letters are only ever shown to people the family has added by name.
         </p>
 
         <p class="note">
