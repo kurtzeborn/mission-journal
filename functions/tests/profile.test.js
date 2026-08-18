@@ -9,7 +9,9 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { readProfile, saveProfile } from '../src/lib/profile.js';
+import { read } from '../src/functions/profile.js';
 import { sitesBySlug, setSiteName } from '../src/lib/sites.js';
+import { ROLE } from '../src/lib/acl.js';
 import { memoryStore } from './memory-store.js';
 
 const SLUG = 'elder.example';
@@ -200,5 +202,76 @@ describe('two owners at once', () => {
 
         assert.equal(result.error, 'somebody else changed this first');
         assert.equal(store.json('config', `${SLUG}/profile.json`).displayName, 'Theirs');
+    });
+});
+
+// The form the owner is actually handed. What is checked here is that it
+// arrives knowing the archive's name -- because for every site claimed before
+// profiles existed, the name lives in a place `readProfile` never looks.
+describe('the settings form arrives filled in', () => {
+    const OWNER = 'mum@example.com';
+    const READER = 'gran@example.com';
+
+    const header = (email) =>
+        Buffer.from(JSON.stringify({ userDetails: email, identityProvider: 'aad' })).toString('base64');
+
+    const request = (as) => ({
+        headers: { get: (name) => (name === 'x-ms-client-principal' ? header(as) : null) },
+        params: { slug: SLUG },
+        method: 'GET',
+        url: `https://pdayletters.com/api/profile/${SLUG}`
+    });
+
+    const get = (store, as) =>
+        read({ request: request(as), context: { ...silent, log() {} }, store, tables: store });
+
+    async function seeded() {
+        const store = memoryStore();
+        store.acl(SLUG, [
+            { email: OWNER, role: ROLE.owner },
+            { email: READER, role: ROLE.reader }
+        ]);
+        return store;
+    }
+
+    test('a site with no profile.json still knows what it is called', async () => {
+        const store = await seeded();
+        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+
+        const response = await get(store, OWNER);
+
+        assert.equal(response.status, 200);
+        assert.equal(response.jsonBody.displayName, 'Elder Example');
+    });
+
+    test('the file wins when there is one, because it is the record', async () => {
+        const store = await seeded();
+        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Stale Index' });
+        await store.writeBlob(
+            'config',
+            `${SLUG}/profile.json`,
+            JSON.stringify({ slug: SLUG, displayName: 'Elder Renamed' })
+        );
+
+        const response = await get(store, OWNER);
+
+        assert.equal(response.jsonBody.displayName, 'Elder Renamed');
+    });
+
+    test('a site with neither is blank, and the placeholder does its job', async () => {
+        const store = await seeded();
+
+        const response = await get(store, OWNER);
+
+        assert.equal(response.jsonBody.displayName, '');
+    });
+
+    test('the fallback is not a way past the owner check', async () => {
+        const store = await seeded();
+        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+
+        const response = await get(store, READER);
+
+        assert.equal(response.status, 403);
     });
 });

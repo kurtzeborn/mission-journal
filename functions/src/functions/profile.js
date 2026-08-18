@@ -3,6 +3,7 @@ import { createBlobStore } from '../lib/store.js';
 import { createTableStore } from '../lib/tables.js';
 import { hardened, siteGate } from '../lib/api.js';
 import { readProfile, saveProfile } from '../lib/profile.js';
+import { sitesBySlug } from '../lib/sites.js';
 
 // Reading and changing what a site is called.
 //
@@ -29,11 +30,31 @@ const STATUS = {
     'somebody else changed this first': 409
 };
 
-export async function read({ request, context, store }) {
+export async function read({ request, context, store, tables }) {
     const gated = await siteGate({ store, request, ownersOnly: true, log: context });
     if (gated.denied) return gated.denied;
 
     const { profile } = await readProfile({ store, slug: gated.slug });
+
+    // An archive claimed before `profile.json` existed has no file at all --
+    // the claim flow writes the `sites` row and stops -- so reading the blob
+    // alone hands the owner an empty box with a placeholder in it. That is not
+    // a blank field, it is a wrong one: the archive plainly has a name, it is
+    // in the masthead they clicked through from, and a form that has forgotten
+    // it invites somebody to retype it slightly differently.
+    //
+    // The row is not a guess at the name. It is the name every reader path
+    // already displays, so falling back to it shows the owner what they will
+    // see if they change nothing.
+    //
+    // Nothing is repaired here. A GET that writes is a GET that can fail for
+    // reasons the reader cannot act on, and the file appears on its own the
+    // first time this form is saved.
+    let displayName = profile.displayName ?? '';
+    if (!displayName) {
+        const rows = await sitesBySlug({ tables, slugs: [gated.slug] });
+        displayName = rows.get(gated.slug)?.missionaryDisplayName ?? '';
+    }
 
     // `alternateSenders` is not returned. Nothing reads it and nothing here
     // can change it, so shipping it to a page that cannot show it would only
@@ -45,7 +66,7 @@ export async function read({ request, context, store }) {
     // and is not one.
     return json(200, {
         slug: gated.slug,
-        displayName: profile.displayName ?? '',
+        displayName,
         returnDate: profile.returnDate ?? ''
     });
 }
@@ -85,7 +106,8 @@ app.http('profile-read', {
     authLevel: 'anonymous',
     methods: ['GET'],
     route: 'profile/{slug}',
-    handler: (request, context) => read({ request, context, store: blobStore() })
+    handler: (request, context) =>
+        read({ request, context, store: blobStore(), tables: tableStore() })
 });
 
 app.http('profile-write', {
