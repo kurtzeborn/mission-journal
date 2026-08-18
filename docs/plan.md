@@ -1012,46 +1012,34 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 Assemble a physical hardcover photo book from a missionary's journal — all posts, in chronological order, with the photos — and route the print order to a photo-book print-on-demand provider.
 
-**Provider evaluation** (verified July 2026):
+**Provider: Peecho.** The full comparison, and the reasons the other candidates were rejected, is in [printing.md](printing.md). The short version is that this site takes no payments and stores no delivery addresses, which rules out every wholesale print API — including Lulu's, which an earlier version of this section recommended. What is left is providers who sell to the buyer themselves and pay us the margin, and of those Peecho is the only one with an API worth building against.
 
-| Provider | Public API? | Photo book product? | Referral / affiliate | Verdict |
-|---|---|---|---|---|
-| **Shutterfly** | No. `developers.shutterfly.com` returns HTTP 410 (Gone). The Commerce API is invitation-only for strategic retail partners; not open to individual developers. | Yes (top-of-market for photo books) | Yes, via Rakuten Advertising — link-based referrals only (~5% commission, 15-day cookie). Requires application/approval. | Only viable path is affiliate-link + manual upload. No automation possible. |
-| **Blurb** | Historically public; increasingly gated over the years. Supports PDF-to-hardcover-photobook flows. | Yes | Yes, via Impact.com (~5% commission). | Solid #2 option if Lulu doesn't fit. |
-| **Lulu** | **Yes, fully public and documented** at [developers.lulu.com](https://developers.lulu.com). No upfront fee, no minimum. RESTful, OpenID Connect, sandbox environment for testing. Hardcover photo books supported (3,000+ product configurations). | Yes — hardcover and softcover photo books in many trim sizes | No affiliate program needed — you buy at wholesale, mark up if you want. | **Recommended default.** |
-| **Amazon KDP** | Print API not public for individual accounts; trade-book focus, not photo books. | No (not a photo-book product) | Amazon Associates for retail links only. | Not a fit. |
-
-**Recommended approach: Lulu Print API only. Shutterfly + Rakuten considered and rejected — see below.**
-
-#### Primary path — Lulu Print API
+#### The flow
 
 1. Any ACL member clicks "Publish this journal as a book" in the reader UI.
-2. A book-assembly Function builds a print-ready PDF from the missionary's posts:
-   - Cover page (title, missionary name, mission dates, headline photo).
-   - Table of contents by date.
-   - One "chapter" per post: subject as heading, formatted body, embedded high-res photos, footer with original date.
-   - Colophon.
-3. Function calls Lulu's Print API with a `pod_package_id` for a hardcover photobook trim (e.g. 8"×10" hardcover, premium color: `0800X1000FCPRECW060UW444GXX`), passing signed URLs (short-lived SAS tokens on Blob Storage) for the interior + cover PDFs.
-4. Owner reviews Lulu's returned quote (price + shipping options), enters shipping details, confirms.
-5. Lulu prints and ships. Webhook updates order status in the missionary's admin view.
+2. A book-assembly Function builds a print-ready interior PDF from the missionary's posts:
+   - Title page and colophon.
+   - Contents by date.
+   - One chapter per letter, opening on a left-hand page, with inline photographs floated into the margin and unplaced ones given the facing leaf.
+   - A cover spread whose spine thickness comes from the finished page count.
+3. The owner reviews a watermarked preview in the reader. The unwatermarked 300 dpi file never reaches the browser.
+4. On approval the interior and cover go to Peecho's Print API, and the owner is sent into Peecho's hosted checkout.
+5. Peecho takes the payment, prints, ships, and handles the customer. We are told the order exists and nothing more.
 
-**Pricing model on our side:**
-- Simplest: pass through Lulu's wholesale pricing at cost — the service adds no fee.
-- Alternative: add a small service fee ($5–$10) to cover PDF assembly / storage.
-- Alternative: embed a Lulu checkout where the owner pays Lulu directly; we never touch the money.
+**Pricing model on our side:** the price shown in Peecho's checkout is ours to set; Peecho deducts production, shipping, tax and transaction fees and holds the remainder as withdrawable profit. Aim it at covering the Azure and Cloudflare bill, not at a margin.
 
-#### Why not Shutterfly + Rakuten?
+#### Before this can ship
 
-The only integration path is a manual affiliate-link handoff via Rakuten Advertising: generate a zip of photos, deep-link into Shutterfly's builder, and ask the owner to re-upload and rebuild the book from scratch. No automated layout, no attributed order, no server-visible status after handoff. Rakuten approval is also not guaranteed for a private-audience service with no public content, and ~5% commission on a subset of clicks with a 15-day cookie does not justify a second provider's code, secrets and support surface.
-
-An owner who wants Shutterfly can use it directly with the offline archive export from Phase 5.
+- A line in the site's own terms backing the intellectual-property and portrait-rights warranty Peecho's seller terms require. A book of somebody else's letters containing photographs of somebody else's children needs this to be explicit.
+- Trim size, bleed, and whether hardcover requires a page count that is a multiple of four — all of which feed the cover generator and the parity rule. A free Peecho account answers them.
+- A gate for the interior PDF that survives Peecho refetching it for a reprint, which rules out a short-lived SAS URL on its own.
 
 #### Implementation notes
 
-- The book-assembly service should be its own Function — or a Durable Function orchestration for the multi-step Lulu flow (quote → confirm → submit → status polling).
+- Assembly cannot happen inside an HTTP request — a book of four hundred photographs will not finish inside the 230-second ceiling. It is a queue trigger writing a status blob, in the same shape as the archive export.
 - Reuse the *same rendered content* the reader UI uses. Regeneration is idempotent; if new posts arrive after publish, the owner can regenerate.
 - Cover design and layout: start with a single "classic" template. Expand to multiple templates only if there's demand.
-- Use Lulu's **sandbox environment** for CI/CD and any test orders. Real production submits only from the deployed environment behind an owner-only confirmation.
+- Use Peecho's test environment for CI and any trial orders. Their terms are explicit that orders not meant to be printed must not be sent to production.
 
 #### Data-model additions
 
@@ -1073,7 +1061,7 @@ An owner who wants Shutterfly can use it directly with the offline archive expor
 | Azure Functions | Consumption, its own app | Ingest, render, pending purge timer, deletion purge timer, digest timer. **Managed functions cannot host any of these** — inside Static Web Apps, triggers and bindings are [limited to HTTP](https://learn.microsoft.com/azure/static-web-apps/apis-functions#constraints), and managed functions get **no managed identity** regardless of SKU. Background work therefore runs in a separate Function App, which reaches storage with its own identity. | ~$0 |
 | Storage account | Standard **GRS**, Cool tier default | Raw archive + rendered artifacts + `users`/`memberships` tables + `ingest`/`render` queues | <$3 for years of data |
 | Cloudflare | Workers Free → **Workers Paid** | DNS, Email Routing (inbound — unlimited, free, uncapped), and the ingest Email Worker | $0 → $5 |
-| Key Vault | Standard | Outbound provider key, Lulu OAuth secret, HMAC token-signing key, and the Worker's storage SAS | ~$0.03 |
+| Key Vault | Standard | Outbound provider key, Peecho API secret, HMAC token-signing key, and the Worker's storage SAS | ~$0.03 |
 | Custom domains + certs | Managed by SWA | `pdayletters.com` + `www` — Standard allows 6 | $0 (certs are managed) |
 
 **Rough total: ~$12/month through Stage 1**, rising to **~$17/month** once outbound mail (Workers Paid, $5) goes live in Phase 8. Standard was pulled forward from Phase 3 to Phase 0 deliberately: the alternative was a storage connection string sitting in application settings for the whole of Stage 1, and paying $9/month to keep a real credential out of configuration is the right trade on a service holding other families' letters. The mail provider is still deferred to the phase that needs it.
@@ -1191,7 +1179,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 **Shipped.** Running in production on `pdayletters.com`.
 
 - Create the Azure resource group.
-- Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `inbox/` blobs at 30 days. Set `allowPermanentDelete` on the blob service delete-retention policy — without it no version can ever be removed on demand, only aged out. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Lulu secrets are Stage 2 and are not created yet.
+- Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest` and `render`. Lifecycle rule deleting `inbox/` blobs at 30 days. Set `allowPermanentDelete` on the blob service delete-retention policy — without it no version can ever be removed on demand, only aged out. The `pending/` and `books/` containers, the `users` and `memberships` tables, and the HMAC and Peecho secrets are Stage 2 and are not created yet.
 - App Insights instance (for rejection logging and general telemetry).
 - Key Vault for later secrets. No provider API key is needed yet — nothing sends until Phase 8. Note that **Key Vault references don't work with SWA managed Functions at all** — the Functions must call Key Vault from their own code, using the managed identity.
 - **Point `pdayletters.com` at Cloudflare nameservers.** It is on Namecheap today. Do this first — MX and DKIM both depend on it, and propagation is the one step that can't be hurried. The other three registered domains are not used; see [Domains](#domains).
@@ -1555,9 +1543,9 @@ Shipped since, and previously listed here as outstanding:
 ### Phase 11 — Journal Publish
 **Not started.**
 
-- Assemble a hardcover photo book from a missionary's posts + photos and place the print order via the Lulu Print API.
+- Assemble a hardcover photo book from a missionary's posts + photos, hand it to Peecho's Print API, and send the buyer into Peecho's own checkout.
 - Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
-- Full design in [Journal Publish](#journal-publish), including why Shutterfly + Rakuten was ruled out.
+- Full design in [Journal Publish](#journal-publish); the provider comparison, and why the wholesale APIs were all ruled out, is in [printing.md](printing.md).
 
 Phase 12 is [Leaving beta](#phase-12--leaving-beta), and it is deliberately the last section of this document rather than the next heading — see the note there.
 
