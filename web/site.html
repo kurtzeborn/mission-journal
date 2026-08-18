@@ -86,7 +86,29 @@
             <a href="/manage">the deleted archives page</a>.
         </p>
 
-        <h1 id="site-title" class="post__subject">&nbsp;</h1>
+        <!--
+            The title and the count-up share a row, and the count-up is the
+            thing that gives way: it is set to shrink and the title is not, so
+            a long name pushes the clock onto its own line rather than
+            wrapping itself into a column of single words.
+
+            Hidden until the archive turns out to have a start date, which
+            most do not. An empty box where a number belongs reads as a
+            failure, and this is the first thing on the page.
+        -->
+        <div class="archive-head">
+            <h1 id="site-title" class="post__subject">&nbsp;</h1>
+            <div class="elapsed" id="elapsed" hidden>
+                <span class="elapsed__label">Time in the mission field:</span>
+                <!--
+                    role="timer" and nothing else. It carries no aria-live, so
+                    a screen reader announces it when the reader asks and not
+                    once a second forever, which is what a live region on a
+                    clock actually does.
+                -->
+                <span class="elapsed__value" id="elapsed-value" role="timer"></span>
+            </div>
+        </div>
 
         <form id="search" class="search" role="search" hidden>
             <label class="search__label" for="q">Search these letters</label>

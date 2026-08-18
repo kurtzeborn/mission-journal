@@ -60,6 +60,7 @@
 
         const payload = await response.json();
         $('displayName').value = payload.displayName ?? '';
+        $('startDate').value = payload.startDate ?? '';
         $('returnDate').value = payload.returnDate ?? '';
 
         state.hidden = true;
@@ -81,6 +82,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     displayName: $('displayName').value,
+                    startDate: $('startDate').value,
                     returnDate: $('returnDate').value
                 })
             });
@@ -108,6 +110,7 @@
         // stored -- otherwise a name silently cut at sixty characters looks
         // saved in full until the next visit.
         $('displayName').value = body.displayName ?? '';
+        $('startDate').value = body.startDate ?? '';
         $('returnDate').value = body.returnDate ?? '';
         said.textContent = 'Saved. Everyone reading the archive sees the new name.';
     }

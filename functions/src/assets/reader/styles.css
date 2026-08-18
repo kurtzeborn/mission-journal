@@ -401,6 +401,52 @@ button:focus-visible {
     margin-bottom: 0.9rem;
 }
 
+/* The title and the count-up clock share a line.
+
+   Baseline alignment rather than centring, because the thing that has to line
+   up is the clock's first line with the title's -- "at the same height" means
+   the two pieces of text sit on one rule, not that a two-line block is
+   centred against a one-line one. The clock's second line hangs below, in the
+   space the title's own bottom margin was already holding open.
+
+   Wrapping is left on and only the clock is allowed to shrink. A long name is
+   the common case and it should keep the full measure; a clock squeezed into
+   a column of single characters is not a smaller clock, it is a broken one. */
+.archive-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0 1rem;
+}
+
+.elapsed {
+    /* Right-justified against the measure, which on a narrow screen means
+       right-justified under the title rather than beside it. */
+    margin-left: auto;
+    margin-bottom: 0.9rem;
+    text-align: right;
+    font-family: system-ui, sans-serif;
+    color: var(--ink-soft);
+    line-height: 1.3;
+}
+
+.elapsed__label {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+}
+
+/* Tabular figures so the seconds do not shove the rest of the line sideways
+   every time they change. Without them the whole block twitches once a second,
+   which is exactly the sort of movement that makes a page hard to read. */
+.elapsed__value {
+    display: block;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85rem;
+    color: var(--ink);
+}
+
 /* Inside the summary these are spans in a grid, and the date has to sit above
    the subject rather than beside it. */
 .post__date {

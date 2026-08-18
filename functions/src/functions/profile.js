@@ -26,6 +26,7 @@ const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody:
 // the only one retrying can resolve.
 const STATUS = {
     'a display name is required': 400,
+    'the start date must be a date, like 2025-06-15': 400,
     'the return date must be a date, like 2027-06-15': 400,
     'somebody else changed this first': 409
 };
@@ -67,6 +68,10 @@ export async function read({ request, context, store, tables }) {
     return json(200, {
         slug: gated.slug,
         displayName,
+        // No row fallback for the dates. Only this form has ever written
+        // either of them, so the file is the only place they can have come
+        // from, and an empty field here is the truth rather than an omission.
+        startDate: profile.startDate ?? '',
         returnDate: profile.returnDate ?? ''
     });
 }
@@ -87,17 +92,23 @@ export async function write({ request, context, store, tables }) {
         tables,
         slug: gated.slug,
         displayName: body.displayName,
+        startDate: body.startDate,
         returnDate: body.returnDate,
         log: context
     });
 
     if (result.error) return json(STATUS[result.error] ?? 409, { error: result.error });
 
-    context.log('site.renamed', { slug: gated.slug, hasReturnDate: Boolean(result.profile.returnDate) });
+    context.log('site.renamed', {
+        slug: gated.slug,
+        hasStartDate: Boolean(result.profile.startDate),
+        hasReturnDate: Boolean(result.profile.returnDate)
+    });
 
     return json(200, {
         slug: gated.slug,
         displayName: result.profile.displayName,
+        startDate: result.profile.startDate ?? '',
         returnDate: result.profile.returnDate ?? ''
     });
 }

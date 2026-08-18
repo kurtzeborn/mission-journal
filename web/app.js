@@ -32,6 +32,80 @@
     const photoSrc = (photoId, size) =>
         `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(photoId)}/${size}.webp`;
 
+    // --- how long they have been out --------------------------------------
+    //
+    // A clock at the top of the archive, counting up from the day the mission
+    // began. It is the one thing on this page that is not a letter, and it
+    // earns the space because it answers the question every visiting relative
+    // asks first and nobody wants to work out on their fingers.
+    //
+    // Only drawn when the owner has filled the date in, which most have not.
+    // A counter reading zero, or a blank where a number belongs, is worse than
+    // no counter at all.
+
+    const DAY = 86400000;
+    const HOUR = 3600000;
+    const MINUTE = 60000;
+    const SECOND = 1000;
+
+    // Local midnight, deliberately not `new Date('2025-06-15')`. That form is
+    // parsed as UTC, so a family in Utah would watch the day tick over at six
+    // in the evening -- a bug nobody would report and everybody would notice.
+    const startOfDay = (iso) => {
+        const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '');
+        if (!parts) return null;
+        const when = new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
+        return Number.isNaN(when.getTime()) ? null : when;
+    };
+
+    // Days and a clock, rather than years and months. Months are the ambiguous
+    // unit -- "one year, five months" is a different length depending on which
+    // five -- and a mission is short enough that the day count stays a number
+    // people can hold in their head.
+    const spell = (ms) => {
+        const days = Math.floor(ms / DAY);
+        const rest = ms - days * DAY;
+        const pad = (n) => String(n).padStart(2, '0');
+        const clock = `${pad(Math.floor(rest / HOUR))}:${pad(Math.floor(rest / MINUTE) % 60)}:${pad(Math.floor(rest / SECOND) % 60)}`;
+        return `${days} ${days === 1 ? 'day' : 'days'}, ${clock}`;
+    };
+
+    function countUp(startDate) {
+        const box = document.getElementById('elapsed');
+        const value = document.getElementById('elapsed-value');
+        const from = startOfDay(startDate);
+        if (!box || !value || !from) return;
+
+        // Two years to the day, which is the longest a mission runs. Past that
+        // the clock stops rather than being hidden: somebody who has come home
+        // still served, and the archive is a record of it. Sisters serve
+        // eighteen months and will see it stop early only if the owner also
+        // fills in a return date, which nothing here reads yet.
+        const until = new Date(from.getTime());
+        until.setFullYear(until.getFullYear() + 2);
+
+        // Returns true when there is nothing left to count.
+        const tick = () => {
+            const now = Date.now();
+            // A start date in the future is a report date somebody typed
+            // early. Nothing to show yet, and it appears on its own the day it
+            // arrives without anybody reloading.
+            if (now < from.getTime()) {
+                box.hidden = true;
+                return false;
+            }
+
+            value.textContent = spell(Math.min(now, until.getTime()) - from.getTime());
+            box.hidden = false;
+            return now >= until.getTime();
+        };
+
+        if (tick()) return;
+        const timer = window.setInterval(() => {
+            if (tick()) window.clearInterval(timer);
+        }, SECOND);
+    }
+
     // The version of the archive this page was drawn from. Sent back on every
     // write so the server can refuse one composed against a stale copy.
     let loadedEtag = null;
@@ -178,6 +252,8 @@
         const heading = payload.name || payload.slug;
         title.textContent = heading;
         document.title = `${heading} — Pday Letters`;
+
+        countUp(payload.startDate);
 
         const download = document.getElementById('download');
         if (download) {

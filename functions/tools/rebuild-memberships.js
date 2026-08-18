@@ -18,7 +18,7 @@
 import { createBlobStore } from '../src/lib/store.js';
 import { createTableStore } from '../src/lib/tables.js';
 import { rebuildMemberships } from '../src/lib/memberships.js';
-import { touchSiteActivity, setSiteName } from '../src/lib/sites.js';
+import { touchSiteActivity, setSiteProfile } from '../src/lib/sites.js';
 
 const accountName = process.env.STORAGE_ACCOUNT_NAME ?? 'mjstutfe5uagkbz7q';
 
@@ -73,7 +73,12 @@ for (const slug of slugs) {
     const profileBlob = await blobs.readBlob('config', `${slug}/profile.json`);
     if (profileBlob) {
         const profile = JSON.parse(Buffer.from(profileBlob.bytes).toString('utf8'));
-        await setSiteName({ tables, slug, missionaryDisplayName: profile.displayName ?? '' });
+        await setSiteProfile({
+            tables,
+            slug,
+            missionaryDisplayName: profile.displayName ?? '',
+            missionStartDate: profile.startDate ?? ''
+        });
     }
 
     console.log(`${slug}: ${acl.members?.length ?? 0} member(s), lastPostAt=${lastPostAt || 'none'}`);

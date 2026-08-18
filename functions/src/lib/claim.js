@@ -27,7 +27,7 @@
 
 import { verifyClaimToken, issueClaimToken } from './claimtoken.js';
 import { recordMembership } from './memberships.js';
-import { setSiteName, sitesBySlug } from './sites.js';
+import { setSiteProfile, sitesBySlug } from './sites.js';
 import { promotePending } from './promote.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { ROLE } from './acl.js';
@@ -458,7 +458,7 @@ export async function redeemClaim({
     // an error for a site they have in fact just been given, and the name is
     // the one thing here that costs nothing to fix afterwards.
     try {
-        await setSiteName({
+        await setSiteProfile({
             tables,
             slug,
             missionaryDisplayName: spent.missionaryDisplayName ?? displayName ?? ''
@@ -570,7 +570,7 @@ async function redeemRelayGrant({ store, tables, token, key, email, displayName,
     const wanted = String(displayName ?? '').trim();
     if (wanted) {
         try {
-            await setSiteName({ tables, slug, missionaryDisplayName: wanted });
+            await setSiteProfile({ tables, slug, missionaryDisplayName: wanted });
         } catch (error) {
             log.error?.('claim: site name write failed', { slug, error: error.message });
         }
@@ -718,7 +718,7 @@ async function redeemMissionaryGrant({ store, tables, token, key, email, display
     const wanted = String(displayName ?? '').trim();
     if (wanted && wanted !== (currentName ?? '')) {
         try {
-            await setSiteName({ tables, slug, missionaryDisplayName: wanted });
+            await setSiteProfile({ tables, slug, missionaryDisplayName: wanted });
         } catch (error) {
             log.error?.('claim: site name write failed', { slug, error: error.message });
         }

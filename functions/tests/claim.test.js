@@ -16,7 +16,7 @@ import { memoryStore } from './memory-store.js';
 import { attachClaimToken, recordClaimEmailSent, describeClaim, redeemClaim } from '../src/lib/claim.js';
 import { promotePending } from '../src/lib/promote.js';
 import { membershipsFor, recordMembership, rebuildMemberships } from '../src/lib/memberships.js';
-import { touchSiteActivity, setSiteName } from '../src/lib/sites.js';
+import { touchSiteActivity, setSiteProfile } from '../src/lib/sites.js';
 import { issueClaimToken } from '../src/lib/claimtoken.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
@@ -490,13 +490,13 @@ describe('the membership index', () => {
         const store = memoryStore();
         const tables = store;
         await recordMembership({ tables, email: 'first@example.com', slug: SLUG, role: 'owner', now: NOW });
-        await setSiteName({ tables, slug: SLUG, missionaryDisplayName: 'Elder Exmaple' });
+        await setSiteProfile({ tables, slug: SLUG, missionaryDisplayName: 'Elder Exmaple' });
 
         // A typo fixed after a second reader was added. One write, and both
         // of them see it -- which is the whole reason the name is not copied
         // onto each membership row.
         await recordMembership({ tables, email: 'second@example.com', slug: SLUG, role: 'reader', now: NOW });
-        await setSiteName({ tables, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+        await setSiteProfile({ tables, slug: SLUG, missionaryDisplayName: 'Elder Example' });
 
         for (const who of ['first@example.com', 'second@example.com']) {
             const mine = await membershipsFor({ tables, email: who });

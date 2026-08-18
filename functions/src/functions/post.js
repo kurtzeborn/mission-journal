@@ -4,6 +4,7 @@ import { createTableStore } from '../lib/tables.js';
 import { gate, hardened, contentEtag, matchesEtag } from '../lib/api.js';
 import { ROLE } from '../lib/acl.js';
 import { deletionOf } from '../lib/deletion.js';
+import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
 import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES } from '../lib/photos.js';
 import { runRender } from '../lib/render.js';
@@ -63,14 +64,17 @@ async function ownerOnly(request, context, store = blobStore()) {
 // the archive page was issued, so computing one without it here would reject
 // an operator's edit on a deleted archive as out of date when nothing about
 // the letters had moved at all. The two places must salt identically or the
-// salt becomes a source of phantom conflicts.
-const stale = (request, blobEtag, viaOperator, deleted) => {
+// salt becomes a source of phantom conflicts. `site` is here for exactly that
+// reason and no other -- an owner editing a letter has no interest in the
+// archive's name or its mission dates, but the validator they were handed was
+// salted with both.
+const stale = (request, blobEtag, viaOperator, deleted, site) => {
     const expected = request.headers.get('if-match');
     // Absent means the caller is not making the claim -- older clients, and
     // curl. Enforcing it only when offered keeps this from being a new way for
     // a write to fail mysteriously.
     return expected
-        ? !matchesEtag(expected, contentEtag(blobEtag, ROLE.owner, viaOperator, deleted))
+        ? !matchesEtag(expected, contentEtag(blobEtag, ROLE.owner, viaOperator, deleted, site))
         : false;
 };
 
@@ -97,12 +101,20 @@ async function edit(request, context) {
         ? Boolean(await deletionOf({ tables: tableStore(), slug: gated.slug }))
         : false;
 
+    // Read for the salt alone, and only when the caller is actually asserting
+    // what they were looking at. An edit sent without If-Match is not making
+    // the claim, so there is nothing to check it against and no reason to pay
+    // for the lookup.
+    const site = request.headers.get('if-match')
+        ? siteFacts((await sitesBySlug({ tables: tableStore(), slugs: [gated.slug] })).get(gated.slug))
+        : '';
+
     const outcome = await commitPosts({
         store: blobStore(),
         slug: gated.slug,
         log: context,
         mutate: (posts, blobEtag) => {
-            if (stale(request, blobEtag, gated.viaOperator, deleted)) return { error: STALE };
+            if (stale(request, blobEtag, gated.viaOperator, deleted, site)) return { error: STALE };
 
             const index = posts.findIndex((post) => post.id === postId);
             if (index < 0) return { error: 'not found' };

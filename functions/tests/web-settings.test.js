@@ -29,6 +29,59 @@ const gone = { status: 200, body: { slug: SLUG, purgeAfter: '2026-09-07T09:00:00
 
 const deletes = (view) => view.calls.filter((call) => call.method === 'DELETE');
 
+// Two of the three fields are dates, and both of them do something: one is
+// what the archive counts up from in front of the whole family, the other is
+// what the ownership reminders are scheduled against. A form that loses
+// either on the way past is a setting that quietly turns itself off.
+describe('the mission dates', () => {
+    const filled = { ...PROFILE, startDate: '2025-06-15', returnDate: '2027-06-15' };
+
+    const opened = (profile) =>
+        settings({ answer: async () => ({ status: 200, body: profile }) });
+
+    test('arrive filled in rather than blank', async () => {
+        const view = await opened(filled);
+
+        assert.equal(view.el('startDate').value, '2025-06-15');
+        assert.equal(view.el('returnDate').value, '2027-06-15');
+    });
+
+    test('are empty, not the word undefined, when nobody has set them', async () => {
+        const view = await opened({ slug: SLUG, displayName: 'Elder Example' });
+
+        assert.equal(view.el('startDate').value, '');
+        assert.equal(view.el('returnDate').value, '');
+    });
+
+    test('are both sent when the form is saved', async () => {
+        const view = await settings({
+            answer: async (url, init) =>
+                init?.method === 'PUT' ? { status: 200, body: filled } : { status: 200, body: filled }
+        });
+
+        await view.el('profile').dispatch('submit');
+
+        const put = view.calls.find((call) => call.method === 'PUT');
+        assert.equal(put.body.startDate, '2025-06-15');
+        assert.equal(put.body.returnDate, '2027-06-15');
+    });
+
+    test('are redrawn from the answer, not from what was typed', async () => {
+        // The server is the one that decides what was stored, and a date it
+        // refused to keep must not sit in the box looking saved.
+        const view = await settings({
+            answer: async (url, init) =>
+                init?.method === 'PUT'
+                    ? { status: 200, body: { ...filled, startDate: '' } }
+                    : { status: 200, body: filled }
+        });
+
+        await view.el('profile').dispatch('submit');
+
+        assert.equal(view.el('startDate').value, '');
+    });
+});
+
 describe('arming the delete button', () => {
     test('starts disabled, with the archive name shown to copy', async () => {
         const view = await settings({ answer: loaded(gone) });

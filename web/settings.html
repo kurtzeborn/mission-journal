@@ -38,12 +38,22 @@
                 </p>
 
                 <p>
-                    <label for="returnDate">When they come home <span class="note">(optional)</span></label><br>
+                    <label for="startDate">When the mission started <span class="note">(if known)</span></label><br>
+                    <input id="startDate" name="startDate" type="date">
+                </p>
+                <p class="note">
+                    Fill this in and the archive counts up from it, so everyone reading can see how
+                    long they have been out. The count stops at two years. Leave it blank and no
+                    counter is shown.
+                </p>
+
+                <p>
+                    <label for="returnDate">When they come home <span class="note">(if known)</span></label><br>
                     <input id="returnDate" name="returnDate" type="date">
                 </p>
                 <p class="note">
                     Only used to work out when to remind you about things &mdash; nobody reading the
-                    archive is shown it. Leave it blank and we will guess from the letters.
+                    archive is shown it.
                 </p>
 
                 <p><button class="button" type="submit" id="save">Save</button></p>

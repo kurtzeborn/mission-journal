@@ -197,6 +197,89 @@ describe('the archive switcher', () => {
     });
 });
 
+// The clock at the top of the archive.
+//
+// It is the only thing on the page that is not a letter, and the only one that
+// can be wrong while looking perfectly fine -- a number nobody can check by
+// eye, in front of the people who care most about it. So the tests here are
+// about the boundaries rather than the arithmetic: when it appears at all,
+// when it stops, and what it does with a date it cannot use.
+describe('how long they have been out', () => {
+    const day = 86400000;
+
+    // Built from local parts rather than by subtracting from an ISO string,
+    // because the value under test is a calendar day and `toISOString` is UTC.
+    const daysAgo = (n) => {
+        const when = new Date(Date.now() - n * day);
+        const pad = (v) => String(v).padStart(2, '0');
+        return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`;
+    };
+
+    const loaded = (startDate) =>
+        archive({
+            answer: async (url) =>
+                url === '/.auth/me'
+                    ? signedIn('gran@example.com')
+                    : { status: 200, body: { slug: SLUG, role: 'reader', startDate, posts: [] } }
+        });
+
+    test('is not shown at all when nobody has set a start date', async () => {
+        // Which is every archive until somebody visits settings. A counter
+        // reading zero is worse than no counter.
+        const view = await loaded(undefined);
+
+        assert.equal(view.el('elapsed').hidden, true);
+        assert.equal(view.text('elapsed-value'), '');
+        assert.equal(view.context.timers.length, 0);
+    });
+
+    test('counts up from the day the mission began', async () => {
+        const view = await loaded(daysAgo(400));
+
+        assert.equal(view.el('elapsed').hidden, false);
+        assert.match(view.text('elapsed-value'), /^\d+ days, \d\d:\d\d:\d\d$/);
+
+        // A day either side. This is elapsed time, not calendar subtraction,
+        // and a clock change inside a window this long moves it by an hour.
+        const days = Number(view.text('elapsed-value').split(' ')[0]);
+        assert.ok(Math.abs(days - 400) <= 1, `counted ${days} days`);
+    });
+
+    test('ticks once a second, and only once', async () => {
+        const view = await loaded(daysAgo(400));
+
+        assert.equal(view.context.timers.length, 1);
+        assert.equal(view.context.timers[0].every, 1000);
+    });
+
+    test('stops at two years rather than counting a whole life', async () => {
+        const view = await loaded(daysAgo(1200));
+
+        assert.equal(view.el('elapsed').hidden, false);
+        // Two calendar years to the day, so 730 or 731 depending on which two.
+        assert.match(view.text('elapsed-value'), /^73[01] days, 00:00:00$/);
+        // And never starts ticking, because there is nothing left to count.
+        assert.equal(view.context.timers.length, 0);
+    });
+
+    test('says nothing until a start date in the future arrives', async () => {
+        // A report date somebody typed early. It appears on its own the day it
+        // comes round, which is why the clock is still running.
+        const view = await loaded('2099-01-01');
+
+        assert.equal(view.el('elapsed').hidden, true);
+        assert.equal(view.context.timers.length, 1);
+    });
+
+    test('a date it cannot read leaves the page alone', async () => {
+        for (const bad of ['', 'June 2025', '2025-6-5']) {
+            const view = await loaded(bad);
+            assert.equal(view.el('elapsed').hidden, true, bad);
+            assert.equal(view.context.timers.length, 0, bad);
+        }
+    });
+});
+
 // The banner an operator sees on an archive they do not belong to.
 //
 // It guards against the likeliest failure by a long way: an operator

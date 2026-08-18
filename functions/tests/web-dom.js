@@ -201,6 +201,19 @@ export function page({ html, path = '/', hash = '' }) {
             setItem: (key, value) => storage.set(key, String(value)),
             removeItem: (key) => storage.delete(key)
         },
+        // Recorded rather than scheduled. The archive page runs a clock, and a
+        // test that waits for a real one is a test whose result depends on how
+        // busy the machine is. Handing the callback back lets a test say
+        // "now a second has passed" and mean it.
+        timers: [],
+        setInterval(handler, every) {
+            context.timers.push({ handler, every, cleared: false });
+            return context.timers.length;
+        },
+        clearInterval(id) {
+            const timer = context.timers[id - 1];
+            if (timer) timer.cleared = true;
+        },
         confirmed: true,
         console
     };

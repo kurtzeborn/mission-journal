@@ -1,4 +1,4 @@
-// What a site is called, and when it last saw a letter.
+// What a site is called, when its mission began, and when it last saw a letter.
 //
 // Both of these belong to the *site*, and both were originally copied onto
 // every membership row -- which meant that keeping them current required
@@ -45,18 +45,26 @@ export async function touchSiteActivity({ tables, slug, lastPostAt }) {
 }
 
 /**
- * Set or change the name a site is shown under.
+ * Set or change the things an owner chooses about a site.
  *
  * Separate from activity so that renaming a site does not have to know when
  * its last letter arrived, and so that ingest does not have to know its name.
+ *
+ * `missionStartDate` is written only when it is offered, which is what lets
+ * the claim flow keep calling this with a name alone. The upsert merges, so an
+ * omitted column is left as it was rather than blanked -- and the owner
+ * clearing the field in settings passes an empty string, which is offered and
+ * therefore does overwrite. Undefined means "I have no opinion"; empty means
+ * "there is no date", and the two must not collapse into each other.
  */
-export async function setSiteName({ tables, slug, missionaryDisplayName }) {
+export async function setSiteProfile({ tables, slug, missionaryDisplayName, missionStartDate }) {
     if (!slug) return;
 
     await tables.upsertEntity(TABLES.sites, {
         partitionKey: slug,
         rowKey: ROW,
-        missionaryDisplayName: missionaryDisplayName ?? ''
+        missionaryDisplayName: missionaryDisplayName ?? '',
+        ...(missionStartDate === undefined ? {} : { missionStartDate })
     });
 }
 
@@ -68,7 +76,8 @@ export async function setSiteName({ tables, slug, missionaryDisplayName }) {
  * -- a site can exist with no letters and no name yet -- so it resolves to
  * empty values and the caller falls back to the slug.
  *
- * @returns {Promise<Map<string, {lastPostAt: string, missionaryDisplayName: string}>>}
+ * @returns {Promise<Map<string, {lastPostAt: string, missionaryDisplayName: string,
+ *   missionStartDate: string}>>}
  */
 export async function sitesBySlug({ tables, slugs }) {
     const found = new Map();
@@ -77,9 +86,25 @@ export async function sitesBySlug({ tables, slugs }) {
         const row = await tables.getEntity(TABLES.sites, slug, ROW);
         found.set(slug, {
             lastPostAt: row?.lastPostAt ?? '',
-            missionaryDisplayName: row?.missionaryDisplayName ?? ''
+            missionaryDisplayName: row?.missionaryDisplayName ?? '',
+            missionStartDate: row?.missionStartDate ?? ''
         });
     }
 
     return found;
 }
+
+/**
+ * The parts of a site row that a `posts.json` response repeats back.
+ *
+ * Exists so that the two places which compute a content validator -- the
+ * archive response and the If-Match check on an owner's edit -- cannot drift
+ * apart in what they consider a change. They must salt identically or the
+ * salt becomes a source of phantom conflicts, and a rule that lives in one
+ * function is a rule that cannot be half-applied.
+ *
+ * The separator is a NUL because neither field can contain one, which is what
+ * keeps a name ending in a digit from colliding with a date.
+ */
+export const siteFacts = (row) =>
+    `${row?.missionaryDisplayName ?? ''}\u0000${row?.missionStartDate ?? ''}`;

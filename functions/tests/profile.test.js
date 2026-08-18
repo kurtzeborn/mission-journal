@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 import { readProfile, saveProfile } from '../src/lib/profile.js';
 import { read } from '../src/functions/profile.js';
-import { sitesBySlug, setSiteName } from '../src/lib/sites.js';
+import { sitesBySlug, setSiteProfile } from '../src/lib/sites.js';
 import { ROLE } from '../src/lib/acl.js';
 import { memoryStore } from './memory-store.js';
 
@@ -58,7 +58,7 @@ describe('renaming', () => {
 
     test('a typo can be corrected, which is the entire point', async () => {
         const store = memoryStore();
-        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Exmaple' });
+        await setSiteProfile({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Exmaple' });
 
         await save(store, { displayName: 'Elder Example' });
 
@@ -151,6 +151,74 @@ describe('the return date', () => {
     });
 });
 
+// The start date is the first thing in the profile that a reader is ever shown
+// -- the archive page counts up from it in front of the whole family -- so it
+// has to reach the `sites` row, which is what the read path consults. A date
+// that lives only in the blob is a counter that never appears.
+describe('the mission start date', () => {
+    const startOf = async (store) =>
+        (await sitesBySlug({ tables: store, slugs: [SLUG] })).get(SLUG).missionStartDate;
+
+    test('reaches both records', async () => {
+        const store = memoryStore();
+
+        await save(store, { displayName: 'Elder Example', startDate: '2025-06-15' });
+
+        assert.equal(store.json('config', `${SLUG}/profile.json`).startDate, '2025-06-15');
+        assert.equal(await startOf(store), '2025-06-15');
+    });
+
+    test('is absent rather than empty when nobody set one', async () => {
+        const store = memoryStore();
+
+        await save(store, { displayName: 'Elder Example' });
+
+        assert.equal('startDate' in store.json('config', `${SLUG}/profile.json`), false);
+        assert.equal(await startOf(store), '');
+    });
+
+    test('clearing it takes the counter off the archive', async () => {
+        // The row is the copy the archive page reads, so a clear that only
+        // reached the blob would leave the counter running for everybody.
+        const store = memoryStore();
+        await save(store, { displayName: 'Elder Example', startDate: '2025-06-15' });
+
+        await save(store, { displayName: 'Elder Example', startDate: '' });
+
+        assert.equal('startDate' in store.json('config', `${SLUG}/profile.json`), false);
+        assert.equal(await startOf(store), '');
+    });
+
+    test('refuses anything that is not a plain calendar day', async () => {
+        const store = memoryStore();
+
+        for (const bad of ['June 2025', '2025-02-31', '2025-06-15T00:00:00Z', 'soon']) {
+            const result = await save(store, { displayName: 'Elder Example', startDate: bad });
+            assert.match(result.error ?? '', /start date must be a date/, bad);
+        }
+    });
+
+    test('a bad start date changes nothing at all', async () => {
+        const store = memoryStore();
+        await save(store, { displayName: 'Elder Example' });
+
+        await save(store, { displayName: 'Sister Someone', startDate: 'soon' });
+
+        assert.equal(await nameOf(store), 'Elder Example');
+    });
+
+    test('survives the mission being renamed afterwards', async () => {
+        // The two fields share one form and one write, and the rename is the
+        // thing people come back to do.
+        const store = memoryStore();
+        await save(store, { displayName: 'Elder Exmaple', startDate: '2025-06-15' });
+
+        await save(store, { displayName: 'Elder Example', startDate: '2025-06-15' });
+
+        assert.equal(await startOf(store), '2025-06-15');
+    });
+});
+
 describe('what is not touched', () => {
     test('alternateSenders survives an edit that cannot see it', async () => {
         // Nothing reads the field yet and nothing here can set it, so the one
@@ -236,7 +304,7 @@ describe('the settings form arrives filled in', () => {
 
     test('a site with no profile.json still knows what it is called', async () => {
         const store = await seeded();
-        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+        await setSiteProfile({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
 
         const response = await get(store, OWNER);
 
@@ -246,7 +314,7 @@ describe('the settings form arrives filled in', () => {
 
     test('the file wins when there is one, because it is the record', async () => {
         const store = await seeded();
-        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Stale Index' });
+        await setSiteProfile({ tables: store, slug: SLUG, missionaryDisplayName: 'Stale Index' });
         await store.writeBlob(
             'config',
             `${SLUG}/profile.json`,
@@ -266,9 +334,34 @@ describe('the settings form arrives filled in', () => {
         assert.equal(response.jsonBody.displayName, '');
     });
 
+    test('the dates come back so the form is not retyped from memory', async () => {
+        const store = await seeded();
+        await save(store, {
+            displayName: 'Elder Example',
+            startDate: '2025-06-15',
+            returnDate: '2027-06-15'
+        });
+
+        const response = await get(store, OWNER);
+
+        assert.equal(response.jsonBody.startDate, '2025-06-15');
+        assert.equal(response.jsonBody.returnDate, '2027-06-15');
+    });
+
+    test('a date nobody has set arrives empty rather than missing', async () => {
+        // The form assigns straight into an <input type="date">, and undefined
+        // there is the string "undefined".
+        const store = await seeded();
+
+        const response = await get(store, OWNER);
+
+        assert.equal(response.jsonBody.startDate, '');
+        assert.equal(response.jsonBody.returnDate, '');
+    });
+
     test('the fallback is not a way past the owner check', async () => {
         const store = await seeded();
-        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+        await setSiteProfile({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
 
         const response = await get(store, READER);
 

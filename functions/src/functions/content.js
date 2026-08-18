@@ -1,7 +1,7 @@
 import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
 import { createTableStore } from '../lib/tables.js';
-import { sitesBySlug } from '../lib/sites.js';
+import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { deletionOf } from '../lib/deletion.js';
 import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
@@ -21,15 +21,32 @@ async function handler(request, context) {
     const result = await gate({ store: blobStore(), request, log: context });
     if (result.denied) return result.denied;
 
-    // Before the ETag rather than after, unlike the site row below, because
-    // the answer changes the validator -- see contentEtag. Only an operator
-    // can reach a deleted archive at all, so this read is skipped for every
-    // ordinary visitor, which is everyone.
+    // Before the ETag rather than after, and for the same reason as the site
+    // row below: the answer changes the validator -- see contentEtag. Only an
+    // operator can reach a deleted archive at all, so this read is skipped for
+    // every ordinary visitor, which is everyone.
     const deleted = result.viaOperator
         ? await deletionOf({ tables: tableStore(), slug: result.slug })
         : null;
 
-    const etag = contentEtag(result.etag, result.role, result.viaOperator, Boolean(deleted));
+    // Before the 304, which it did not used to be. Skipping it on a
+    // revalidation saved a point read and cost correctness: the name and the
+    // mission start date are in the body, so they belong in the validator, and
+    // a validator that ignores them hands a reader back a cached copy with the
+    // old name on it. One point read in the slug's own partition is what the
+    // site row exists to make cheap, and this is the thing it was made cheap
+    // for.
+    const site = (await sitesBySlug({ tables: tableStore(), slugs: [result.slug] })).get(
+        result.slug
+    );
+
+    const etag = contentEtag(
+        result.etag,
+        result.role,
+        result.viaOperator,
+        Boolean(deleted),
+        siteFacts(site)
+    );
 
     // `no-cache` rather than a lifetime. This file is the one thing here that
     // changes -- a letter arrives, an owner hides or edits one -- and a stale
@@ -41,11 +58,6 @@ async function handler(request, context) {
     const unchanged = notModified(request.headers.get('if-none-match'), etag);
     if (unchanged) return unchanged;
 
-    // After the 304, because a revalidation that is going to send no body has
-    // no use for a name. One point read in the slug's own partition, which is
-    // what the site row exists to make cheap.
-    const sites = await sitesBySlug({ tables: tableStore(), slugs: [result.slug] });
-
     return {
         status: 200,
         headers: hardened({ 'Content-Type': 'application/json; charset=utf-8', ...fresh }),
@@ -54,7 +66,12 @@ async function handler(request, context) {
             // What the family calls the missionary, which is what the page is
             // titled with. Empty until somebody claims the site and types one,
             // so the client falls back to the slug rather than to nothing.
-            name: sites.get(result.slug)?.missionaryDisplayName ?? '',
+            name: site?.missionaryDisplayName ?? '',
+            // The day the mission began, or empty. Sent to everyone who can
+            // read the archive rather than to owners alone, because the page
+            // counts up from it in front of the whole family; the settings
+            // form that sets it stays owners-only.
+            startDate: site?.missionStartDate ?? '',
             role: result.role,
             // Only ever true for the one or two addresses in OPERATOR_EMAILS,
             // and it drives a banner rather than a permission -- the operator

@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
 import { applyEdit, commitPosts } from '../src/lib/edit.js';
 import { contentEtag, matchesEtag, notModified } from '../src/lib/api.js';
+import { siteFacts } from '../src/lib/sites.js';
 
 const SLUG = 'isaac.backman';
 const EDITOR = 'scott@kurtzeborn.org';
@@ -258,6 +259,47 @@ describe('content validators', () => {
             contentEtag('"0x8DD1"', 'owner', true, false),
             contentEtag('"0x8DD1"', 'owner', true)
         );
+    });
+
+    test('a renamed archive does not share one with the archive it was', () => {
+        // Renaming writes to the sites row and the profile blob and touches
+        // posts.json not at all, so without this a reader who had the page
+        // cached kept the old name in the masthead until the next letter
+        // happened to arrive -- which in an archive that gets one a week is
+        // most of a week.
+        assert.notEqual(
+            contentEtag('"0x8DD1"', 'reader', false, false, siteFacts({ missionaryDisplayName: 'Elder Example' })),
+            contentEtag('"0x8DD1"', 'reader', false, false, siteFacts({ missionaryDisplayName: 'Elder Exmaple' }))
+        );
+    });
+
+    test('setting a mission start date is a new validator', () => {
+        // The same shape as the rename, and the one that would be noticed:
+        // the owner who fills the date in goes straight to the archive to see
+        // the counter, and a 304 would hand them back a page without one.
+        assert.notEqual(
+            contentEtag('"0x8DD1"', 'reader', false, false, siteFacts({ missionStartDate: '2025-06-15' })),
+            contentEtag('"0x8DD1"', 'reader', false, false, siteFacts({}))
+        );
+    });
+
+    test('the same facts salt the same way, whichever row they came from', () => {
+        // The archive response and the If-Match check on an owner's edit both
+        // compute this, from separate reads. They must agree or every edit is
+        // rejected as out of date.
+        const facts = { missionaryDisplayName: 'Elder Example', missionStartDate: '2025-06-15', lastPostAt: 'x' };
+        assert.equal(
+            contentEtag('"0x8DD1"', 'owner', false, false, siteFacts(facts)),
+            contentEtag('"0x8DD1"', 'owner', false, false, siteFacts({ ...facts, lastPostAt: 'y' }))
+        );
+    });
+
+    test('a name is hashed rather than repeated into the header', () => {
+        // Whatever the owner typed ends up in a response header. Names have
+        // had newlines in them before now.
+        const etag = contentEtag('"0x8DD1"', 'owner', false, false, siteFacts({ missionaryDisplayName: 'Elder\r\nExample' }));
+        assert.ok(!etag.includes('Elder'));
+        assert.match(etag, /^W\/"[A-Za-z0-9.]+"$/);
     });
 
     test('the validator survives a proxy stripping its punctuation', () => {

@@ -5,6 +5,7 @@
 // order wrong would leak the existence of a site to someone with no claim on
 // it. Doing it once means there is one place to audit.
 
+import { createHash } from 'node:crypto';
 import { validSlug } from './paths.js';
 import { readPrincipal } from './principal.js';
 import { resolveAccess, ROLE } from './acl.js';
@@ -47,9 +48,23 @@ export const hardened = (headers = {}) => ({ ...HARDENING, ...headers });
  * page open before the deletion would revalidate into a 304 and be handed back
  * the copy with no notice on it -- at the one moment the notice is the whole
  * point.
+ *
+ * `site` is the last of them, and it closes a hole that predates the mission
+ * dates: the response carries the archive's name, and nothing about renaming
+ * an archive touches `posts.json`. A reader who had the page cached kept the
+ * old name until the next letter happened to arrive -- days, in an archive
+ * that gets one letter a week. The start date behind the count-up timer has
+ * exactly the same shape, and would have been worse, because it is set once,
+ * deliberately, by somebody who then goes to look at it.
+ *
+ * Hashed rather than included, because a display name is arbitrary text the
+ * owner typed and this ends up in a response header. Eight hex characters is
+ * a validator, not an identifier: it only has to change when the facts do.
  */
-export const contentEtag = (blobEtag, role, viaOperator = false, deleted = false) =>
-    `W/"${String(blobEtag ?? '').replace(/[^A-Za-z0-9]/g, '')}.${role}${viaOperator ? '.op' : ''}${deleted ? '.del' : ''}"`;
+const salt = (value) => createHash('sha256').update(value).digest('hex').slice(0, 8);
+
+export const contentEtag = (blobEtag, role, viaOperator = false, deleted = false, site = '') =>
+    `W/"${String(blobEtag ?? '').replace(/[^A-Za-z0-9]/g, '')}.${role}${viaOperator ? '.op' : ''}${deleted ? '.del' : ''}${site ? `.${salt(site)}` : ''}"`;
 
 // Browsers echo back exactly what was sent, but proxies have been known to drop
 // the weak marker, so neither side's punctuation is trusted.

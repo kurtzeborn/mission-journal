@@ -1,4 +1,4 @@
-// What a site is called, and when the missionary comes home.
+// What a site is called, and when the mission starts and ends.
 //
 // The display name was, until now, whatever the claimant happened to type in
 // the minute they took ownership. There was no way to change it: a typo in a
@@ -24,7 +24,7 @@
 // setting. It stays in the document so an editor does not delete it, and it
 // gets a UI when it gets an implementation.
 
-import { setSiteName } from './sites.js';
+import { setSiteProfile } from './sites.js';
 
 const CONFIG = 'config';
 const FILE = (slug) => `${slug}/profile.json`;
@@ -71,10 +71,10 @@ const tidy = (value) =>
         .trim()
         .slice(0, NAME_MAX);
 
-// A calendar day, not a timestamp. The two things this feeds -- scheduling the
-// ownership prompts and printing mission dates on a book cover -- are both
-// answered in days, and a full ISO instant would invite a timezone argument
-// about which day somebody came home.
+// A calendar day, not a timestamp. The three things these feed -- scheduling
+// the ownership prompts, printing mission dates on a book cover, and counting
+// up on the archive page -- are all answered in days, and a full ISO instant
+// would invite a timezone argument about which day somebody came home.
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const validDate = (value) => {
@@ -104,9 +104,12 @@ const validDate = (value) => {
  *
  * @returns {Promise<{error: string} | {profile: object, etag: string}>}
  */
-export async function saveProfile({ store, tables, slug, displayName, returnDate, log }) {
+export async function saveProfile({ store, tables, slug, displayName, startDate, returnDate, log }) {
     const name = tidy(displayName);
     if (!name) return { error: 'a display name is required' };
+
+    const began = validDate(startDate);
+    if (began === null) return { error: 'the start date must be a date, like 2025-06-15' };
 
     const when = validDate(returnDate);
     if (when === null) return { error: 'the return date must be a date, like 2027-06-15' };
@@ -117,12 +120,15 @@ export async function saveProfile({ store, tables, slug, displayName, returnDate
         ...profile,
         slug,
         displayName: name,
-        // Omitted rather than stored empty. Absent means "derive it from the
-        // letters", which is a different statement from "there is no return
-        // date", and a blank string would make the two indistinguishable.
+        // Omitted rather than stored empty, for both dates. Absent means
+        // "derive it from the letters", which is a different statement from
+        // "there is no return date", and a blank string would make the two
+        // indistinguishable.
+        ...(began ? { startDate: began } : {}),
         ...(when ? { returnDate: when } : {}),
         updatedAt: new Date().toISOString()
     };
+    if (!began) delete next.startDate;
     if (!when) delete next.returnDate;
 
     let written;
@@ -143,7 +149,15 @@ export async function saveProfile({ store, tables, slug, displayName, returnDate
     }
 
     try {
-        await setSiteName({ tables, slug, missionaryDisplayName: name });
+        await setSiteProfile({
+            tables,
+            slug,
+            missionaryDisplayName: name,
+            // Always offered, empty included: the archive page reads the start
+            // date off this row, so an owner who clears the field has to see
+            // the timer go away.
+            missionStartDate: began
+        });
     } catch (err) {
         // Not fatal, and deliberately not rolled back. The rename is saved;
         // what has failed is the copy the lists read from, which the repair

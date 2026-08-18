@@ -24,7 +24,7 @@ import { memoryStore } from './memory-store.js';
 import { readHeaderBlock, authenticateClaim, isClaimVerb, recipientVerbs, addressedToClaim } from '../src/lib/claimverb.js';
 import { describeClaim, redeemClaim } from '../src/lib/claim.js';
 import { membershipsFor } from '../src/lib/memberships.js';
-import { setSiteName, sitesBySlug } from '../src/lib/sites.js';
+import { setSiteProfile, sitesBySlug } from '../src/lib/sites.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
 const raw = (name) => readFile(join(fixtures, `${name}.eml`));
@@ -487,7 +487,7 @@ describe('the description of a missionary grant', () => {
     test('says the archive already exists and what it is called', async () => {
         const store = memoryStore();
         store.acl(SLUG, [{ email: 'parent@example.com', role: 'owner' }]);
-        await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
+        await setSiteProfile({ tables: store, slug: SLUG, missionaryDisplayName: 'Elder Example' });
 
         const { mailer } = await runClaim(store);
         const described = await describeClaim({
@@ -556,7 +556,7 @@ describe('the name a verified missionary submits', () => {
         const store = memoryStore();
         store.acl(SLUG, [{ email: 'parent@example.com', role: 'owner' }]);
         if (existingName) {
-            await setSiteName({ tables: store, slug: SLUG, missionaryDisplayName: existingName });
+            await setSiteProfile({ tables: store, slug: SLUG, missionaryDisplayName: existingName });
         }
         const { mailer } = await runClaim(store);
         return { store, token: mailer.sent[0].text.match(/#([\w.-]+)/)[1] };
