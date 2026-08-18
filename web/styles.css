@@ -301,15 +301,29 @@ button:focus-visible {
     font-size: 1.25rem;
     line-height: 1.5;
 }
+/* An address, always inside a sentence -- there is not one standalone use of
+   this on the site. So it has to sit *in* the line rather than push it open:
+   `display: inline` means the vertical padding overflows the line box instead
+   of growing it, which is the whole trick. The tint and the border still mark
+   it out, and the paragraph keeps its rhythm.
+
+   The size is stepped down slightly because monospace reads larger than the
+   body face at the same nominal size, and `em` rather than `rem` so it tracks
+   whatever it is quoted inside -- the lede, a heading, an ordinary paragraph.
+
+   `anywhere` rather than `break-all`: an address should break mid-word only
+   when a narrow screen leaves no choice, not every time it nears the edge. */
 .address {
     font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
-    font-size: 1.05rem;
+    font-size: 0.92em;
     background: #f4f1ee;
     border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    padding: 0.7rem 0.9rem;
-    display: inline-block;
-    word-break: break-all;
+    border-radius: 4px;
+    padding: 0.1em 0.3em;
+    overflow-wrap: anywhere;
+    /* Both halves of a broken address keep the tint and the border. */
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
 }
 
 /* --- post list --- */
