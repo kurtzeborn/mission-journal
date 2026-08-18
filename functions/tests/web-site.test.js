@@ -280,6 +280,105 @@ describe('how long they have been out', () => {
     });
 });
 
+// Waiting for the switcher.
+//
+// The list is a second round trip and it is not a fast one, so for a couple of
+// seconds the masthead looks finished and is not. Somebody who opened this
+// page in order to get to a different archive reads that as "the control is
+// not there" and gives up before it lands.
+describe('the switcher says it is coming', () => {
+    const membersOf = (...slugs) => ({
+        status: 200,
+        body: { memberships: slugs.map((slug) => ({ slug })) }
+    });
+
+    // The membership list is answered only when the test says so, which is
+    // what lets it look at the page mid-flight.
+    async function midFlight(answerMemberships) {
+        let release;
+        const held = new Promise((resolve) => {
+            release = resolve;
+        });
+
+        const view = page({ html: 'site.html', path: `/${SLUG}/` });
+        view.context.Reader = { mount() {} };
+        const net = fetching(async (url) => {
+            if (url === '/.auth/me') return signedIn('gran@example.com');
+            if (url === '/api/memberships') {
+                await held;
+                return answerMemberships;
+            }
+            return { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } };
+        });
+        run('app.js', { context: view.context, fetch: net.fetch });
+        await settled();
+
+        return {
+            ...view,
+            async finish() {
+                release();
+                await settled();
+            }
+        };
+    }
+
+    test('holds the space while the list is being fetched', async () => {
+        const view = await midFlight(membersOf(SLUG, 'sister.backman'));
+
+        assert.equal(view.el('switcher-wait').hidden, false);
+        // And does not pretend to be the control itself.
+        assert.equal(view.el('switcher').hidden, true);
+    });
+
+    test('gives way to the real control when it arrives', async () => {
+        const view = await midFlight(membersOf(SLUG, 'sister.backman'));
+
+        await view.finish();
+
+        assert.equal(view.el('switcher-wait').hidden, true);
+        assert.equal(view.el('switcher').hidden, false);
+    });
+
+    test('goes away when there was nothing to draw', async () => {
+        // The common case: one archive, and no switcher on an archive page.
+        // A placeholder that stays up is a control that never comes.
+        const view = await midFlight(membersOf(SLUG));
+
+        await view.finish();
+
+        assert.equal(view.el('switcher-wait').hidden, true);
+        assert.equal(view.el('switcher').hidden, true);
+    });
+
+    test('goes away when the list cannot be fetched at all', async () => {
+        const view = await midFlight({ status: 500, body: {} });
+
+        await view.finish();
+
+        assert.equal(view.el('switcher-wait').hidden, true);
+        assert.equal(view.el('switcher').hidden, true);
+    });
+
+    test('is not left up by a refusal, where the list still matters', async () => {
+        // The switcher is drawn on the refusal page too, and with nothing
+        // excluded -- somebody who has just been told no is exactly the person
+        // who has lost a URL.
+        const view = page({ html: 'site.html', path: `/${SLUG}/` });
+        view.context.Reader = { mount() {} };
+        const net = fetching(async (url) => {
+            if (url === '/.auth/me') return signedIn('gran@example.com');
+            if (url === '/api/memberships') return membersOf('sister.backman');
+            return { status: 404, body: {} };
+        });
+        run('app.js', { context: view.context, fetch: net.fetch });
+        await settled();
+
+        assert.equal(view.el('denied').hidden, false);
+        assert.equal(view.el('switcher-wait').hidden, true);
+        assert.equal(view.el('switcher').hidden, false);
+    });
+});
+
 // The banner an operator sees on an archive they do not belong to.
 //
 // It guards against the likeliest failure by a long way: an operator

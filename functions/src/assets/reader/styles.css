@@ -255,6 +255,42 @@ a {
     display: none;
 }
 
+/* The switcher's placeholder: the same size and shape as the button that
+   replaces it, so nothing moves when the real one arrives.
+
+   A pulse rather than a spinner. A spinner in a masthead reads as something
+   having gone wrong, and this is the ordinary case -- every signed-in visit
+   waits here for a moment. The pulse is slow on purpose; anything faster
+   competes with the letters for attention and wins. */
+.switcher-wait {
+    display: inline-block;
+    /* Measured against the "Archives" button rather than guessed, so the
+       masthead does not jump when the real one lands. It cannot match the
+       landing page, where the label is a display name of any length, and the
+       shift there is the price of naming the archive at all. */
+    width: 4rem;
+    min-height: 34px;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: rgb(0 0 0 / 4%);
+    animation: switcher-wait 1.4s ease-in-out infinite;
+}
+
+@keyframes switcher-wait {
+    50% {
+        opacity: 0.4;
+    }
+}
+
+/* Motion in a masthead is exactly what somebody turns this setting on to stop.
+   The placeholder still holds the space, which is the half that carries the
+   meaning. */
+@media (prefers-reduced-motion: reduce) {
+    .switcher-wait {
+        animation: none;
+    }
+}
+
 .switcher__list {
     position: absolute;
     right: 0;

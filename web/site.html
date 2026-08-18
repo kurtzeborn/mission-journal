@@ -36,6 +36,22 @@
                 auth-gated. Somebody who loses one URL has the root redirect and
                 this, and nothing else.
             -->
+            <!--
+                Stands in for the switcher while the list is being fetched.
+
+                It takes a couple of seconds, and until it lands the masthead
+                looks finished -- so somebody who came to this page in order to
+                get to a different archive has no way to tell whether the
+                control is coming or is not there at all, and gives up. A
+                placeholder the size and shape of the button that follows says
+                "wait" without claiming anything about what will appear.
+
+                aria-hidden, and not a live region. It has no information in
+                it; a screen reader announcing "loading" in a masthead every
+                time a page opens is noise, and the control it precedes
+                announces itself perfectly well when it arrives.
+            -->
+            <span class="switcher-wait" id="switcher-wait" hidden aria-hidden="true"></span>
             <details class="switcher" id="switcher" hidden>
                 <summary class="button button--quiet button--compact">Archives</summary>
                 <ul class="switcher__list" id="switcher-list"></ul>

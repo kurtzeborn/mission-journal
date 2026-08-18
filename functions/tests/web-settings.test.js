@@ -80,6 +80,17 @@ describe('the mission dates', () => {
 
         assert.equal(view.el('startDate').value, '');
     });
+
+    test('a save says so without naming a field it may not have touched', async () => {
+        // This form saves three things. Telling somebody who corrected a start
+        // date that everyone can now see the new name sends them off to check
+        // a name that has not changed.
+        const view = await settings({ answer: async () => ({ status: 200, body: filled }) });
+
+        await view.el('profile').dispatch('submit');
+
+        assert.equal(view.text('said'), 'Settings saved.');
+    });
 });
 
 describe('arming the delete button', () => {

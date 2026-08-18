@@ -112,7 +112,11 @@
         $('displayName').value = body.displayName ?? '';
         $('startDate').value = body.startDate ?? '';
         $('returnDate').value = body.returnDate ?? '';
-        said.textContent = 'Saved. Everyone reading the archive sees the new name.';
+        // Says nothing about which field changed, because this one form now
+        // saves three of them and naming the wrong one is worse than naming
+        // none. Somebody who has just corrected a start date and is told the
+        // archive's name has changed has to go and check that it has not.
+        said.textContent = 'Settings saved.';
     }
 
     // --- deleting the archive ---------------------------------------------

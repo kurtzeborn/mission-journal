@@ -35,6 +35,11 @@
                 <span class="visually-hidden" id="account-provider"></span>
                 <span id="account-email"></span>
             </span>
+            <!-- Stands in for the switcher while the list is fetched. See the
+                 longer note on site.html: the fetch takes long enough that the
+                 masthead looks finished without it, and somebody waiting for
+                 the control gives up before it lands. -->
+            <span class="switcher-wait" id="switcher-wait" hidden aria-hidden="true"></span>
             <details class="switcher" id="switcher" hidden>
                 <summary class="button button--quiet button--compact" id="switcher-label">Archives</summary>
                 <ul class="switcher__list" id="switcher-list"></ul>

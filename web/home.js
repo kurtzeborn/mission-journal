@@ -74,6 +74,19 @@
         const list = document.getElementById('switcher-list');
         if (!box || !label || !list) return;
 
+        // Up before the fetch and down whatever happens to it, including the
+        // paths below that draw nothing at all. A placeholder left behind by a
+        // failed request is worse than the silence it replaced.
+        const waiting = document.getElementById('switcher-wait');
+        if (waiting) waiting.hidden = false;
+        try {
+            await drawSwitcher(box, label, list);
+        } finally {
+            if (waiting) waiting.hidden = true;
+        }
+    }
+
+    async function drawSwitcher(box, label, list) {
         let memberships;
         try {
             const response = await fetch('/api/memberships', { cache: 'no-store' });
