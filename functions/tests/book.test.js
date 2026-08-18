@@ -5,7 +5,9 @@ import {
     COLUMN,
     MARGIN,
     PAGE,
+    albumPageCount,
     albumRows,
+    albumSpread,
     albumTarget,
     buildInterior,
     contentsPages,
@@ -35,6 +37,9 @@ const post = (id, date, subject, overrides = {}) => ({
     photos: [],
     ...overrides
 });
+
+const range = (count) =>
+    Array.from({ length: count }, (_, n) => ({ id: `p${n}`, width: 2400, height: 1600 }));
 
 describe('the order a book runs in', () => {
     it('turns the newest-first payload back into a mission', () => {
@@ -139,6 +144,59 @@ describe('preparing a photograph for the press', () => {
         await store.writeBlob('raw', 'x/photos/p1.jpg', Buffer.from('original'));
 
         assert.equal(await printPhoto({ store, slug: 'x', photoId: 'p1', widthPoints: 200 }), null);
+    });
+});
+
+describe('how many leaves the album gets', () => {
+    it('gives a letter with nothing attached no album at all', () => {
+        assert.equal(albumPageCount(0, { textPages: 1 }), 0);
+    });
+
+    it('never crowds more than six onto a page', () => {
+        for (let count = 1; count <= 40; count += 1) {
+            for (const textPages of [1, 2, 3]) {
+                const pages = albumPageCount(count, { textPages });
+                for (const leaf of albumSpread(range(count), { pages })) {
+                    assert.ok(leaf.length <= 6, `${count} over ${pages} put ${leaf.length} on a leaf`);
+                }
+            }
+        }
+    });
+
+    it('spreads the pictures out to save the next letter a blank leaf', () => {
+        // Six pictures fit one page, but after a two-page letter that would
+        // come to three and cost a blank. Two pages of three costs nothing
+        // and prints them larger.
+        assert.equal(albumPageCount(6, { textPages: 1 }), 1);
+        assert.equal(albumPageCount(6, { textPages: 2 }), 2);
+    });
+
+    it('comes out even whenever there is a spread that can', () => {
+        for (let count = 4; count <= 40; count += 1) {
+            for (const textPages of [1, 2, 3, 4]) {
+                const pages = albumPageCount(count, { textPages });
+                assert.equal((textPages + pages) % 2, 0, `${count} after ${textPages} needed a blank`);
+            }
+        }
+    });
+
+    it('accepts a blank rather than putting one picture on a page', () => {
+        // Two pictures cannot be spread over two pages without leaving one
+        // alone, so after a two-page letter the blank leaf is the lesser evil.
+        assert.equal(albumPageCount(2, { textPages: 2 }), 1);
+    });
+
+    it('deals every picture out once, in order', () => {
+        const photos = range(17);
+        const dealt = albumSpread(photos, { pages: 4 }).flat();
+
+        assert.deepEqual(dealt, photos);
+    });
+
+    it('deals them out evenly', () => {
+        const sizes = albumSpread(range(17), { pages: 4 }).map((leaf) => leaf.length);
+
+        assert.equal(Math.max(...sizes) - Math.min(...sizes), 1);
     });
 });
 

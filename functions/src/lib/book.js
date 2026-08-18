@@ -97,6 +97,8 @@ const CONTENTS_PER_PAGE = 32;
 // shrinking further.
 const ALBUM_GAP = 10;
 const ALBUM_MIN_ROW = 84;
+const ALBUM_MOST = 6;
+const ALBUM_LEAST = 2;
 
 // Four by three when nothing was recorded. Ingest measures every photograph it
 // stores, so this is for the handful that predate it -- and a picture with no
@@ -453,6 +455,57 @@ export function albumTarget(photos, { height, width = COLUMN }) {
 }
 
 /**
+ * How many leaves to give a letter's album.
+ *
+ * Two jobs at once. The first is restraint: past half a dozen pictures a page
+ * stops being a plate and starts being a contact sheet, and these are
+ * photographs somebody's family sent from the other side of the world.
+ *
+ * The second is parity. Every letter opens on a verso, so a letter whose text
+ * and album come to an odd number of pages forces a blank leaf before the
+ * next one -- and across a hundred letters that is fifty sheets of nothing
+ * that the reader pays the printer for. Spreading the same pictures over one
+ * more page costs no paper at all, because the paper was going to be spent
+ * either way, and it makes the pictures bigger into the bargain. So the
+ * smallest legal spread that comes out even wins.
+ *
+ * When no legal spread is even -- two photographs after a two-page letter,
+ * say -- the tightest one is used and the blank leaf is accepted. There is
+ * nowhere else for the page to come from.
+ */
+export function albumPageCount(count, { textPages = 1 } = {}) {
+    if (count < 1) return 0;
+
+    const least = Math.ceil(count / ALBUM_MOST);
+    const most = Math.max(least, Math.floor(count / ALBUM_LEAST));
+
+    for (let pages = least; pages <= most; pages += 1) {
+        if ((textPages + pages) % 2 === 0) return pages;
+    }
+
+    return least;
+}
+
+/**
+ * Deal the photographs out over that many pages, as evenly as they go.
+ *
+ * Order is kept, because the order is the order they were attached in and
+ * that is usually the order they were taken in.
+ */
+export function albumSpread(photos, { pages }) {
+    const out = [];
+    let taken = 0;
+
+    for (let page = 1; page <= pages; page += 1) {
+        const upTo = Math.round((photos.length * page) / pages);
+        out.push(photos.slice(taken, upTo));
+        taken = upTo;
+    }
+
+    return out;
+}
+
+/**
  * Bring the next page round onto a left-hand one.
  *
  * Every letter opens on a verso so that a letter short enough to fit a single
@@ -526,6 +579,7 @@ function setLetter(doc, { post, slug, images, state }) {
     // dropping them would lose pictures the family sent.
     setAlbum(doc, {
         photos: (post.photos ?? []).filter((photo) => !placed.has(photo.id)),
+        textPages: state.page - opened + 1,
         images,
         state
     });
@@ -541,13 +595,26 @@ function setLetter(doc, { post, slug, images, state }) {
  * pictures are on the right, facing it. A longer letter still gets its album,
  * just further along.
  */
-function setAlbum(doc, { photos, images, state }) {
+function setAlbum(doc, { photos, textPages, images, state }) {
     if (!photos.length) return;
 
     setBox(doc, state, 0);
-    doc.addPage();
 
     const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
+    const pages = albumPageCount(photos.length, { textPages });
+
+    for (const leaf of albumSpread(photos, { pages })) {
+        doc.addPage();
+        setLeaf(doc, { photos: leaf, images, usable });
+    }
+
+    doc.fillColor(BLACK);
+}
+
+/**
+ * One page of an album.
+ */
+function setLeaf(doc, { photos, images, usable }) {
     const target = albumTarget(photos, { height: usable });
     const rows = albumRows(photos, { target });
 
@@ -561,13 +628,6 @@ function setAlbum(doc, { photos, images, state }) {
     let y = MARGIN.top + (total < usable ? (usable - total) / 2 : 0);
 
     for (const row of rows) {
-        // Only when the album is larger than one page will this ever fire,
-        // which takes a letter with a great many attachments.
-        if (y + row.height > PAGE.height - MARGIN.bottom) {
-            doc.addPage();
-            y = MARGIN.top;
-        }
-
         let x = LEFT;
         for (const photo of row.photos) {
             const width = row.height * aspectOf(photo);
@@ -583,7 +643,6 @@ function setAlbum(doc, { photos, images, state }) {
     }
 
     doc.y = y;
-    doc.fillColor(BLACK);
 }
 
 function setBlock(doc, { block, state }) {
@@ -830,12 +889,15 @@ function printWidths(post, slug) {
         widths.set(photo.id, photoBox({ width: photo.width, height: photo.height }).width);
     }
 
-    const album = photos.filter((photo) => !inline.has(photo.id));
-    if (album.length) {
-        const target = albumTarget(album, { height: PAGE.height - MARGIN.top - MARGIN.bottom });
-        for (const row of albumRows(album, { target })) {
-            for (const photo of row.photos) widths.set(photo.id, row.height * aspectOf(photo));
-        }
+    // An album picture is capped at the column rather than at the cell it
+    // will land in, because how many leaves the album gets is not settled
+    // until the letter above it has been set and its length is known. The
+    // column is the widest any picture can ever be printed, so this can only
+    // ever err towards too many pixels, never too few. Inline pictures are
+    // the ones that mattered anyway: they print at two fifths of the column,
+    // which is a sixth of the area.
+    for (const photo of photos) {
+        if (!inline.has(photo.id)) widths.set(photo.id, COLUMN);
     }
 
     return widths;
