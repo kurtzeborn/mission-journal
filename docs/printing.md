@@ -94,6 +94,24 @@ Category B. A capable wholesale network — REST API, PHP and Node SDKs, 381 pri
 
 Category B, all of them, for the same reason. Not assessed in detail because the shape settles it. (Prodigi is worth a footnote: it now owns Peecho, so the recommended provider is a Prodigi company reached through the one product line that sells to the buyer instead of to us.)
 
+### Printful, Printify, Gooten — rejected, and worth explaining why they keep coming up
+
+These three are the names you land on when you search for a print-on-demand API, and they dominate the results so thoroughly that it is easy to assume one of them must be the answer. They are not, and they fail twice over, which is worth writing down so nobody searches again in six months and finds the same three.
+
+They are merchandise fulfilment networks. Their business is putting a design on a blank someone else manufactured — a t-shirt, a mug, a phone case, a canvas — and shipping it for a merchant who has a shop somewhere. A bound book is not a blank with a design on it, and none of the three sells one.
+
+**Printful.** The best API in this entire comparison, on the merits: REST, OAuth 2.0 with scoped tokens, an OpenAPI spec, a Postman collection, webhooks with a sane retry ladder, mockup generation, shipping-rate and tax endpoints, and error codes that tell you what you did wrong. It is also Category B in the plainest terms anyone in this document uses. Creating an order requires a `recipient` with name, address, city, country, postcode, phone and email; confirming one, in their own words, means *"Store owner's credit card is charged when the order is submitted for fulfillment"*, and cancelling means *"Charged amount is returned to the store owner's credit card."* We would be the merchant, holding the reader's address, on our card. And after all that there would still be nowhere to put the letters: the catalogue runs to t-shirts, posters, framed prints, postcards, canvases, mugs and hats. Nothing bound. US company, Charlotte, North Carolina, with fulfilment across the EU, UK, Canada, Australia and Japan. There is an affiliate programme but the page that would state its terms could not be reached, so no number is claimed here.
+
+**Printify.** The same shape with a slightly different accent. A well-built REST API — v1 and a JSON:API v2, personal access tokens or OAuth 2.0, HMAC-signed webhooks, 600 requests a minute — over a network of independent print providers rather than its own factories. `address_to` is required on every order, the order lifecycle includes a `payment-not-received` status and the API returns 402 Payment Required, all of which describes a merchant who pays. The catalogue is organised as "blueprints": apparel, mugs, phone cases, stickers, canvas, jewellery. No books. Registered in the US with its engineering in Riga.
+
+**Gooten.** Same shape again, and the weakest fit of the three. Five hundred-odd products across apparel, drinkware, wall art, blankets and mugs, none of them bound. The company has been pushing towards OrderMesh, an order-management product, and its front door is a sales enquiry form asking for average monthly order volume — which is a reasonable thing to ask an apparel brand and an unhelpful thing to ask a family site that might sell a handful of books a year. New York.
+
+### Vistaprint — rejected
+
+Unlike the three above, Vistaprint genuinely makes the product: hardcover photo books in seven sizes, 24 to 120 pages, two paper stocks, linen or photo covers, layflat on some sizes, starting around thirteen dollars. A Cimpress brand, with US operations and a long print history.
+
+It is still Category C, and the worst version of it. There is no public print API — the only way a book gets made is a person sitting in Vistaprint's online editor or their downloadable desktop editor, choosing photographs and dropping them into layouts. There is no seam anywhere in that flow to hand a finished PDF to. So the owner would export the archive, upload every photograph again, and rebuild by hand a book this codebase already knows how to typeset, and we would earn a referral percentage on the chance they finished. The 120-page ceiling is its own problem: two years of letters and photographs will not fit.
+
 ### Shutterfly — rejected, twice
 
 Rejected once during planning and again here, so it is written down properly this time.
@@ -109,6 +127,31 @@ Category C, and the same argument as Shutterfly with worse commissions.
 ### Amazon KDP — rejected
 
 No photo-book product, and the print API is not open to individual accounts. Built for trade paperbacks. Amazon Associates covers retail links only.
+
+## All of it side by side
+
+Shape is the column that is not here, because it is the one that decides everything: A is a hosted checkout where the buyer pays the printer, B is wholesale where we would pay and become the merchant, C is a bare referral link. Only Peecho and the two bookstores are A.
+
+| Provider | US-based | Money back to us | API — quality and fit | Things to consider |
+| --- | --- | --- | --- | --- |
+| **Peecho** — recommended | No. Netherlands, Prodigi group | Margin over their cost; no fixed percentage, no cookie window, no approval | Purpose-built for this: Print API plus hosted checkout, test environment | Trim sizes, page-count parity, bleed and payout currency all unconfirmed. Their terms need a matching IP and portrait-rights warranty in ours |
+| **Blurb Bookstore** — fallback | Yes. San Francisco | "100% of profits" — our own markup over their cost | No usable order API; the listing is created by hand in a browser | Good economics, manual step. Amazon and Ingram routes make the book public |
+| **Lulu Bookstore** | Yes. Raleigh | 80% royalty, free to publish, no ISBN needed | None for this route | Public storefront. Fatal for family letters |
+| **Lulu Print API** | Yes. Raleigh | None. We would mark up and bill | Excellent — documented, free, sandboxed, thousands of configurations. Wrong shape | Payload demands the reader's full address and their card charges ours. Markets "Retain Customer Data" as a feature |
+| **Cloudprinter.com** | No. Netherlands | None. Wholesale | Good REST API with SDKs, 381 print sites. Wrong shape | Has photobook products, which makes it the most tempting of the Category B set |
+| **Gelato** | No. Norway | None. Wholesale | Not assessed; shape settles it | — |
+| **Prodigi** | No. UK | None. Wholesale | Not assessed; shape settles it | Owns Peecho, so we reach it anyway through the one line that bills the buyer |
+| **BookVault** | No. UK | None. Wholesale | Not assessed; shape settles it | — |
+| **Printful** | Yes. Charlotte, NC | Affiliate programme exists; terms page unreachable, so no number claimed | Best API here — OAuth 2.0, OpenAPI, webhooks, mockups. Wrong shape and wrong catalogue | Docs say the store owner's card is charged on confirm. No bound book of any kind |
+| **Printify** | Yes, registered; operations in Riga | None. Wholesale | Solid — v1 REST plus a JSON:API v2, signed webhooks. Wrong shape | `address_to` required, `payment-not-received` order status. Catalogue is apparel and mugs |
+| **Gooten** | Yes. New York | None. Wholesale | Adequate; company is pivoting to OrderMesh | Front door is a sales enquiry form asking monthly order volume. No books |
+| **Vistaprint** | Cimpress brand with US operations | Referral only, low single digits | None. Design happens in their own editor | Makes a real hardcover photo book, but capped at 120 pages and there is no seam to hand a PDF to |
+| **Shutterfly** | Yes | ~5% via Rakuten, 15-day cookie, approval required | `developers.shutterfly.com` returns 410 Gone; Commerce API is invitation-only | Owner rebuilds the book by hand. Approval unlikely for a private site |
+| **Mixbook** | Yes | Referral only, worse than Shutterfly | None | As Shutterfly |
+| **Snapfish** | Yes | Referral only, worse than Shutterfly | None | As Shutterfly |
+| **Amazon KDP** | Yes | Associates commission on retail links only | Not open to individual accounts | No photo-book product at all |
+
+Two things fall out of reading down the columns. The API column is close to inverted: the best-engineered APIs in the market — Lulu's, Printful's — belong to the providers we cannot use, because a good wholesale API is still a wholesale API. And being US-based turns out to correlate with nothing we care about; the one provider that fits is Dutch.
 
 ## Where this leaves us
 
