@@ -12,22 +12,28 @@
 // So nothing here takes a payment, and nothing here has ever seen an address.
 // What crosses the wire is a title, a page count and a URL to a PDF.
 //
-// **Nothing here is exercised against the live account.** Peecho's company
-// details form requires a VAT number a US sole trader does not have, and
-// without it the API answers `APP_NO_COMP_DETAILS`. So this is written
-// against their published contract and their test environment, and it stays
-// switched off -- keys absent, endpoint refusing -- until that is resolved.
-// That is also why every field name below is theirs verbatim, including the
-// snake_case in the webhook payloads sitting next to the camelCase in the
-// request: guessing at a rename is how an integration nobody can run today
-// becomes an integration nobody can debug tomorrow.
+// **The account is live, and this has been run against it exactly once.** A
+// create-publication call returned a real secure publication id and a real
+// checkout page. What blocked it for a while was Peecho's Company details
+// form, which demands a VAT number a US sole trader does not have; the answer
+// turned out to be that the API does not want that form at all -- Billing
+// Information and Billing Address, neither of which asks for VAT, are what
+// clears `APP_NO_COMP_DETAILS`. It is still switched off in production, but
+// now only because the order button is not built yet.
+//
+// Every field name below is theirs verbatim, including the snake_case in the
+// webhook payloads sitting next to the camelCase in the request: guessing at
+// a rename is how an integration nobody can run today becomes an integration
+// nobody can debug tomorrow.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 
 // Their test environment is a genuinely separate account with its own keys,
 // and orders placed in it are never printed and never charged. It is the
 // default here rather than the exception, because the failure mode of the
-// other default is a real book printed and shipped by a test.
+// other default is a real book printed and shipped by a test. Separate is
+// meant literally: the live merchant key is not recognised here at all, so
+// using this base means registering for it first.
 export const TEST_BASE = 'https://test.www.peecho.com';
 
 // US Letter portrait as Peecho lists it, in millimetres. Informational for a
