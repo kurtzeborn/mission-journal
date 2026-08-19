@@ -1,5 +1,7 @@
 import { app } from '@azure/functions';
 import { createBlobStore } from '../lib/store.js';
+import { createTableStore } from '../lib/tables.js';
+import { createMailer } from '../lib/mail.js';
 import { siteGate, hardened } from '../lib/api.js';
 import {
     BOOKS,
@@ -12,9 +14,21 @@ import {
     STATE
 } from '../lib/publish.js';
 
+const setting = (name, fallback) => process.env[name] ?? fallback;
+
 let cachedStore = null;
+let cachedTables = null;
+let cachedMailer = null;
 const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
+    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
+const tableStore = () =>
+    (cachedTables ??= createTableStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
+const mailer = () =>
+    (cachedMailer ??= createMailer({
+        accountId: setting('CLOUDFLARE_ACCOUNT_ID'),
+        token: setting('CLOUDFLARE_API_TOKEN'),
+        allowlist: setting('MAIL_ALLOWLIST')
+    }));
 
 // Long enough to survive a slow phone starting on a hundred-megabyte PDF,
 // short enough that a URL later found in a browser history is already dead.
@@ -203,6 +217,13 @@ app.storageQueue('book', {
             // trigger.
             message: typeof message === 'string' ? JSON.parse(message) : message,
             store: blobStore(),
+            // Both only so the owner can be told how it went. This is the one
+            // place in the book pipeline that sends anything: the request
+            // endpoint answers a person who is looking at the page, and the
+            // page polls. By the time the build ends they may be anywhere.
+            tables: tableStore(),
+            mailer: mailer(),
+            baseUrl: setting('PUBLIC_BASE_URL', 'https://pdayletters.com'),
             log: context
         })
 });

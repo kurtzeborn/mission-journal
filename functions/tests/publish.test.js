@@ -15,6 +15,8 @@ import {
     runBook,
     statusName
 } from '../src/lib/publish.js';
+import { deliveryTrouble } from '../src/lib/delivery.js';
+import { issueOptOut, recordOptOut } from '../src/lib/optout.js';
 import { memoryStore } from './memory-store.js';
 
 const SLUG = 'isaac.backman';
@@ -233,5 +235,141 @@ describe('building the book', () => {
         const result = await runBook({ message: { slug: SLUG }, store: seed(letters), log: quiet });
 
         assert.equal(result.status, 'rejected');
+    });
+});
+
+describe('telling the owner the book is done', () => {
+    // The book page tells them they may close it, so this is the half of that
+    // promise the service keeps. All of these go through the whole build,
+    // because what is being tested is that the message is sent from the far
+    // side of a job nobody is watching.
+    const OWNER = 'mum@example.com';
+    const KEY = 'a'.repeat(44);
+
+    const recorder = (status = 'sent') => {
+        const mailer = { sent: [], send: async (message) => (mailer.sent.push(message), { status }) };
+        return mailer;
+    };
+
+    const make = async ({ store, mailer, principal = { userDetails: OWNER } }) => {
+        const { id } = await requestBook({ store, slug: SLUG, principal, log: quiet });
+        return runBook({
+            message: { slug: SLUG, id },
+            store,
+            tables: store,
+            mailer,
+            baseUrl: 'https://pdayletters.com',
+            log: quiet
+        });
+    };
+
+    it('writes to whoever asked for it once the file exists', async () => {
+        const store = seed(letters);
+        const mailer = recorder();
+
+        await make({ store, mailer });
+
+        assert.equal(mailer.sent.length, 1);
+        assert.equal(mailer.sent[0].to, OWNER);
+        assert.match(mailer.sent[0].text, /24 pages/);
+    });
+
+    it('sends them to the page rather than to the file', async () => {
+        // Both renditions are handed out behind links that die in a quarter
+        // of an hour, and mail is read hours later by definition. A PDF link
+        // in here would be a broken link by the time anybody pressed it.
+        const store = seed(letters);
+        const mailer = recorder();
+
+        await make({ store, mailer });
+
+        assert.match(mailer.sent[0].text, /https:\/\/pdayletters\.com\/book\/isaac\.backman/);
+        assert.doesNotMatch(mailer.sent[0].text, /\.pdf/);
+    });
+
+    it('keeps the missionary out of the subject line, which is read on locked phones', async () => {
+        const store = seed(letters);
+        const mailer = recorder();
+
+        await make({ store, mailer });
+
+        assert.doesNotMatch(mailer.sent[0].subject, /Backman/);
+        assert.match(mailer.sent[0].text, /Elder Isaac Backman/);
+    });
+
+    it('says so when the build failed, and says what stopped it', async () => {
+        // The failure nobody is watching is the one worth sending. An owner
+        // who closed the tab otherwise learns nothing at all, and silence is
+        // indistinguishable from a book that is still being made.
+        const store = seed([]);
+        const mailer = recorder();
+
+        const result = await make({ store, mailer });
+
+        assert.equal(result.status, 'failed');
+        assert.equal(mailer.sent.length, 1);
+        assert.match(mailer.sent[0].text, /no letters/);
+    });
+
+    it('stays quiet for somebody who has asked us to stop writing to them', async () => {
+        const store = seed(letters);
+        const mailer = recorder();
+        const token = issueOptOut({ email: OWNER, slug: SLUG, key: KEY });
+        await recordOptOut({ tables: store, token, key: KEY, log: quiet });
+
+        await make({ store, mailer });
+
+        assert.equal(mailer.sent.length, 0);
+        assert.equal((await latestBook({ store, slug: SLUG })).state, STATE.ready);
+    });
+
+    it('has nobody to write to when the request carried no address', async () => {
+        const store = seed(letters);
+        const mailer = recorder();
+
+        await make({ store, mailer, principal: null });
+
+        assert.equal(mailer.sent.length, 0);
+    });
+
+    it('finishes the book anyway when the mail will not go', async () => {
+        // The bytes are already in storage and the status already says so.
+        // A mail outage that threw here would be a queue retry, and a queue
+        // retry is the whole book set again for the sake of a courtesy.
+        const store = seed(letters);
+        const mailer = {
+            send: async () => {
+                throw new Error('cloudflare is having a day');
+            }
+        };
+
+        const result = await make({ store, mailer });
+
+        assert.equal(result.status, 'built');
+        assert.equal((await latestBook({ store, slug: SLUG })).state, STATE.ready);
+    });
+
+    it('says nothing at all when no mailer was wired up', async () => {
+        const store = seed(letters);
+        const { id } = await requestBook({
+            store,
+            slug: SLUG,
+            principal: { userDetails: OWNER },
+            log: quiet
+        });
+
+        const result = await runBook({ message: { slug: SLUG, id }, store, log: quiet });
+
+        assert.equal(result.status, 'built');
+    });
+
+    it('writes down how the send went, where the owner can be shown it', async () => {
+        const store = seed(letters);
+        const mailer = recorder('bounced');
+
+        await make({ store, mailer });
+
+        const trouble = await deliveryTrouble({ tables: store, emails: [OWNER], log: quiet });
+        assert.equal(trouble.get(OWNER).status, 'bounced');
     });
 });

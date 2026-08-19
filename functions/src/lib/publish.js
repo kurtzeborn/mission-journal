@@ -15,8 +15,12 @@
 import { randomBytes } from 'node:crypto';
 
 import { buildInterior } from './book.js';
+import { bookFailedEmail, bookReadyEmail } from './bookmail.js';
 import { presentPosts } from './present.js';
 import { readProfile } from './profile.js';
+import { recordDelivery } from './delivery.js';
+import { HUMAN_ADDRESS, mailFrom } from './mail.js';
+import { optedOut } from './optout.js';
 import { ROLE } from './acl.js';
 
 // Its own container, like `exports`, and for the opposite reason. Exports are
@@ -153,6 +157,87 @@ const stale = (status, now) => {
 };
 
 /**
+ * Tell whoever asked for this book how it went.
+ *
+ * The book page says "you can close this page -- it carries on without you",
+ * and this is the half of that sentence that makes it true. A long mission
+ * takes minutes to set, which is long enough that the honest advice is to go
+ * away, and an owner who took it has no way back to the news.
+ *
+ * **Only the person who pressed the button.** Two owners share a site and the
+ * other one did not ask for a book; being emailed about one is being emailed
+ * about somebody else's errand. `requestedBy` is kept for this and for
+ * nothing else, which is why it is the only address considered here.
+ *
+ * **Failures are sent too.** The whole argument of `delivery.js` is that
+ * silence is this service's worst outcome because it reads exactly like
+ * success, and a failed build behind a closed tab is precisely that. The
+ * build's own sentence goes with it: those are written for a person and are
+ * usually something the owner can fix in a moment.
+ *
+ * **It cannot fail the build.** Every caller is past the point that mattered
+ * -- there are bytes in storage and a status blob that says so -- and a mail
+ * outage is not permitted to turn a finished book into a queue retry that
+ * builds the whole thing again.
+ */
+async function tell({ store, tables, mailer, baseUrl, status, log = console, now = () => new Date() }) {
+    const to = String(status.requestedBy ?? '').trim().toLowerCase();
+    if (!mailer || !tables || !to) return { status: 'skipped' };
+
+    try {
+        // Honoured even though this message answers a request its recipient
+        // made minutes ago. Somebody who has told us to stop writing to them
+        // has told us that, and "but you asked" is the reasoning behind every
+        // piece of mail nobody wants.
+        if (await optedOut({ tables, email: to })) return { status: 'optedout' };
+
+        // Read here rather than threaded down from the build, because the
+        // failure path never got as far as loading it and both messages want
+        // the same name on them.
+        const { profile } = await readProfile({ store, slug: status.slug });
+        const missionary = profile?.displayName ?? '';
+
+        const body =
+            status.state === STATE.ready
+                ? bookReadyEmail({
+                      baseUrl,
+                      slug: status.slug,
+                      missionary,
+                      pages: status.pages,
+                      letters: status.letters
+                  })
+                : bookFailedEmail({ baseUrl, slug: status.slug, missionary, reason: status.error });
+
+        const result = await mailer.send({
+            // Not the address a letter would come from. This is the service
+            // talking about the owner's own account rather than about mail
+            // that arrived, and a reply to it is a question for a person --
+            // which is what `HUMAN_ADDRESS` is, so it needs no `Reply-To` to
+            // keep the answer out of the classifier.
+            from: mailFrom(HUMAN_ADDRESS),
+            to,
+            subject: body.subject,
+            text: body.text,
+            html: body.html,
+            headers: { 'Auto-Submitted': 'auto-generated' },
+            log
+        });
+
+        await recordDelivery({ tables, email: to, status: result.status, slug: status.slug, now, log });
+
+        log.info?.('book.told', { slug: status.slug, id: status.id, status: result.status });
+        return { status: result.status };
+    } catch (error) {
+        log.error?.('book: could not say the book was done', {
+            slug: status.slug,
+            id: status.id,
+            error: error?.message
+        });
+        return { status: 'failed' };
+    }
+}
+
+/**
  * Ask for a book.
  *
  * Writes the status before it enqueues, never the other way round. A worker
@@ -202,9 +287,21 @@ export async function requestBook({ store, slug, principal, now = new Date(), lo
  * book of four hundred photographs will not finish inside the platform's
  * response window -- and because the owner should be able to close the tab.
  *
+ * `mailer` and `tables` are optional, and their absence means the build says
+ * nothing rather than fails. The build is the job; telling somebody about it
+ * is a courtesy that a missing setting is allowed to cost.
+ *
  * @param {{slug: string, id: string}} input.message
  */
-export async function runBook({ message, store, madeAt = new Date().toISOString(), log = console }) {
+export async function runBook({
+    message,
+    store,
+    tables = null,
+    mailer = null,
+    baseUrl = 'https://pdayletters.com',
+    madeAt = new Date().toISOString(),
+    log = console
+}) {
     const { slug, id } = message ?? {};
     if (!slug || !id) return { status: 'rejected', reason: 'incomplete-message' };
 
@@ -224,13 +321,20 @@ export async function runBook({ message, store, madeAt = new Date().toISOString(
             contentType: 'application/json; charset=utf-8'
         });
 
-        await writeStatus(store, {
+        const done = {
             ...status,
             state: STATE.ready,
             builtAt: new Date().toISOString(),
             pages: built.pages,
             letters: built.manifest.posts.length
-        });
+        };
+
+        await writeStatus(store, done);
+
+        // After the status, always. The page is the thing an owner will
+        // actually look at, and an email arriving before the blob it points
+        // at is ready is a link to a spinner.
+        await tell({ store, tables, mailer, baseUrl, status: done, log });
 
         log.info?.('book.built', { slug, id, pages: built.pages });
         return { status: 'built', pages: built.pages };
@@ -239,12 +343,15 @@ export async function runBook({ message, store, madeAt = new Date().toISOString(
         // five times and then drop it on the poison queue, leaving the owner
         // watching a spinner that never resolves; a failed status is a thing
         // the page can say out loud and a button they can press again.
-        await writeStatus(store, {
+        const gone = {
             ...status,
             state: STATE.failed,
             failedAt: new Date().toISOString(),
             error: error.message
-        });
+        };
+
+        await writeStatus(store, gone);
+        await tell({ store, tables, mailer, baseUrl, status: gone, log });
 
         log.error?.('book.failed', { slug, id, error: error.message });
         return { status: 'failed', error: error.message };

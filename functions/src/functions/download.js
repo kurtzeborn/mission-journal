@@ -55,13 +55,18 @@ async function handler(request, context) {
     // would leave the upload waiting for bytes that are never coming. Destroy
     // it deliberately, which turns that wait into a rejection.
     //
-    // Destroyed with no argument on purpose. Handing destroy an error makes
-    // the stream emit one, and a stream emitting an error nobody is listening
-    // for is a hard crash -- which is exactly the situation here if the upload
-    // has already failed and stopped reading. The real reason is rethrown
-    // instead, where it is caught rather than thrown at the process.
+    // Destroyed *with* the reason. This used to pass nothing, on the theory
+    // that a stream emitting an error nobody listens for takes the process
+    // down -- true, and answered by attaching the listener first rather than
+    // by staying quiet. Staying quiet was the worse bug: a destroyed stream
+    // that emits neither `end` nor `error` leaves storage's upload pending
+    // forever, so `allSettled` below never settles and a failed export holds
+    // this request open until the platform gives up on it, instead of
+    // returning the honest 500 that is written twenty lines down. The book
+    // pipeline had the identical defect and this is the identical fix.
     const built = done.catch((error) => {
-        stream.destroy();
+        stream.on('error', () => {});
+        stream.destroy(error);
         throw error;
     });
 

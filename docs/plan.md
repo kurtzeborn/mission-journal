@@ -1563,9 +1563,9 @@ Shipped since, and previously listed here as outstanding:
 - Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
 - Full design in [Journal Publish](#journal-publish); the provider comparison, and why the wholesale APIs were all ruled out, is in [printing.md](printing.md).
 
-**Done:** the book layout engine (`functions/src/lib/book.js`), sized and paginated to Peecho's hardcover specification, and able to render a marked screen-resolution proof of the same layout; the publish pipeline (`functions/src/lib/publish.js`) and its endpoints (`functions/src/functions/book.js`) — request, poll, fetch either rendition — with the build running on the `book` queue and its state in `books/{slug}/{id}/status.json`; the owner-only page at `/book/{slug}` that asks for a book, watches it build, and links to the proof.
+**Done:** the book layout engine (`functions/src/lib/book.js`), sized and paginated to Peecho's hardcover specification, and able to render a marked screen-resolution proof of the same layout; the publish pipeline (`functions/src/lib/publish.js`) and its endpoints (`functions/src/functions/book.js`) — request, poll, fetch either rendition — with the build running on the `book` queue and its state in `books/{slug}/{id}/status.json`; the owner-only page at `/book/{slug}` that asks for a book, watches it build, and links to the proof; the email that tells whoever pressed the button how it went (`functions/src/lib/bookmail.js`), sent from the queue worker on success and on failure alike, and linking to the page rather than to a rendition whose link dies in fifteen minutes.
 
-**Next:** telling an owner their book is ready without them sitting on the page, then the Peecho publication and its two webhooks.
+**Next:** the Peecho publication and its two webhooks.
 
 Phase 12 is [Leaving beta](#phase-12--leaving-beta), and it is deliberately the last section of this document rather than the next heading — see the note there.
 
