@@ -99,10 +99,11 @@ export function createBlobStore({ accountName, credential = new DefaultAzureCred
          * site's letters and the order it replays them in decides the order
          * they end up in when two letters share a timestamp.
          *
-         * No paging. The only caller is a pending site's backlog, which is
-         * bounded by the rolling expiry at a few months of one family's mail.
-         * A caller that could exceed a page needs a different method, not a
-         * larger page size.
+         * No paging above the SDK's own. The callers are a pending site's
+         * backlog, bounded by the rolling expiry at a few months of one
+         * family's mail, and the operator's flow view, bounded by that plus
+         * one small manifest per archive that has ever existed. A caller that
+         * needs to stop early needs a different method, not a larger page.
          */
         async listBlobs(container, prefix = '') {
             const names = [];

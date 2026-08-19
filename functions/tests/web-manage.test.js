@@ -36,6 +36,35 @@ async function manage({ answer }) {
 
 const listed = (deletions) => async () => ({ status: 200, body: { deletions } });
 
+// Both halves of the page, routed by URL. Deletions defaults to none, because
+// most of what follows is about the other table and an empty deletions list is
+// the ordinary state anyway.
+const serving = ({ flow, deletions = [] }) => async (url) =>
+    url.includes('last-received')
+        ? { status: 200, body: flow }
+        : { status: 200, body: { deletions } };
+
+const ARCHIVES = [
+    {
+        slug: 'elder.recent',
+        name: 'Elder Recent',
+        state: 'live',
+        lastPostAt: '2026-08-18',
+        lastReceivedAt: '2026-08-19T06:00:00.000Z',
+        held: 0,
+        expiresAt: ''
+    },
+    {
+        slug: 'sister.waiting',
+        name: '',
+        state: 'pending',
+        lastPostAt: '',
+        lastReceivedAt: '2026-07-01T06:00:00.000Z',
+        held: 3,
+        expiresAt: '2026-08-30T06:00:00.000Z'
+    }
+];
+
 const rows = (view) => view.el('rows').children;
 const cells = (row) => row.children.map((cell) => cell.textContent);
 const restoreButton = (row) => row.descendants().find((node) => node.tagName === 'button');
@@ -104,6 +133,92 @@ describe('the ordinary state, which is nothing at all', () => {
     });
 });
 
+describe('the other table, which is every archive there is', () => {
+    const flowRows = (view) => view.el('flow-rows').children;
+
+    const arriving = async (flow) => manage({ answer: serving({ flow }) });
+
+    test('one row per archive, with both dates kept apart', async () => {
+        // They are different questions. `lastPostAt` is the date the letter
+        // carries; `lastReceivedAt` is the moment it landed here.
+        const view = await arriving({ lastReceivedAt: ARCHIVES[0].lastReceivedAt, archives: ARCHIVES });
+
+        assert.equal(flowRows(view).length, 2);
+        assert.equal(view.el('flow').hidden, false);
+
+        const [slug, name, state, received, posted] = cells(flowRows(view)[0]);
+        assert.equal(slug, 'elder.recent');
+        assert.equal(name, 'Elder Recent');
+        assert.equal(state, 'live');
+        assert.match(received, /2026/);
+        assert.match(posted, /2026/);
+        assert.doesNotMatch(received, /T\d\d:/);
+    });
+
+    test('the headline says when anything last arrived anywhere', async () => {
+        // The one fact somebody opens this page for. Said out loud rather than
+        // left to be read off the top row, because reading it off the table
+        // means trusting the sort.
+        const days = 4;
+        const when = new Date(Date.now() - days * 86400000).toISOString();
+        const view = await arriving({ lastReceivedAt: when, archives: ARCHIVES });
+
+        assert.match(view.text('flow-state'), /last received a letter 4 days ago/i);
+    });
+
+    test('an archive that has never had a letter shows dashes, not blanks', async () => {
+        // Rows written before arrivals were recorded have no date at all. An
+        // empty cell reads as a rendering fault.
+        const view = await arriving({
+            lastReceivedAt: '',
+            archives: [{ slug: 'elder.new', name: '', state: 'live', lastPostAt: '', lastReceivedAt: '', held: 0 }]
+        });
+
+        assert.deepEqual(cells(flowRows(view)[0]), ['elder.new', '\u2014', 'live', '\u2014', '\u2014', '\u2014']);
+        assert.match(view.text('flow-state'), /No letters have arrived/i);
+    });
+
+    test('letters waiting say how many and until when', async () => {
+        const view = await arriving({ lastReceivedAt: ARCHIVES[0].lastReceivedAt, archives: ARCHIVES });
+
+        assert.match(cells(flowRows(view)[1])[5], /^3 letters, until /);
+    });
+
+    test('letters stuck on a live archive say so without a date', async () => {
+        // Not a pending archive counting down -- promotion failed partway and
+        // left the only copy of somebody's mail where nothing reads it.
+        const view = await arriving({
+            lastReceivedAt: '2026-08-19T06:00:00.000Z',
+            archives: [{ ...ARCHIVES[0], held: 1 }]
+        });
+
+        assert.equal(cells(flowRows(view)[0])[5], '1 letter');
+    });
+
+    test('a name reaches the page as text, not as markup', async () => {
+        // A display name taken from an email header the service did not write.
+        const nasty = '<img src=x onerror=alert(1)>';
+        const view = await arriving({ lastReceivedAt: '', archives: [{ ...ARCHIVES[0], name: nasty }] });
+
+        assert.equal(cells(flowRows(view)[0])[1], nasty);
+    });
+
+    test('and a failure here does not take the deletions down with it', async () => {
+        // Two independent questions. An operator who came to restore an
+        // archive must still be able to.
+        const view = await manage({
+            answer: async (url) =>
+                url.includes('last-received')
+                    ? { status: 500, body: '' }
+                    : { status: 200, body: { deletions: DELETIONS } }
+        });
+
+        assert.match(view.text('flow-state'), /Could not load/i);
+        assert.equal(view.el('flow').hidden, true);
+        assert.equal(rows(view).length, 2);
+    });
+});
+
 describe('who the page tells nothing to', () => {
     test('a signed-in visitor who is not an operator is shown a dead end', async () => {
         // The API answers 404 rather than 403 so the route is not confirmed,
@@ -124,7 +239,8 @@ describe('who the page tells nothing to', () => {
 
         assert.equal(view.el('tooling').hidden, true);
         assert.equal(view.el('deletions').hidden, true);
-        assert.doesNotMatch(view.context.document.title, /deleted archives/i);
+        assert.equal(view.el('flow').hidden, true);
+        assert.doesNotMatch(view.context.document.title, /deleted|archive|tooling/i);
     });
 
     test('an operator is shown all of it', async () => {
@@ -132,7 +248,7 @@ describe('who the page tells nothing to', () => {
 
         assert.equal(view.el('tooling').hidden, false);
         assert.equal(view.el('missing').hidden, true);
-        assert.match(view.context.document.title, /Deleted archives/);
+        assert.match(view.context.document.title, /Service tooling/);
     });
 
     test('and a server that cannot be reached is not mistaken for one', async () => {

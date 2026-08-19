@@ -210,6 +210,25 @@ describe('what it takes, and what it leaves', () => {
         assert.equal(await world.store.getEntity(TABLES.deletions, SLUG, 'record'), null);
     });
 
+    test('and the site row, which deletion deliberately kept', async () => {
+        // The row carries the missionary's display name, so deletion leaves it
+        // alone -- restoring an archive whose name had been thrown away would
+        // put a family back with a blank masthead. Erasure makes no such
+        // promise, and a row left here would keep the archive on the
+        // operator's service-wide view forever with nothing behind it.
+        const world = await deleted();
+        await world.store.upsertEntity(TABLES.sites, {
+            partitionKey: SLUG,
+            rowKey: 'activity',
+            lastPostAt: '2026-08-01T09:00:00.000Z',
+            missionaryDisplayName: 'Elder Example'
+        });
+
+        await erase(world, DAY_30);
+
+        assert.equal(await world.store.getEntity(TABLES.sites, SLUG, 'activity'), null);
+    });
+
     test('running it twice is not an error', async () => {
         // The retry path, and the ordering above guarantees it happens.
         const world = await deleted();

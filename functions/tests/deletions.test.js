@@ -11,7 +11,9 @@ import assert from 'node:assert/strict';
 
 import { memoryStore } from './memory-store.js';
 import { operatorGate } from '../src/lib/api.js';
+import { received } from '../src/functions/deletions.js';
 import { deleteSite, restoreSite, pendingDeletions } from '../src/lib/deletion.js';
+import { touchSiteActivity } from '../src/lib/sites.js';
 import { ROLE, readAcl } from '../src/lib/acl.js';
 import { TABLES } from '../src/lib/tables.js';
 
@@ -253,5 +255,75 @@ describe('the slug somebody else has taken', () => {
         await restoreSite({ store, tables: store, slug: SLUG, by: OPERATOR, log: silent });
 
         assert.deepEqual(await readAcl(store, SLUG), newcomers);
+    });
+});
+
+// The arrivals half of the same page. What it reports is tested next door in
+// flow.test.js; what is checked here is that it is behind the same door as
+// everything else under `/manage`, which is the only property it shares with
+// the deletions routes and the only one that could quietly stop being true.
+describe('the service-wide arrivals route', () => {
+    // The handler reaches for `process.env` through `operatorGate`, which
+    // deliberately threads no environment through -- there is no per-request
+    // operator list, and an argument for one would be an invitation to pass
+    // the wrong one.
+    const withSetting = async (value, body) => {
+        const before = process.env.OPERATOR_EMAILS;
+        process.env.OPERATOR_EMAILS = value;
+        try {
+            return await body();
+        } finally {
+            if (before === undefined) delete process.env.OPERATOR_EMAILS;
+            else process.env.OPERATOR_EMAILS = before;
+        }
+    };
+
+    const ask = (email, store) =>
+        withSetting(OPERATOR, () =>
+            received(
+                asking(email, 'https://example.org/api/manage/last-received'),
+                silent,
+                store,
+                store
+            )
+        );
+
+    test('answers an operator with every archive there is', async () => {
+        const store = memoryStore();
+        await touchSiteActivity({
+            tables: store,
+            slug: SLUG,
+            lastPostAt: '2026-08-18T09:00:00.000Z',
+            receivedAt: '2026-08-19T09:00:00.000Z'
+        });
+
+        const response = await ask(OPERATOR, store);
+
+        assert.equal(response.status, 200);
+        assert.equal(response.jsonBody.lastReceivedAt, '2026-08-19T09:00:00.000Z');
+        assert.deepEqual(
+            response.jsonBody.archives.map((row) => row.slug),
+            [SLUG]
+        );
+    });
+
+    test('and refuses an owner of a real archive with the same 404 as a stranger', async () => {
+        // Owning an archive is authority over that archive. This route is
+        // about every archive at once, which is why it can never be
+        // owner-facing.
+        const store = memoryStore();
+
+        assert.equal((await ask(MUM, store)).status, 404);
+        assert.equal((await ask('nobody@example.com', store)).status, 404);
+    });
+
+    test('and nobody at all gets 401', async () => {
+        assert.equal((await ask(null, memoryStore())).status, 401);
+    });
+
+    test('and it is never cached, because a stale monitoring page is a lie', async () => {
+        const response = await ask(OPERATOR, memoryStore());
+
+        assert.match(response.headers['Cache-Control'], /no-store/);
     });
 });

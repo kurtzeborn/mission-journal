@@ -591,14 +591,21 @@ export async function commitLetter({ store, tables = null, slug, ulid, raw, extr
 
     await writeRaw({ store, slug, msgId, raw, extracted, envelope, ulid, receivedAt, verdict });
 
-    // The site's "last letter" stamp, used only to order somebody's archives
-    // on the landing page. Deliberately swallowed on failure: this is a sort
-    // key, the letter is already committed and archived, and there is no
-    // version of "the index write failed" that justifies making the sender's
-    // mail server retry and deliver the letter a second time.
+    // The site's "last letter" stamp, used to order somebody's archives on the
+    // landing page and to answer "is mail still arriving" on the operator's
+    // view. Both dates are written because they are different questions -- see
+    // sites.js. Deliberately swallowed on failure: this is a sort key, the
+    // letter is already committed and archived, and there is no version of
+    // "the index write failed" that justifies making the sender's mail server
+    // retry and deliver the letter a second time.
     if (tables) {
         try {
-            await touchSiteActivity({ tables, slug, lastPostAt: post.originalDate ?? receivedAt });
+            await touchSiteActivity({
+                tables,
+                slug,
+                lastPostAt: post.originalDate ?? receivedAt,
+                receivedAt
+            });
         } catch (error) {
             log.error?.('ingest: site activity write failed', { slug, error: error.message });
         }

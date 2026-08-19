@@ -28,8 +28,10 @@
     exactly the people it was untrue for. A refused visitor now gets the same
     answer as anyone who mistypes a URL.
 
-    The list is ordinarily empty, which is the state the page is designed
-    around: the common case is confirming that nothing is waiting.
+    Two tables, and they are opposites. The deletions list is ordinarily empty,
+    which is the state it is designed around: the common case is confirming
+    that nothing is waiting. The arrivals list always has every archive in it,
+    and the common case is confirming that the top row is recent.
 -->
 
 <body>
@@ -52,7 +54,45 @@
         </section>
 
         <div id="tooling" hidden>
-            <h1>Deleted archives</h1>
+            <h1>Service tooling</h1>
+
+            <!--
+                Above the deletions, because this is the half somebody comes
+                to look at. Deletions are ordinarily an empty table; this one
+                always has something in it, and it is the only view in the
+                service that spans archives -- so it is the only place ingest
+                having stopped can be noticed at all. Nothing arriving means
+                nothing missing from any family's page, which means no owner
+                has anything to report.
+            -->
+            <h2>Letters arriving</h2>
+
+            <p class="note">
+                Every archive in the service, most recently active first. <strong>Last
+                received</strong> is when a letter landed here; <strong>newest letter</strong> is
+                the date the letter itself carries. A gap between them is a family working
+                through a backlog rather than an archive gone quiet.
+            </p>
+
+            <div id="flow-state" class="state">Loading&hellip;</div>
+
+            <table id="flow" class="deletions" hidden>
+                <thead>
+                    <tr>
+                        <th scope="col">Archive</th>
+                        <th scope="col">Name</th>
+                        <th scope="col">State</th>
+                        <th scope="col">Last received</th>
+                        <th scope="col">Newest letter</th>
+                        <th scope="col">Waiting</th>
+                    </tr>
+                </thead>
+                <tbody id="flow-rows"></tbody>
+            </table>
+
+            <hr class="rule">
+
+            <h2>Deleted archives</h2>
 
             <p class="note">
                 Archives whose owners have deleted them. The letters are still here until the

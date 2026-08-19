@@ -1,11 +1,17 @@
-// The operator's page: what has been deleted, and one door back.
+// The operator's page: what is arriving, what has been deleted, and one door
+// back.
 //
-// There is no owner-facing undo -- the confirmation on the settings page says
-// the archive is gone and nothing here contradicts it -- so this page is the
-// entire recovery path for a deletion somebody regrets. It is not linked from
-// anywhere, and the API behind it refuses everyone not on OPERATOR_EMAILS with
-// a 404, so a stranger who finds the URL sees the same "nothing here" as a
-// stranger who mistypes one.
+// Two tables and they are opposites. Arrivals always has every archive in it
+// and the common case is confirming the top row is recent -- it is the only
+// view in the service that spans archives, so it is the only place ingest
+// having stopped can be noticed. Deletions is ordinarily empty and is the
+// entire recovery path for a deletion somebody regrets, since there is no
+// owner-facing undo: the confirmation on the settings page says the archive is
+// gone and nothing here contradicts it.
+//
+// The page is not linked from anywhere, and both APIs behind it refuse
+// everyone not on OPERATOR_EMAILS with a 404, so a stranger who finds the URL
+// sees the same "nothing here" as a stranger who mistypes one.
 
 (() => {
     'use strict';
@@ -23,7 +29,7 @@
     const reveal = () => {
         $('loading').hidden = true;
         $('tooling').hidden = false;
-        document.title = 'Deleted archives \u2014 Pday Letters';
+        document.title = 'Service tooling \u2014 Pday Letters';
     };
 
     // What a stranger sees, and what an operator sees if they mistype: the
@@ -48,6 +54,18 @@
         return Number.isNaN(when.getTime())
             ? '\u2014'
             : when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    };
+
+    // Whole days, rounded down, from a timestamp to now. Only the headline
+    // uses it: putting it on every row would be a column of arithmetic nobody
+    // asked for, and the sort order already says which archives are quiet.
+    const ago = (value) => {
+        const when = new Date(value);
+        if (Number.isNaN(when.getTime())) return '';
+        const days = Math.floor((Date.now() - when.getTime()) / 86400000);
+        if (days < 0) return '';
+        if (days === 0) return 'today';
+        return days === 1 ? 'yesterday' : `${days} days ago`;
     };
 
     // textContent everywhere below, never innerHTML. `reason` is free text an
@@ -121,6 +139,77 @@
         $('deletions').hidden = false;
     }
 
+    // The arrivals half. Drawn only after the deletions call has confirmed the
+    // visitor, so a refused stranger never sees a table flash up behind the
+    // "nothing here" panel.
+    function drawFlow(archives) {
+        const rows = $('flow-rows');
+        rows.replaceChildren();
+
+        for (const archive of archives) {
+            const row = document.createElement('tr');
+            cell(row, archive.slug);
+            cell(row, archive.name || '\u2014');
+            cell(row, archive.state);
+            cell(row, archive.lastReceivedAt ? day(archive.lastReceivedAt) : '\u2014');
+            cell(row, archive.lastPostAt ? day(archive.lastPostAt) : '\u2014');
+            cell(row, waiting(archive));
+            rows.appendChild(row);
+        }
+
+        $('flow').hidden = false;
+    }
+
+    // Letters held and not published. Ordinarily nothing, which is why it is
+    // one cell rather than two columns of blanks: on a pending archive it is
+    // the whole story and carries the date the letters are destroyed, and on a
+    // live one it means promotion failed partway and left the only copy of
+    // somebody's mail in a container nothing reads.
+    const waiting = (archive) => {
+        if (!archive.held) return '\u2014';
+        const letters = `${archive.held} letter${archive.held === 1 ? '' : 's'}`;
+        return archive.expiresAt ? `${letters}, until ${day(archive.expiresAt)}` : letters;
+    };
+
+    async function loadFlow() {
+        const where = $('flow-state');
+
+        let response;
+        try {
+            response = await fetch('/api/manage/last-received', { cache: 'no-store' });
+        } catch {
+            where.textContent = 'Could not load the arrivals. Please try again.';
+            return;
+        }
+
+        if (!response.ok) {
+            where.textContent = 'Could not load the arrivals.';
+            return;
+        }
+
+        const body = await response.json();
+        const archives = Array.isArray(body.archives) ? body.archives : [];
+
+        if (!archives.length) {
+            where.textContent = 'There are no archives yet.';
+            return;
+        }
+
+        // Said above the table as well as being derivable from the top row,
+        // because it is the one fact somebody comes here for and reading it
+        // out of a sorted table means trusting the sort. The same slot carries
+        // the failures above, which is why the class moves: centred in a box
+        // is right for "nothing loaded" and wrong for a sentence with a table
+        // under it.
+        const since = ago(body.lastReceivedAt);
+        where.className = 'note';
+        where.textContent = body.lastReceivedAt
+            ? `The service last received a letter ${since}, on ${day(body.lastReceivedAt)}.`
+            : 'No letters have arrived yet.';
+
+        drawFlow(archives);
+    }
+
     async function load() {
         let response;
         try {
@@ -147,6 +236,12 @@
         const deletions = Array.isArray(body.deletions) ? body.deletions : [];
 
         reveal();
+
+        // Not awaited. The two halves answer different questions and neither
+        // is worth making the other wait for -- and the deletions call has
+        // already settled the only question they share, which is whether the
+        // page should be on screen at all.
+        loadFlow();
 
         // The ordinary state, and worth saying plainly rather than showing an
         // empty table: the point of the visit is usually to confirm that

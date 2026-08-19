@@ -33,6 +33,7 @@
 import { TABLES } from './tables.js';
 import { readAcl } from './acl.js';
 import { DELETION_RECORD, deletedAclPath } from './deletion.js';
+import { forgetSite } from './sites.js';
 
 // Everything a deleted archive occupies. `inbox` is deliberately absent: it
 // holds the untouched original of every message, is aged out by a lifecycle
@@ -115,6 +116,15 @@ export async function eraseSite({ purge, store, tables, slug, now = () => new Da
             versions += 1;
         }
     }
+
+    // The site row goes with the blobs, not with the deletion. It carries the
+    // missionary's display name, which is a person's name in a table, and it
+    // survived both the deletion and the thirty days because `deleteSite`
+    // deliberately keeps it -- restoring an archive whose name had been thrown
+    // away would put a family back with a blank masthead. Erasure makes no
+    // such promise, and a row left here would be an archive that appears on
+    // the operator's service-wide view forever with nothing behind it.
+    await forgetSite({ tables, slug });
 
     // Last, and only once every container has come back clean. A record
     // removed before the blobs are gone leaves an archive nothing will ever

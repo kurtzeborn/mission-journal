@@ -28,19 +28,35 @@ const ROW = 'activity';
 /**
  * Record that a site has a new most-recent letter.
  *
+ * Two dates, and they are not the same date. `lastPostAt` is the date the
+ * *letter* carries, which is what the landing page sorts on -- somebody's
+ * archives should be ordered by how recent their letters are, not by when we
+ * happened to be handed them. `lastReceivedAt` is the moment it arrived here.
+ *
+ * They diverge on the one path that matters for watching the service: a family
+ * forwarding two years of backlog in an evening produces a great deal of
+ * traffic whose newest letter is eighteen months old. An operator asking "is
+ * mail still coming in" off `lastPostAt` alone would be told no, on the busiest
+ * night that archive has ever had.
+ *
  * Deliberately not read-modify-write. Two letters committed at once would
  * race, and the loser would write a slightly older timestamp -- which costs
- * nothing, because the only consumer is a sort order between whole archives.
- * An ETag loop here would buy correctness nobody can perceive at the price of
- * a retry on the ingest path.
+ * nothing, because the only consumers are a sort order between whole archives
+ * and a page somebody reads once a month. An ETag loop here would buy
+ * correctness nobody can perceive at the price of a retry on the ingest path.
  */
-export async function touchSiteActivity({ tables, slug, lastPostAt }) {
+export async function touchSiteActivity({ tables, slug, lastPostAt, receivedAt }) {
     if (!slug || !lastPostAt) return;
 
     await tables.upsertEntity(TABLES.sites, {
         partitionKey: slug,
         rowKey: ROW,
-        lastPostAt
+        lastPostAt,
+        // Omitted rather than defaulted when the caller has no arrival time to
+        // offer, so an older row keeps whatever it had. Filling it in from
+        // `lastPostAt` would make the two columns agree by construction and
+        // destroy the only thing the second one is for.
+        ...(receivedAt === undefined ? {} : { lastReceivedAt: receivedAt })
     });
 }
 
@@ -92,6 +108,50 @@ export async function sitesBySlug({ tables, slugs }) {
     }
 
     return found;
+}
+
+/**
+ * Every site row there is.
+ *
+ * The one query in this file that scans, and the only caller is the operator's
+ * service-wide view -- a page read by one or two people, occasionally, about a
+ * table holding one row per archive in the entire service. A partition key
+ * cannot help here because "every archive" is the question, and building a
+ * second index to answer it would be maintaining a list of sites in order to
+ * avoid reading the list of sites.
+ *
+ * Filtered on the row key rather than trusting the table to hold only these,
+ * so that a second row shape added here later cannot silently become an
+ * archive on somebody's screen.
+ *
+ * @returns {Promise<Array<{slug: string, lastPostAt: string, lastReceivedAt: string,
+ *   missionaryDisplayName: string}>>}
+ */
+export async function allSiteActivity({ tables }) {
+    const rows = await tables.listEntities(TABLES.sites);
+
+    return rows
+        .filter((row) => row.rowKey === ROW)
+        .map((row) => ({
+            slug: row.partitionKey,
+            lastPostAt: row.lastPostAt ?? '',
+            lastReceivedAt: row.lastReceivedAt ?? '',
+            missionaryDisplayName: row.missionaryDisplayName ?? ''
+        }));
+}
+
+/**
+ * Forget a site entirely.
+ *
+ * Called by the day-thirty erasure and by nothing else. Deletion leaves the
+ * row alone on purpose -- the thirty-day window is a window, and restoring an
+ * archive whose name had been thrown away would put a family back with a blank
+ * masthead -- but erasure is the promise that nothing is left, and this row
+ * carries a person's name.
+ */
+export async function forgetSite({ tables, slug }) {
+    if (!slug) return;
+    await tables.deleteEntity(TABLES.sites, slug, ROW);
 }
 
 /**
