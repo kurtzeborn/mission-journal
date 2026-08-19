@@ -111,19 +111,22 @@ param publicBaseUrl string = 'https://pdayletters.com'
 @description('''
 The printer. `peechoBase` decides whether an order becomes a real book: their
 test environment is a separate account whose orders are never printed and
-never charged, and it is the default here because the cost of getting that the
-wrong way round is a bound book posted to somebody by a test run.
+never charged. The code's own default is that test environment, so a developer
+who runs this service with no configuration cannot post a book to anybody; this
+file is production infrastructure, so it names production instead, and does it
+here where the choice is reviewable rather than in a script somebody ran once.
 
-`peechoOfferingId` pins the exact product -- hardcover, Letter, gloss 200gsm --
-so the buyer is shown their own book rather than a catalogue to choose from.
-Empty is allowed and means they choose, which is worse but not broken.
+`peechoOfferingId` pins the exact product -- hardcover, Letter, 2.5mm board,
+gloss coated 200gsm -- so the buyer is shown their own book instead of being
+asked to choose a product category first. Empty is allowed and means they
+choose, which is worse but not broken.
 
-Both keys are Key Vault references created out of band by `provision-peecho.ps1`.
-An environment where they do not resolve has no printer, tells the book page so,
-and offers nothing for sale.
+Both keys are Key Vault references, created out of band by
+`provision-peecho.ps1`. An environment where they do not resolve has no
+printer, tells the book page so, and offers nothing for sale.
 ''')
-param peechoBase string = 'https://test.www.peecho.com'
-param peechoOfferingId string = ''
+param peechoBase string = 'https://www.peecho.com'
+param peechoOfferingId string = '7230432'
 param peechoApiKeyName string = 'peecho-api-key'
 // Named for what it holds rather than what Peecho calls it: a parameter with
 // `secret` in its name is linted as though it were the secret itself.
