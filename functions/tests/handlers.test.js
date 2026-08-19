@@ -305,6 +305,25 @@ describe('the book handlers', () => {
         assert.equal(response.status, 404);
     });
 
+    test('a build says whether there is a printer to order it from', async () => {
+        const store = printable();
+        await publish({ request: asOwner(), context: silent, store });
+
+        const was = process.env.PEECHO_API_KEY;
+        try {
+            delete process.env.PEECHO_API_KEY;
+            const off = await progress({ request: asOwner(), context: silent, store });
+            assert.equal(off.jsonBody.printing, false);
+
+            process.env.PEECHO_API_KEY = 'a-key';
+            const on = await progress({ request: asOwner(), context: silent, store });
+            assert.equal(on.jsonBody.printing, true);
+        } finally {
+            if (was === undefined) delete process.env.PEECHO_API_KEY;
+            else process.env.PEECHO_API_KEY = was;
+        }
+    });
+
     test('an unfinished book cannot be fetched in either form', async () => {
         const store = printable();
         await publish({ request: asOwner(), context: silent, store });

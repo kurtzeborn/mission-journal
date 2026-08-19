@@ -67,6 +67,11 @@ const forThePage = (status) => ({
     pages: status.pages,
     letters: status.letters,
     missing: status.missing ?? [],
+    // Whether there is any point showing an order button. Not a fact about
+    // this build at all, but the page has to learn it somewhere, and the
+    // alternative -- a button whose only possible answer is "printing is not
+    // switched on yet" -- is a control that exists to apologise.
+    printing: Boolean(setting('PEECHO_API_KEY')),
     // The message from a failed build, which is written by us and says things
     // like "there are no letters to print yet". Shown rather than swallowed:
     // a build that failed for a reason the owner can fix is the common case,

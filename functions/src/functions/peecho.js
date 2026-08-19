@@ -75,11 +75,10 @@ const baseUrl = () => setting('PUBLIC_BASE_URL', 'https://pdayletters.com');
 /**
  * Is printing switched on at all?
  *
- * It is not, and it has not been since this was written: Peecho's company
- * details form wants a VAT number a US sole trader does not have, and without
- * one the API answers `APP_NO_COMP_DETAILS` to everything. So the keys are
- * absent in every environment, and the endpoint says so rather than throwing
- * a 500 that reads like a bug.
+ * One setting decides it, and its absence is a configuration state rather
+ * than a fault: a fresh environment has no printer, the book page is told so
+ * and does not offer to sell anything, and the endpoint says the same in a
+ * sentence rather than throwing a 500 that reads like a bug.
  */
 function printer(context) {
     const apiKey = setting('PEECHO_API_KEY');

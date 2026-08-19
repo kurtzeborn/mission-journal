@@ -28,6 +28,10 @@
     let watchingSince = 0;
     let timer = null;
 
+    // Which book the finished panel is currently describing, so a checkout
+    // page made for one build is not left on screen beside another.
+    let newest = '';
+
     const show = (message) => {
         state.textContent = message;
         state.hidden = false;
@@ -104,6 +108,20 @@
         $('proof').href = `${url}/${encodeURIComponent(status.id)}/proof.pdf`;
         $('print').href = `${url}/${encodeURIComponent(status.id)}/letters.pdf`;
         finished.hidden = false;
+
+        // A checkout belongs to one book. Rebuilding replaces the book, so
+        // the link from the last one is put away rather than left sitting
+        // under a different set of letters.
+        if (status.id !== newest) {
+            newest = status.id;
+            $('checkout').hidden = true;
+            $('order-said').textContent = '';
+        }
+
+        // Hidden entirely where the printer is not configured, rather than
+        // shown and then apologetic. An environment without the keys has no
+        // way to sell a book and should not offer to.
+        $('printing').hidden = !status.printing;
 
         // The button stays live and still says "make the book", because a
         // book made before the last three letters arrived is exactly the
@@ -439,6 +457,58 @@
         watch();
     }
 
+    /**
+     * Ask the printer for a checkout page for the book on screen.
+     *
+     * Nothing is bought here and nothing can be: what comes back is a URL at
+     * the printer's own shop, where the buyer pays them, they print and they
+     * post. No card, no address and no name reaches this service, which is
+     * the whole reason this is a link rather than a form.
+     */
+    async function orderOne() {
+        const button = $('order');
+        const orderSaid = $('order-said');
+
+        if (!newest) return;
+
+        button.disabled = true;
+        orderSaid.textContent = 'Asking the printer\u2026';
+
+        let response;
+        try {
+            response = await fetch(`/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(newest)}`, {
+                method: 'POST'
+            });
+        } catch {
+            button.disabled = false;
+            orderSaid.textContent = 'Could not reach the server. Nothing has been ordered.';
+            return;
+        }
+
+        if (refused(response)) return;
+
+        button.disabled = false;
+
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            // Their sentence again where there is one. `503 printing is not
+            // switched on yet` is a true and useful thing to read, and much
+            // better than a page pretending the button did something.
+            orderSaid.textContent = body.error ?? 'That did not work. Try again.';
+            return;
+        }
+
+        $('buy').href = body.checkoutUrl;
+        $('checkout').hidden = false;
+        // Said out loud rather than only shown, because pressing the button a
+        // second time when a checkout already exists gives back the same link
+        // and would otherwise look like nothing happened.
+        orderSaid.textContent = body.reused
+            ? 'This book already had a checkout page, so here it is again.'
+            : '';
+    }
+
     // Polling stops while the tab is in the background and picks up again
     // when it comes forward, which is where most of these builds are watched
     // from -- somebody presses the button and goes to do something else.
@@ -448,6 +518,7 @@
     });
 
     $('make').addEventListener('click', make);
+    $('order').addEventListener('click', orderOne);
     watchingSince = Date.now();
     look(true);
 })();

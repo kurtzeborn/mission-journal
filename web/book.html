@@ -135,6 +135,41 @@
                     file underneath it is the real one: full resolution, nothing written on it,
                     and far larger.
                 </p>
+
+                <div id="printing" hidden>
+                    <hr class="rule">
+
+                    <h2>A bound copy</h2>
+                    <p>
+                        Hardcover, printed and posted by our printer &mdash; not by us. The button
+                        makes a checkout page for this book; the price, the postage and the payment
+                        are all theirs, and we never see the card or the address.
+                    </p>
+
+                    <!--
+                        Two steps rather than one, and not because a redirect
+                        is hard. What comes back is a link that works for two
+                        months and can be sent to anybody, so a grandmother can
+                        buy her own copy without an account here. Opening it
+                        and throwing it away would hide the most useful thing
+                        about it.
+                    -->
+                    <p>
+                        <button class="button" type="button" id="order">Make a checkout page</button>
+                    </p>
+
+                    <div id="checkout" hidden>
+                        <p>
+                            <a class="button" id="buy" href="/" target="_blank" rel="noopener">Go to the checkout</a>
+                        </p>
+                        <p class="note">
+                            This link lasts two months and can be shared &mdash; anybody who has it
+                            can order their own copy.
+                        </p>
+                    </div>
+
+                    <p class="note" id="order-said" role="status" aria-live="polite"></p>
+                </div>
             </div>
         </section>
     </main>
