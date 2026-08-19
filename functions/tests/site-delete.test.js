@@ -183,3 +183,86 @@ describe('what is recorded', () => {
         assert.match(response.jsonBody.purgeAfter, /^\d{4}-\d{2}-\d{2}T/);
     });
 });
+
+// The only thing that distinguishes an operator's deletion from an owner's.
+// There is no second route and no second confirmation -- they arrive here as
+// an owner, having resolved above the ACL, and the flag the gate hands back is
+// the whole of the difference.
+describe('an operator has to say why', () => {
+    const OPERATOR = 'ops@pdayletters.com';
+
+    // `resolveAccess` reads `process.env` when nobody hands it an environment,
+    // and the gates deliberately do not thread one through.
+    const withSetting = async (value, body) => {
+        const before = process.env.OPERATOR_EMAILS;
+        process.env.OPERATOR_EMAILS = value;
+        try {
+            return await body();
+        } finally {
+            if (before === undefined) delete process.env.OPERATOR_EMAILS;
+            else process.env.OPERATOR_EMAILS = before;
+        }
+    };
+
+    const asOperator = (store, body) =>
+        withSetting(OPERATOR, () => call(store, { as: OPERATOR, body }));
+
+    test('and the archive survives a request without one', async () => {
+        const store = await seeded();
+
+        const response = await asOperator(store, { confirm: SLUG });
+
+        assert.equal(response.status, 400);
+        assert.deepEqual(await readAcl(store, SLUG), MEMBERS);
+        assert.deepEqual(await pendingDeletions({ tables: store }), []);
+    });
+
+    test('whitespace is not a reason', async () => {
+        const store = await seeded();
+
+        const response = await asOperator(store, { confirm: SLUG, reason: '   \n ' });
+
+        assert.equal(response.status, 400);
+        assert.deepEqual(await readAcl(store, SLUG), MEMBERS);
+    });
+
+    test('the name still has to be typed, and is checked first', async () => {
+        // Both are wrong here. The confirmation is the one that answers,
+        // because being told to explain a deletion you have not confirmed
+        // describes the wrong problem.
+        const store = await seeded();
+
+        const response = await asOperator(store, { confirm: 'other.example' });
+
+        assert.equal(response.jsonBody.error, 'type the archive name to confirm');
+    });
+
+    test('with a reason it goes through, and the reason is on the record', async () => {
+        const store = await seeded();
+
+        const response = await asOperator(store, { confirm: SLUG, reason: 'abuse report #14' });
+
+        assert.equal(response.status, 200);
+        assert.equal(await readAcl(store, SLUG), null);
+
+        const [record] = await pendingDeletions({ tables: store });
+        assert.equal(record.deletedBy, OPERATOR);
+        assert.equal(record.reason, 'abuse report #14');
+    });
+
+    test('an operator deleting their own family archive is asked for nothing', async () => {
+        // The rule is about whose archive it is, not about who is on the
+        // list. An operator who is an owner here resolves through the ACL, so
+        // `viaOperator` is false and they are deleting their own letters like
+        // anybody else. A demand for justification on that path is what would
+        // teach them to type `x` on the path that matters.
+        const store = await seeded();
+
+        const response = await withSetting(MUM, () =>
+            call(store, { as: MUM, body: { confirm: SLUG } })
+        );
+
+        assert.equal(response.status, 200);
+        assert.equal((await pendingDeletions({ tables: store }))[0].reason, '');
+    });
+});

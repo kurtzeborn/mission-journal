@@ -15,6 +15,14 @@
     const $ = (id) => document.getElementById(id);
     const state = $('state');
 
+    // Whether the authority to be on this page came from the operator setting
+    // rather than from the archive's own member list. It changes one control:
+    // deleting somebody else's archive requires a reason, and deleting your
+    // own does not. Set once from the load and never re-read, because a
+    // membership that changed underneath would have to change the answer to
+    // "may you be here at all" first, and that is what the next request asks.
+    let asOperator = false;
+
     const show = (message) => {
         state.textContent = message;
         state.hidden = false;
@@ -63,6 +71,10 @@
         $('mission').value = payload.mission ?? '';
         $('startDate').value = payload.startDate ?? '';
         $('returnDate').value = payload.returnDate ?? '';
+
+        asOperator = Boolean(payload.viaOperator);
+        $('delete-operator').hidden = !asOperator;
+        $('reason-row').hidden = !asOperator;
 
         state.hidden = true;
         $('everything').hidden = false;
@@ -124,15 +136,18 @@
 
     // --- deleting the archive ---------------------------------------------
 
-    // The button stays disabled until the typed name matches exactly.
+    // The button stays disabled until the typed name matches exactly -- and,
+    // for an operator, until they have said why.
     //
-    // The server checks this too, and that is the check that counts -- a
+    // The server checks both, and those are the checks that count -- a
     // confirmation living only in JavaScript is one a retried fetch never has
     // to pass. This half exists because a disabled button is a better prompt
     // than an error is: it tells somebody who half-meant it that they have not
     // finished, without ever having accepted the request.
     function armed() {
-        $('delete-go').disabled = $('confirm').value.trim() !== slug;
+        const named = $('confirm').value.trim() === slug;
+        const explained = !asOperator || Boolean($('reason').value.trim());
+        $('delete-go').disabled = !named || !explained;
     }
 
     async function destroy(event) {
@@ -149,7 +164,14 @@
                 method: 'DELETE',
                 cache: 'no-store',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ confirm: $('confirm').value.trim() })
+                // Sent whatever the box holds. An owner's is empty and the
+                // server neither asks for nor needs it; branching here on
+                // `asOperator` would mean the browser deciding which rule it
+                // is subject to, which is the server's decision.
+                body: JSON.stringify({
+                    confirm: $('confirm').value.trim(),
+                    reason: $('reason').value.trim()
+                })
             });
         } catch {
             armed();
@@ -179,6 +201,7 @@
         $('confirm-slug').textContent = slug;
         $('profile').addEventListener('submit', save);
         $('confirm').addEventListener('input', armed);
+        $('reason').addEventListener('input', armed);
         $('delete').addEventListener('submit', destroy);
         load();
     }

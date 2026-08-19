@@ -73,7 +73,14 @@ export async function read({ request, context, store, tables }) {
         // either of them, so the file is the only place they can have come
         // from, and an empty field here is the truth rather than an omission.
         startDate: profile.startDate ?? '',
-        returnDate: profile.returnDate ?? ''
+        returnDate: profile.returnDate ?? '',
+        // Nothing on this page is *about* the profile, and it is here because
+        // this is the page the delete control lives on. An operator deleting
+        // somebody else's archive has to give a reason, and the form cannot
+        // ask for one it does not know is required. Reading it off a second
+        // endpoint would mean two calls answering the same question, which is
+        // how the two answers eventually differ.
+        viaOperator: gated.viaOperator
     });
 }
 

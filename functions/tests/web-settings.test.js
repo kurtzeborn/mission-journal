@@ -233,3 +233,81 @@ describe('who sees the control at all', () => {
         assert.match(view.text('state'), /owners/i);
     });
 });
+
+// Deleting somebody else's archive is the same form with one more field in it.
+// What is checked here is that the field appears for the right person, that it
+// is the second thing the button waits on, and that an owner is left with the
+// form they had before.
+describe('an operator at the delete control', () => {
+    const asOperator = (deleteAnswer) => async (url, init) =>
+        init?.method === 'DELETE' ? deleteAnswer : { status: 200, body: { ...PROFILE, viaOperator: true } };
+
+    test('is told whose archive this is, and asked why', async () => {
+        const view = await settings({ answer: asOperator(gone) });
+
+        assert.equal(view.el('delete-operator').hidden, false);
+        assert.equal(view.el('reason-row').hidden, false);
+    });
+
+    test('the button waits for the reason as well as the name', async () => {
+        const view = await settings({ answer: asOperator(gone) });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+
+        assert.equal(view.el('delete-go').disabled, true);
+    });
+
+    test('and for the name as well as the reason', async () => {
+        const view = await settings({ answer: asOperator(gone) });
+
+        view.el('reason').value = 'abuse report #14';
+        await view.el('reason').dispatch('input');
+
+        assert.equal(view.el('delete-go').disabled, true);
+    });
+
+    test('whitespace does not arm it', async () => {
+        const view = await settings({ answer: asOperator(gone) });
+
+        view.el('confirm').value = SLUG;
+        view.el('reason').value = '   ';
+        await view.el('reason').dispatch('input');
+
+        assert.equal(view.el('delete-go').disabled, true);
+    });
+
+    test('both filled in sends both', async () => {
+        const view = await settings({ answer: asOperator(gone) });
+
+        view.el('confirm').value = SLUG;
+        view.el('reason').value = '  abuse report #14  ';
+        await view.el('reason').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.equal(deletes(view)[0].body.confirm, SLUG);
+        assert.equal(deletes(view)[0].body.reason, 'abuse report #14');
+    });
+
+    test('an owner is shown neither the warning nor the box', async () => {
+        // A field that fires when nothing is wrong is the one people learn to
+        // fill in without reading, and a family leaving is not asked to
+        // justify itself.
+        const view = await settings({ answer: loaded(gone) });
+
+        assert.equal(view.el('delete-operator').hidden, true);
+        assert.equal(view.el('reason-row').hidden, true);
+    });
+
+    test('and their request carries an empty reason rather than none', async () => {
+        // The browser does not decide which rule it is subject to. It sends
+        // what the box holds and the server decides whether that is enough.
+        const view = await settings({ answer: loaded(gone) });
+
+        view.el('confirm').value = SLUG;
+        await view.el('confirm').dispatch('input');
+        await view.el('delete').dispatch('submit');
+
+        assert.equal(deletes(view)[0].body.reason, '');
+    });
+});

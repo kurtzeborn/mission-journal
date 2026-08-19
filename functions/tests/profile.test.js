@@ -421,4 +421,24 @@ describe('the settings form arrives filled in', () => {
 
         assert.equal(response.status, 403);
     });
+
+    // Carried on this response because this is the page the delete control
+    // lives on, and the form cannot ask for a reason it does not know is
+    // required.
+    test('and it says when the authority came from the operator setting', async () => {
+        const before = process.env.OPERATOR_EMAILS;
+        process.env.OPERATOR_EMAILS = 'ops@pdayletters.com';
+        try {
+            const store = await seeded();
+
+            const mine = await get(store, OWNER);
+            const theirs = await get(store, 'ops@pdayletters.com');
+
+            assert.equal(mine.jsonBody.viaOperator, false);
+            assert.equal(theirs.jsonBody.viaOperator, true);
+        } finally {
+            if (before === undefined) delete process.env.OPERATOR_EMAILS;
+            else process.env.OPERATOR_EMAILS = before;
+        }
+    });
 });

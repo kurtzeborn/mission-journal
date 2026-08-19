@@ -88,6 +88,21 @@
             <details class="danger" id="danger">
                 <summary>Delete this archive</summary>
 
+                <!--
+                    Shown by settings.js only to an operator on an archive they
+                    are not a member of, and it is the same sentence the reader
+                    page carries for the same reason: the likeliest failure by
+                    a long way is somebody forgetting which hat they are
+                    wearing. It matters more here than anywhere else on the
+                    site, because everything below it is written to a family
+                    about their own letters and none of it is true for the
+                    person reading it in that state.
+                -->
+                <p class="operator-banner" id="delete-operator" hidden>
+                    This archive is not yours. You are deleting it as an <strong>operator</strong>,
+                    and what you write below is recorded against your name.
+                </p>
+
                 <p>
                     This removes every letter, every photo, and everyone&rsquo;s access to them.
                     <strong>It cannot be undone.</strong>
@@ -105,6 +120,17 @@
                 </p>
 
                 <form id="delete">
+                    <!--
+                        Above the typed name rather than below it, so the last
+                        thing done before pressing the button is the
+                        confirmation. Owners never see this and never send one:
+                        a family leaving is not asked to justify itself.
+                    -->
+                    <p id="reason-row" hidden>
+                        <label for="reason">Why are you deleting this?</label><br>
+                        <input id="reason" name="reason" type="text" maxlength="500"
+                            autocomplete="off" placeholder="Abuse report, spam site, owner request&hellip;">
+                    </p>
                     <p>
                         <label for="confirm">Type <code id="confirm-slug"></code> to confirm</label><br>
                         <input id="confirm" name="confirm" type="text" autocomplete="off"
