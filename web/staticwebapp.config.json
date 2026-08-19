@@ -194,6 +194,18 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The print file, fetched by the printer rather than by a person. GET only, which is what separates it from the POST on the same prefix that asks for a checkout page -- that one is an owner pressing a button and falls through to authenticated below. Anonymous is not a relaxation here: the caller is a print facility that will never have an account, and the whole authorisation is a signature over the site and the book inside the token.",
+      "route": "/api/print/*",
+      "methods": ["GET"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "Peecho telling us an order was placed or changed. Anonymous for the same reason the print fetch is, and authorised the same way -- their SHA-256 of the secret key and the order id, checked before the body is believed. An allowlist of their addresses would be the alternative and would break the first time they moved a region.",
+      "route": "/api/peecho/*",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/api/*",
       "allowedRoles": ["authenticated"]
     },

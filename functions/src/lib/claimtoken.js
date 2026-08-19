@@ -53,7 +53,18 @@ const NONCE_BYTES = 24;
  * verification rather than required in the payload, because tokens minted
  * before this existed are in real mailboxes right now and they are claims.
  */
-export const PURPOSE = { claim: 'claim', invite: 'invite', optout: 'optout', relay: 'relay' };
+// `print` is the odd one. The other four are links for people, and they all
+// expire in days. That one is handed to a printer that keeps our files in
+// order to make reprints of a book years later, so it has to outlive every
+// notion of a session -- which makes the purpose tag the only thing standing
+// between "fetches one PDF forever" and "is a claim on a whole site".
+export const PURPOSE = {
+    claim: 'claim',
+    invite: 'invite',
+    optout: 'optout',
+    relay: 'relay',
+    print: 'print'
+};
 
 /**
  * The value stored in `claim.json`, never the token itself.

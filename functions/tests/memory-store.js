@@ -69,6 +69,16 @@ export function memoryStore() {
         async deleteBlob(container, name) {
             blobs.delete(`${container}/${name}`);
         },
+        // The real one asks storage for a user delegation key and signs a URL
+        // with it. Nothing about that signature is worth faking; what a caller
+        // can get wrong is asking for a link to a blob that is not there --
+        // storage signs that happily and the 404 arrives later, in somebody
+        // else's download. So this refuses instead of inventing a string.
+        async readUrl(container, name, { minutes = 15 } = {}) {
+            const key = `${container}/${name}`;
+            if (!blobs.has(key)) throw new Error(`no blob to sign a link for: ${key}`);
+            return `https://example.blob.core.windows.net/${key}?se=${minutes}m&sig=fake`;
+        },
         async enqueue(queue, text) {
             if (!queues.has(queue)) queues.set(queue, []);
             queues.get(queue).push(text);

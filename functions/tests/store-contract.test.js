@@ -40,9 +40,10 @@ const TEST_ONLY = new Set(['acl', 'blobs', 'conflictOnce', 'json', 'queues', 'se
 
 // Real methods the fake does not implement. Every entry is a production code
 // path this suite cannot exercise, so this list should only ever get shorter.
-// What is left mints a signed URL against a user delegation key, which cannot
-// be had without an account and is deliberately checked by running it.
-const NOT_FAKED = new Set(['readUrl']);
+// It is empty: `readUrl` was the last one, and it is faked now that a handler
+// exists whose whole purpose is the link it returns -- what the fake declines
+// to imitate is the signature, which is storage's arithmetic and not ours.
+const NOT_FAKED = new Set([]);
 
 describe('the memory store and the real store agree', () => {
     test('every method production code can reach on the fake exists on the real store', () => {

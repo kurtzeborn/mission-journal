@@ -6,11 +6,12 @@
 // the states are called. Agreement by import is cheaper than agreement by
 // convention.
 //
-// Nothing here talks to a print provider. That is the last mile and it is
-// deliberately not wired in yet: everything up to and including a finished,
-// reviewable PDF is ours, works offline, and can be tested without an account
-// anywhere. The provider's part is one upload and one redirect on the end of
-// it.
+// Nothing here talks to a print provider, and that is still true now that one
+// exists. Everything up to and including a finished, reviewable PDF is ours,
+// works offline, and can be tested without an account anywhere; `peecho.js`
+// picks it up from there with a URL to the file this wrote. The seam is worth
+// keeping sharp -- a provider is a business relationship, and this pipeline
+// has already outlived one choice of printer on paper.
 
 import { randomBytes } from 'node:crypto';
 
@@ -39,9 +40,10 @@ export const bookName = (slug, id) => `${bookFolder(slug, id)}/book.pdf`;
 export const proofName = (slug, id) => `${bookFolder(slug, id)}/proof.pdf`;
 export const manifestName = (slug, id) => `${bookFolder(slug, id)}/manifest.json`;
 
-// The states a book can be in, and there are only three. A fourth -- ordered
-// -- belongs to the provider and will live on the order record rather than
-// here, because this file's job ends when there are bytes to look at.
+// The states a book can be in, and there are only three. Ordered is not among
+// them and never will be: it lives on the order record in `orders.js`,
+// because this file's job ends when there are bytes to look at, while an
+// order goes on changing for weeks afterwards in somebody else's system.
 export const STATE = {
     building: 'building',
     ready: 'ready',

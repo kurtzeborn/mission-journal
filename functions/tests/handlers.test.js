@@ -309,9 +309,10 @@ describe('the book handlers', () => {
         const store = printable();
         await publish({ request: asOwner(), context: silent, store });
 
-        // No readUrl on the fake, so reaching for a link at all would throw
-        // rather than return a status -- which is the assertion underneath
-        // this one: a building book must be refused before that point.
+        // The fake refuses to sign a link to a blob that is not there, so
+        // reaching for one at all would throw rather than return a status --
+        // which is the assertion underneath this one: a building book must be
+        // refused before that point.
         const print = await deliver({ request: asOwner(), context: silent, store });
         const proof = await review({ request: asOwner(), context: silent, store });
 
