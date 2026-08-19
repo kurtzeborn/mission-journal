@@ -18,6 +18,7 @@ import { randomBytes } from 'node:crypto';
 import { buildInterior } from './book.js';
 import { bookFailedEmail, bookReadyEmail } from './bookmail.js';
 import { coverOf, readCoverPicture } from './cover.js';
+import { coverImage } from './thumbnail.js';
 import { presentPosts } from './present.js';
 import { readProfile } from './profile.js';
 import { recordDelivery } from './delivery.js';
@@ -39,6 +40,12 @@ export const statusName = (slug, id) => `${bookFolder(slug, id)}/status.json`;
 export const bookName = (slug, id) => `${bookFolder(slug, id)}/book.pdf`;
 export const proofName = (slug, id) => `${bookFolder(slug, id)}/proof.pdf`;
 export const manifestName = (slug, id) => `${bookFolder(slug, id)}/manifest.json`;
+
+// A picture of the front board, kept with the book rather than made when a
+// listing asks for one. It is wanted at the moment a stranger is looking at a
+// checkout page, which is the worst moment to be laying out type, and it is
+// wanted again every time that page is loaded for the next two months.
+export const coverImageName = (slug, id) => `${bookFolder(slug, id)}/cover.jpg`;
 
 // The states a book can be in, and there are only three. Ordered is not among
 // them and never will be: it lives on the order record in `orders.js`,
@@ -463,6 +470,23 @@ async function assemble({ store, slug, id, madeAt, log }) {
 
     const result = await render({ ...shared, name: bookName(slug, id), proof: false });
     await render({ ...shared, name: proofName(slug, id), proof: true });
+
+    // Last, and allowed to come to nothing. Everything a book is for is
+    // already in storage by this line; the thumbnail is for a shop window
+    // that may never be opened, and a book that failed to build because an
+    // image library did not like a photograph would be an absurd trade.
+    const picture = await coverImage({
+        title: shared.profile.displayName || slug,
+        profile: shared.profile,
+        cover: shared.cover,
+        log
+    });
+
+    if (picture) {
+        await store.writeBlob(BOOKS, coverImageName(slug, id), picture, {
+            contentType: 'image/jpeg'
+        });
+    }
 
     return {
         pages: result.pages,

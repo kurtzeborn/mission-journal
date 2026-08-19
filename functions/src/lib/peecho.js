@@ -12,14 +12,12 @@
 // So nothing here takes a payment, and nothing here has ever seen an address.
 // What crosses the wire is a title, a page count and a URL to a PDF.
 //
-// **The account is live, and this has been run against it exactly once.** A
-// create-publication call returned a real secure publication id and a real
-// checkout page. What blocked it for a while was Peecho's Company details
-// form, which demands a VAT number a US sole trader does not have; the answer
-// turned out to be that the API does not want that form at all -- Billing
-// Information and Billing Address, neither of which asks for VAT, are what
-// clears `APP_NO_COMP_DETAILS`. It is still switched off in production, but
-// now only because the order button is not built yet.
+// **The account is live.** A create-publication call returns a real secure
+// publication id and a real checkout page. What blocked it for a while was
+// Peecho's Company details form, which demands a VAT number a US sole trader
+// does not have; the answer turned out to be that the API does not want that
+// form at all -- Billing Information and Billing Address, neither of which
+// asks for VAT, are what clears `APP_NO_COMP_DETAILS`.
 //
 // Every field name below is theirs verbatim, including the snake_case in the
 // webhook payloads sitting next to the camelCase in the request: guessing at
@@ -108,6 +106,7 @@ export function publicationBody({
     id,
     title,
     fileUrl,
+    thumbnailUrl = '',
     pages,
     currency = 'USD',
     offeringId = '',
@@ -138,6 +137,13 @@ export function publicationBody({
         enableSecureCheckout: true,
         secureCheckoutExpirationDate: checkoutExpiry(expiresAt)
     };
+
+    // What the buyer is shown while they choose a quantity and a country.
+    // Their configurator will not render at all without it -- it validates
+    // the field and logs `thumbnailUrl Required` -- but a book built before
+    // there were any cover images has none, and a listing with an empty
+    // frame is better than one with a broken picture in it.
+    if (thumbnailUrl) body.order.product.thumbnail = thumbnailUrl;
 
     // Either the exact product at a price we set, or a category the buyer
     // chooses within at the markup on the account. The first is what we want

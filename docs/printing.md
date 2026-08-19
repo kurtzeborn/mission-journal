@@ -83,10 +83,10 @@ The way out was that **the API does not want that form.** Filling in **Billing I
 
 **Saving the webhooks is a different story**, and it does insist on Company details. There the field had to be filled to get past it, and it took **`1`** — which settles what kind of validation this is. It is a length check, not a VIES lookup: nothing is verified, nothing is looked up, and a single digit is as acceptable as a real registration. So the field is theatre for a merchant in a country with no VAT, and the honest thing to do if it ever matters for an invoice is to raise it with them, quoting their own article.
 
-Two things the first live call showed, both still to do:
+Two things the first live call showed, both now done:
 
-- **Pin the offering.** Without `fixedOfferingId` the buyer is asked to choose between BOOKS and MAGAZINES first. The id is **`7230432`** — hardcover, 2.5mm board, gloss coated 200gsm, Letter — read off the checkout link the configurator builds. **Done**, in `main.bicep`.
-- **Send a thumbnail.** The configurator throws `ZodError: thumbnailUrl Required` and shows no preview, because `publicationBody` sends no `order.product.thumbnail`. The cover exists only as a drawing inside the PDF, so this means rendering it a second time as an image.
+- **Pin the offering.** Without `fixedOfferingId` the buyer is asked to choose between BOOKS and MAGAZINES first. The id is **`7230432`** — hardcover, 2.5mm board, gloss coated 200gsm, Letter — read off the checkout link the configurator builds. It is a parameter in `main.bicep`.
+- **Send a thumbnail.** The configurator threw `ZodError: thumbnailUrl Required` and showed no preview. The cover exists only as a drawing inside the PDF and nothing here can rasterise a PDF page without a heavy native renderer, so `thumbnail.js` draws it a second time with sharp — same palette, same trim, same faces, all imported from the files that own them, so only the arithmetic of stacking four lines is duplicated. It is rendered once at the end of a build, stored beside the book, and served on the same signed `print/{slug}/{id}/...` route the PDF is.
 
 Also worth knowing: `PEECHO_BASE` defaults to the test environment in code, and the merchant key is production-only — `test.www.peecho.com` answers *"Merchant by merchantApiKey ... not found"*. Using the test environment means registering a second account for it. Profit is set per product in the dashboard under *Products Catalogue and Profit*, and starts at **0%**.
 

@@ -24,7 +24,7 @@ import {
     readReference,
     signatureMatches
 } from '../src/lib/peecho.js';
-import { order, placed, statusChanged, fetchForPrint } from '../src/functions/peecho.js';
+import { order, placed, statusChanged, fetchForPrint, fetchCoverForPrint } from '../src/functions/peecho.js';
 import { issueClaimToken, PURPOSE } from '../src/lib/claimtoken.js';
 import { createHash } from 'node:crypto';
 
@@ -188,6 +188,18 @@ describe('what the printer is told about a book', () => {
         assert.match(body.redirect.cancellation.href, /\/book\/elder\.example$/);
         assert.match(body.redirect.error.href, /\/book\/elder\.example$/);
     });
+
+    test('the buyer is shown the cover of the book they are buying', () => {
+        const body = listing({ thumbnailUrl: 'https://pdayletters.com/api/print/x/y/cover.jpg?t=abc' });
+
+        assert.equal(body.order.product.thumbnail, 'https://pdayletters.com/api/print/x/y/cover.jpg?t=abc');
+    });
+
+    test('a book with no cover picture is listed without a broken one', () => {
+        // Their configurator wants the field, but a URL that answers 404 is
+        // an empty frame with a broken image in it rather than an empty frame.
+        assert.equal('thumbnail' in listing().order.product, false);
+    });
 });
 
 describe('creating the listing', () => {
@@ -350,6 +362,40 @@ describe('ordering a printed copy', () => {
             assert.equal(response.status, 404);
         });
     });
+
+    test('the cover picture goes out with the listing when the build made one', async () => {
+        await withPrinting(async () => {
+            const store = withABook();
+            store.blobs.set(`books/${SLUG}/${BOOK}/cover.jpg`, {
+                bytes: Buffer.from('not really a jpeg'),
+                metadata: {},
+                etag: 'etag-cover'
+            });
+            const { fetchImpl, calls } = answering({ secure_publication_id: 'pub-1', token: 'tok-1' });
+
+            await order({ request: asOwner(), context: silent, store, key: KEY, fetchImpl });
+
+            const thumbnail = calls[0].body.order.product.thumbnail;
+            assert.match(thumbnail, /\/api\/print\/elder\.example\/20260819T055521Z-dd3c9494\/cover\.jpg\?t=/);
+        });
+    });
+
+    test('an older book with no cover picture is still ordered, without one', async () => {
+        await withPrinting(async () => {
+            const { fetchImpl, calls } = answering({ secure_publication_id: 'pub-1', token: 'tok-1' });
+
+            const response = await order({
+                request: asOwner(),
+                context: silent,
+                store: withABook(),
+                key: KEY,
+                fetchImpl
+            });
+
+            assert.equal(response.status, 200);
+            assert.equal('thumbnail' in calls[0].body.order.product, false);
+        });
+    });
 });
 
 describe('hearing back from the printer', () => {
@@ -488,6 +534,36 @@ describe('the printer fetching the file', () => {
     test('a claim link is not a print link, whatever it is signed with', async () => {
         const response = await fetchForPrint({
             request: fetching(printToken({ purpose: PURPOSE.claim })),
+            context: silent,
+            store: withABook(),
+            key: KEY
+        });
+
+        assert.equal(response.status, 404);
+    });
+
+    test('the cover picture is behind the same signature as the book', async () => {
+        const store = withABook();
+        store.blobs.set(`books/${SLUG}/${BOOK}/cover.jpg`, {
+            bytes: Buffer.from('not really a jpeg'),
+            metadata: {},
+            etag: 'etag-cover'
+        });
+
+        const response = await fetchCoverForPrint({
+            request: fetching(printToken()),
+            context: silent,
+            store,
+            key: KEY
+        });
+
+        assert.equal(response.status, 302);
+        assert.match(response.headers.Location, /cover\.jpg/);
+    });
+
+    test('an unsigned request for the cover is refused like any other', async () => {
+        const response = await fetchCoverForPrint({
+            request: fetching(''),
             context: silent,
             store: withABook(),
             key: KEY

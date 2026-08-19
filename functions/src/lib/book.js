@@ -102,7 +102,8 @@ const PHOTO_MAX_HEIGHT = 0.62;
 // How much of the front board a cover photograph takes, from the very top
 // down. A little over half: enough that the picture is the first thing seen,
 // and not so much that a long name has to be set small to fit under it.
-const PLATE_HEIGHT = PAGE.height * 0.52;
+// Exported for the thumbnail, which bands its picture the same way.
+export const PLATE_HEIGHT = PAGE.height * 0.52;
 
 // Contents entries per page, used to reserve the right number of leaves
 // before anything is set. Deliberately a constant rather than something
@@ -215,7 +216,8 @@ const shortDate = (post) => String(post.originalDate ?? '').slice(0, 10);
 
 // A calendar day for the cover: "June 15, 2025". `dateLine` names the weekday
 // too, which is what a letter wants over it and far more than a cover does.
-const coverDate = (stamp) => {
+// Exported for the thumbnail, which sets the same two dates in the same words.
+export const coverDate = (stamp) => {
     const [year, month, day] = String(stamp).split('-').map(Number);
     const at = new Date(Date.UTC(year, month - 1, day));
     if (Number.isNaN(at.getTime())) return '';

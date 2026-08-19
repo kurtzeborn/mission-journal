@@ -11,7 +11,7 @@ import {
     CHECKOUT_DAYS,
     TEST_BASE
 } from '../lib/peecho.js';
-import { BOOKS, bookName, readBook, STATE } from '../lib/publish.js';
+import { BOOKS, bookName, coverImageName, readBook, STATE } from '../lib/publish.js';
 import { readProfile } from '../lib/profile.js';
 import { setting } from '../lib/settings.js';
 
@@ -122,6 +122,10 @@ const inDays = (days) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
 const printUrl = ({ slug, id, token }) =>
     `${baseUrl()}/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/letters.pdf?t=${encodeURIComponent(token)}`;
 
+// The picture of the cover, on the same signed link and for the same reasons.
+const thumbUrl = ({ slug, id, token }) =>
+    `${baseUrl()}/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/cover.jpg?t=${encodeURIComponent(token)}`;
+
 /**
  * Ask for a checkout page for a finished book.
  *
@@ -163,6 +167,12 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
         subject: id
     });
 
+    // Checked here rather than assumed, because a book built before covers
+    // were rendered has none, and a listing carrying a URL that answers 404
+    // is worse than a listing with no picture: their checkout would show a
+    // broken frame instead of an empty one.
+    const hasPicture = Boolean(await store.readBlob(BOOKS, coverImageName(slug, id)));
+
     const listed = await createPublication({
         base: shop.base,
         log: context,
@@ -173,6 +183,7 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
             id,
             title,
             fileUrl: printUrl({ slug, id, token }),
+            thumbnailUrl: hasPicture ? thumbUrl({ slug, id, token }) : '',
             pages: found.pages,
             currency: shop.currency,
             offeringId: shop.offeringId,
@@ -212,6 +223,24 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
  * here and there is not meant to be.
  */
 export async function fetchForPrint({ request, context, store, key }) {
+    return handOverSigned({ request, context, store, key, what: 'book' });
+}
+
+/**
+ * The checkout page showing the buyer what they are buying.
+ *
+ * The same signed link as the PDF, and unlike the PDF this one is loaded by a
+ * browser -- a stranger's browser, on Peecho's checkout, possibly months from
+ * now. That is the reason it is a redirect to a short-lived SAS rather than a
+ * long-lived one handed out in the listing: what sits in their database is a
+ * URL on a domain we own, and it stops working the day the signing key is
+ * rotated.
+ */
+export async function fetchCoverForPrint({ request, context, store, key }) {
+    return handOverSigned({ request, context, store, key, what: 'cover' });
+}
+
+async function handOverSigned({ request, context, store, key, what }) {
     if (!key) return json(503, { error: 'unavailable' });
 
     const slug = request.params.slug;
@@ -227,16 +256,17 @@ export async function fetchForPrint({ request, context, store, key }) {
     // learns nothing from the difference between "no such book" and "not your
     // book".
     if (!checked.valid || checked.slug !== slug || checked.subject !== id) {
-        context.warn?.('peecho.badPrintToken', { slug, id, reason: checked.reason ?? 'mismatch' });
+        context.warn?.('peecho.badPrintToken', { slug, id, what, reason: checked.reason ?? 'mismatch' });
         return json(404, { error: 'not found' });
     }
 
     const found = await readBook({ store, slug, id });
     if (found?.state !== STATE.ready) return json(404, { error: 'not found' });
 
-    const url = await store.readUrl(BOOKS, bookName(slug, id), { minutes: FETCH_MINUTES });
+    const name = what === 'cover' ? coverImageName(slug, id) : bookName(slug, id);
+    const url = await store.readUrl(BOOKS, name, { minutes: FETCH_MINUTES });
 
-    context.log('peecho.printFetched', { slug, id });
+    context.log('peecho.printFetched', { slug, id, what });
 
     return { status: 302, headers: hardened({ Location: url, 'Cache-Control': 'no-store' }) };
 }
@@ -324,6 +354,14 @@ app.http('print-file', {
     route: 'print/{slug}/{id}/letters.pdf',
     handler: (request, context) =>
         fetchForPrint({ request, context, store: blobStore(), key: signingKey(context) })
+});
+
+app.http('print-cover', {
+    authLevel: 'anonymous',
+    methods: ['GET'],
+    route: 'print/{slug}/{id}/cover.jpg',
+    handler: (request, context) =>
+        fetchCoverForPrint({ request, context, store: blobStore(), key: signingKey(context) })
 });
 
 app.http('peecho-placed', {
