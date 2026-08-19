@@ -23,10 +23,9 @@ import {
     runBook,
     STATE
 } from '../lib/publish.js';
+import { setting } from '../lib/settings.js';
 
 const CONFIG = 'config';
-
-const setting = (name, fallback) => process.env[name] ?? fallback;
 
 let cachedStore = null;
 let cachedTables = null;

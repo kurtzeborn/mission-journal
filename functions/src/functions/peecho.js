@@ -13,6 +13,7 @@ import {
 } from '../lib/peecho.js';
 import { BOOKS, bookName, readBook, STATE } from '../lib/publish.js';
 import { readProfile } from '../lib/profile.js';
+import { setting } from '../lib/settings.js';
 
 // Getting a finished book printed, and hearing back about it.
 //
@@ -32,7 +33,6 @@ import { readProfile } from '../lib/profile.js';
 // they moved a region -- just arithmetic on a shared secret.
 
 let cachedStore = null;
-const setting = (name, fallback = '') => process.env[name] ?? fallback;
 const blobStore = () =>
     (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
 
