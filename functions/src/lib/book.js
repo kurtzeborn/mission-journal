@@ -524,6 +524,37 @@ export function reserve({ float, y, height, indent = 0 }) {
 }
 
 /**
+ * Underline and strikethrough, drawn by hand.
+ *
+ * pdfkit will do both from options on `doc.text`, and it must not be allowed
+ * to. It sizes each rule from `options.textWidth`, a field only its line
+ * wrapper fills in, and nothing in this book goes through the wrapper -- so
+ * the option puts NaN into the path and the document explodes at `end()`,
+ * thousands of lines of layout after the letter that carried the tag. The
+ * same trap swallows the `link` option, which is placed beside these for the
+ * same reason. Third instance of the same lesson: any pdfkit feature that
+ * reads wrapper state is off limits in this file.
+ *
+ * The geometry is pdfkit's own, copied rather than invented, so that a rule
+ * in the book sits where the reader's browser would have put it.
+ */
+function setRule(doc, { run, x, y, width, size, color }) {
+    if (!run?.underline && !run?.strike) return;
+
+    const thickness = size < 10 ? 0.5 : Math.floor(size / 10);
+    const height = doc.currentLineHeight();
+
+    doc.save().lineWidth(thickness).strokeColor(color);
+    if (run.underline) {
+        doc.moveTo(x, y + height - thickness).lineTo(x + width, y + height - thickness).stroke();
+    }
+    if (run.strike) {
+        doc.moveTo(x, y + height / 2).lineTo(x + width, y + height / 2).stroke();
+    }
+    doc.restore();
+}
+
+/**
  * Set styled runs down the page, one line at a time.
  *
  * This replaces what pdfkit does for you, and it has to, because pdfkit's own
@@ -588,12 +619,15 @@ function setLines(doc, runs, options = {}) {
             if (!text) continue;
 
             dress(piece.run).fillColor(color);
-            doc.text(text, x, y, {
-                lineBreak: false,
-                underline: piece.run?.underline,
-                strike: piece.run?.strike,
-                link: piece.run?.link ?? null
-            });
+            doc.text(text, x, y, { lineBreak: false });
+
+            const drawn = doc.widthOfString(text);
+            const points = piece.run?.small ? size * 0.82 : size;
+            setRule(doc, { run: piece.run, x, y, width: drawn, size: points, color });
+
+            // The annotation rectangle is ours to compute because the
+            // position is ours. See `setRule` for why pdfkit is not asked.
+            if (piece.run?.link) doc.link(x, y, drawn, leading, piece.run.link);
 
             x += doc.widthOfString(piece.text);
         }

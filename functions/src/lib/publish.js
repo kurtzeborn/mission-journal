@@ -269,11 +269,18 @@ async function render({ store, slug, name, posts, profile, madeAt, proof, log })
 
     // Same dance as the archive export: the builder closes its stream only on
     // success, so a build that throws would leave the upload waiting forever
-    // for bytes that are not coming. Destroyed with no argument, because a
-    // stream emitting an error nobody is listening for takes the process down
-    // -- the real reason is rethrown from `outcomes` below instead.
+    // for bytes that are not coming.
+    //
+    // Destroyed *with* the reason, because destroying it quietly is not
+    // enough: real storage is watching for `end` or `error` and a stream that
+    // does neither leaves the upload pending, the invocation running until
+    // the platform's timeout, and a status blob reading "building" for the
+    // rest of time. The listener goes on first -- an errored stream with
+    // nobody listening takes the worker down, and the upload below has not
+    // attached its own handler yet at the moment this runs.
     const built = done.catch((error) => {
-        stream.destroy();
+        stream.on('error', () => {});
+        stream.destroy(error);
         throw error;
     });
 

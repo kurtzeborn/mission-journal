@@ -376,6 +376,33 @@ describe('setting a whole book', () => {
         assert.equal((plainBytes.toString('latin1').match(/\/ExtGState/g) ?? []).length, 0);
     });
 
+    it('sets a letter that carries a link, an underline and a strike', async () => {
+        // Every one of these three used to take the whole book down. pdfkit
+        // draws all of them from `options.textWidth`, which only its line
+        // wrapper fills in and this book never uses, so each arrived at
+        // `end()` as NaN -- thousands of lines of layout after the letter
+        // that caused it, in a file that had already streamed most of itself
+        // to storage. Nothing in the fixtures had a link in it, and the first
+        // real archive to be printed did.
+        const { stream, done } = build({
+            posts: [
+                post('a', '2026-01-04', 'Week one', {
+                    bodyHtml:
+                        '<p>We found the address at <a href="https://example.org/chapel">the chapel</a>' +
+                        ' and <u>walked</u> back <s>twice</s>.</p>'
+                })
+            ]
+        });
+        const [bytes, result] = await Promise.all([readPdf(stream), done]);
+
+        assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
+        assert.ok(result.pages >= SHEET_LEAST);
+
+        // And the link is a link rather than blue words: the annotation is
+        // written by hand now, so it is worth knowing it is still written.
+        assert.match(bytes.toString('latin1'), /https:\/\/example\.org\/chapel/);
+    });
+
     it('opens every letter on a left-hand page', async () => {
         // Which is what puts a one-page letter's photographs on the leaf
         // facing it. It also has to survive the front matter: the title page

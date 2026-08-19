@@ -201,6 +201,26 @@ describe('building the book', () => {
         assert.match(status.error, /no letters/);
     });
 
+    it('gives up rather than waits when the build fails after the upload has started', { timeout: 20000 }, async () => {
+        // A corrupt rendition record, which is the shape of every failure
+        // that lands mid-book: by the time it is discovered the PDF stream
+        // exists, storage is reading it, and most of the file has already
+        // gone. Abandoning that stream quietly leaves the upload waiting for
+        // bytes that will never come -- the invocation then runs to the
+        // platform's timeout with nothing written, the status blob says
+        // "building" until the stale sweep gives up on it, and the owner
+        // watches a spinner for three quarters of an hour. It has to fail
+        // out loud instead, which is what the timeout on this test is for.
+        const store = seed([...letters, post('d', '2026-04-01', 'Corrupt', { photos: {} })]);
+        const { id } = await requestBook({ store, slug: SLUG, log: quiet });
+
+        const result = await runBook({ message: { slug: SLUG, id }, store, log: quiet });
+
+        assert.equal(result.status, 'failed');
+        const status = await readBook({ store, slug: SLUG, id });
+        assert.equal(status.state, STATE.failed);
+    });
+
     it('does nothing at all when the site went away between the request and the build', async () => {
         const store = seed(letters);
         const result = await runBook({ message: { slug: SLUG, id: 'never-asked-for' }, store, log: quiet });

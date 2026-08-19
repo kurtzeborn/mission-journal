@@ -81,7 +81,20 @@ export function memoryStore() {
         // ends or one that is destroyed before it does.
         async uploadStream(container, name, stream, options = {}) {
             const chunks = [];
-            for await (const chunk of stream) chunks.push(chunk);
+
+            // Listens for `end` and `error` and nothing else, which is the
+            // one detail of the real method worth copying exactly. Storage
+            // has no opinion about a stream that goes quiet: a caller who
+            // abandons one without ending it or failing it leaves this
+            // pending forever, and in production that is an invocation that
+            // runs to the platform's timeout with a status blob still
+            // reading "building". Draining it with `for await` instead would
+            // quietly store the truncated half and hide exactly that.
+            await new Promise((resolve, reject) => {
+                stream.on('data', (chunk) => chunks.push(chunk));
+                stream.on('end', resolve);
+                stream.on('error', reject);
+            });
 
             blobs.set(`${container}/${name}`, {
                 bytes: Buffer.concat(chunks),
