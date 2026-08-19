@@ -146,7 +146,7 @@
             // No book has ever been asked for. That is the ordinary state of
             // this page and not an error -- it is the page for making the
             // first one.
-            if (first) ready(await wantedByTheCover());
+            if (first) ready();
             return;
         }
 
@@ -156,7 +156,7 @@
         }
 
         const status = await response.json();
-        if (first) ready(status.missing);
+        if (first) ready();
 
         draw(status);
 
@@ -170,40 +170,238 @@
         watch();
     }
 
-    function ready(missing = []) {
+    function ready() {
         state.hidden = true;
         $('everything').hidden = false;
         $('back').href = `/${encodeURIComponent(slug)}/`;
 
-        if (missing.includes('mission')) {
-            $('wanting-link').href = `/settings/${encodeURIComponent(slug)}`;
-            $('wanting').hidden = false;
+        dressTheCover();
+    }
+
+    // --- the cover ---------------------------------------------------------
+    //
+    // Saved on its own as soon as it is chosen rather than sent along with the
+    // request to print. Two reasons: an owner who picks a colour and then
+    // wanders off has still chosen a colour, and the next book -- a year
+    // later, from a different device -- is bound like the first without
+    // anybody having to remember what they did.
+
+    // Filled from the server, because the hexes are also what gets drawn into
+    // the PDF and one copy of a colour is the most any colour should have.
+    let cloths = [];
+    let chosen = { cloth: '', picture: '' };
+    let archive = null;
+
+    const coverUrl = `${url}/cover`;
+    const coverSaid = () => $('cover-said');
+
+    /**
+     * Redraw the little board on the left.
+     *
+     * Not a rendering of the PDF and not trying to be. The proportions, the
+     * colours and where the picture sits are right; the type is the browser's.
+     */
+    function paint() {
+        const cloth = cloths.find((entry) => entry.name === chosen.cloth) ?? cloths[0];
+        if (!cloth) return;
+
+        const board = $('board');
+        board.style.background = cloth.paper;
+        $('board-name').style.color = cloth.ink;
+        $('board-mission').style.color = cloth.quiet;
+
+        const plate = $('plate');
+        if (chosen.picture) {
+            plate.src = chosen.picture === 'own'
+                ? `${url}/cover.webp?v=${Date.now()}`
+                : `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(chosen.picture)}/large.webp`;
+            plate.hidden = false;
+        } else {
+            plate.removeAttribute('src');
+            plate.hidden = true;
+        }
+
+        // The name sits under the picture when there is one and a fifth of
+        // the way down when there is not, which is what the book does.
+        $('board-name').style.top = chosen.picture ? '58%' : '26%';
+        $('board-mission').style.top = chosen.picture ? '74%' : '40%';
+
+        for (const button of $('cloths').children) {
+            button.setAttribute('aria-pressed', String(button.dataset.cloth === chosen.cloth));
+        }
+
+        for (const button of $('grid').children) {
+            button.setAttribute('aria-pressed', String(button.dataset.photo === chosen.picture));
         }
     }
 
-    /**
-     * What the cover is missing, on a site that has never made a book.
-     *
-     * The status endpoint has nothing to say until one has been asked for,
-     * and what goes on a cover is a fact about the archive rather than about
-     * the book -- so on a first visit it comes from the profile instead. That
-     * is one extra request on the one path where there is nothing else to
-     * fetch, and it is the visit where the prompt is worth anything: after a
-     * book exists, saying the mission is missing is a complaint about a book
-     * that has already been made.
-     */
-    async function wantedByTheCover() {
-        try {
-            const response = await fetch(`/api/profile/${encodeURIComponent(slug)}`, {
-                cache: 'no-store'
-            });
-            if (!response.ok) return [];
+    async function keep(next) {
+        const before = chosen;
+        chosen = next;
+        paint();
 
-            const profile = await response.json();
-            return profile.mission ? [] : ['mission'];
+        let response;
+        try {
+            response = await fetch(coverUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(chosen)
+            });
         } catch {
-            return [];
+            chosen = before;
+            paint();
+            coverSaid().textContent = 'Could not save that. Nothing has changed.';
+            return;
         }
+
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            chosen = before;
+            paint();
+            coverSaid().textContent = body.error ?? 'Could not save that.';
+            return;
+        }
+
+        coverSaid().textContent = 'Saved.';
+    }
+
+    /**
+     * The archive's photographs, to choose one from.
+     *
+     * Fetched from the same file the reader is built out of, so a picture that
+     * belongs to a letter the owner has hidden is not offered -- a cover is
+     * the most public page of a book, and it would be a strange place for the
+     * one letter they decided not to publish to reappear.
+     */
+    async function photographs() {
+        if (archive) return archive;
+
+        const response = await fetch(`/api/content/${encodeURIComponent(slug)}/posts.json`, {
+            cache: 'no-store'
+        });
+        if (!response.ok) return (archive = []);
+
+        const body = await response.json();
+        archive = (body.posts ?? []).flatMap((post) => post.photos ?? []).map((photo) => photo.id);
+        return archive;
+    }
+
+    async function offerPictures() {
+        const grid = $('grid');
+        if (!grid.hidden) {
+            grid.hidden = true;
+            return;
+        }
+
+        coverSaid().textContent = 'Looking\u2026';
+        const ids = await photographs();
+        coverSaid().textContent = ids.length ? '' : 'There are no photographs in this archive yet.';
+
+        grid.textContent = '';
+        for (const id of ids) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'cover__thumb';
+            button.dataset.photo = id;
+            button.setAttribute('aria-pressed', String(id === chosen.picture));
+
+            const img = document.createElement('img');
+            img.src = `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(id)}/thumb.webp`;
+            img.alt = 'A photograph from the archive';
+            img.loading = 'lazy';
+
+            button.appendChild(img);
+            button.addEventListener('click', () => keep({ ...chosen, picture: id }));
+            grid.appendChild(button);
+        }
+
+        grid.hidden = !ids.length;
+    }
+
+    async function uploadPicture(file) {
+        coverSaid().textContent = 'Uploading\u2026';
+
+        let response;
+        try {
+            response = await fetch(`${url}/cover.webp`, {
+                method: 'POST',
+                headers: { 'Content-Type': file.type },
+                body: file
+            });
+        } catch {
+            coverSaid().textContent = 'That did not upload. Try again.';
+            return;
+        }
+
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            coverSaid().textContent = body.error ?? 'That picture could not be used.';
+            return;
+        }
+
+        $('grid').hidden = true;
+        await keep({ ...chosen, picture: 'own' });
+    }
+
+    /**
+     * Set the cover panel up, once, after the page is known to be usable.
+     *
+     * Its own request rather than something folded into the status, because
+     * the cover is a fact about the archive and the status is a fact about one
+     * build -- and this page is opened on plenty of archives that have never
+     * had a book.
+     */
+    async function dressTheCover() {
+        let response;
+        try {
+            response = await fetch(coverUrl, { cache: 'no-store' });
+        } catch {
+            return;
+        }
+        if (!response.ok) return;
+
+        const body = await response.json();
+        cloths = body.cloths ?? [];
+        chosen = { cloth: body.cloth, picture: body.picture };
+
+        // What the cover will actually say, so the preview is of this book
+        // rather than of a book. The mission doubles as the prompt below: it
+        // is the one thing a cover can be short of and still be printed.
+        $('board-name').textContent = body.title;
+        $('board-mission').textContent = body.mission || 'Letters from the mission';
+
+        if (!body.mission) {
+            $('wanting-link').href = `/settings/${encodeURIComponent(slug)}`;
+            $('wanting').hidden = false;
+        }
+
+        const row = $('cloths');
+        row.textContent = '';
+        for (const cloth of cloths) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'cover__cloth';
+            button.dataset.cloth = cloth.name;
+            button.style.background = cloth.paper;
+            // The only name any of these has. A swatch with no label is a
+            // colour a screen reader cannot describe.
+            button.setAttribute('aria-label', cloth.name);
+            button.addEventListener('click', () => keep({ ...chosen, cloth: cloth.name }));
+            row.appendChild(button);
+        }
+
+        $('pick').addEventListener('click', offerPictures);
+        $('bare').addEventListener('click', () => keep({ ...chosen, picture: '' }));
+        $('own').addEventListener('change', (event) => {
+            const file = event.target.files?.[0];
+            // Cleared so choosing the same file twice still fires a change,
+            // which is what happens when the first attempt was refused.
+            event.target.value = '';
+            if (file) uploadPicture(file);
+        });
+
+        paint();
+        $('cover').hidden = false;
     }
 
     async function make() {

@@ -55,6 +55,58 @@
                 first if you would rather.
             </p>
 
+            <!--
+                The cover, before the button rather than after it. A book is
+                made in minutes and looked at once, so a choice offered
+                afterwards is a choice offered too late -- and the one thing
+                an owner reliably has an opinion about is what colour the
+                outside is.
+            -->
+            <section id="cover" hidden>
+                <hr class="rule">
+
+                <h2>The cover</h2>
+                <p class="note">
+                    Remembered for next time, so a second book a year from now is bound
+                    to match the first.
+                </p>
+
+                <div class="cover">
+                    <!--
+                        Not a rendering of the PDF, and not pretending to be:
+                        the proportions, the colours and where the photograph
+                        sits are right, the typesetting is the browser's. It
+                        is here to answer "what colour is it" without making
+                        a book first.
+                    -->
+                    <div class="cover__board" id="board">
+                        <img class="cover__plate" id="plate" alt="" hidden>
+                        <span class="cover__name" id="board-name"></span>
+                        <span class="cover__mission" id="board-mission"></span>
+                    </div>
+
+                    <div class="cover__choices">
+                        <h3 class="cover__legend">Colour</h3>
+                        <div class="cover__cloths" id="cloths"></div>
+
+                        <h3 class="cover__legend">Picture</h3>
+                        <p class="note">
+                            A photograph across the top of the front board, or none at all.
+                        </p>
+                        <p class="cover__actions">
+                            <button class="button button--quiet button--compact" type="button" id="pick">From the archive</button>
+                            <label class="button button--quiet button--compact" for="own">Upload one</label>
+                            <input id="own" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+                            <button class="button button--quiet button--compact" type="button" id="bare">No picture</button>
+                        </p>
+
+                        <div class="cover__grid" id="grid" hidden></div>
+
+                        <p class="note" id="cover-said" role="status" aria-live="polite"></p>
+                    </div>
+                </div>
+            </section>
+
             <p>
                 <button class="button" type="button" id="make">Make the book</button>
             </p>

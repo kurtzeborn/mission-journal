@@ -29,6 +29,7 @@ import { readFileSync } from 'node:fs';
 
 import sharp from 'sharp';
 import { flowBody, inlinePhotoIds } from './bookflow.js';
+import { clothOf } from './cover.js';
 import { fillLine, segments } from './typeset.js';
 
 // pdfkit publishes no ESM entry point, so it comes in through require the way
@@ -97,6 +98,11 @@ const HEAD_SIZES = { 1: 16, 2: 14.5, 3: 13, 4: 12.5, 5: 12, 6: 12 };
 // it -- fills the column to well over the height of the page and lands alone
 // on a sheet with a caption's worth of text stranded after it.
 const PHOTO_MAX_HEIGHT = 0.62;
+
+// How much of the front board a cover photograph takes, from the very top
+// down. A little over half: enough that the picture is the first thing seen,
+// and not so much that a long name has to be set small to fit under it.
+const PLATE_HEIGHT = PAGE.height * 0.52;
 
 // Contents entries per page, used to reserve the right number of leaves
 // before anything is set. Deliberately a constant rather than something
@@ -291,9 +297,21 @@ export async function printPhoto({ store, slug, photoId, widthPoints, dpi = PRIN
     const blob = await store.readBlob('rendered', `${slug}/photos/${photoId}/large.webp`);
     if (!blob) return null;
 
+    return forPrint(Buffer.from(blob.bytes), { widthPoints, dpi });
+}
+
+/**
+ * The same transcode, for bytes somebody has already fetched.
+ *
+ * Split out for the cover, whose picture may be one of the archive's
+ * photographs or a file the owner uploaded that lives somewhere else
+ * entirely. Everything about how a picture is prepared for a press belongs in
+ * one place regardless of which folder it came out of.
+ */
+export function forPrint(bytes, { widthPoints, dpi = PRINT_DPI }) {
     const pixels = Math.round((widthPoints / INCH) * dpi);
 
-    return sharp(Buffer.from(blob.bytes))
+    return sharp(bytes)
         .resize({ width: pixels, withoutEnlargement: true })
         .jpeg({ quality: 88, chromaSubsampling: '4:4:4' })
         .toBuffer();
@@ -1263,19 +1281,25 @@ function textAfter(blocks, from) {
  * the alternative is two copies that agree until the day somebody edits one.
  * Sizes are given as a share of the title's so a cover can simply ask for
  * larger type and have the rest follow.
+ *
+ * The two inks are arguments rather than the file's constants because the
+ * cover may be any colour in the palette and the title page is always on
+ * paper. Nothing here decides which pair it is given; it only uses them
+ * consistently, so a dark cloth gets pale type throughout rather than a pale
+ * name over a black date.
  */
-function setNameplate(doc, { title, profile, x, width, size, rule = false }) {
-    doc.font('semibold').fontSize(size).fillColor(BLACK);
+function setNameplate(doc, { title, profile, x, width, size, rule = false, ink = BLACK, quiet = QUIET }) {
+    doc.font('semibold').fontSize(size).fillColor(ink);
     doc.text(title, x, doc.y, { width, align: 'center' });
 
     // A hairline under the name, on the cover only. It costs nothing, and it
-    // is the difference between a name floating in a field of white and a
+    // is the difference between a name floating in a field of colour and a
     // name that has been set on something.
     if (rule) {
         const span = width * 0.34;
         doc.moveDown(0.5);
         doc.save()
-            .strokeColor(QUIET)
+            .strokeColor(quiet)
             .lineWidth(0.75)
             .moveTo(x + (width - span) / 2, doc.y)
             .lineTo(x + (width + span) / 2, doc.y)
@@ -1290,7 +1314,7 @@ function setNameplate(doc, { title, profile, x, width, size, rule = false }) {
     // the mountains", and the field is free text on purpose -- so this does
     // not try to make grammar out of it.
     doc.moveDown(0.6);
-    doc.font('italic').fontSize(size * 0.43).fillColor(QUIET);
+    doc.font('italic').fontSize(size * 0.43).fillColor(quiet);
     doc.text(profile.mission || 'Letters from the mission', x, doc.y, { width, align: 'center' });
 
     // Full dates rather than years. This is what a cover is for: the two days
@@ -1350,17 +1374,45 @@ function coverSize(doc, { title, width, most = 58, least = 30 }) {
  * Set large. A cover is read across a room, off a shelf, or in a thumbnail on
  * a checkout page, and at every one of those distances the only thing that
  * survives is the size of the name.
+ *
+ * A photograph, when there is one, takes the top of the board and the type
+ * sits on the cloth below it. The obvious alternative -- the picture across
+ * the whole board with the name over it -- needs a scrim to stay legible, and
+ * a scrim heavy enough for a name over a bright sky is heavy enough to ruin
+ * the picture. Banding it needs no scrim, cannot be illegible, and is what a
+ * bound photo book looks like anyway.
  */
-function setFrontCover(doc, { title, profile, state }) {
+function setFrontCover(doc, { title, profile, cloth, picture, state }) {
     state.cover = true;
     doc.addPage();
 
     const width = PAGE.width - MARGIN.outside * 2;
 
-    doc.y = PAGE.height * 0.2;
-    setNameplate(doc, { title, profile, x: MARGIN.outside, width, size: coverSize(doc, { title, width }), rule: true });
+    // The whole board, edge to edge. Drawn before anything else and with the
+    // margins already zeroed by `state.cover`, since a fill that crosses a
+    // margin is a page break taken from inside `pageAdded`.
+    doc.save().rect(0, 0, PAGE.width, PAGE.height).fill(cloth.paper).restore();
 
-    doc.font('italic').fontSize(11).fillColor(QUIET);
+    if (picture) {
+        drawImage(doc, { bytes: picture, x: 0, y: 0, width: PAGE.width, height: PLATE_HEIGHT });
+    }
+
+    // Below the picture when there is one, a fifth of the way down when there
+    // is not. Both leave the foot of the board clear for the wordmark.
+    doc.y = picture ? PLATE_HEIGHT + 46 : PAGE.height * 0.2;
+
+    setNameplate(doc, {
+        title,
+        profile,
+        x: MARGIN.outside,
+        width,
+        size: coverSize(doc, { title, width, most: picture ? 44 : 58 }),
+        rule: true,
+        ink: cloth.ink,
+        quiet: cloth.quiet
+    });
+
+    doc.font('italic').fontSize(11).fillColor(cloth.quiet);
     doc.text('pdayletters.com', MARGIN.outside, PAGE.height - MARGIN.bottom - 14, {
         width,
         align: 'center',
@@ -1377,12 +1429,17 @@ function setFrontCover(doc, { title, profile, state }) {
  * because it has to sell itself off a shelf; this book has already been
  * bought, by somebody who knows exactly what is in it. All it owes the reader
  * is where the rest of it lives.
+ *
+ * The same cloth as the front, always. A book bound in navy with a white back
+ * board is not a book anybody has ever seen.
  */
-function setBackCover(doc, { slug, state }) {
+function setBackCover(doc, { slug, cloth, state }) {
     state.cover = true;
     doc.addPage();
 
-    doc.font('italic').fontSize(11).fillColor(QUIET);
+    doc.save().rect(0, 0, PAGE.width, PAGE.height).fill(cloth.paper).restore();
+
+    doc.font('italic').fontSize(11).fillColor(cloth.quiet);
     doc.text(`pdayletters.com/${slug}`, MARGIN.outside, PAGE.height * 0.78, {
         width: PAGE.width - MARGIN.outside * 2,
         align: 'center',
@@ -1485,8 +1542,8 @@ function setColophon(doc, { title, slug, madeAt, state }) {
  *
  * @returns {Promise<Map<string, number>>} post id to the folio it opened on
  */
-async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, least, state }) {
-    setFrontCover(doc, { title, profile, state });
+async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, cloth, picture, least, state }) {
+    setFrontCover(doc, { title, profile, cloth, picture, state });
     setTitlePage(doc, { title, profile, state });
     setColophon(doc, { title, slug, madeAt: state.madeAt, state });
     setContents(doc, { entries, state });
@@ -1500,7 +1557,7 @@ async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, l
 
     state.furniture = false;
     padToPrinter(doc, state, least);
-    setBackCover(doc, { slug, state });
+    setBackCover(doc, { slug, cloth, state });
 
     return starts;
 }
@@ -1591,6 +1648,13 @@ const freshState = (madeAt, proof) => ({
  * hand to a cheaper printer. Neither changes the layout by a point, which is
  * what lets a proof be trusted as a proof of the thing that will be bound.
  *
+ * `cover` is the owner's choice of cloth and, when they made one, the bytes
+ * of the picture for the front board -- already fetched, because where that
+ * picture lives is a question about storage rather than about typesetting.
+ * The measuring pass is given the colour but not the picture, which is safe
+ * for the one reason worth stating: a cover is exactly one page whatever is
+ * printed on it, so nothing behind it moves.
+ *
  * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number, opens: {id: string, page: number}[]}>}}
  */
 export function buildInterior({
@@ -1598,6 +1662,7 @@ export function buildInterior({
     slug,
     posts,
     profile = {},
+    cover = {},
     madeAt,
     least = SHEET_LEAST,
     proof = false,
@@ -1606,6 +1671,7 @@ export function buildInterior({
 }) {
     const ordered = inReadingOrder(posts);
     const title = profile.displayName || slug;
+    const cloth = clothOf(cover.cloth);
 
     const entries = ordered.map((post) => ({
         date: shortDate(post),
@@ -1633,6 +1699,8 @@ export function buildInterior({
             title,
             entries,
             imagesFor: () => NO_IMAGES,
+            cloth,
+            picture: null,
             least,
             state
         });
@@ -1650,12 +1718,28 @@ export function buildInterior({
             entries[index].page = starts.get(ordered[index].id) ?? 0;
         }
 
+        // The one picture in the book that is fetched up front, because it is
+        // the one the very first drawing call needs. A cover that will not
+        // transcode is not worth failing a book over -- the cloth alone is a
+        // cover -- so this is warned about and dropped, exactly as a letter's
+        // photograph is.
+        let picture = null;
+        if (cover.bytes) {
+            try {
+                picture = await forPrint(cover.bytes, { widthPoints: PAGE.width, dpi });
+            } catch (error) {
+                log?.warn?.('book.coverFailed', { slug, error: error.message });
+            }
+        }
+
         const printed = await setBook(doc, {
             slug,
             posts: ordered,
             profile,
             title,
             entries,
+            cloth,
+            picture,
             // One letter's pictures at a time, and one picture at a time
             // within that. Fetching the book's photographs up front is how a
             // 2 GB instance meets a 500 MB archive.

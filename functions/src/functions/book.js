@@ -3,6 +3,16 @@ import { createBlobStore } from '../lib/store.js';
 import { createTableStore } from '../lib/tables.js';
 import { createMailer } from '../lib/mail.js';
 import { siteGate, hardened } from '../lib/api.js';
+import { isPhotoType, MAX_UPLOAD_BYTES } from '../lib/photos.js';
+import { readProfile } from '../lib/profile.js';
+import {
+    chooseCover,
+    CLOTHS,
+    coverFile,
+    coverOf,
+    saveCover,
+    storeCoverPicture
+} from '../lib/cover.js';
 import {
     BOOKS,
     bookName,
@@ -13,6 +23,8 @@ import {
     runBook,
     STATE
 } from '../lib/publish.js';
+
+const CONFIG = 'config';
 
 const setting = (name, fallback) => process.env[name] ?? fallback;
 
@@ -174,6 +186,117 @@ export const deliver = (args) => handOver({ ...args, pick: bookName, rendition: 
  */
 export const review = (args) => handOver({ ...args, pick: proofName, rendition: 'proof' });
 
+/**
+ * What the cover looks like, and what else it could look like.
+ *
+ * The palette comes down the wire rather than being written into the page,
+ * because the hexes are also what gets drawn into the PDF and two copies of a
+ * colour is one copy too many. It costs a few hundred bytes on a page that is
+ * already fetching a book status.
+ *
+ * The name and the mission come with it so the page can show what the cover
+ * will actually say. They are also the answer to whether the mission is
+ * missing, which this page prompts about -- one request rather than the two
+ * it used to take.
+ */
+export async function cover({ request, context, store }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
+    if (gated.denied) return gated.denied;
+
+    const { profile } = await readProfile({ store, slug: gated.slug });
+
+    return json(200, {
+        ...coverOf(profile),
+        // The same fallback the book uses when nobody has named the archive.
+        title: profile.displayName || gated.slug,
+        mission: profile.mission ?? '',
+        cloths: Object.entries(CLOTHS).map(([name, colours]) => ({ name, ...colours }))
+    });
+}
+
+/**
+ * Choose one.
+ *
+ * Saved on its own rather than sent with the request to print, so a colour
+ * survives being chosen and then thought better of before the button is
+ * pressed -- and so the next book, a year later, is bound like the first.
+ */
+export async function chooseTheCover({ request, context, store }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
+    if (gated.denied) return gated.denied;
+
+    let body = {};
+    try {
+        body = await request.json();
+    } catch {
+        return json(400, { error: 'that was not valid JSON' });
+    }
+
+    const chosen = chooseCover({ cloth: body.cloth, picture: body.picture });
+    if (chosen.error) return json(400, { error: chosen.error });
+
+    const saved = await saveCover({ store, slug: gated.slug, cover: chosen.cover });
+    if (saved.error) return json(409, { error: saved.error });
+
+    context.log('book.coverChosen', {
+        slug: gated.slug,
+        cloth: chosen.cover.cloth,
+        picture: chosen.cover.picture ? 'yes' : 'no'
+    });
+
+    return json(200, saved.cover);
+}
+
+/**
+ * Upload a picture for the front board.
+ *
+ * The same allowlist and the same ceiling as a picture added to a letter,
+ * checked here before a byte is decoded so that a browser sending a PDF is
+ * told what it did wrong.
+ */
+export async function putCoverPicture({ request, context, store }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
+    if (gated.denied) return gated.denied;
+
+    if (!isPhotoType(request.headers.get('content-type'))) {
+        return json(415, { error: 'that is not a kind of picture this site can print' });
+    }
+
+    const bytes = Buffer.from(await request.arrayBuffer());
+    if (!bytes.length) return json(400, { error: 'no picture was sent' });
+    if (bytes.length > MAX_UPLOAD_BYTES) {
+        return json(413, { error: 'that picture is too large to use' });
+    }
+
+    const stored = await storeCoverPicture({ store, slug: gated.slug, bytes });
+    if (stored.error) return json(415, { error: stored.error });
+
+    context.log('book.coverUploaded', { slug: gated.slug, bytes: bytes.length });
+
+    return json(200, { picture: stored.picture });
+}
+
+/**
+ * The uploaded picture, so the chooser can show what was uploaded.
+ *
+ * Owners only, like everything else on this page. It is not in `rendered/`
+ * and the photo endpoint would refuse it anyway: that one only serves
+ * pictures that belong to a letter somebody may read.
+ */
+export async function getCoverPicture({ request, context, store }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
+    if (gated.denied) return gated.denied;
+
+    const blob = await store.readBlob(CONFIG, coverFile(gated.slug));
+    if (!blob) return json(404, { error: 'no picture has been uploaded' });
+
+    return {
+        status: 200,
+        headers: hardened({ 'Content-Type': 'image/webp', 'Cache-Control': 'no-store' }),
+        body: blob.bytes
+    };
+}
+
 app.http('book-request', {
     // `anonymous` is the Functions access key, not the identity check: Static
     // Web Apps forwards to a linked backend without one. The identity check is
@@ -198,6 +321,30 @@ app.http('book-proof', {
     methods: ['GET'],
     route: 'book/{slug}/{id}/proof.pdf',
     handler: (request, context) => review({ request, context, store: blobStore() })
+});
+
+app.http('book-cover-read', {
+    authLevel: 'anonymous',
+    methods: ['GET'],
+    route: 'book/{slug}/cover',
+    handler: (request, context) => cover({ request, context, store: blobStore() })
+});
+
+app.http('book-cover-write', {
+    authLevel: 'anonymous',
+    methods: ['PUT'],
+    route: 'book/{slug}/cover',
+    handler: (request, context) => chooseTheCover({ request, context, store: blobStore() })
+});
+
+app.http('book-cover-picture', {
+    authLevel: 'anonymous',
+    methods: ['GET', 'POST'],
+    route: 'book/{slug}/cover.webp',
+    handler: (request, context) =>
+        request.method === 'POST'
+            ? putCoverPicture({ request, context, store: blobStore() })
+            : getCoverPicture({ request, context, store: blobStore() })
 });
 
 app.http('book-status', {

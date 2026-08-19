@@ -1403,3 +1403,149 @@ h3:target {
     outline: 3px solid var(--accent);
     outline-offset: 1px;
 }
+
+/* --- the book's cover --- */
+
+.cover {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    margin: 1rem 0 0;
+}
+
+/* US Letter, which is what the book is. The proportions matter more than the
+   size here: the whole panel exists to answer what the thing will look like,
+   and a preview in the wrong shape answers it wrongly. */
+.cover__board {
+    position: relative;
+    flex: 0 0 auto;
+    width: 11rem;
+    aspect-ratio: 8.5 / 11;
+    border-radius: 3px;
+    /* Boards are printed on card and photographed under a light. Neither is
+       reproducible in a browser, but a shadow at least stops it reading as a
+       coloured rectangle in the middle of a form. */
+    box-shadow: 0 2px 8px rgba(28, 25, 23, 0.25);
+    overflow: hidden;
+    background: #ffffff;
+}
+
+.cover__plate {
+    display: block;
+    width: 100%;
+    /* The share of the board the picture takes, and it has to match
+       PLATE_HEIGHT in book.js -- this preview is only worth having while the
+       two agree. */
+    height: 52%;
+    object-fit: cover;
+}
+
+/* Both of these are positioned from the script, because where the name sits
+   depends on whether there is a picture above it -- which is exactly what the
+   book does. */
+.cover__name {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 0.85rem;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.cover__mission {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-style: italic;
+    font-size: 0.6rem;
+    line-height: 1.2;
+    text-align: center;
+}
+
+.cover__choices {
+    flex: 1 1 16rem;
+}
+
+.cover__legend {
+    font-family: system-ui, sans-serif;
+    font-size: 0.9rem;
+    margin: 0 0 0.5rem;
+}
+
+.cover__cloths {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+/* Big enough to be a target on a phone, which is the only reason a swatch is
+   this size -- 44px is the floor everything on this site clears. */
+.cover__cloth {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 2px solid var(--rule);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.cover__cloth[aria-pressed='true'] {
+    border-color: var(--ink);
+    /* A ring rather than a tick: a tick has to be drawn in an ink that reads
+       against eight different colours, and this reads against all of them. */
+    box-shadow: 0 0 0 2px var(--paper) inset;
+}
+
+.cover__cloth:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.cover__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.cover__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
+    gap: 0.4rem;
+    max-height: 18rem;
+    overflow-y: auto;
+    margin-top: 0.75rem;
+    padding: 0.4rem;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+}
+
+.cover__thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 0;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    background: none;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.cover__thumb[aria-pressed='true'] {
+    border-color: var(--accent);
+}
+
+.cover__thumb:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.cover__thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}

@@ -16,6 +16,7 @@ import { randomBytes } from 'node:crypto';
 
 import { buildInterior } from './book.js';
 import { bookFailedEmail, bookReadyEmail } from './bookmail.js';
+import { coverOf, readCoverPicture } from './cover.js';
 import { presentPosts } from './present.js';
 import { readProfile } from './profile.js';
 import { recordDelivery } from './delivery.js';
@@ -363,12 +364,13 @@ export async function runBook({
  *
  * @returns {Promise<{pages: number, opens: {id: string, page: number}[]}>}
  */
-async function render({ store, slug, name, posts, profile, madeAt, proof, log }) {
+async function render({ store, slug, name, posts, profile, cover, madeAt, proof, log }) {
     const { stream, done } = buildInterior({
         store,
         slug,
         posts,
         profile,
+        cover,
         madeAt,
         proof,
         log
@@ -440,7 +442,22 @@ async function assemble({ store, slug, id, madeAt, log }) {
     if (!posts.length) throw new Error('there are no letters to print yet');
 
     const { profile } = await readProfile({ store, slug });
-    const shared = { store, slug, posts, profile: coverProfile(profile, posts), madeAt, log };
+
+    // Read once and handed to both renditions. The proof and the print file
+    // have to be the same book, and a picture fetched twice is a picture that
+    // could change between the two.
+    const chosen = coverOf(profile);
+    const bytes = await readCoverPicture({ store, slug, cover: chosen });
+
+    const shared = {
+        store,
+        slug,
+        posts,
+        profile: coverProfile(profile, posts),
+        cover: { ...chosen, bytes },
+        madeAt,
+        log
+    };
 
     const result = await render({ ...shared, name: bookName(slug, id), proof: false });
     await render({ ...shared, name: proofName(slug, id), proof: true });

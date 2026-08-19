@@ -17,7 +17,15 @@ import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
 import { redeem, describe as describeClaimHandler } from '../src/functions/claim.js';
 import { memberships } from '../src/functions/memberships.js';
-import { publish, progress, deliver, review } from '../src/functions/book.js';
+import {
+    publish,
+    progress,
+    deliver,
+    review,
+    cover,
+    chooseTheCover,
+    putCoverPicture
+} from '../src/functions/book.js';
 import { holdPending } from '../src/lib/pending.js';
 import { attachClaimToken } from '../src/lib/claim.js';
 
@@ -38,12 +46,15 @@ function principalHeader({ userDetails, identityProvider = 'aad' }) {
     ).toString('base64');
 }
 
-function request({ principal = null, body = {}, params = {} } = {}) {
+function request({ principal = null, body = {}, params = {}, bytes = null, type = null } = {}) {
     const headers = principal ? { 'x-ms-client-principal': principalHeader(principal) } : {};
+    if (type) headers['content-type'] = type;
+
     return {
         headers: { get: (name) => headers[name.toLowerCase()] ?? null },
         params,
-        json: async () => body
+        json: async () => body,
+        arrayBuffer: async () => (bytes ?? Buffer.alloc(0))
     };
 }
 
@@ -306,5 +317,67 @@ describe('the book handlers', () => {
 
         assert.equal(print.status, 404);
         assert.equal(proof.status, 404);
+    });
+
+    test('an owner is offered a palette and told what the cover says', async () => {
+        const response = await cover({ request: asOwner(), context: silent, store: printable() });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.jsonBody.title, 'Elder Example');
+        assert.equal(response.jsonBody.mission, '');
+        assert.ok(response.jsonBody.cloth);
+        // The hexes come down the wire so the page and the PDF cannot end up
+        // with two different ideas of what navy is.
+        assert.ok(response.jsonBody.cloths.every((entry) => entry.name && entry.paper));
+    });
+
+    test('a colour is saved without disturbing the name', async () => {
+        const store = printable();
+
+        const saved = await chooseTheCover({
+            request: asOwner({ body: { cloth: 'navy', picture: '' } }),
+            context: silent,
+            store
+        });
+
+        assert.equal(saved.status, 200);
+
+        const read = await cover({ request: asOwner(), context: silent, store });
+        assert.equal(read.jsonBody.cloth, 'navy');
+        assert.equal(read.jsonBody.title, 'Elder Example');
+    });
+
+    test('a colour nobody offered is refused', async () => {
+        const response = await chooseTheCover({
+            request: asOwner({ body: { cloth: 'rebeccapurple', picture: '' } }),
+            context: silent,
+            store: printable()
+        });
+
+        assert.equal(response.status, 400);
+    });
+
+    test('a reader cannot choose how the family\u2019s book is bound', async () => {
+        const response = await chooseTheCover({
+            request: request({
+                principal: { userDetails: READER },
+                params: { slug: SLUG },
+                body: { cloth: 'navy', picture: '' }
+            }),
+            context: silent,
+            store: printable()
+        });
+
+        assert.equal(response.status, 403);
+    });
+
+    test('a cover upload that is not a picture is refused before it is decoded', async () => {
+        const response = await putCoverPicture({
+            request: asOwner({ type: 'application/pdf', bytes: Buffer.from('%PDF-') }),
+            context: silent,
+            store: printable()
+        });
+
+        assert.equal(response.status, 415);
     });
 });

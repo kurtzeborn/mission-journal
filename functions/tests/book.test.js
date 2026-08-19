@@ -677,6 +677,101 @@ describe('setting a whole book', () => {
     });
 });
 
+describe('binding the book in a colour', () => {
+    const posts = [post('a', '2026-01-04', 'Week one')];
+
+    const build = (overrides = {}) =>
+        buildInterior({
+            store: memoryStore(),
+            slug: 'isaac.backman',
+            posts,
+            profile: { displayName: 'Elder Isaac Backman' },
+            madeAt: '2026-06-01T00:00:00.000Z',
+            ...overrides
+        });
+
+    // Two boards, front and back, each the whole sheet. Anything less is a
+    // book with a white edge round its cover. The colour is written after the
+    // rectangle because that is the order pdfkit emits a filled path in, and
+    // as `scn` in a named space rather than as `rg`.
+    const boards = (bytes) => [
+        ...drawnIn(bytes).matchAll(
+            /0 0 612 792 re\s+\/DeviceRGB cs\s+([\d.]+) ([\d.]+) ([\d.]+) scn/g
+        )
+    ];
+
+    it('paints both boards in the chosen cloth', async () => {
+        const { stream, done } = build({ cover: { cloth: 'navy' } });
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+
+        const painted = boards(bytes);
+        assert.equal(painted.length, 2);
+
+        // #223349, which pdfkit writes as three fractions of one.
+        const [, red, green, blue] = painted[0];
+        assert.ok(Math.abs(Number(red) - 0x22 / 255) < 0.01);
+        assert.ok(Math.abs(Number(green) - 0x33 / 255) < 0.01);
+        assert.ok(Math.abs(Number(blue) - 0x49 / 255) < 0.01);
+    });
+
+    it('binds a book nobody has chosen a colour for', async () => {
+        const { stream, done } = build();
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+
+        // Whatever the default is, it is a colour and it is on both boards.
+        // A white cover is the one answer an owner has already rejected.
+        assert.equal(boards(bytes).length, 2);
+    });
+
+    it('prints a picture across the top of the front board', async () => {
+        const { stream, done } = build({ cover: { cloth: 'linen', bytes: await pixels(1600, 1200) } });
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+        const drawing = drawnIn(bytes);
+
+        // The band is a clip rather than a rectangle the picture is squashed
+        // into: it is the full width of the board and a little over half its
+        // height, and whatever is behind it is cropped to fit.
+        assert.match(drawing, /0 0 612 411\.84 re\s+W/);
+
+        // One picture, drawn at least as large as the band in both directions
+        // -- which is what covering it means, and the opposite of stretching
+        // to fit it.
+        const drawn = [...drawing.matchAll(/([\d.]+) 0 0 -([\d.]+) [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)];
+
+        assert.equal(drawn.length, 1);
+        assert.ok(Number(drawn[0][1]) >= PAGE.width - 0.5);
+        assert.ok(Number(drawn[0][2]) >= PAGE.height * 0.52 - 0.5);
+    });
+
+    it('does not move a single page by choosing a cover', async () => {
+        // The measuring pass is given the colour but not the picture, and
+        // this is the reason that is safe: a cover is one page whatever is
+        // printed on it. If it ever stopped being one page, the contents
+        // would start naming the wrong folios and nothing else would say so.
+        const plain = build();
+        const [, first] = await Promise.all([readPdf(plain.stream), plain.done]);
+
+        const dressed = build({ cover: { cloth: 'oxblood', bytes: await pixels(1600, 1200) } });
+        const [, second] = await Promise.all([readPdf(dressed.stream), dressed.done]);
+
+        assert.equal(second.pages, first.pages);
+        assert.deepEqual(second.opens, first.opens);
+    });
+
+    it('still makes a book when the cover picture is unreadable', async () => {
+        const warned = [];
+        const { stream, done } = build({
+            cover: { cloth: 'forest', bytes: Buffer.from('not an image') },
+            log: { warn: (event, detail) => warned.push({ event, detail }) }
+        });
+        const [bytes, result] = await Promise.all([readPdf(stream), done]);
+
+        assert.ok(result.pages > 0);
+        assert.equal(boards(bytes).length, 2);
+        assert.equal(warned[0]?.event, 'book.coverFailed');
+    });
+});
+
 // A real WebP, because the transcode is the part being trusted.
 async function pixels(width, height) {
     const { default: sharp } = await import('sharp');
