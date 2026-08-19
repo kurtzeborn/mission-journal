@@ -77,7 +77,13 @@ A Dutch print-on-demand platform, now part of the Prodigi group. Category A, and
 
 Authentication is a Merchant API key on most endpoints, with a separate secret key used to SHA-256 sign the things that matter. Webhooks post JSON with a `signature` that is `sha256(secretKey + order_id)`, which is the same shape as the HMAC the invite links already use. The test environment is a genuinely separate account at `test.www.peecho.com` with its own key; orders placed there never print and never charge.
 
-**Still blocked.** Their company-details form requires a VAT number, and without it the API returns `APP_NO_COMP_DETAILS` — *"Company details are required for tax calculations"* — and the webhook settings will not save either. A US sole trader has no VAT number and the field is VIES-validated, so inventing one is not an option. This needs a support ticket.
+**Still blocked, but their own help centre says it should not be.** Their company-details form requires a VAT number, and without it the API returns `APP_NO_COMP_DETAILS` — *"Company details are required for tax calculations"* — and the webhook settings will not save either. A US sole trader has no VAT number and the field is VIES-validated, so inventing one is not an option.
+
+The help centre contradicts the form. [What is a VAT number? Is it mandatory?](https://support.peecho.com/hc/en-us/articles/360011846520-What-is-a-VAT-number-Is-it-mandatory) answers, verbatim: *"If you do not have a registered VAT business or if you are in a country where no VAT applies, then you can leave this field blank."* The caveat worth stating plainly is that the article is filed under **Getting paid**, so it may be describing the withdrawal profile's VAT field rather than the application's company details — the two are different forms and only one of them blocks the API. Either way it is the sentence to open a ticket with, because it is their answer to exactly this question.
+
+Nothing else has been written about this anywhere. The error code `APP_NO_COMP_DETAILS` returns **zero** search results outside their own documentation; there is no Peecho developer forum, no community board, and nothing on Stack Overflow. So there is no workaround to find — the ticket is the whole path.
+
+The support channel is the form at [support.peecho.com/hc/en-us/requests/new](https://support.peecho.com/hc/en-us/requests/new). The only email address they publish is `sales@peecho.com`, for demos and enterprise, and Peecho is now part of [Prodigi Group](https://www.prodigi.com/) — worth knowing if the ticket stalls.
 
 ### Blurb Bookstore — the fallback
 
