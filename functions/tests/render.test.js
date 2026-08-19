@@ -295,6 +295,31 @@ test('undecodable bytes yield null rather than throwing', async () => {
     assert.equal(await transcode(Buffer.alloc(0)), null);
 });
 
+test('a photograph shot upright is recorded upright', async () => {
+    // Every phone writes the sensor's landscape rectangle and an EXIF note
+    // saying which way up it was held, and sharp's `metadata()` reports the
+    // file rather than the pipeline -- so the `rotate()` that turns the
+    // rendition has no bearing on the numbers recorded beside it. Recorded
+    // from the sensor, a portrait photograph claims to be landscape, and
+    // everything downstream lays out a rectangle half again too wide and
+    // stretches a face to fill it. Nothing reads the picture back to check,
+    // so these two numbers are the only shape the book and the reader ever
+    // have.
+    const source = await sharp({
+        create: { width: 400, height: 300, channels: 3, background: '#336699' }
+    })
+        .withMetadata({ orientation: 6 })
+        .jpeg()
+        .toBuffer();
+
+    const out = await transcode(source);
+    const large = await sharp(out.large).metadata();
+
+    assert.equal(out.width, 300);
+    assert.equal(out.height, 400);
+    assert.equal(out.width / out.height, large.width / large.height);
+});
+
 // --- render ----------------------------------------------------------------
 
 test('an inline forward renders its photos and rewrites the body', async () => {

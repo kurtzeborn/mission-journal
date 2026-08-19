@@ -66,8 +66,22 @@ export async function transcode(bytes) {
         const base = sharp(input, { limitInputPixels: MAX_PIXELS, animated: false }).rotate();
 
         const meta = await base.metadata();
-        const width = meta.width ?? 0;
-        const height = meta.height ?? 0;
+
+        // Turned by hand, because `metadata()` describes the *file* and not
+        // the pipeline: the `rotate()` above has no bearing on what it
+        // reports, so a phone photograph shot upright comes back as the
+        // landscape rectangle its sensor recorded while the rendition beside
+        // it is stored portrait. Nothing downstream reads the picture to find
+        // out -- these two numbers are the only shape the book and the reader
+        // ever see -- so recording the sensor's rectangle draws a portrait
+        // photograph into a landscape hole, stretched half as wide again as
+        // it should be. Orientations 5 through 8 are the four that involve a
+        // quarter turn; 1 through 4 are uprights and flips, which change no
+        // dimensions.
+        const turned = (meta.orientation ?? 1) >= 5;
+        const width = (turned ? meta.height : meta.width) ?? 0;
+        const height = (turned ? meta.width : meta.height) ?? 0;
+
         if (!width || !height) return null;
         if (Math.max(width, height) < MIN_PHOTO_EDGE) return null;
 

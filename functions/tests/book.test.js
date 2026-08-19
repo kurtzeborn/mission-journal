@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { inflateSync } from 'node:zlib';
 
 import {
     COLUMN,
@@ -7,6 +8,7 @@ import {
     PAGE,
     SHEET_LEAST,
     albumPageCount,
+    albumPlan,
     albumRows,
     albumSpread,
     albumTarget,
@@ -29,6 +31,28 @@ const readPdf = async (stream) => {
     const chunks = [];
     for await (const chunk of stream) chunks.push(chunk);
     return Buffer.concat(chunks);
+};
+
+// What was actually drawn, which pdfkit compresses. Every stream in the file
+// is tried and the ones that are not deflated -- the JPEGs, mostly -- simply
+// refuse, which is all the empty catch means.
+const drawnIn = (bytes) => {
+    const raw = bytes.toString('latin1');
+    const out = [];
+
+    for (const match of raw.matchAll(/stream\r?\n/g)) {
+        const from = match.index + match[0].length;
+        const to = raw.indexOf('endstream', from);
+        if (to < 0) continue;
+
+        try {
+            out.push(inflateSync(bytes.subarray(from, to)).toString('latin1'));
+        } catch {
+            // Not a content stream.
+        }
+    }
+
+    return out.join('\n');
 };
 
 const post = (id, date, subject, overrides = {}) => ({
@@ -252,6 +276,75 @@ describe('laying photographs out in an album', () => {
         const target = albumTarget(many, { height: PAGE.height - MARGIN.top - MARGIN.bottom });
 
         assert.ok(target >= 84);
+    });
+});
+
+describe('filling a leaf that has nothing else on it', () => {
+    const wide = { id: 'w', width: 2400, height: 1600 };
+    const tall = { id: 't', width: 1600, height: 2400 };
+    const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
+
+    const leaf = (count) => Array.from({ length: count }, (_, n) => (n % 2 ? tall : wide));
+    const stacked = (rows) => rows.reduce((sum, row) => sum + row.height, 0) + 10 * (rows.length - 1);
+    const widths = (rows) =>
+        rows.map(
+            (row) =>
+                row.photos.reduce((sum, photo) => sum + row.height * (photo.width / photo.height), 0) +
+                10 * (row.photos.length - 1)
+        );
+
+    it('gives two photographs the page rather than a strip across the middle', () => {
+        // Packed to the column, two landscape pictures come out side by side
+        // and a hand's width tall, marooned in eleven inches of paper. Set
+        // one above the other they are four inches each and the leaf is
+        // nearly full -- nearly, because a picture may not be wider than the
+        // column however much height is going spare.
+        const rows = albumPlan([wide, wide], { height: usable });
+
+        assert.ok(stacked(rows) > usable * 0.9, `used only ${Math.round(stacked(rows))} of ${usable}`);
+        assert.ok(Math.min(...rows.map((row) => row.height)) > 250);
+    });
+
+    it('makes a page of two far larger than a page of six', () => {
+        // The same shape throughout, because that is the only way the
+        // comparison means anything: a page of six upright pictures is taller
+        // per row than a page of two flat ones and would win on height while
+        // losing on every other count.
+        const two = albumPlan([wide, wide], { height: usable });
+        const six = albumPlan(Array.from({ length: 6 }, () => wide), { height: usable });
+
+        assert.ok(Math.min(...two.map((row) => row.height)) > Math.max(...six.map((row) => row.height)) * 1.5);
+    });
+
+    it('sets six photographs of a shape at one size rather than three', () => {
+        // Judged on paper covered, a leaf of six comes out two small, two
+        // large and two small, because one picture blown up pays for two
+        // shrunk. Nobody arranging a page by hand has ever done that.
+        const rows = albumPlan(Array.from({ length: 6 }, () => wide), { height: usable });
+        const heights = rows.map((row) => row.height);
+
+        assert.equal(rows.length, 3);
+        assert.ok(Math.max(...heights) - Math.min(...heights) < 0.01);
+    });
+
+    it('never runs past the column or off the foot of the page', () => {
+        for (let count = 1; count <= 6; count += 1) {
+            const rows = albumPlan(leaf(count), { height: usable });
+
+            assert.ok(Math.max(...widths(rows)) <= COLUMN + 0.01, `${count} overran the column`);
+            assert.ok(stacked(rows) <= usable + 0.01, `${count} overran the page`);
+        }
+    });
+
+    it('keeps every photograph, in the order they arrived', () => {
+        const photos = leaf(5);
+        const flat = albumPlan(photos, { height: usable }).flatMap((row) => row.photos);
+
+        assert.deepEqual(flat, photos);
+    });
+
+    it('has nothing to arrange when there are no photographs', () => {
+        assert.deepEqual(albumPlan([], { height: usable }), []);
     });
 });
 
@@ -547,6 +640,40 @@ describe('setting a whole book', () => {
         assert.ok(result.pages > 0);
         assert.ok(bytes.length > 0);
         assert.equal(warned[0]?.event, 'book.photoFailed');
+    });
+
+    it('leaves a photograph in its own proportions even when the recorded shape is wrong', async () => {
+        // Dimensions are recorded once, at ingest, and nothing reads the
+        // rendition back to check them -- so a letter written before a fix to
+        // how orientation was read still claims a shape its picture does not
+        // have, and for a while every photograph shot upright claimed the
+        // landscape rectangle its sensor recorded. Handed a width and a
+        // height, pdfkit makes the picture exactly that, and a face comes out
+        // half again as wide as it should be. Cropped to the same rectangle
+        // instead, nobody can tell.
+        const store = memoryStore();
+        await store.writeBlob('rendered', 'isaac.backman/photos/p1/large.webp', await pixels(600, 800));
+
+        const { stream, done } = build({
+            store,
+            posts: [
+                {
+                    ...post('a', '2026-01-04', 'Week one'),
+                    photos: [{ id: 'p1', width: 2400, height: 1600 }]
+                }
+            ]
+        });
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+
+        // pdfkit draws an image by scaling the unit square, so the matrix it
+        // writes is the size on the page: `w 0 0 -h x y cm` and then the
+        // picture. One photograph, so one of them.
+        const drawn = [...drawnIn(bytes).matchAll(/([\d.]+) 0 0 -([\d.]+) [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)];
+
+        assert.equal(drawn.length, 1);
+
+        const shape = Number(drawn[0][1]) / Number(drawn[0][2]);
+        assert.ok(Math.abs(shape - 600 / 800) < 0.01, `drawn ${shape.toFixed(3)} wide for every unit tall`);
     });
 });
 

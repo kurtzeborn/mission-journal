@@ -736,6 +736,75 @@ export function albumTarget(photos, { height, width = COLUMN }) {
 }
 
 /**
+ * Arrange one leaf's photographs to fill the page they have to themselves.
+ *
+ * `albumRows` packs to a width, which is the right answer for a run of
+ * pictures sitting in a column of text: the column is the fixed thing and the
+ * height falls out. On a leaf that owns the whole page it is the wrong
+ * answer, and badly so. Two landscape photographs packed to the column come
+ * out side by side, a hand's width tall, marooned in the middle of eleven
+ * inches of paper -- because filling the column is the only rule the packer
+ * knows, and two pictures fill it at a stroke. The reader did not ask for two
+ * postage stamps; the page had room to make them nearly six inches each.
+ *
+ * So the leaf is arranged by trying every way of dealing its pictures into
+ * bands, in the order they arrived, and keeping the best of them. Each band
+ * is measured at full width, and the stack is scaled down as one if it is
+ * taller than the page. Scaling the stack is what lets a band be *narrower*
+ * than the column -- which is the whole trick, because that is the only way
+ * height ever becomes the binding constraint and the only way a page of two
+ * grows.
+ *
+ * The best is the one whose *smallest* picture is largest, rather than the
+ * one covering the most paper. Covering the most paper sounds like the same
+ * thing and is not: six photographs come out as two small and two large and
+ * two small, because one picture blown up pays for two shrunk, and a page
+ * with three sizes on it reads as a page that was arranged by an accident.
+ * Judging a page by its worst picture equalises it, and lands on the answer
+ * every photo album has used for a century -- six in three rows of two --
+ * without having to name it.
+ *
+ * Bands are never widened past the column and pictures are never enlarged
+ * beyond it, so nothing here can reach into a margin.
+ *
+ * Pure, and driven off the recorded dimensions rather than the files, because
+ * the measuring pass has to reach the same arrangement without reading a
+ * single byte.
+ */
+export function albumPlan(photos, { height, width = COLUMN, gap = ALBUM_GAP }) {
+    if (!photos.length) return [];
+
+    let best = null;
+
+    for (let bands = 1; bands <= photos.length; bands += 1) {
+        // `albumSpread` deals a list into runs of near-equal length keeping
+        // the order, which is exactly what a band is; that it was written for
+        // pages is an accident of where it was needed first.
+        const rows = albumSpread(photos, { pages: bands }).map((band) => {
+            const aspects = band.reduce((sum, photo) => sum + aspectOf(photo), 0);
+            return { photos: band, height: (width - gap * (band.length - 1)) / aspects };
+        });
+
+        const stack = rows.reduce((sum, row) => sum + row.height, 0);
+        const scale = Math.min(1, (height - gap * (bands - 1)) / stack);
+
+        const least = Math.min(
+            ...rows.flatMap((row) =>
+                row.photos.map((photo) => (row.height * scale) ** 2 * aspectOf(photo))
+            )
+        );
+
+        if (best && least <= best.least) continue;
+        best = {
+            least,
+            rows: rows.map((row) => ({ photos: row.photos, height: row.height * scale }))
+        };
+    }
+
+    return best.rows;
+}
+
+/**
  * How many leaves to give a letter's album.
  *
  * Two jobs at once. The first is restraint: past half a dozen pictures a page
@@ -958,29 +1027,34 @@ function setAlbum(doc, { photos, textPages, images, state }) {
  * One page of an album.
  */
 function setLeaf(doc, { photos, images, usable }) {
-    const target = albumTarget(photos, { height: usable });
-    const rows = albumRows(photos, { target });
+    const rows = albumPlan(photos, { height: usable });
 
-    // Centred vertically when it does not fill the page, which is usually.
-    // Rows have to span the column exactly, so their heights are decided by
-    // how the pictures group rather than by how much room is going -- four
-    // photographs come out as two rows of two and leave a third of the leaf
-    // over no matter what target is chosen. Pushed to the top that reads as a
-    // page that ran out; balanced, it reads as a plate.
+    // Centred both ways. Vertically because an arrangement can still come up
+    // short of the page -- six pictures of the same shape tile it almost
+    // exactly, four rarely do -- and pushed to the top that reads as a page
+    // that ran out. Horizontally because a band scaled down to make the stack
+    // fit is narrower than the column, and a short band hanging off the
+    // gutter edge reads as a mistake rather than as a plate.
     const total = albumHeight(rows);
     let y = MARGIN.top + (total < usable ? (usable - total) / 2 : 0);
 
     for (const row of rows) {
-        let x = LEFT;
-        for (const photo of row.photos) {
-            const width = row.height * aspectOf(photo);
-            const bytes = images.get(photo.id);
+        const widths = row.photos.map((photo) => row.height * aspectOf(photo));
+        const band = widths.reduce((sum, width) => sum + width, 0) + ALBUM_GAP * (row.photos.length - 1);
 
-            if (bytes) doc.image(bytes, x, y, { width, height: row.height });
-            else doc.save().rect(x, y, width, row.height).fillOpacity(0.06).fill(BLACK).restore();
+        let x = LEFT + (COLUMN - band) / 2;
 
-            x += width + ALBUM_GAP;
-        }
+        row.photos.forEach((photo, index) => {
+            drawImage(doc, {
+                bytes: images.get(photo.id),
+                x,
+                y,
+                width: widths[index],
+                height: row.height
+            });
+
+            x += widths[index] + ALBUM_GAP;
+        });
 
         y += row.height + ALBUM_GAP;
     }
@@ -1058,10 +1132,29 @@ function setBlock(doc, { block, state }) {
  * rendition has genuinely gone. Both want the same rectangle held: the first
  * so the contents page is right, the second so a lost picture leaves an
  * obvious gap rather than silently reflowing the book around it.
+ *
+ * The rectangle is filled rather than fitted, and the picture keeps its own
+ * proportions inside it. pdfkit takes a width *and* a height as an
+ * instruction to make the image exactly that, so handing it both is handing
+ * it permission to stretch -- and it will, by whatever the box and the
+ * picture disagree by. That disagreement is not hypothetical: every rectangle
+ * in this file is computed from dimensions recorded at ingest, and a
+ * rendition that has since been re-encoded, or was recorded before a fix to
+ * how orientation is read, will not match. A face half again as wide as it
+ * should be is the worst thing a photo book can do, and losing a strip off an
+ * edge is close to the least, so the trade goes that way every time. pdfkit's
+ * `cover` scales to fill and centres but does not clip what hangs over, so
+ * the clip is drawn here.
  */
 function drawImage(doc, { bytes, x, y, width, height }) {
-    if (bytes) doc.image(bytes, x, y, { width, height });
-    else doc.save().rect(x, y, width, height).fillOpacity(0.06).fill(BLACK).restore();
+    if (!bytes) {
+        doc.save().rect(x, y, width, height).fillOpacity(0.06).fill(BLACK).restore();
+        return;
+    }
+
+    doc.save().rect(x, y, width, height).clip();
+    doc.image(bytes, x, y, { cover: [width, height], align: 'center', valign: 'center' });
+    doc.restore();
 }
 
 /**
@@ -1171,9 +1264,25 @@ function textAfter(blocks, from) {
  * Sizes are given as a share of the title's so a cover can simply ask for
  * larger type and have the rest follow.
  */
-function setNameplate(doc, { title, profile, x, width, size }) {
+function setNameplate(doc, { title, profile, x, width, size, rule = false }) {
     doc.font('semibold').fontSize(size).fillColor(BLACK);
     doc.text(title, x, doc.y, { width, align: 'center' });
+
+    // A hairline under the name, on the cover only. It costs nothing, and it
+    // is the difference between a name floating in a field of white and a
+    // name that has been set on something.
+    if (rule) {
+        const span = width * 0.34;
+        doc.moveDown(0.5);
+        doc.save()
+            .strokeColor(QUIET)
+            .lineWidth(0.75)
+            .moveTo(x + (width - span) / 2, doc.y)
+            .lineTo(x + (width + span) / 2, doc.y)
+            .stroke()
+            .restore();
+        doc.y += 2;
+    }
 
     // The mission stands on its own line rather than being folded into a
     // sentence. "Letters from the" plus whatever somebody typed reads well
@@ -1197,6 +1306,34 @@ function setNameplate(doc, { title, profile, x, width, size }) {
 }
 
 /**
+ * The largest size at which a name will sit on a cover in a line or two.
+ *
+ * A cover is set by eye in every trade that makes them, and the eye is
+ * measuring one thing: how much of the width the longest name takes. A fixed
+ * size has to be chosen for the longest name anybody might have, which leaves
+ * every ordinary one looking lost -- and "Elder Declan Kurtzeborn" is not
+ * even a long name. So the size is fitted instead: come down from the largest
+ * that would ever be reasonable until the longest single word fits across the
+ * measure and the whole name would take about two lines of it.
+ *
+ * Hyphenation is not on offer, which is why the longest *word* is a hard
+ * constraint rather than a preference: a name wider than the page does not
+ * wrap, it overhangs.
+ */
+function coverSize(doc, { title, width, most = 58, least = 30 }) {
+    doc.font('semibold');
+
+    for (let size = most; size > least; size -= 1) {
+        doc.fontSize(size);
+
+        const longest = Math.max(...title.split(/\s+/).map((word) => doc.widthOfString(word)));
+        if (longest <= width && doc.widthOfString(title) <= width * 1.8) return size;
+    }
+
+    return least;
+}
+
+/**
  * The front cover, which is simply page one.
  *
  * Peecho takes the whole book as a single PDF -- front cover, then every leaf
@@ -1209,6 +1346,10 @@ function setNameplate(doc, { title, profile, x, width, size }) {
  *
  * Centred rather than mirrored, because a cover has no gutter to lean away
  * from -- it is one wrapped sheet of card, not a leaf of the block.
+ *
+ * Set large. A cover is read across a room, off a shelf, or in a thumbnail on
+ * a checkout page, and at every one of those distances the only thing that
+ * survives is the size of the name.
  */
 function setFrontCover(doc, { title, profile, state }) {
     state.cover = true;
@@ -1216,8 +1357,8 @@ function setFrontCover(doc, { title, profile, state }) {
 
     const width = PAGE.width - MARGIN.outside * 2;
 
-    doc.y = PAGE.height * 0.26;
-    setNameplate(doc, { title, profile, x: MARGIN.outside, width, size: 34 });
+    doc.y = PAGE.height * 0.2;
+    setNameplate(doc, { title, profile, x: MARGIN.outside, width, size: coverSize(doc, { title, width }), rule: true });
 
     doc.font('italic').fontSize(11).fillColor(QUIET);
     doc.text('pdayletters.com', MARGIN.outside, PAGE.height - MARGIN.bottom - 14, {
