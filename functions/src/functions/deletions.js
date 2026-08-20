@@ -23,28 +23,13 @@
 // conversation, not a button.
 
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { hardened, operatorGate } from '../lib/api.js';
+import { blobStore, tableStore } from '../lib/clients.js';
+import { jsonResponse as json, operatorGate } from '../lib/api.js';
 import { pendingDeletions, restoreSite } from '../lib/deletion.js';
 import { serviceFlow } from '../lib/flow.js';
 import { validSlug } from '../lib/paths.js';
 
 const account = () => process.env.STORAGE_ACCOUNT_NAME;
-
-let cachedBlobs = null;
-let cachedTables = null;
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
-
-const json = (status, body) => ({
-    status,
-    headers: hardened({
-        'Cache-Control': 'no-store',
-        'Content-Type': 'application/json; charset=utf-8'
-    }),
-    jsonBody: body
-});
 
 async function list(request, context) {
     const gated = operatorGate({ request, log: context });

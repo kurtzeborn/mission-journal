@@ -16,26 +16,9 @@
 // deployment is mail tied to whenever somebody pushes.
 
 import { app } from '@azure/functions';
+import { blobStore, mailer, tableStore } from '../lib/clients.js';
 import { runDigests } from '../lib/digest.js';
-import { createMailer } from '../lib/mail.js';
 import { setting } from '../lib/settings.js';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-
-let cachedStore = null;
-let cachedTables = null;
-let cachedMailer = null;
-
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-const mailer = () =>
-    (cachedMailer ??= createMailer({
-        accountId: setting('CLOUDFLARE_ACCOUNT_ID'),
-        token: setting('CLOUDFLARE_API_TOKEN'),
-        allowlist: setting('MAIL_ALLOWLIST')
-    }));
 
 async function handler(timer, context) {
     // Unlike the reminder, this one runs without the signing key. The key

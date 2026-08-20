@@ -1,7 +1,7 @@
 import { app } from '@azure/functions';
-import { hardened } from '../lib/api.js';
+import { hardened, jsonResponse as json } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
-import { createTableStore } from '../lib/tables.js';
+import { tableStore } from '../lib/clients.js';
 import { optedOut } from '../lib/optout.js';
 import { DIGEST, readUser, setDigest, validFrequency } from '../lib/users.js';
 
@@ -16,19 +16,6 @@ import { DIGEST, readUser, setDigest, validFrequency } from '../lib/users.js';
 // `/settings/{slug}` is owners only and always will be -- it names an archive
 // and sets its display name -- and readers are precisely the audience the
 // digest exists for.
-
-let cachedTables = null;
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
-
-const json = (status, body) => ({
-    status,
-    headers: hardened({
-        'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': 'private, no-store'
-    }),
-    jsonBody: body
-});
 
 const refuse = () => ({ status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' });
 

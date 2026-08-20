@@ -9,14 +9,9 @@
 // would tie destruction to an event that happens whenever somebody pushes.
 
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
+import { blobStore } from '../lib/clients.js';
 import { purgeExpired } from '../lib/purge.js';
-
-const setting = (name, fallback) => process.env[name] ?? fallback;
-
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
+import { setting } from '../lib/settings.js';
 
 async function handler(timer, context) {
     // An escape hatch that reports without deleting, for confirming the sweep

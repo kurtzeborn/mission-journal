@@ -138,10 +138,6 @@ function readQuotedBlock(text) {
     return { headers, body: lines.slice(end).join('\n') };
 }
 
-export function readQuotedHeaders(text) {
-    return readQuotedBlock(text)?.headers ?? null;
-}
-
 // An image is inline when the body actually points at it. Neither of the
 // obvious shortcuts works: Gmail stamps a Content-ID on ordinary attachments,
 // and Outlook mobile rebuilds the message so that every part claims to belong

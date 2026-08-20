@@ -1,18 +1,9 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
+import { blobStore, tableStore } from '../lib/clients.js';
 import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { deletionOf } from '../lib/deletion.js';
 import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
-
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
-
-let cachedTables = null;
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
 // The whole site in one response. A family archive is a few hundred letters at
 // most, so paging would add a moving part for no gain, and having the entire

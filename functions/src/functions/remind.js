@@ -14,22 +14,9 @@
 // deployment is mail tied to whenever somebody pushes.
 
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createMailer } from '../lib/mail.js';
+import { blobStore, mailer } from '../lib/clients.js';
 import { remindPending } from '../lib/offer.js';
-
-const setting = (name, fallback) => process.env[name] ?? fallback;
-
-let cachedStore = null;
-let cachedMailer = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-const mailer = () =>
-    (cachedMailer ??= createMailer({
-        accountId: setting('CLOUDFLARE_ACCOUNT_ID'),
-        token: setting('CLOUDFLARE_API_TOKEN'),
-        allowlist: setting('MAIL_ALLOWLIST')
-    }));
+import { setting } from '../lib/settings.js';
 
 async function handler(timer, context) {
     const key = setting('CLAIM_TOKEN_KEY', '');

@@ -1,12 +1,8 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
+import { blobStore } from '../lib/clients.js';
 import { gate, hardened } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
 import { buildArchive } from '../lib/archive.js';
-
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
 // Where finished archives are staged. Its own container so a lifecycle rule
 // can be pointed at derived data later without going anywhere near `raw/` or

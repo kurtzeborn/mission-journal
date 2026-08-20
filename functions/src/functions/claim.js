@@ -1,8 +1,7 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { createMailer } from '../lib/mail.js';
-import { hardened } from '../lib/api.js';
+import { blobStore, mailer, signingKey, tableStore } from '../lib/clients.js';
+import { jsonResponse as json, readBody as body } from '../lib/api.js';
+import { setting } from '../lib/settings.js';
 import { readPrincipal } from '../lib/principal.js';
 import { describeClaim, redeemClaim } from '../lib/claim.js';
 import { resendClaim } from '../lib/offer.js';
@@ -29,47 +28,8 @@ import { recordDigestChoice } from '../lib/users.js';
 // making `describe` a GET with the token in the query string would undo all
 // of the above for the sake of a verb.
 
-let cachedBlobs = null;
-let cachedTables = null;
-let cachedMailer = null;
-const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
-const mailer = () =>
-    (cachedMailer ??= createMailer({
-        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-        token: process.env.CLOUDFLARE_API_TOKEN,
-        allowlist: process.env.MAIL_ALLOWLIST
-    }));
-const baseUrl = () => process.env.PUBLIC_BASE_URL || 'https://pdayletters.com';
+const baseUrl = () => setting('PUBLIC_BASE_URL', 'https://pdayletters.com');
 
-const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
-const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
-
-/**
- * The signing key, or nothing.
- *
- * There is deliberately no fallback. A generated or hard-coded default would
- * make every token in the system forgeable by anyone who read the source, and
- * it would do so silently -- the flow would keep working, which is exactly
- * why nobody would notice.
- */
-function signingKey(context) {
-    const key = process.env.CLAIM_TOKEN_KEY;
-    if (!key) {
-        context.error?.('claim: CLAIM_TOKEN_KEY is not configured; refusing to sign or verify');
-        return null;
-    }
-    return key;
-}
-
-async function body(request) {
-    try {
-        return await request.json();
-    } catch {
-        return {};
-    }
-}
 
 // What the landing page shows before anyone signs in. Changes nothing.
 //
@@ -159,7 +119,7 @@ export async function resend({ request, context, store, mailer: send, key }) {
 }
 
 const describeHandler = (request, context) =>
-    describe({ request, context, store: blobStore(), tables: tableStore(), key: signingKey(context) });
+    describe({ request, context, store: blobStore(), tables: tableStore(), key: signingKey('claim', context) });
 
 const redeemHandler = (request, context) =>
     redeem({
@@ -167,7 +127,7 @@ const redeemHandler = (request, context) =>
         context,
         store: blobStore(),
         tables: tableStore(),
-        key: signingKey(context)
+        key: signingKey('claim', context)
     });
 
 app.http('claim-describe', {
@@ -192,5 +152,5 @@ app.http('claim-resend', {
     methods: ['POST'],
     route: 'claim/resend',
     handler: (request, context) =>
-        resend({ request, context, store: blobStore(), mailer: mailer(), key: signingKey(context) })
+        resend({ request, context, store: blobStore(), mailer: mailer(), key: signingKey('claim', context) })
 });

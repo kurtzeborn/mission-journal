@@ -27,6 +27,8 @@
 //   invitation is not yet entitled to anything, and forwarded mail is how
 //   they most often come to hold one.
 
+import { escapeHtml as escape } from './mail.js';
+
 const SIGNATURE = 'Pday Letters';
 
 const readableDate = (iso) =>
@@ -37,12 +39,6 @@ const readableDate = (iso) =>
         day: 'numeric'
     });
 
-const escape = (text) =>
-    String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
 /**
  * @param {object} input

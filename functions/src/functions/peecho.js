@@ -1,6 +1,6 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { siteGate, hardened } from '../lib/api.js';
+import { blobStore, signingKey } from '../lib/clients.js';
+import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../lib/claimtoken.js';
 import { noteOrder, readOrder } from '../lib/orders.js';
 import {
@@ -32,19 +32,6 @@ import { setting } from '../lib/settings.js';
 // allowlist of their egress addresses -- which would break the first time
 // they moved a region -- just arithmetic on a shared secret.
 
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-
-const json = (status, body) => ({
-    status,
-    headers: hardened({
-        'Cache-Control': 'no-store',
-        'Content-Type': 'application/json; charset=utf-8'
-    }),
-    jsonBody: body
-});
-
 // Long enough for a print facility on the other side of the world to pull a
 // hundred megabytes over whatever connection it has. Nothing is watching this
 // download, so a link that dies mid-transfer fails silently in somebody
@@ -57,15 +44,6 @@ const FETCH_MINUTES = 60;
 // bomb with a long fuse. Ten years is the honest way to write "not this
 // decade", and the lever that actually revokes these is rotating the key.
 const PRINT_YEARS = 10;
-
-function signingKey(context) {
-    const key = setting('CLAIM_TOKEN_KEY');
-    if (!key) {
-        context.error?.('peecho: CLAIM_TOKEN_KEY is not configured; refusing to sign');
-        return null;
-    }
-    return key;
-}
 
 // Where the API lives from outside. The printer fetches this, so it cannot be
 // a relative path and it cannot be the Function App's own hostname either --
@@ -345,7 +323,7 @@ app.http('print-order', {
     methods: ['POST'],
     route: 'print/{slug}/{id}',
     handler: (request, context) =>
-        order({ request, context, store: blobStore(), key: signingKey(context) })
+        order({ request, context, store: blobStore(), key: signingKey('peecho', context) })
 });
 
 app.http('print-file', {
@@ -353,7 +331,7 @@ app.http('print-file', {
     methods: ['GET'],
     route: 'print/{slug}/{id}/letters.pdf',
     handler: (request, context) =>
-        fetchForPrint({ request, context, store: blobStore(), key: signingKey(context) })
+        fetchForPrint({ request, context, store: blobStore(), key: signingKey('peecho', context) })
 });
 
 app.http('print-cover', {
@@ -361,7 +339,7 @@ app.http('print-cover', {
     methods: ['GET'],
     route: 'print/{slug}/{id}/cover.jpg',
     handler: (request, context) =>
-        fetchCoverForPrint({ request, context, store: blobStore(), key: signingKey(context) })
+        fetchCoverForPrint({ request, context, store: blobStore(), key: signingKey('peecho', context) })
 });
 
 app.http('peecho-placed', {

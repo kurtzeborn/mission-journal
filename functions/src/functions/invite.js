@@ -1,7 +1,6 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { hardened } from '../lib/api.js';
+import { blobStore, signingKey, tableStore } from '../lib/clients.js';
+import { jsonResponse as json, readBody as body } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { acceptInvite, describeInvite } from '../lib/invite.js';
 import { recordDigestChoice } from '../lib/users.js';
@@ -16,32 +15,6 @@ import { recordDigestChoice } from '../lib/users.js';
 //
 // Everything claim.js says about why the token is in a fragment and why both
 // endpoints are POST applies here unchanged.
-
-let cachedBlobs = null;
-let cachedTables = null;
-const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
-
-const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
-const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
-
-function signingKey(context) {
-    const key = process.env.CLAIM_TOKEN_KEY;
-    if (!key) {
-        context.error?.('invite: CLAIM_TOKEN_KEY is not configured; refusing to verify');
-        return null;
-    }
-    return key;
-}
-
-async function body(request) {
-    try {
-        return await request.json();
-    } catch {
-        return {};
-    }
-}
 
 export async function describe({ request, tables, key }) {
     if (!key) return json(503, { status: 'unavailable' });
@@ -94,7 +67,7 @@ app.http('invite-describe', {
     authLevel: 'anonymous',
     methods: ['POST'],
     route: 'invite/describe',
-    handler: (request, context) => describe({ request, tables: tableStore(), key: signingKey(context) })
+    handler: (request, context) => describe({ request, tables: tableStore(), key: signingKey('invite', context) })
 });
 
 app.http('invite-accept', {
@@ -102,5 +75,5 @@ app.http('invite-accept', {
     methods: ['POST'],
     route: 'invite/accept',
     handler: (request, context) =>
-        accept({ request, context, store: blobStore(), tables: tableStore(), key: signingKey(context) })
+        accept({ request, context, store: blobStore(), tables: tableStore(), key: signingKey('invite', context) })
 });

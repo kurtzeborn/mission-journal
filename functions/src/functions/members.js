@@ -1,8 +1,7 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { createMailer } from '../lib/mail.js';
-import { hardened, siteGate } from '../lib/api.js';
+import { blobStore, mailer, signingKey, tableStore } from '../lib/clients.js';
+import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
+import { setting } from '../lib/settings.js';
 import { ROLE } from '../lib/acl.js';
 import { listMembers, removeMember, setMemberRole } from '../lib/members.js';
 import { inviteMember, listInvites, resendInvite, revokeInvite } from '../lib/invite.js';
@@ -19,22 +18,6 @@ import { inviteMember, listInvites, resendInvite, revokeInvite } from '../lib/in
 //
 // Membership is disclosed to owners only. A reader is entitled to the letters,
 // not to the list of every other relative's email address.
-
-let cachedBlobs = null;
-let cachedTables = null;
-let cachedMailer = null;
-const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
-const mailer = () =>
-    (cachedMailer ??= createMailer({
-        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-        token: process.env.CLOUDFLARE_API_TOKEN,
-        allowlist: process.env.MAIL_ALLOWLIST
-    }));
-
-const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
-const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
 
 // Indistinguishable from "no such site", as everywhere else: a signed-in
 // stranger must not be able to discover which slugs exist by asking.
@@ -198,12 +181,7 @@ export async function remove({ request, context, store, tables }) {
     return json(200, result);
 }
 
-const baseUrl = () => process.env.PUBLIC_BASE_URL || 'https://pdayletters.com';
-const signingKey = (context) => {
-    const key = process.env.CLAIM_TOKEN_KEY;
-    if (!key) context.error?.('members: CLAIM_TOKEN_KEY is not configured; refusing to sign');
-    return key || null;
-};
+const baseUrl = () => setting('PUBLIC_BASE_URL', 'https://pdayletters.com');
 
 app.http('members-list', {
     authLevel: 'anonymous',
@@ -223,7 +201,7 @@ app.http('members-invite', {
             store: blobStore(),
             tables: tableStore(),
             mail: mailer(),
-            key: signingKey(context),
+            key: signingKey('members', context),
             baseUrl: baseUrl()
         })
 });
@@ -239,7 +217,7 @@ app.http('members-resend', {
             store: blobStore(),
             tables: tableStore(),
             mail: mailer(),
-            key: signingKey(context),
+            key: signingKey('members', context),
             baseUrl: baseUrl()
         })
 });

@@ -34,18 +34,12 @@
 // domain and cannot be set, so an inbound id is the only handle threading ever
 // gets -- see `receivedMessageId` in ingest.js.
 
-import { HUMAN_ADDRESS, mailFrom } from './mail.js';
+import { escapeHtml as escape, HUMAN_ADDRESS, mailFrom } from './mail.js';
 import { POST_ADDRESS } from './offer.js';
 import { recordDelivery } from './delivery.js';
 import { optedOut } from './optout.js';
 import { TABLES } from './tables.js';
 
-const escape = (text) =>
-    String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
 const day = (at) => at.toISOString().slice(0, 10);
 

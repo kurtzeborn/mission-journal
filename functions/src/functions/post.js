@@ -1,6 +1,5 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
+import { blobStore, tableStore } from '../lib/clients.js';
 import { gate, hardened, contentEtag, matchesEtag } from '../lib/api.js';
 import { ROLE } from '../lib/acl.js';
 import { deletionOf } from '../lib/deletion.js';
@@ -8,14 +7,6 @@ import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
 import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES } from '../lib/photos.js';
 import { runRender } from '../lib/render.js';
-
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
-
-let cachedTables = null;
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
 const problem = (status, error) => ({
     status,

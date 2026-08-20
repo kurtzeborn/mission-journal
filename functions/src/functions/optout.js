@@ -1,6 +1,6 @@
 import { app } from '@azure/functions';
-import { createTableStore } from '../lib/tables.js';
-import { hardened } from '../lib/api.js';
+import { signingKey, tableStore } from '../lib/clients.js';
+import { jsonResponse as json } from '../lib/api.js';
 import { readOptOut, recordOptOut } from '../lib/optout.js';
 
 // Stopping our mail.
@@ -22,22 +22,6 @@ import { readOptOut, recordOptOut } from '../lib/optout.js';
 //   spent by a scanner silences somebody who never asked for it.
 //
 // Both are POST, so neither can be triggered by fetching a URL.
-
-let cachedTables = null;
-const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
-
-const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
-const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
-
-function signingKey(context) {
-    const key = process.env.CLAIM_TOKEN_KEY;
-    if (!key) {
-        context.error?.('optout: CLAIM_TOKEN_KEY is not configured; refusing to verify');
-        return null;
-    }
-    return key;
-}
 
 async function tokenFrom(request) {
     const fromQuery = request.query?.get?.('t');
@@ -80,12 +64,12 @@ app.http('optout-describe', {
     authLevel: 'anonymous',
     methods: ['POST'],
     route: 'optout/describe',
-    handler: (request, context) => describe({ request, key: signingKey(context) })
+    handler: (request, context) => describe({ request, key: signingKey('optout', context) })
 });
 
 app.http('optout', {
     authLevel: 'anonymous',
     methods: ['POST'],
     route: 'optout',
-    handler: (request, context) => stop({ request, context, tables: tableStore(), key: signingKey(context) })
+    handler: (request, context) => stop({ request, context, tables: tableStore(), key: signingKey('optout', context) })
 });

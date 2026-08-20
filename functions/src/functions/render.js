@@ -1,14 +1,6 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
+import { blobStore } from '../lib/clients.js';
 import { runRender } from '../lib/render.js';
-
-const setting = (name, fallback) => process.env[name] ?? fallback;
-
-// One client per process, not per invocation: DefaultAzureCredential caches
-// tokens, and a fresh instance per message would re-authenticate every time.
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
 
 async function handler(message, context) {
     // Ingest enqueues JSON, but the host only parses it for us when the

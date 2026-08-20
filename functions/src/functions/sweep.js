@@ -9,14 +9,9 @@
 // deletes should not fire because somebody deployed.
 
 import { app } from '@azure/functions';
-import { createTableStore } from '../lib/tables.js';
+import { tableStore } from '../lib/clients.js';
 import { sweepArrivals } from '../lib/sweep.js';
-
-const setting = (name, fallback) => process.env[name] ?? fallback;
-
-let cachedTables = null;
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
+import { setting } from '../lib/settings.js';
 
 async function handler(timer, context) {
     // Opt-in, so forgetting it can only cause the sweep to run, never cause

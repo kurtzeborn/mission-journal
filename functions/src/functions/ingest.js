@@ -1,7 +1,5 @@
 import { app, output } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { createMailer } from '../lib/mail.js';
+import { blobStore, mailer, tableStore } from '../lib/clients.js';
 import { trustedSealersFrom } from '../lib/arc.js';
 import { runIngest } from '../lib/ingest.js';
 
@@ -15,27 +13,7 @@ const renderQueue = output.storageQueue({
     connection: 'STORAGE'
 });
 
-const setting = (name, fallback) => process.env[name] ?? fallback;
-
-// One client per process, not per invocation: DefaultAzureCredential caches
-// tokens, and a fresh instance per message would re-authenticate every time.
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-
-let cachedTables = null;
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-
-// Nothing is sent unless `MAIL_ALLOWLIST` says who may receive it -- see
-// mail.js for why this one defaults closed while the purge flag defaults open.
-let cachedMailer = null;
-const mailer = () =>
-    (cachedMailer ??= createMailer({
-        accountId: setting('CLOUDFLARE_ACCOUNT_ID', ''),
-        token: setting('CLOUDFLARE_API_TOKEN', ''),
-        allowlist: setting('MAIL_ALLOWLIST', '')
-    }));
+import { setting } from '../lib/settings.js';
 
 async function handler(message, context) {
     // The Worker enqueues the ULID as plain text, but the host will hand back

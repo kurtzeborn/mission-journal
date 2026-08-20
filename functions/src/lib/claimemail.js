@@ -27,6 +27,8 @@
 //   visible on a lock screen and in every mail server between here and the
 //   recipient; the body is at least behind a login.
 
+import { escapeHtml as escape } from './mail.js';
+
 const SIGNATURE = 'Pday Letters';
 
 // Written as a date the recipient can act on. Deliberately not localised:
@@ -40,13 +42,6 @@ const readableDate = (iso) =>
     });
 
 const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
-
-const escape = (text) =>
-    String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
 /**
  * @param {object} input

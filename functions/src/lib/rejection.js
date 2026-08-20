@@ -32,7 +32,7 @@
 
 import { TABLES } from './tables.js';
 import { POST_ADDRESS } from './offer.js';
-import { mailFrom } from './mail.js';
+import { escapeHtml as escape, mailFrom } from './mail.js';
 
 const SIGNATURE = 'Pday Letters';
 
@@ -48,12 +48,6 @@ export const TOLD = {
 
 export const isTold = (reason) => Object.values(TOLD).includes(reason);
 
-const escape = (text) =>
-    String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
 /**
  * The message body. Exported so its wording is testable without a mailer.

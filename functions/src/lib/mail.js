@@ -108,6 +108,32 @@ export function parseAllowlist(setting) {
 const permitted = (allowlist, to) => allowlist.open || allowlist.addresses.has(lower(to));
 
 /**
+ * Text made safe to drop into an HTML mail body.
+ *
+ * Every message this service sends carries something a stranger chose: a
+ * display name, a subject line, a slug, the first hundred and eighty
+ * characters of a letter. All of it goes into HTML we compose, so all of it
+ * has to be escaped, and the eight mail composers each had a byte-identical
+ * private copy of this function to do it.
+ *
+ * That is the shape a security bug hides in. Eight copies means a correction
+ * gets applied to seven of them, and the eighth keeps sending markup somebody
+ * else wrote to somebody's inbox -- with no test failing, because each copy
+ * was individually correct on the day it was written. One copy here means the
+ * next change to the rule is the rule.
+ *
+ * The apostrophe is deliberately not escaped: attribute values in these
+ * templates are double-quoted throughout, and `&#39;` in a plain-text-ish
+ * mail body is uglier than the character it replaces.
+ */
+export const escapeHtml = (text) =>
+    String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+/**
  * A mailer.
  *
  * @param {object} input

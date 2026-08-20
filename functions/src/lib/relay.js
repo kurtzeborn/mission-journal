@@ -47,7 +47,7 @@
 
 import { POST_ADDRESS } from './offer.js';
 import { CLAIM_ADDRESS } from './claimverb.js';
-import { mailFrom } from './mail.js';
+import { escapeHtml as escape, mailFrom } from './mail.js';
 import { PURPOSE, verifyClaimToken, issueClaimToken } from './claimtoken.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { validSlug } from './paths.js';
@@ -71,12 +71,6 @@ export const RELAY_TTL_DAYS = 14;
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 const lower = (email) => String(email ?? '').trim().toLowerCase();
 
-const escape = (text) =>
-    String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
 /**
  * The note to the missionary. Exported so its wording is testable.

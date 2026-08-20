@@ -38,14 +38,10 @@
 //   still honoured by the caller, because a person who has asked us to stop
 //   writing to them has asked exactly that.
 
+import { escapeHtml as escape } from './mail.js';
+
 const SIGNATURE = 'Pday Letters';
 
-const escape = (text) =>
-    String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 

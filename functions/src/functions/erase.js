@@ -13,27 +13,19 @@
 // to "somebody deployed" is not a schedule.
 
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
+import { blobStore, tableStore } from '../lib/clients.js';
 import { createPurgeStore } from '../lib/purgestore.js';
 import { runDueErasures } from '../lib/erase.js';
+import { setting } from '../lib/settings.js';
 
-const setting = (name, fallback = '') => process.env[name] ?? fallback;
-const account = () => setting('STORAGE_ACCOUNT_NAME');
-
-let cachedBlobs = null;
-let cachedTables = null;
 let cachedPurge = null;
-
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
 
 // The only construction of this credential anywhere in the service. See
 // purgestore.js for why it is named explicitly rather than left to
 // DefaultAzureCredential's own selection.
 const purgeStore = () =>
     (cachedPurge ??= createPurgeStore({
-        accountName: account(),
+        accountName: setting('STORAGE_ACCOUNT_NAME'),
         clientId: setting('PURGE_IDENTITY_CLIENT_ID')
     }));
 

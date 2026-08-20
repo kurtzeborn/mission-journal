@@ -1,5 +1,5 @@
 import { app } from '@azure/functions';
-import { createTableStore } from '../lib/tables.js';
+import { tableStore } from '../lib/clients.js';
 import { hardened } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { membershipsFor } from '../lib/memberships.js';
@@ -14,10 +14,6 @@ import { membershipsFor } from '../lib/memberships.js';
 // anything: every slug listed is still checked against its own ACL when the
 // content endpoint is called, and a stale row costs a redirect into a refusal
 // rather than a stranger's letters.
-
-let cachedTables = null;
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
 // The store is an argument rather than module state so that this is reachable
 // from a test; the wrapper below is the only part that knows where a real one

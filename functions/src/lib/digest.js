@@ -36,7 +36,7 @@
 
 import { ROLE } from './acl.js';
 import { flowBody } from './bookflow.js';
-import { HUMAN_ADDRESS, mailFrom } from './mail.js';
+import { escapeHtml as escape, HUMAN_ADDRESS, mailFrom } from './mail.js';
 import { membershipsFor } from './memberships.js';
 import { issueOptOut, optedOut, unsubscribeHeaders } from './optout.js';
 import { presentPosts } from './present.js';
@@ -50,12 +50,6 @@ const SIGNATURE = 'Pday Letters';
 // the letters is a digest that replaces them.
 const SNIPPET = 180;
 
-const escape = (text) =>
-    String(text ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
 
 const readableDate = (iso) => {
     const at = new Date(String(iso ?? '').slice(0, 19) + 'Z');

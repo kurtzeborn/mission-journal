@@ -27,6 +27,42 @@ const HARDENING = {
 
 export const hardened = (headers = {}) => ({ ...HARDENING, ...headers });
 
+// The answer shape ten endpoints were each declaring for themselves, in two
+// spellings that differed only in whitespace. Worth having once because it is
+// a *policy* rather than a convenience: everything these routes return is
+// either about one person or about one family's archive, and none of it may
+// sit in a cache. A handler that forgets `no-store` inherits the hardening
+// block's `max-age=3600` instead, which is exactly the wrong default here.
+//
+// `private` is redundant alongside `no-store` and is left off deliberately:
+// two of the old copies had it and eight did not, and picking the shorter
+// correct one is better than preserving a distinction that never meant
+// anything.
+export const jsonResponse = (status, body) => ({
+    status,
+    headers: hardened({
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/json; charset=utf-8'
+    }),
+    jsonBody: body
+});
+
+/**
+ * A request body, or an empty object.
+ *
+ * Malformed JSON is treated as an absent field rather than as an error of its
+ * own, because every caller here goes on to validate the fields it wanted and
+ * will refuse just as loudly for a missing one. Two ways to say "that request
+ * made no sense" is one more than these routes need.
+ */
+export async function readBody(request) {
+    try {
+        return (await request.json()) ?? {};
+    } catch {
+        return {};
+    }
+}
+
 /**
  * The validator for a `posts.json` response.
  *

@@ -1,7 +1,6 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { hardened, siteGate } from '../lib/api.js';
+import { blobStore, tableStore } from '../lib/clients.js';
+import { jsonResponse as json, siteGate } from '../lib/api.js';
 import { deleteSite } from '../lib/deletion.js';
 
 // Deleting an archive.
@@ -29,15 +28,6 @@ import { deleteSite } from '../lib/deletion.js';
 // endpoint exactly as an owner does, having resolved into `owner` above the
 // ACL, and the only thing the gate adds is the flag that makes the reason
 // mandatory.
-
-let cachedBlobs = null;
-let cachedTables = null;
-const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
-
-const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
-const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
 
 const CONFIRM = 'type the archive name to confirm';
 const WHY = 'say why you are deleting an archive that is not yours';

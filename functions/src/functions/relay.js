@@ -1,7 +1,7 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createMailer } from '../lib/mail.js';
-import { hardened } from '../lib/api.js';
+import { blobStore, mailer, signingKey } from '../lib/clients.js';
+import { jsonResponse as json } from '../lib/api.js';
+import { setting } from '../lib/settings.js';
 import { readRelay, requestRelay } from '../lib/relay.js';
 
 // Asking the missionary to vouch for a family member.
@@ -16,30 +16,7 @@ import { readRelay, requestRelay } from '../lib/relay.js';
 // missionary on nobody's behalf -- the exact outcome this flow is built to
 // keep rare.
 
-let cachedBlobs = null;
-let cachedMailer = null;
-const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const mailer = () =>
-    (cachedMailer ??= createMailer({
-        accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-        token: process.env.CLOUDFLARE_API_TOKEN,
-        allowlist: process.env.MAIL_ALLOWLIST
-    }));
-
-const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
-const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
-
-function signingKey(context) {
-    const key = process.env.CLAIM_TOKEN_KEY;
-    if (!key) {
-        context.error?.('relay: CLAIM_TOKEN_KEY is not configured; refusing to verify');
-        return null;
-    }
-    return key;
-}
-
-const baseUrl = () => process.env.PUBLIC_BASE_URL ?? 'https://pdayletters.com';
+const baseUrl = () => setting('PUBLIC_BASE_URL', 'https://pdayletters.com');
 
 async function tokenFrom(request) {
     try {
@@ -88,12 +65,12 @@ app.http('relay-describe', {
     authLevel: 'anonymous',
     methods: ['POST'],
     route: 'relay/describe',
-    handler: (request, context) => describe({ request, key: signingKey(context) })
+    handler: (request, context) => describe({ request, key: signingKey('relay', context) })
 });
 
 app.http('relay', {
     authLevel: 'anonymous',
     methods: ['POST'],
     route: 'relay',
-    handler: (request, context) => ask({ request, context, store: blobStore(), key: signingKey(context) })
+    handler: (request, context) => ask({ request, context, store: blobStore(), key: signingKey('relay', context) })
 });

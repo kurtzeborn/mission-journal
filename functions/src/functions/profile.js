@@ -1,7 +1,6 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { hardened, siteGate } from '../lib/api.js';
+import { blobStore, tableStore } from '../lib/clients.js';
+import { jsonResponse as json, siteGate } from '../lib/api.js';
 import { readProfile, saveProfile } from '../lib/profile.js';
 import { sitesBySlug } from '../lib/sites.js';
 
@@ -11,15 +10,6 @@ import { sitesBySlug } from '../lib/sites.js';
 // `siteGate` rather than `gate`, because renaming an archive must not wait for
 // its first letter to render. The archive most likely to need a rename is the
 // one claimed thirty seconds ago.
-
-let cachedBlobs = null;
-let cachedTables = null;
-const account = () => process.env.STORAGE_ACCOUNT_NAME;
-const blobStore = () => (cachedBlobs ??= createBlobStore({ accountName: account() }));
-const tableStore = () => (cachedTables ??= createTableStore({ accountName: account() }));
-
-const NO_STORE = { 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8' };
-const json = (status, body) => ({ status, headers: hardened(NO_STORE), jsonBody: body });
 
 // The refusals `saveProfile` can produce, and what each one is. Everything
 // here is about the request rather than a conflict, except the last, which is

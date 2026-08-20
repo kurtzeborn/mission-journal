@@ -1,11 +1,7 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
+import { blobStore } from '../lib/clients.js';
 import { gate, hardened } from '../lib/api.js';
 import { photoIsVisible } from '../lib/present.js';
-
-let cachedStore = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: process.env.STORAGE_ACCOUNT_NAME }));
 
 // Both are built by render.js, so the set is closed. Checked against a literal
 // list rather than a pattern because these two strings become a blob path.

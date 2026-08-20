@@ -1,8 +1,6 @@
 import { app } from '@azure/functions';
-import { createBlobStore } from '../lib/store.js';
-import { createTableStore } from '../lib/tables.js';
-import { createMailer } from '../lib/mail.js';
-import { siteGate, hardened } from '../lib/api.js';
+import { blobStore, mailer, tableStore } from '../lib/clients.js';
+import { jsonResponse as json, siteGate } from '../lib/api.js';
 import { isPhotoType, MAX_UPLOAD_BYTES } from '../lib/photos.js';
 import { readProfile } from '../lib/profile.js';
 import {
@@ -27,32 +25,9 @@ import { setting } from '../lib/settings.js';
 
 const CONFIG = 'config';
 
-let cachedStore = null;
-let cachedTables = null;
-let cachedMailer = null;
-const blobStore = () =>
-    (cachedStore ??= createBlobStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-const tableStore = () =>
-    (cachedTables ??= createTableStore({ accountName: setting('STORAGE_ACCOUNT_NAME') }));
-const mailer = () =>
-    (cachedMailer ??= createMailer({
-        accountId: setting('CLOUDFLARE_ACCOUNT_ID'),
-        token: setting('CLOUDFLARE_API_TOKEN'),
-        allowlist: setting('MAIL_ALLOWLIST')
-    }));
-
 // Long enough to survive a slow phone starting on a hundred-megabyte PDF,
 // short enough that a URL later found in a browser history is already dead.
 const LINK_MINUTES = 15;
-
-const json = (status, body) => ({
-    status,
-    headers: hardened({
-        'Cache-Control': 'no-store',
-        'Content-Type': 'application/json; charset=utf-8'
-    }),
-    jsonBody: body
-});
 
 // What the page is allowed to know about a build. The stored status also
 // carries who asked for it, and that is nobody else's business -- two owners
