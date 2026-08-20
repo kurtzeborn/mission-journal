@@ -94,6 +94,24 @@ describe('empty block removal', () => {
         assert.equal(sanitizeBody('<p>Hi</p><div><div><br></div></div>'), '<p>Hi</p>');
     });
 
+    test('breaks inside a dropped header block do not space out the letter', () => {
+        // Outlook writes its quoted header block with <br> between the lines,
+        // and those are recorded as kept breaks before the block holding them
+        // is judged and removed. Removing it rewinds the output over the
+        // positions they were recorded at, so every spacer paragraph after it
+        // read as a deliberate paragraph break and the letter came out double
+        // spaced. Reported from a real forward; the block below is its shape.
+        const text = 'Dear family, the mantis on the wall was the size of my hand.';
+        const html =
+            '<div><p>From: elder.example@missionary.org<br>Sent: Monday<br>' +
+            'To: family@example.com<br>Subject: Week 12</p></div>' +
+            `<p>${text}</p><p>&nbsp;</p><p>It did not move all week.</p>`;
+
+        const out = sanitizeBody(html, { letterText: text });
+
+        assert.equal(out, `<p>${text}</p><p>It did not move all week.</p>`);
+    });
+
     test('trimming the end stops at the letter', () => {
         // The trailing pass runs on a string, so the thing worth proving is
         // that it cannot eat backwards into content.

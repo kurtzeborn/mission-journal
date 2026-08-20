@@ -228,8 +228,18 @@ export function sanitizeBody(
     // it is how Gmail writes a paragraph break. Images need no such
     // bookkeeping: `mediaChildren` already excludes the ones this filter
     // removed.
-    const rules = [];
-    const breaks = [];
+    let rules = [];
+    let breaks = [];
+
+    // Removing a block rewinds the output to where it opened, so a position
+    // recorded from inside it would go on matching whatever is written there
+    // instead -- which kept a blank line beside every paragraph that followed
+    // a dropped quoted header block.
+    const forget = (from) => {
+        rules = rules.filter((position) => position < from);
+        breaks = breaks.filter((position) => position < from);
+        return true;
+    };
 
     // Whether any real text has been written yet. `textFilter` runs in
     // document order as each text node is passed through, which is what makes
@@ -330,7 +340,9 @@ export function sanitizeBody(
                 breaks.push(frame.tagPosition);
                 return false;
             }
-            if (dropHeaders && isQuotedHeaderBlock(frame.text, probe)) return true;
+            if (dropHeaders && isQuotedHeaderBlock(frame.text, probe)) {
+                return forget(frame.tagPosition);
+            }
 
             // Nesting resolves in a single pass: a parent's `text` is the text
             // of its whole subtree, so a <div> wrapping nothing but empty
@@ -339,7 +351,9 @@ export function sanitizeBody(
             // trimming catches it.
             if (EMPTY_BLOCKS.has(frame.tag) && !frame.text.trim() && !frame.mediaChildren.length) {
                 const held = (position) => position >= frame.tagPosition;
-                return !rules.some(held) && !(started && breaks.some(held));
+                if (!rules.some(held) && !(started && breaks.some(held))) {
+                    return forget(frame.tagPosition);
+                }
             }
             return false;
         }
