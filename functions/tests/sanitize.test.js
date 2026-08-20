@@ -145,6 +145,57 @@ describe('empty block removal', () => {
     });
 });
 
+describe('only the missionary is left above the letter', () => {
+    const letter = 'Dear family, the mantis on the wall was the size of my hand.';
+    const headers =
+        '<p>From: elder.example@missionary.org<br>Sent: Monday<br>' +
+        'To: family@example.com<br>Subject: Week 12</p>';
+
+    test("the forwarding client's advertisement and rule are discarded", () => {
+        // Outlook for iOS signs every forward and draws a line under itself.
+        // Reported from a real letter, where both stood above the archive.
+        const html =
+            '<div><p>Get <a href="https://aka.ms/o0ukef">Outlook for iOS</a></p></div>' +
+            `<div><hr></div><div>${headers}</div><p>${letter}</p>`;
+
+        assert.equal(sanitizeBody(html, { letterText: letter }), `<p>${letter}</p>`);
+    });
+
+    test('a comment somebody typed before passing the letter on is discarded', () => {
+        const html = `<p>Sharing this one, it made me laugh!</p><div>${headers}</div><p>${letter}</p>`;
+
+        assert.equal(sanitizeBody(html, { letterText: letter }), `<p>${letter}</p>`);
+    });
+
+    test('quoted headers below the letter do not take the letter with them', () => {
+        // A missionary answering something keeps the headers of what they
+        // answered underneath their own words. Cutting there would throw away
+        // the letter and leave the quotation, which is exactly backwards.
+        const html = `<p>${letter}</p><div>${headers}</div><p>What you sent me.</p>`;
+        const out = sanitizeBody(html, { letterText: letter });
+
+        assert.ok(out.startsWith(`<p>${letter}</p>`));
+        assert.ok(!out.includes('Subject: Week 12'));
+    });
+
+    test('the photos the missionary sent survive the cut', () => {
+        const html =
+            `<p>Sent along.</p><div>${headers}</div>` +
+            `<p>${letter}</p><p><img src="/api/photo/elder/one.jpg" alt=""></p>`;
+
+        assert.ok(sanitizeBody(html, { letterText: letter, keepPhotoPrefix: '/api/photo/elder/' })
+            .includes('/api/photo/elder/one.jpg'));
+    });
+
+    test('without the plain-text letter to compare against, nothing is cut', () => {
+        // The probe is the only proof of where the letter starts. Absent it,
+        // removing anything would be a guess, and the guess is unrecoverable.
+        const html = `<p>Sharing this one!</p><div>${headers}</div><p>${letter}</p>`;
+
+        assert.ok(sanitizeBody(html).includes('Sharing this one!'));
+    });
+});
+
 describe('tidying does not weaken the security rules', () => {
     test('script is still discarded, not flattened into prose', () => {
         const out = sanitizeBody('<p>Hi</p><script>alert(1)</script>');

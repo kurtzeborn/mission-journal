@@ -144,6 +144,16 @@ const EMPTY_BLOCKS = new Set(['p', 'div', 'span']);
 // that matters, not the end of the string.
 const TRAILING_BLANK = /<(p|div|span)>(?:\s|<br \/>)*<\/\1>(?=(?:\s*<\/(?:p|div|span)>)*\s*$)/;
 
+// Closing what a cut left open. The rules are the ones above, so re-parsing
+// already-sanitized output can only ever take more away, never let more in.
+const REBALANCE = {
+    allowedTags: ALLOWED_TAGS,
+    allowedAttributes: { a: ['href', 'target', 'rel'], img: ['src', 'alt'] },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedSchemesByTag: { img: [] },
+    allowProtocolRelative: false
+};
+
 const collapse = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
 
 // All whitespace removed, because the same prose arrives spaced differently in
@@ -234,10 +244,13 @@ export function sanitizeBody(
     // Removing a block rewinds the output to where it opened, so a position
     // recorded from inside it would go on matching whatever is written there
     // instead -- which kept a blank line beside every paragraph that followed
-    // a dropped quoted header block.
+    // a dropped quoted header block. The cut point moves back for the same
+    // reason: a wrapper removed after the header block it held leaves the
+    // letter starting where the wrapper did.
     const forget = (from) => {
         rules = rules.filter((position) => position < from);
         breaks = breaks.filter((position) => position < from);
+        if (preamble > from) preamble = from;
         return true;
     };
 
@@ -249,7 +262,22 @@ export function sanitizeBody(
     // holding it has not closed. Nothing here rewrites the text.
     let started = false;
 
-    const clean = sanitizeHtmlLib(source, {
+    // Everything above the quoted headers belongs to the forwarder, not to the
+    // missionary: a mail client's own advertisement, the rule it draws under
+    // it, and anything a parent typed before passing the letter on. None of it
+    // was written by the person whose archive this is.
+    //
+    // Only ever cut above text the letter itself has not reached yet. A chain
+    // can hold a second run of quoted headers *below* the letter -- something
+    // the missionary was replying to -- and cutting at that one would throw
+    // away the letter instead of the preamble. `seen` is the letter's own
+    // opening words arriving in document order, so a header block judged after
+    // that point is left where it is and only the block itself is removed.
+    let seen = '';
+    let reached = !dropHeaders;
+    let preamble = 0;
+
+    const walked = sanitizeHtmlLib(source, {
         allowedTags: ALLOWED_TAGS,
         nonTextTags: DROP_CONTENT,
 
@@ -275,6 +303,10 @@ export function sanitizeBody(
         // Read, never written. See `started` above.
         textFilter: (text) => {
             if (!started && String(text).trim()) started = true;
+            if (!reached) {
+                seen = squash(seen + text).slice(-PROBE_LENGTH * 4);
+                if (seen.includes(probe)) reached = true;
+            }
             return text;
         },
 
@@ -341,6 +373,7 @@ export function sanitizeBody(
                 return false;
             }
             if (dropHeaders && isQuotedHeaderBlock(frame.text, probe)) {
+                if (!reached) preamble = frame.tagPosition;
                 return forget(frame.tagPosition);
             }
 
@@ -358,6 +391,13 @@ export function sanitizeBody(
             return false;
         }
     });
+
+    // A removed block truncates the output back to where it opened, so the
+    // header block's position is exactly where the letter now begins. Slicing
+    // there can orphan the closing tag of a wrapper that opened above it,
+    // which is why the fragment goes back through the parser rather than being
+    // patched: it is already sanitized, so this pass only rebalances tags.
+    const clean = preamble ? sanitizeHtmlLib(walked.slice(preamble), REBALANCE) : walked;
 
     // Whatever the removed blocks were indented with is left behind between
     // the surviving tags. It renders as nothing, so this only tidies the ends.
