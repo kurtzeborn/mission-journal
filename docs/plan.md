@@ -836,11 +836,13 @@ This is why **pending-site claim emails count as replies, not as self-originated
 
 ### Notification preferences
 
-**Not built.** The global opt-out is shipped; per-user, per-site preferences are not.
+**Partly built.** The global opt-out shipped in Phase 9 and `digestFrequency` shipped in Phase 10, with a page at `/email` to change it. `postAckEmails` and `dedupeAckEmails` are not built and are deliberately not stored — an unused column would repeat the `alternateSenders` mistake described elsewhere in this plan.
 
 Per-user (not per-missionary) preferences for outbound emails the service generates. Stored as columns on the user's row in the `users` Azure Table — same row that holds identity metadata (display name, auth provider, first-seen timestamp) so all per-user state lives in one place. Additional preferences are just additional columns.
 
 A `users` row is **created by the ingest path**, not only by sign-in. The missionary at `elder.smith@missionary.org` receives acknowledgments and may never sign in with Google or Microsoft at all, but still needs somewhere to record that they'd rather not be emailed.
+
+> **As built, ingest creates no `users` row.** The only row-creating paths are the two sign-in flows and the preferences page, and that is the strictest possible reading of "asked, not assumed": **absence of a row means no mail**. It disposes of `@missionary.org` for free — those addresses never sign in, so they never get a row, so they never get a digest — and it will need revisiting only when an ack that a missionary can decline actually exists.
 
 Initial preferences:
 
@@ -856,11 +858,13 @@ Every generated email carries a one-click opt-out for its own category. The link
 
 An authenticated settings page at `/settings` is for ACL members who would rather toggle preferences directly. It is not per-slug — these are columns on one `users` row spanning every site the address belongs to.
 
+> **As built the page is `/email`, not `/settings`.** `/settings/{slug}` already exists and is something else entirely: it names an archive, sets its display name and return date, and is owners only. The audience for a digest preference is *readers*, who cannot open that page at all. Two routes one path segment apart, answering unrelated questions for non-overlapping audiences, is a trap for whoever edits them next. It is linked from the front page rather than from an email, because everybody who joined before this existed has no row, which means no mail, which means no message to link it from.
+
 **Mail-loop protection.** Because the service replies to essentially every inbound message, a misconfigured autoresponder could ping-pong indefinitely. Three guards: outbound acks carry `Auto-Submitted: auto-replied` (RFC 3834); inbound messages carrying `Auto-Submitted` other than `no`, or `Precedence: bulk`/`list`/`junk`, are never acked; and no ack is ever sent to an address on one of our own ingest domains.
 
 ### New-letter notifications
 
-**Not built.** See [Phase 10](#phase-10--new-letter-notifications).
+**Built in Phase 10.** A daily timer at 13:15 UTC, per-person cycles, one email across every archive.
 
 As designed so far, the service publishes letters to a website and never tells anyone a new one exists. Grandparents are a core audience and will not remember to check a URL. Without a nudge, the archive gets built for readers who never arrive.
 
@@ -878,11 +882,27 @@ Asking beats either default. Opting everyone in silently makes the service's fir
 
 **Changeable afterward** from `/settings`, and from the one-click opt-out link every digest carries.
 
+> **As built:**
+>
+> - **The cycle is 30 or 7 days, not a calendar month or week.** "One month after January 31st" is a question with no good answer, and thirteen sends a year instead of twelve is invisible to somebody who asked for mail roughly monthly.
+> - **Each person's cycle starts when they answered the question**, so a new reader's first digest is not the archive's entire back catalogue — and changing the frequency does not restart the clock, because somebody switching monthly to weekly three weeks in has been waiting three weeks.
+> - **The window advances over a quiet cycle**, whether or not mail went out. It is the end of the last cycle rather than the last send, which is what keeps the window contiguous.
+> - **A failed send is not retried and the window is not rolled back.** Putting it back would turn a provider having a bad hour into the same digest arriving every morning until it stops — the wrong failure mode for a message whose whole purpose is to be a nudge.
+> - **The timer runs daily, not monthly.** Cycles are per person, so a thirtieth of the audience is due on any given day. That is also the traffic shape a sending domain wants.
+
 **If nothing published, nothing sends.** No "no new letters this month" email, ever. An empty digest is pure noise, and it would arrive most reliably during exactly the stretch — a transfer, a sick week, a missionary between areas — when the family is already uneasy about the silence.
 
 **Contents,** per new post: missionary display name, subject, first two lines, one thumbnail, and a direct link. The link lands on `/{slug}/…` and SWA auth gates it normally; an expired session gets the [401 flow](#sessions-expire-and-re-authenticating-must-be-invisible), which is why that had to exist first. Hidden posts never appear, because the digest reads the same filtered payload as everything else.
 
+> **As built there is no thumbnail, and the link names the letter.**
+>
+> Every rendition in this service is behind the ACL, so an `<img>` in an email is either broken for everybody or served from a new public URL — and it would be a public URL that Gmail fetches and caches on its own proxy the moment the message is opened. A *count* of the photographs says the same useful thing (there are pictures, come and look) and discloses nothing to an inbox.
+>
+> The link is `/{slug}/#panel-{postId}`, and `web/reader.js` now opens and scrolls to the letter that fragment names. Without it every link in the message lands at the top of an archive whose letters are collapsed, and a reader who chose a subject line out of their inbox has to find it again in a list of dates.
+
 **Mechanically it is machinery that already exists.** A `digestFrequency` column on the `users` row, a timer-triggered Function, one `memberships` partition query per recipient, `lastPostAt` on each membership to decide what's new, the same self-originated sender as other generated mail, and the same one-click HMAC opt-out. The only genuinely new things are a column and a schedule.
+
+> **As built, freshness is `receivedAt`, not `lastPostAt`.** Same distinction the operator's `/manage/last-received` view is built around, pointed at a reader instead of an operator: a family forwarding two years of backlog in one evening has just given everybody twenty letters to read, and on the letter's own date that is a digest covering 2024 which goes to nobody. `lastReceivedAt` on the site row is used only as a skip, to avoid reading `posts.json` for an archive that has been quiet all cycle.
 
 #### Text messages (stretch)
 
@@ -1152,8 +1172,8 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Acknowledgement email on a successful forward~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [x] ~~Suppression is visible to owners on the people page~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [x] ~~Store `Message-ID` so acks thread~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
-- [ ] Per-user notification preferences page — [Phase 8](#phase-8--outbound-mail-and-preferences)
-- [ ] Monthly digest of new letters — [Phase 10](#phase-10--new-letter-notifications)
+- [ ] Per-user notification preferences page — [Phase 8](#phase-8--outbound-mail-and-preferences) *(`digestFrequency` shipped at `/email`; the two ack flags are not built)*
+- [x] Monthly digest of new letters — [Phase 10](#phase-10--new-letter-notifications)
 - [ ] Text messages — [Phase 10](#phase-10--new-letter-notifications) *(stretch)*
 
 **Owner and operator tools**
@@ -1195,7 +1215,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 **Shipped.** Running in production on `pdayletters.com`.
 
 - Create the Azure resource group.
-- Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/`, `pending/`, `exports/`, `books/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest`, `render` and `book`. Lifecycle rules deleting `inbox/` blobs at 30 days and `exports/` at 7; **`books/` deliberately has none**, because a printer may refetch an ordered book to make a reprint. Set `allowPermanentDelete` on the blob service delete-retention policy — without it no version can ever be removed on demand, only aged out. The Peecho secrets are the only part of Stage 2 still missing.
+- Storage account (GRS): containers `inbox/`, `raw/` (soft-delete + versioning on), `rendered/`, `config/`, `pending/`, `exports/`, `books/` — **all private, public blob access disabled at the account level**. Storage Queues `ingest`, `render` and `book`. Lifecycle rules deleting `inbox/` blobs at 30 days and `exports/` at 7; **`books/` deliberately has none**, because a printer may refetch an ordered book to make a reprint. Set `allowPermanentDelete` on the blob service delete-retention policy — without it no version can ever be removed on demand, only aged out. ~~The Peecho secrets are the only part of Stage 2 still missing.~~ **All four `PEECHO_*` settings are now populated in production.**
 - App Insights instance (for rejection logging and general telemetry).
 - Key Vault for later secrets. No provider API key is needed yet — nothing sends until Phase 8. Note that **Key Vault references don't work with SWA managed Functions at all** — the Functions must call Key Vault from their own code, using the managed identity.
 - **Point `pdayletters.com` at Cloudflare nameservers.** It is on Namecheap today. Do this first — MX and DKIM both depend on it, and propagation is the one step that can't be hurried. The other three registered domains are not used; see [Domains](#domains).
@@ -1559,13 +1579,15 @@ Shipped since, and previously listed here as outstanding:
   - **`google-client-secret` and `claim-token-key` deliberately carry no date.** Google OAuth client secrets do not expire, and rotating the claim key would invalidate every outstanding claim link — including ones sitting unread with days left on a 60-day window. Setting a date on either would manufacture a false alarm.
 
 ### Phase 10 — New-letter notifications
-**Not started.** Blocked behind Phase 8 — nothing can be notified until something can send.
+**Done.** A daily timer sends a digest to everybody whose cycle is over, one email across every archive they belong to.
+
+**Built:** the preferences table (`functions/src/lib/users.js`) — one row per address, holding `digestFrequency` and the end of the last cycle; the composer and run (`functions/src/lib/digest.js`) — what is new since a moment, across every archive, as a subject line, plain text and HTML, with the `List-Unsubscribe` pair and `Auto-Submitted: auto-generated`; the timer (`functions/src/functions/digest.js`) at 13:15 UTC daily; the preferences endpoint (`functions/src/functions/preferences.js`) and the page at `/email`; the monthly/weekly/never question on the claim and invitation forms; and the `#panel-{postId}` deep link in `web/reader.js`, so a link in the email opens the letter it names.
 
 - **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, and the existing one-click HMAC opt-out. Carries `List-Unsubscribe` and `List-Unsubscribe-Post` headers, which bulk mail now needs for inbox placement.
-- **`digestFrequency` is collected, not defaulted** — add the monthly/weekly/never question to the invitation-acceptance and claim flows from Phases 7 and 9, with `monthly` preselected, plus a control on `/settings`. Rows created by ingest are set `off` and never prompted.
-- **Empty digests are never sent.** Verify by letting a test site sit through a full cycle with nothing published and confirming no mail leaves.
-- **Verification:** put one recipient on two sites, publish to one, and confirm a single email arrives describing both sites' new content correctly. Back-date `lastPostAt` to check the window boundary. Follow a digest link with an expired session and confirm the `401` flow lands on the intended post. Hide a post and confirm it never appears in a digest.
-- **Stretch — SMS.** Not started until the digest ships and the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch) have answers. Per-post rather than digested, default off, number confirmed by a round-trip code.
+- **`digestFrequency` is collected, not defaulted** — the monthly/weekly/never question is on the invitation-acceptance and claim forms with `monthly` preselected, and changeable afterwards at `/email`. Nothing else creates a row, so an address that has never been asked is never written to.
+- **Empty digests are never sent**, and the cycle ends anyway. There is nothing in a quiet window to miss.
+- **Deviations from the design above** are recorded inline under [New-letter notifications](#new-letter-notifications): the page is `/email` rather than `/settings`, there is no thumbnail, freshness is arrival rather than the letter's own date, cycles are 30 and 7 days, and a failed send is not retried.
+- **Stretch — SMS.** Still not started, and still blocked on the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch).
 
 ### Phase 11 — Journal Publish
 **In progress.** The layout engine, the pipeline that drives it, and the provider integration are built, and the provider account has answered a real call.

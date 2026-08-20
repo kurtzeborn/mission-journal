@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Email settings — Pday Letters</title>
+    <!-- Deliberately not under /settings. That path is an archive's settings:
+         it takes a slug, it names a missionary, and it is owners only. This
+         page takes no slug and its whole audience is readers, who cannot open
+         that one at all. Two pages a path segment apart answering unrelated
+         questions is a trap for whoever edits them next. -->
+    <meta name="description" content="Choose how often Pday Letters emails you about new letters.">
+    <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/"><img class="wordmark__mark" src="/logo.png" alt="" width="192" height="192">Pday Letters</a>
+            <span class="beta">beta</span>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <section id="loading">
+            <h2>One moment&hellip;</h2>
+        </section>
+
+        <section id="signin" hidden>
+            <h2>Sign in first</h2>
+            <p class="lede">
+                This setting belongs to your email address, so we need to know which address you are.
+            </p>
+            <p><a class="button" id="signin-aad" href="#"><i class="fa-brands fa-microsoft" aria-hidden="true"></i>
+                    Sign in with Microsoft</a></p>
+            <p><a class="button" id="signin-google" href="#"><i class="fa-brands fa-google" aria-hidden="true"></i>
+                    Sign in with Google</a></p>
+        </section>
+
+        <section id="ready" hidden>
+            <h2>New letter emails</h2>
+            <p class="lede">
+                When a letter arrives, we can send you a short summary with a link to read it.
+            </p>
+            <p>
+                One email covers every archive you have access to, so following two missionaries
+                does not mean twice the mail. We only write when there is something new.
+            </p>
+            <form id="digest-form">
+                <p>
+                    <label for="digest">How often should we email you?</label><br>
+                    <select id="digest" name="digest">
+                        <option value="monthly">Monthly</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="off">Never</option>
+                    </select>
+                </p>
+                <p><button class="button" type="submit" id="digest-submit">Save</button></p>
+                <p class="note" id="digest-as"></p>
+            </form>
+
+            <!-- Shown only to an address that pressed an unsubscribe link.
+                 Without it the page would offer a choice it cannot honour and
+                 say nothing about why the mail never comes. -->
+            <p class="note" id="suppressed" hidden>
+                This address has asked us to stop emailing it entirely, so nothing will be sent
+                whatever is chosen above. Write to
+                <a href="mailto:hello@pdayletters.com">hello@pdayletters.com</a> to undo that.
+            </p>
+        </section>
+
+        <section id="failed" hidden>
+            <h2>Something is wrong on our end</h2>
+            <p class="lede" id="failed-detail">We could not load your settings just now.</p>
+            <p class="note">
+                Please try again shortly, or write to
+                <a href="mailto:hello@pdayletters.com">hello@pdayletters.com</a>.
+            </p>
+        </section>
+    </main>
+
+    <script src="/email.js"></script>
+</body>
+
+</html>

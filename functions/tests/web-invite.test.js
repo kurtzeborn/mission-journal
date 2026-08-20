@@ -162,6 +162,24 @@ describe('accepting', () => {
         assert.equal(view.el('done-link').href, '/elder.example/');
     });
 
+    test('the answer about email goes with it, because this is when we ask', async () => {
+        // The only moment this question gets asked of somebody who was
+        // invited. A page that dropped the answer would leave every reader on
+        // the default, which is silence, and nobody would know.
+        const view = await invitePage({
+            answer: server({
+                described: READY,
+                signedInAs: 'g.example@gmail.com',
+                accept: { status: 200, body: { status: 'ok', slug: 'elder.example', role: 'reader' } }
+            })
+        });
+
+        view.el('digest').value = 'weekly';
+        await view.el('accept-form').dispatch('submit');
+
+        assert.equal(view.calls.find((c) => c.url === '/api/invite/accept').body.digestFrequency, 'weekly');
+    });
+
     test('an invitation withdrawn between opening and accepting is caught', async () => {
         // Two round trips with a person's reading time in between, and an
         // owner may revoke in that window. The page cannot trust what it was

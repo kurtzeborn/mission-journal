@@ -106,12 +106,17 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "How often we email somebody about new letters. Deliberately not under /settings: that route takes a slug and belongs to an archive's owner, while this one takes no slug at all and its audience is readers, who cannot open a slug's settings. A rewrite rule is required even though `/*` already covers the role, because navigationFallback would otherwise serve site.html and this is not an archive.",
+      "route": "/email",
+      "rewrite": "/email.html",
+      "allowedRoles": ["authenticated"]
+    },
+    {
       "comment": "Asking a missionary to send the first letter. Anonymous for the same reason the opt-out is: the family member holding this link has never signed in, and this is the route out for the ones whose mail client cannot produce a forward we can verify.",
       "route": "/ask",
       "rewrite": "/ask.html",
       "allowedRoles": ["anonymous", "authenticated"]
-    },
-    {
+    },    {
       "route": "/ask.html",
       "allowedRoles": ["anonymous", "authenticated"]
     },

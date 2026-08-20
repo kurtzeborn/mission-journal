@@ -55,6 +55,17 @@
                  recipients read them, and an invitation spent by a scanner is
                  an invitation nobody can use. -->
             <form id="accept-form" hidden>
+                <!-- The same question the claim page asks, in the same words.
+                     Both are somebody's first sign-in, which is the only
+                     moment worth asking it. -->
+                <p>
+                    <label for="digest">How often should we email you when new letters arrive?</label><br>
+                    <select id="digest" name="digest">
+                        <option value="monthly" selected>Monthly</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="off">Never</option>
+                    </select>
+                </p>
                 <p><button class="button" type="submit" id="accept-submit">Accept</button></p>
                 <p class="note" id="accept-as"></p>
             </form>

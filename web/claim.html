@@ -74,6 +74,20 @@
                     <input type="text" id="display-name" name="display-name" maxlength="80"
                         autocomplete="off" placeholder="Elder Example">
                 </p>
+                <!-- Asked rather than assumed, and asked here because this is
+                     the one moment somebody is attentively completing a form
+                     about this service. Subscribing everybody silently would
+                     make our first act toward a new family an unrequested
+                     subscription; defaulting to never would mean the feature
+                     does not exist for most people. -->
+                <p>
+                    <label for="digest">How often should we email you when new letters arrive?</label><br>
+                    <select id="digest" name="digest">
+                        <option value="monthly" selected>Monthly</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="off">Never</option>
+                    </select>
+                </p>
                 <p><button class="button" type="submit" id="claim-submit">Set up the archive</button></p>
                 <p class="note" id="claim-as"></p>
             </form>

@@ -249,7 +249,8 @@ async function submit(event, token, described) {
 
     const result = await post('/api/claim/redeem', {
         token,
-        displayName: $('display-name').value
+        displayName: $('display-name').value,
+        digestFrequency: $('digest').value
     });
 
     if (!result.ok || result.body.status !== 'ok') {

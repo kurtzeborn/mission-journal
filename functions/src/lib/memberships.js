@@ -77,7 +77,14 @@ export async function membershipsFor({ tables, email }) {
                 role: row.role,
                 missionaryDisplayName: site.missionaryDisplayName ?? '',
                 addedAt: row.addedAt ?? '',
-                lastPostAt: site.lastPostAt ?? ''
+                lastPostAt: site.lastPostAt ?? '',
+                // When something last *arrived*, as opposed to the date the
+                // newest letter carries. The digest skips an archive on this
+                // and would skip the wrong ones on the other: a family
+                // forwarding two years of backlog in an evening has just
+                // given everybody twenty letters to read, and every one of
+                // them is dated last year.
+                lastReceivedAt: site.lastReceivedAt ?? ''
             };
         })
         .sort((a, b) => {

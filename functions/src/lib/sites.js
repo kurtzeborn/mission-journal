@@ -92,8 +92,8 @@ export async function setSiteProfile({ tables, slug, missionaryDisplayName, miss
  * -- a site can exist with no letters and no name yet -- so it resolves to
  * empty values and the caller falls back to the slug.
  *
- * @returns {Promise<Map<string, {lastPostAt: string, missionaryDisplayName: string,
- *   missionStartDate: string}>>}
+ * @returns {Promise<Map<string, {lastPostAt: string, lastReceivedAt: string,
+ *   missionaryDisplayName: string, missionStartDate: string}>>}
  */
 export async function sitesBySlug({ tables, slugs }) {
     const found = new Map();
@@ -102,6 +102,7 @@ export async function sitesBySlug({ tables, slugs }) {
         const row = await tables.getEntity(TABLES.sites, slug, ROW);
         found.set(slug, {
             lastPostAt: row?.lastPostAt ?? '',
+            lastReceivedAt: row?.lastReceivedAt ?? '',
             missionaryDisplayName: row?.missionaryDisplayName ?? '',
             missionStartDate: row?.missionStartDate ?? ''
         });

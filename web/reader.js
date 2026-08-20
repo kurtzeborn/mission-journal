@@ -979,6 +979,44 @@ window.Reader = (function () {
         }
     }
 
+    // A letter named in the address bar opens instead of the newest one.
+    //
+    // This exists for the digest email, which lists letters by subject and has
+    // to be able to land somebody on the one they pressed. Without it every
+    // link in that message goes to the top of the archive, and on a page where
+    // letters are collapsed by default that means the reader arrives and has
+    // to find, in a list of dates, the thing they had already chosen.
+    //
+    // The fragment names the panel rather than the letter, because the panel
+    // has an id in the markup already and a second identifier for the same
+    // thing is a second thing to keep in step. It also means the browser's own
+    // scrolling does something sensible in the moment before this runs.
+    //
+    // Deliberately not a `hashchange` listener. The archive's own links are
+    // buttons, so the only way the fragment changes after load is somebody
+    // editing the address bar, and re-collapsing the page under a reader who
+    // did that is worse than ignoring them.
+    function openFromHash(views) {
+        const hash = String(location.hash || '');
+        if (!hash.startsWith('#panel-')) return;
+
+        // Ids are dates plus a short hash, so this is a lookup and never a
+        // pattern -- an unknown value simply finds nothing and the page is
+        // left as `collapseToNewest` made it.
+        let id;
+        try {
+            id = decodeURIComponent(hash.slice('#panel-'.length));
+        } catch {
+            return;
+        }
+
+        const wanted = views.get(id);
+        if (!wanted) return;
+
+        for (const view of views.values()) setExpanded(view, view === wanted);
+        wanted.item.scrollIntoView();
+    }
+
     // --- marking the words themselves -------------------------------------
     //
     // MiniSearch answers "which letters" and stops there. That was the whole
@@ -1263,6 +1301,7 @@ window.Reader = (function () {
         }
 
         collapseToNewest(views);
+        openFromHash(views);
 
         // One control for the whole list, built here for the same reason the
         // search stepper is: there are two page templates hosting this file

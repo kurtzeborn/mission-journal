@@ -125,7 +125,10 @@ async function submit(event, token) {
     $('accept-submit').disabled = true;
     show('working');
 
-    const result = await post('/api/invite/accept', { token });
+    const result = await post('/api/invite/accept', {
+        token,
+        digestFrequency: $('digest').value
+    });
 
     if (!result.ok || result.body.status !== 'ok') {
         if (result.status === 401) {

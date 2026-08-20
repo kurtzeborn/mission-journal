@@ -84,6 +84,43 @@ describe('the shape of the page', () => {
     });
 });
 
+// Every link in a digest email names one letter. Without this the page opens
+// the newest one instead, and a reader who chose a subject line out of their
+// inbox arrives at a list of dates and has to find it again.
+describe('arriving from a link that names a letter', () => {
+    const at = (hash) => page({ url: `https://pdayletters.com/isaac.backman/${hash}` });
+
+    test('the named letter is the one that is open', () => {
+        const view = at('#panel-2026-03-09-R32V');
+        view.mount({ posts: THREE });
+
+        assert.deepEqual(expanded(view), ['false', 'false', 'true']);
+    });
+
+    test('and the page is scrolled to it, because it is at the bottom', () => {
+        const view = at('#panel-2026-03-09-R32V');
+        view.mount({ posts: THREE });
+
+        assert.equal(view.record.scrolled.at(-1).node, view.post('2026-03-09-R32V'));
+    });
+
+    test('a letter that is no longer here leaves the page as it was', () => {
+        // Hidden by an owner, or deleted, between the email going out and
+        // somebody reading it. The archive still has to open.
+        const view = at('#panel-2019-01-01-GONE');
+        view.mount({ posts: THREE });
+
+        assert.deepEqual(expanded(view), ['true', 'false', 'false']);
+    });
+
+    test('a fragment that is not one of ours is ignored', () => {
+        const view = at('#main');
+        view.mount({ posts: THREE });
+
+        assert.deepEqual(expanded(view), ['true', 'false', 'false']);
+    });
+});
+
 describe('the summary line', () => {
     test('says how many photos are inside without opening the letter', () => {
         const view = page();
