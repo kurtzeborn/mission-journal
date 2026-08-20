@@ -20,6 +20,17 @@ import { DefaultAzureCredential } from '@azure/identity';
 const KEY_LIFETIME_MINUTES = 60;
 const KEY_REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
+// A readable stream to a Buffer. `download()` hands back a stream rather than
+// bytes, and an empty blob has no stream at all.
+async function drain(stream) {
+    if (!stream) return Buffer.alloc(0);
+
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+
+    return Buffer.concat(chunks);
+}
+
 // Access is by managed identity. No connection string, no account key, and
 // nothing in app settings that would be worth stealing.
 export function createBlobStore({ accountName, credential = new DefaultAzureCredential() }) {
@@ -60,15 +71,41 @@ export function createBlobStore({ accountName, credential = new DefaultAzureCred
     };
 
     return {
+        // One GET, not a download plus a getProperties.
+        //
+        // This used to call `downloadToBuffer()` and then `getProperties()`,
+        // and both halves of that were wrong under concurrency:
+        //
+        //   **The etag did not belong to the bytes.** Another writer landing
+        //   between the two calls meant this returned the *old* content with
+        //   the *new* etag. Every read-modify-write in the service guards its
+        //   write with that etag -- see commitPost in ingest.js -- so the
+        //   guard would pass while the read was stale, and the update it was
+        //   protecting against would be silently overwritten. That is the
+        //   lost-update race the etag exists to prevent, reintroduced by the
+        //   code implementing it.
+        //
+        //   **`downloadToBuffer` is not one request.** For a blob over a few
+        //   megabytes it issues parallel ranged GETs, and a blob replaced
+        //   mid-flight yields ranges from two different versions -- which
+        //   arrives as a truncated object and `JSON.parse` failing with
+        //   "Unexpected end of JSON input".
+        //
+        // Found by forwarding a hundred letters at once: posts.json crossed
+        // the size where the download splits into ranges, ingest started
+        // throwing, and one letter reached `raw` and never reached the page.
+        //
+        // A single `download()` is served from one consistent version, and
+        // the etag and metadata on that response describe the bytes it just
+        // handed over. Slower for very large blobs than a parallel fetch;
+        // correct, which the parallel fetch was not.
         async readBlob(container, name) {
             try {
-                const client = blob(container, name);
-                const response = await client.downloadToBuffer();
-                const properties = await client.getProperties();
+                const response = await blob(container, name).download();
                 return {
-                    bytes: response,
-                    metadata: properties.metadata ?? {},
-                    etag: properties.etag
+                    bytes: await drain(response.readableStreamBody),
+                    metadata: response.metadata ?? {},
+                    etag: response.etag
                 };
             } catch (err) {
                 if (err?.statusCode === 404) return null;
