@@ -107,6 +107,10 @@ function renderReady(described, principal) {
             ? 'You have been invited as an owner, so you will be able to read the letters, edit them, and invite other people.'
             : 'You have been invited as a reader, so you will be able to read the letters and download them.';
 
+    $('digest-lede').textContent =
+        'If you\u2019re interested, you can subscribe to periodic summaries of activity in ' +
+        `${described.missionary ? `the ${described.missionary} archive` : 'this archive'}.`;
+
     if (principal) {
         $('accept-form').hidden = false;
         $('accept-as').textContent = `You are signed in as ${principal}. This is the address that will get access.`;
@@ -146,12 +150,9 @@ async function submit(event, token) {
 
     sessionStorage.removeItem(KEY);
 
-    $('done-summary').textContent =
-        result.body.role === 'owner'
-            ? 'This archive is linked to your account now, and you can look after it alongside everyone else who does.'
-            : 'This archive is linked to your account now. New letters will appear as they arrive.';
-    $('done-link').href = `/${result.body.slug}/`;
-    show('done');
+    // Straight into the archive. A confirmation page here would only be a
+    // second button saying what the first one already did.
+    location.href = `/${result.body.slug}/`;
 }
 
 async function start() {

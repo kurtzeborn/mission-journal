@@ -158,8 +158,27 @@ describe('accepting', () => {
 
         const accepted = view.calls.find((c) => c.url === '/api/invite/accept');
         assert.equal(accepted.body.token, TOKEN);
-        assert.equal(view.el('done').hidden, false);
-        assert.equal(view.el('done-link').href, '/elder.example/');
+        assert.equal(view.context.location.href, '/elder.example/');
+    });
+
+    test('nobody is asked to press a second button to get in', async () => {
+        // The page that used to stand here said the acceptance had worked and
+        // offered a link to the archive, which is what the redirect does
+        // without the click.
+        const view = await invitePage({ answer: server({ described: READY }) });
+
+        assert.ok(!view.sections.includes('done'));
+    });
+
+    test('the summaries are offered by name, and off unless somebody asks', async () => {
+        // A reader who says nothing should not start receiving mail because a
+        // form defaulted them into it.
+        const view = await invitePage({
+            answer: server({ described: READY, signedInAs: 'g.example@gmail.com' })
+        });
+
+        assert.match(view.text('digest-lede'), /summaries of activity in the Elder Example archive/);
+        assert.match(view.source, /<option value="off" selected>/);
     });
 
     test('the answer about email goes with it, because this is when we ask', async () => {
@@ -194,8 +213,8 @@ describe('accepting', () => {
 
         await view.el('accept-form').dispatch('submit');
 
-        assert.equal(view.el('done').hidden, true);
         assert.equal(view.text('failed-title'), 'This invitation cannot be used');
+        assert.doesNotMatch(view.context.location.href, /elder\.example/);
     });
 
     test('a session that lapsed while they read sends them back through the chooser', async () => {

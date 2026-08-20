@@ -55,15 +55,15 @@
                  recipients read them, and an invitation spent by a scanner is
                  an invitation nobody can use. -->
             <form id="accept-form" hidden>
-                <!-- The same question the claim page asks, in the same words.
-                     Both are somebody's first sign-in, which is the only
-                     moment worth asking it. -->
+                <!-- Asked here because this is somebody's first sign-in, the one
+                     moment the question is not an interruption. -->
+                <p id="digest-lede"></p>
                 <p>
-                    <label for="digest">How often should we email you when new letters arrive?</label><br>
+                    <label for="digest">You can receive summaries:</label><br>
                     <select id="digest" name="digest">
-                        <option value="monthly" selected>Monthly</option>
+                        <option value="off" selected>Never</option>
+                        <option value="monthly">Monthly</option>
                         <option value="weekly">Weekly</option>
-                        <option value="off">Never</option>
                     </select>
                 </p>
                 <p><button class="button" type="submit" id="accept-submit">Accept</button></p>
@@ -74,12 +74,6 @@
         <section id="working" hidden>
             <h2>Adding you&hellip;</h2>
             <p class="note">This only takes a moment.</p>
-        </section>
-
-        <section id="done" hidden>
-            <h2>You are in</h2>
-            <p class="lede" id="done-summary"></p>
-            <p><a class="button" id="done-link" href="/">Read the letters</a></p>
         </section>
 
         <section id="failed" hidden>
