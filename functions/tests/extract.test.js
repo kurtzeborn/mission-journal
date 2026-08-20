@@ -3,12 +3,12 @@
 // by reading the messages, not by running this code, so agreement is evidence
 // rather than a tautology.
 
-import { test } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractOriginal } from '../src/lib/extract.js';
+import { extractOriginal, parseAddress } from '../src/lib/extract.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
 const names = (await readdir(fixtures)).filter((f) => f.endsWith('.eml')).sort();
@@ -92,5 +92,46 @@ test('an extracted original carries CRLF line endings', async () => {
     }
 
     assert.ok(checked > 0, 'no attached fixtures to check');
+});
+
+describe('reading the sender out of a quoted From: line', () => {
+    test('takes the address a client wrote in angle brackets', () => {
+        assert.equal(
+            parseAddress('Isaac Backman <isaac.backman@missionary.org>'),
+            'isaac.backman@missionary.org'
+        );
+        assert.equal(parseAddress('<isaac.backman@missionary.org>'), 'isaac.backman@missionary.org');
+        assert.equal(parseAddress('isaac.backman@missionary.org'), 'isaac.backman@missionary.org');
+    });
+
+    test('prefers the brackets when the display name contains an at sign', () => {
+        assert.equal(
+            parseAddress('"the isaac@home account" <isaac.backman@missionary.org>'),
+            'isaac.backman@missionary.org'
+        );
+    });
+
+    // Outlook flattens its HTML forward header into the plain-text part as the
+    // address followed by a mailto: link to the same address. Both halves of
+    // this cost a real letter: the scheme became part of the local part, and
+    // the wrapped line -- which is how it actually arrived, the closing
+    // bracket having landed on the next line -- matched nothing at all, so the
+    // whole doubled string was taken for an address.
+    test('unpicks the address Outlook writes twice with a mailto link', () => {
+        assert.equal(
+            parseAddress('isaac.backman@missionary.org<mailto:isaac.backman@missionary.org>'),
+            'isaac.backman@missionary.org'
+        );
+        assert.equal(
+            parseAddress('isaac.backman@missionary.org<mailto:isaac.backman@missionary.org'),
+            'isaac.backman@missionary.org'
+        );
+    });
+
+    test('has nothing to report when there is no address', () => {
+        assert.equal(parseAddress('Isaac Backman'), null);
+        assert.equal(parseAddress(''), null);
+        assert.equal(parseAddress(null), null);
+    });
 });
 

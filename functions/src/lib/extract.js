@@ -33,11 +33,33 @@ export function repairCp1252(value) {
 }
 
 // An address as a client renders it: "Name <addr>", "<addr>", or bare.
+//
+// The angle brackets are a hint, not the answer. Outlook flattens an HTML
+// forward header into the plain-text part as
+//
+//     From: isaac.backman@missionary.org<mailto:isaac.backman@missionary.org>
+//
+// where the brackets hold the *link* and the address appears twice. Two ways
+// that used to go wrong, and a forward of a forward hit both at once:
+// the `mailto:` scheme rode along into the local part, and when the quoted
+// line wrapped before the closing bracket the pattern below failed to match
+// at all, so the entire doubled string was returned as if it were an address.
+// `localPartOf` splits on the *last* @, so the slug came out as
+// `isaac.backman@missionary.org<mailto:isaac.backman` -- a missionary nobody
+// had a site for, which is why a letter from a known one was refused as an
+// unrecognised bootstrap.
+//
+// So: take the bracketed text when there is some, drop any scheme, and then
+// pick out something actually shaped like an address rather than trusting
+// that whatever is left contains nothing else. A display name holding an @
+// is the reason the bracketed text still wins when it is there.
+const ADDRESS = /[^\s<>()[\]:;,"]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+/;
+
 export function parseAddress(value) {
     if (!value) return null;
     const angled = value.match(/<([^>]+)>/);
-    const address = (angled ? angled[1] : value).trim();
-    return address.includes('@') ? address.toLowerCase() : null;
+    const found = (angled ? angled[1] : value).replace(/mailto:/gi, ' ').match(ADDRESS);
+    return found ? found[0].toLowerCase() : null;
 }
 
 // The declared MIME type is not evidence — it is forwarder-controlled, and
