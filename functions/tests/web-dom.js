@@ -169,6 +169,7 @@ export function page({ html, path = '/', hash = '' }) {
             return elements.get(id);
         },
         createElement: (tagName) => new Element(tagName),
+        createTextNode: (text) => new TextNode(text),
         // For the handlers a page attaches to the whole document rather than to
         // one element -- closing an open menu when the click landed elsewhere.
         addEventListener(type, handler) {

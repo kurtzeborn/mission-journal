@@ -1134,9 +1134,44 @@ h3:target {
     overflow-wrap: anywhere;
 }
 
-.people__what {
+/* The role, sitting against the address it describes.
+
+   A pill rather than a word, and on the left rather than out by the buttons.
+   Between the address and the controls it had no fixed position: how far in it
+   sat depended on how many buttons the row happened to have, so the one column
+   every row shares was the only ragged thing on the page. */
+.role {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0.05rem 0.5rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    font-family: system-ui, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
     color: var(--ink-soft);
-    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+/* Filled rather than coloured. Owners can remove people, so the distinction has
+   to survive being read by somebody who cannot tell the two greens apart. */
+.role--owner {
+    border-color: transparent;
+    background: rgb(0 0 0 / 7%);
+    color: var(--ink);
+}
+
+/* Nobody has accepted this one yet, and a solid outline says they have. */
+.role--pending {
+    border-style: dashed;
+}
+
+/* Said in place of the buttons the row has not got, so it must not be the
+   loudest thing in a row it is only explaining. */
+.people__aside {
+    color: var(--ink-soft);
+    font-size: 0.85rem;
 }
 
 /* The address an invitation went to, under the identity that accepted it. */
@@ -1167,7 +1202,7 @@ h3:target {
    full contrast -- Resend is very often the thing to press next, and dimming
    the remedy along with the problem would be the wrong half. */
 .people__row--undelivered .people__who,
-.people__row--undelivered .people__what {
+.people__row--undelivered .people__aside {
     opacity: 0.55;
 }
 

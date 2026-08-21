@@ -45,6 +45,17 @@
     // else entirely.
     const UNDELIVERED = 'Mail is not reaching this address. Check the spelling, or ask them for another one.';
 
+    // Chosen from a fixed set rather than interpolated: `role` is the server's
+    // word and a class attribute is no place to find out it was something else.
+    const kindOf = (person) =>
+        person.pending
+            ? 'pending'
+            : person.verifiedMissionary
+              ? 'missionary'
+              : person.role === 'owner'
+                ? 'owner'
+                : 'reader';
+
     // Kept out of the markup. Every one of these strings is either an address
     // somebody typed or a name somebody typed, so nothing here builds HTML.
     function row(person) {
@@ -61,6 +72,19 @@
         who.className = 'people__who';
         who.textContent = person.email;
 
+        // Beside the name rather than out by the buttons, where it landed in a
+        // different place on every row: the controls a row has decide how much
+        // room is left, so the column was ragged for a reason nobody can see.
+        const what = document.createElement('span');
+        what.className = `role role--${kindOf(person)}`;
+        what.textContent = person.pending
+            ? `invited as ${person.role}`
+            : person.verifiedMissionary
+              ? 'the missionary'
+              : person.role;
+        who.appendChild(document.createTextNode(' '));
+        who.appendChild(what);
+
         // The address the invitation was sent to, when the person signed in
         // with a different one. Without this the row is unidentifiable: an
         // owner who invited grandma@aol.com has no way to tell that the
@@ -75,15 +99,6 @@
         }
 
         item.appendChild(who);
-
-        const what = document.createElement('span');
-        what.className = 'people__what';
-        what.textContent = person.pending
-            ? `invited as ${person.role}`
-            : person.verifiedMissionary
-              ? 'the missionary'
-              : person.role;
-        item.appendChild(what);
 
         const controls = document.createElement('span');
         controls.className = 'people__controls';
@@ -146,7 +161,7 @@
             );
         } else if (!person.pending) {
             const why = document.createElement('span');
-            why.className = 'note';
+            why.className = 'people__aside';
             // Said rather than left blank. A row with no buttons next to rows
             // that have them reads as a bug.
             why.textContent = person.you
