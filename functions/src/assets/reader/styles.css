@@ -134,37 +134,10 @@ body {
     flex: 1 1 auto;
 }
 
-/* Who is signed in. Subordinate to the wordmark and the controls on purpose:
-   it answers a question rather than inviting an action. */
-.account {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-family: system-ui, sans-serif;
-    font-size: 0.7rem;
-    color: var(--ink-soft);
-    /* Long addresses must not shove the buttons off the masthead. */
-    min-width: 0;
-    max-width: 11rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
+/* The mark for the identity provider, inside the menu trigger. */
 .account__icon {
     font-size: 0.85rem;
     flex: none;
-}
-
-/* The landing page carries the most in its masthead -- the account, the
-   archive switcher and the way out -- inside the narrowest one, because unlike
-   the archive it is a page of prose and its container is the measure. Eight
-   rems over is all it takes to wrap, and the item that gives way is the chip:
-   it is the only one there to be read rather than hit, and it is truncated at
-   any width, so a little more truncation costs nothing that a wrapped row of
-   controls would not cost more. */
-.masthead--landing .account {
-    max-width: 8rem;
 }
 
 /* Available to a screen reader, absent from the page. */
@@ -237,81 +210,127 @@ a {
     line-height: 1.2;
 }
 
-/* The other archives this account can read. A `details` rather than a hand-
-   built menu: the browser already owns the open-and-close behaviour, the
+/* --- the masthead menu --- */
+
+/* One control for everything that is not a letter. A `details` rather than a
+   hand-built menu: the browser already owns the open-and-close behaviour, the
    keyboard handling and the expanded state a screen reader announces, and none
-   of that is worth reimplementing for a list of two or three links. */
-.switcher {
+   of that is worth reimplementing. */
+.menu {
     position: relative;
 }
 
-.switcher summary {
-    /* Chrome and Safari draw a disclosure triangle that puts a marker inside
-       something styled as a button. */
+/* Subordinate to the wordmark on purpose: it answers a question -- which
+   account is this page for -- as much as it invites an action. */
+.menu__trigger {
+    gap: 0.35rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.7rem;
+    color: var(--ink-soft);
+    /* Chrome and Safari draw a disclosure triangle that would put a marker
+       inside something styled as a button. */
     list-style: none;
 }
 
-.switcher summary::-webkit-details-marker {
+.menu__trigger::-webkit-details-marker {
     display: none;
 }
 
-/* The switcher's placeholder: the same size and shape as the button that
-   replaces it, so nothing moves when the real one arrives.
-
-   A pulse rather than a spinner. A spinner in a masthead reads as something
-   having gone wrong, and this is the ordinary case -- every signed-in visit
-   waits here for a moment. The pulse is slow on purpose; anything faster
-   competes with the letters for attention and wins. */
-.switcher-wait {
-    display: inline-block;
-    /* Measured against the "Archives" button rather than guessed, so the
-       masthead does not jump when the real one lands. It cannot match the
-       landing page, where the label is a display name of any length, and the
-       shift there is the price of naming the archive at all. */
-    width: 4rem;
-    min-height: 34px;
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    background: rgb(0 0 0 / 4%);
-    animation: switcher-wait 1.4s ease-in-out infinite;
+.menu__trigger::after {
+    content: '';
+    flex: none;
+    width: 0.4em;
+    height: 0.4em;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-0.15em) rotate(45deg);
 }
 
-@keyframes switcher-wait {
-    50% {
-        opacity: 0.4;
-    }
+.menu[open] .menu__trigger::after {
+    transform: translateY(0.1em) rotate(-135deg);
 }
 
-/* Motion in a masthead is exactly what somebody turns this setting on to stop.
-   The placeholder still holds the space, which is the half that carries the
-   meaning. */
-@media (prefers-reduced-motion: reduce) {
-    .switcher-wait {
-        animation: none;
-    }
+/* Long addresses must not shove the trigger off the masthead. */
+.menu__name {
+    min-width: 0;
+    max-width: 11rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-.switcher__list {
+/* The landing page is a page of prose, so its container is the measure rather
+   than the wider archive width. A couple of rems is all it takes to wrap, and
+   the address is the item that gives way: it is truncated at any width, so a
+   little more costs less than a wrapped masthead would. */
+.masthead--landing .menu__name {
+    max-width: 8rem;
+}
+
+.menu__panel {
     position: absolute;
     right: 0;
     z-index: 20;
-    margin: 0.35rem 0 0;
-    padding: 0.35rem 0;
-    min-width: 12rem;
-    max-width: 16rem;
-    list-style: none;
+    margin-top: 0.35rem;
+    min-width: 13rem;
+    max-width: 17rem;
     background: var(--paper);
     border: 1px solid var(--rule);
     border-radius: var(--radius);
     box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+    font-family: system-ui, sans-serif;
 }
 
-.switcher__list a {
+/* The address in full, which the trigger can only ever show truncated. */
+.menu__who {
+    margin: 0;
+    padding: 0.55rem 0.85rem;
+    font-size: 0.72rem;
+    color: var(--ink-soft);
+    overflow-wrap: anywhere;
+}
+
+.menu__address {
+    color: var(--ink);
+}
+
+.menu__group,
+.menu__panel > .menu__list {
+    border-top: 1px solid var(--rule);
+}
+
+.menu__label {
+    margin: 0;
+    padding: 0.5rem 0.85rem 0.15rem;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+}
+
+/* The archive list is a second round trip and not a fast one. This is inside
+   the panel rather than in the masthead, so it is read only by somebody who
+   opened the menu looking for that list -- and so nothing in the row moves
+   when the answer lands. */
+.menu__wait {
+    margin: 0;
+    padding: 0.55rem 0.85rem;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
+.menu__list {
+    margin: 0;
+    padding: 0.15rem 0;
+    list-style: none;
+}
+
+.menu__list a {
     display: block;
     /* A tap target, not a line of prose -- these are read on a phone by people
        who are not steady with one. */
     padding: 0.55rem 0.85rem;
-    font-family: system-ui, sans-serif;
     font-size: 0.85rem;
     text-decoration: none;
     overflow: hidden;
@@ -319,8 +338,8 @@ a {
     white-space: nowrap;
 }
 
-.switcher__list a:hover,
-.switcher__list a:focus-visible {
+.menu__list a:hover,
+.menu__list a:focus-visible {
     background: rgb(0 0 0 / 4%);
 }
 

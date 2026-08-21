@@ -22,34 +22,45 @@
             <span class="masthead__spacer"></span>
             <!-- Two states, in the same corner. The signed-out one -- the way
                  in -- ships visible and works with no JavaScript, because it is
-                 the one a stranger lands on; everything else is drawn by
-                 home.js once /.auth/me has answered, and a signed-in visitor
-                 has already proved the browser can run scripts and talk to the
-                 service.
+                 the one a stranger lands on; the menu is drawn by home.js once
+                 /.auth/me has answered, and a signed-in visitor has already
+                 proved the browser can run scripts and talk to the service.
 
                  The way in and the way out share the corner deliberately. It is
                  where every other page keeps them, and it is the first place
                  somebody looks once they have been to an archive even once. -->
-            <span class="account" id="account" hidden>
-                <i class="account__icon" id="account-icon" aria-hidden="true"></i>
-                <span class="visually-hidden" id="account-provider"></span>
-                <span id="account-email"></span>
-            </span>
-            <!-- Stands in for the switcher while the list is fetched. See the
-                 longer note on site.html: the fetch takes long enough that the
-                 masthead looks finished without it, and somebody waiting for
-                 the control gives up before it lands. -->
-            <span class="switcher-wait" id="switcher-wait" hidden aria-hidden="true"></span>
-            <details class="switcher" id="switcher" hidden>
-                <summary class="button button--quiet button--compact" id="switcher-label">Archives</summary>
-                <ul class="switcher__list" id="switcher-list"></ul>
+            <details class="menu" id="menu" hidden>
+                <summary class="button button--quiet button--compact menu__trigger">
+                    <i class="account__icon" id="account-icon" aria-hidden="true"></i>
+                    <span class="visually-hidden" id="account-provider"></span>
+                    <span class="menu__name" id="account-email"></span>
+                </summary>
+                <div class="menu__panel">
+                    <p class="menu__who">
+                        <span id="menu-provider">Signed in</span><br>
+                        <span class="menu__address" id="menu-address"></span>
+                    </p>
+                    <!-- First in the panel, because it is the reason almost
+                         everybody signed in. Nothing is drawn when there are
+                         none: that sentence needs somewhere to be said and a
+                         menu is not it, and the invitation email has already
+                         said it. -->
+                    <div class="menu__group" id="archives" hidden>
+                        <p class="menu__label">Your archives</p>
+                        <p class="menu__wait" id="archives-wait" hidden>Loading&hellip;</p>
+                        <ul class="menu__list" id="archives-list"></ul>
+                    </div>
+                    <ul class="menu__list">
+                        <li><a href="/email">Email settings</a></li>
+                        <li><a href="/.auth/logout">Sign out</a></li>
+                    </ul>
+                </div>
             </details>
-            <a class="button button--quiet button--compact" id="sign-out" href="/.auth/logout" hidden>Sign out</a>
-            <!-- Compact like its neighbours, and the only green one. The colour
-                 is what makes it findable, not the size -- it sits alone in the
-                 corner when it shows, against nothing but a wordmark, so
-                 building it larger than the control it replaces bought
-                 emphasis the page was not short of. -->
+            <!-- Compact like the menu it replaces, and the only green thing in
+                 the masthead. The colour is what makes it findable, not the
+                 size -- it sits alone in the corner when it shows, against
+                 nothing but a wordmark, so building it larger bought emphasis
+                 the page was not short of. -->
             <a class="button button--compact" id="signed-out" href="/login.html?post_login_redirect_uri=/">Sign in</a>
         </div>
     </header>

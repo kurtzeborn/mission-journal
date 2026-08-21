@@ -311,6 +311,11 @@
             download.hidden = false;
         }
 
+        // The group these live in, which stays down on the refusal page: there
+        // is no archive there for any of them to act on.
+        const group = document.getElementById('menu-archive');
+        if (group) group.hidden = false;
+
         // Owners only, and hidden rather than disabled for everyone else: a
         // reader has no use for a page that would refuse them, and the API
         // refuses them again regardless.
@@ -335,10 +340,10 @@
             book.hidden = false;
         }
 
-        // Not awaited: the letters are the point, and a masthead control that
+        // Not awaited: the letters are the point, and a menu entry that
         // appears a moment later costs nothing. Awaiting it would put a second
         // round trip in front of the content on every visit.
-        showSwitcher(payload.slug);
+        showArchives(payload.slug);
 
         // The standing exception to private-by-default, said out loud on the
         // page where it is being exercised. The server has already logged it;
@@ -459,40 +464,42 @@
     //
     // Silent on failure, like the account line: this is a way back to letters
     // that are already reachable, not a thing whose absence needs explaining.
-    async function showSwitcher(except) {
-        const box = document.getElementById('switcher');
-        const list = document.getElementById('switcher-list');
-        if (!box || !list) return;
+    async function showArchives(except) {
+        const box = document.getElementById('archives');
+        const list = document.getElementById('archives-list');
+        const waiting = document.getElementById('archives-wait');
+        if (!box || !list || !waiting) return;
 
-        // Up before the fetch and down whatever happens to it, including the
-        // three paths below that draw nothing at all. A placeholder left
-        // behind by a failed request is worse than the silence it replaced.
-        const waiting = document.getElementById('switcher-wait');
-        if (waiting) waiting.hidden = false;
+        // The group goes up carrying the placeholder and comes down again
+        // unless there turns out to be something to put in it. Nothing in the
+        // masthead moves either way, because all of it is inside a panel that
+        // is closed until somebody asks.
+        box.hidden = false;
+        waiting.hidden = false;
         try {
-            await drawSwitcher(box, list, except);
+            box.hidden = !(await drawArchives(list, except));
         } finally {
-            if (waiting) waiting.hidden = true;
+            waiting.hidden = true;
         }
     }
 
-    async function drawSwitcher(box, list, except) {
+    async function drawArchives(list, except) {
         let memberships;
         try {
             const response = await fetch('/api/memberships', { cache: 'no-store' });
-            if (!response.ok) return;
+            if (!response.ok) return false;
             memberships = (await response.json()).memberships;
         } catch {
-            return;
+            return false;
         }
 
-        if (!Array.isArray(memberships)) return;
+        if (!Array.isArray(memberships)) return false;
 
         const others = memberships.filter((membership) => membership.slug !== except);
         // Nothing is drawn for the overwhelming majority, who have one archive
-        // and would get a control that can only tell them where they already
+        // and would get an entry that can only tell them where they already
         // are.
-        if (others.length === 0) return;
+        if (others.length === 0) return false;
 
         for (const membership of others) {
             const item = document.createElement('li');
@@ -506,7 +513,7 @@
             list.appendChild(item);
         }
 
-        box.hidden = false;
+        return true;
     }
 
     // The archive said no. Almost always this is the right person on the wrong
@@ -518,7 +525,7 @@
 
         // Every membership, none excluded: the slug in the address bar is by
         // definition not one of theirs.
-        showSwitcher(null);
+        showArchives(null);
 
         // Signing out returns them here, where the missing session turns into
         // the ordinary 401 redirect to the chooser. One mechanism, already
@@ -541,17 +548,19 @@
     // archive is matched on email address, so someone signed in with the wrong
     // one of their accounts sees a refusal with no clue why.
     //
+    // Twice over, because the trigger can only ever show it truncated and the
+    // address is the whole point of saying it.
+    //
     // Cosmetic, and deliberately silent on failure -- the letters are the point
-    // and they have already loaded by the time anyone reads the masthead.
+    // and they have already loaded by the time anyone reads the masthead. The
+    // menu itself is in the markup, so a failure here cannot take Sign out
+    // down with it.
     const PROVIDER_ICONS = {
         aad: { glyph: 'fa-microsoft', name: 'Microsoft' },
         google: { glyph: 'fa-google', name: 'Google' }
     };
 
     async function showAccount() {
-        const box = document.getElementById('account');
-        if (!box) return;
-
         const principal = await readPrincipal();
         if (!principal) return;
 
@@ -560,12 +569,25 @@
         if (provider) {
             document.getElementById('account-icon').classList.add('fa-brands', provider.glyph);
             document.getElementById('account-provider').textContent = `Signed in with ${provider.name}: `;
+            document.getElementById('menu-provider').textContent = `Signed in with ${provider.name}`;
         }
 
         document.getElementById('account-email').textContent = principal.userDetails;
-        box.hidden = false;
+        document.getElementById('menu-address').textContent = principal.userDetails;
+    }
+
+    // A `details` stays open until its own summary is clicked again, which for
+    // a menu means carrying it down the page.
+    function closeMenuOnOutsideClick() {
+        const menu = document.getElementById('menu');
+        if (!menu) return;
+
+        document.addEventListener('click', (event) => {
+            if (menu.open && !menu.contains(event.target)) menu.open = false;
+        });
     }
 
     load();
     showAccount();
+    closeMenuOnOutsideClick();
 })();

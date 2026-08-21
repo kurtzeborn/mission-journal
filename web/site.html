@@ -17,50 +17,72 @@
             <a class="wordmark" href="/"><img class="wordmark__mark" src="/logo.png" alt="" width="192" height="192">Pday Letters</a>
             <span class="beta">beta</span>
             <span class="masthead__spacer"></span>
-            <!-- Filled in by app.js from /.auth/me. Plenty of people keep more
-                 than one account, and the archive answers for exactly one of
-                 them, so say which one rather than making them guess. -->
-            <span class="account" id="account" hidden>
-                <i class="account__icon" id="account-icon" aria-hidden="true"></i>
-                <span class="visually-hidden" id="account-provider"></span>
-                <span id="account-email"></span>
-            </span>
             <!--
-                Rendered by app.js only when this account belongs to more than
-                one archive. Nothing at all appears for the overwhelming
-                majority, who have exactly one: a control whose only possible
-                answer is "you are already here" is friction between somebody
-                and the letters they came for.
+                One control for everything that is not a letter.
 
-                It matters because there is no dashboard and every archive is
-                auth-gated. Somebody who loses one URL has the root redirect and
-                this, and nothing else.
+                The row used to hold six of them side by side, which is more
+                than a phone can carry and more than almost anybody needs: a
+                reader has no use for four, and the fifth is a download most
+                people take once. Collapsing them puts the letters back in
+                charge of the page.
+
+                It ships visible, unlike the chip it replaces, because Sign out
+                lives in here now and must not depend on a request that can
+                fail. The label is a placeholder until /.auth/me answers with
+                the address to put in its place -- plenty of people keep more
+                than one account and the archive answers for exactly one of
+                them, so say which rather than making them guess.
             -->
-            <!--
-                Stands in for the switcher while the list is being fetched.
+            <details class="menu" id="menu">
+                <summary class="button button--quiet button--compact menu__trigger">
+                    <i class="account__icon" id="account-icon" aria-hidden="true"></i>
+                    <span class="visually-hidden" id="account-provider"></span>
+                    <span class="menu__name" id="account-email">Account</span>
+                </summary>
+                <div class="menu__panel">
+                    <p class="menu__who">
+                        <span id="menu-provider">Signed in</span><br>
+                        <span class="menu__address" id="menu-address"></span>
+                    </p>
+                    <!-- Shown by app.js once the archive has answered. The
+                         refusal page reaches none of this, and a group of
+                         controls for an archive nobody can read is worse than
+                         no group at all. -->
+                    <div class="menu__group" id="menu-archive" hidden>
+                        <p class="menu__label">This archive</p>
+                        <ul class="menu__list">
+                            <li><a id="people" href="#" hidden>People</a></li>
+                            <li><a id="settings" href="#" hidden>Settings</a></li>
+                            <li><a id="book" href="#" hidden>Make a book</a></li>
+                            <li><a id="download" href="#" hidden>Download the letters</a></li>
+                        </ul>
+                    </div>
+                    <!--
+                        Rendered by app.js only when this account belongs to
+                        more than one archive. Nothing appears for the
+                        overwhelming majority, who have exactly one: an entry
+                        whose only possible answer is "you are already here".
 
-                It takes a couple of seconds, and until it lands the masthead
-                looks finished -- so somebody who came to this page in order to
-                get to a different archive has no way to tell whether the
-                control is coming or is not there at all, and gives up. A
-                placeholder the size and shape of the button that follows says
-                "wait" without claiming anything about what will appear.
-
-                aria-hidden, and not a live region. It has no information in
-                it; a screen reader announcing "loading" in a masthead every
-                time a page opens is noise, and the control it precedes
-                announces itself perfectly well when it arrives.
-            -->
-            <span class="switcher-wait" id="switcher-wait" hidden aria-hidden="true"></span>
-            <details class="switcher" id="switcher" hidden>
-                <summary class="button button--quiet button--compact">Archives</summary>
-                <ul class="switcher__list" id="switcher-list"></ul>
+                        It matters because there is no dashboard and every
+                        archive is auth-gated. Somebody who loses one URL has
+                        the root redirect and this, and nothing else -- which is
+                        also why it is offered on the refusal page.
+                    -->
+                    <div class="menu__group" id="archives" hidden>
+                        <p class="menu__label">Other archives</p>
+                        <!-- The list is a second round trip and not a fast one.
+                             Said in here rather than in the masthead, so it is
+                             read only by somebody who opened the menu looking
+                             for it. -->
+                        <p class="menu__wait" id="archives-wait" hidden>Loading&hellip;</p>
+                        <ul class="menu__list" id="archives-list"></ul>
+                    </div>
+                    <ul class="menu__list">
+                        <li><a href="/email">Email settings</a></li>
+                        <li><a href="/.auth/logout">Sign out</a></li>
+                    </ul>
+                </div>
             </details>
-            <a class="button button--quiet button--compact" id="people" href="#" hidden>People</a>
-            <a class="button button--quiet button--compact" id="settings" href="#" hidden>Settings</a>
-            <a class="button button--quiet button--compact" id="book" href="#" hidden>Book</a>
-            <a class="button button--quiet button--compact" id="download" href="#" hidden>Download</a>
-            <a class="button button--quiet button--compact" href="/.auth/logout">Sign out</a>
         </div>
     </header>
 

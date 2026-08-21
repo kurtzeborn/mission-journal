@@ -24,9 +24,8 @@
 
     async function showAccount() {
         const signedOut = document.getElementById('signed-out');
-        const account = document.getElementById('account');
-        const signOut = document.getElementById('sign-out');
-        if (!signedOut || !account || !signOut) return;
+        const menu = document.getElementById('menu');
+        if (!signedOut || !menu) return;
 
         let principal;
         try {
@@ -46,81 +45,85 @@
         if (provider) {
             document.getElementById('account-icon').classList.add('fa-brands', provider.glyph);
             document.getElementById('account-provider').textContent = `Signed in with ${provider.name}: `;
+            document.getElementById('menu-provider').textContent = `Signed in with ${provider.name}`;
         }
 
+        // Twice over: the trigger can only ever show it truncated, and the
+        // address in full is the whole point of saying it.
         document.getElementById('account-email').textContent = principal.userDetails;
+        document.getElementById('menu-address').textContent = principal.userDetails;
 
         signedOut.hidden = true;
-        account.hidden = false;
-        signOut.hidden = false;
+        menu.hidden = false;
 
-        await showSwitcher();
+        await showArchives();
     }
 
-    // The archives this account can read, as the same masthead dropdown every
+    // The archives this account can read, inside the same masthead menu every
     // other page uses.
     //
     // Nothing is drawn when there are none. That is a change from the heading
     // this replaced, which said so in a sentence -- but a sentence explaining
-    // an absence needs somewhere to be said and the masthead is not it. The
-    // people it was written for are the ones who have been invited and not yet
-    // added, and the invitation email already tells them what happens next.
+    // an absence needs somewhere to be said and a menu is not it. The people it
+    // was written for are the ones who have been invited and not yet added, and
+    // the invitation email already tells them what happens next.
     //
     // Silent on failure, like the account line: this is a way to letters that
     // are reachable anyway, not a thing whose absence needs explaining.
-    async function showSwitcher() {
-        const box = document.getElementById('switcher');
-        const label = document.getElementById('switcher-label');
-        const list = document.getElementById('switcher-list');
-        if (!box || !label || !list) return;
+    async function showArchives() {
+        const box = document.getElementById('archives');
+        const list = document.getElementById('archives-list');
+        const waiting = document.getElementById('archives-wait');
+        if (!box || !list || !waiting) return;
 
-        // Up before the fetch and down whatever happens to it, including the
-        // paths below that draw nothing at all. A placeholder left behind by a
-        // failed request is worse than the silence it replaced.
-        const waiting = document.getElementById('switcher-wait');
-        if (waiting) waiting.hidden = false;
+        box.hidden = false;
+        waiting.hidden = false;
         try {
-            await drawSwitcher(box, label, list);
+            box.hidden = !(await drawArchives(list));
         } finally {
-            if (waiting) waiting.hidden = true;
+            waiting.hidden = true;
         }
     }
 
-    async function drawSwitcher(box, label, list) {
+    async function drawArchives(list) {
         let memberships;
         try {
             const response = await fetch('/api/memberships', { cache: 'no-store' });
-            if (!response.ok) return;
+            if (!response.ok) return false;
             memberships = (await response.json()).memberships;
         } catch {
             // The account line still rendered, which is the more important
             // half. Failing quietly leaves the page exactly as it was.
-            return;
+            return false;
         }
 
-        if (!Array.isArray(memberships) || memberships.length === 0) return;
-
-        // textContent throughout: the display name is typed by whoever claimed
-        // the site, so it is somebody else's text on this page.
-        const name = (membership) => membership.missionaryDisplayName || membership.slug;
-
-        // Named when there is one, counted when there are several. The archive
-        // pages hide the switcher for a single membership, because there it can
-        // only say "you are already here"; this page is not an archive, so the
-        // one name is the whole reason most people signed in.
-        label.textContent = memberships.length === 1 ? name(memberships[0]) : 'Archives';
+        if (!Array.isArray(memberships) || memberships.length === 0) return false;
 
         for (const membership of memberships) {
             const item = document.createElement('li');
             const link = document.createElement('a');
             link.href = `/${encodeURIComponent(membership.slug)}/`;
-            link.textContent = name(membership);
+            // textContent, not innerHTML: the display name is typed by whoever
+            // claimed the site, so it is somebody else's text on this page.
+            link.textContent = membership.missionaryDisplayName || membership.slug;
             item.appendChild(link);
             list.appendChild(item);
         }
 
-        box.hidden = false;
+        return true;
+    }
+
+    // A `details` stays open until its own summary is clicked again, which for
+    // a menu means carrying it down the page.
+    function closeMenuOnOutsideClick() {
+        const menu = document.getElementById('menu');
+        if (!menu) return;
+
+        document.addEventListener('click', (event) => {
+            if (menu.open && !menu.contains(event.target)) menu.open = false;
+        });
     }
 
     showAccount();
+    closeMenuOnOutsideClick();
 })();

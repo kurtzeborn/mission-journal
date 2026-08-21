@@ -87,6 +87,13 @@ class Element {
             child instanceof Element ? [child, ...child.descendants()] : []
         );
     }
+
+    // The elements here are a flat map keyed by id rather than a tree, so this
+    // answers for the ones a script built itself -- which is what a menu
+    // closing on a click somewhere else needs to ask.
+    contains(node) {
+        return node === this || this.descendants().includes(node);
+    }
 }
 
 /**
@@ -151,6 +158,8 @@ export function page({ html, path = '/', hash = '' }) {
 
     const sectionElements = Array.from({ length: sections }, () => new Element('section'));
 
+    const documentListeners = new Map();
+
     const document = {
         // Taken from the markup rather than defaulted, so a test can assert
         // what a page discloses before its script has decided who is asking.
@@ -160,6 +169,12 @@ export function page({ html, path = '/', hash = '' }) {
             return elements.get(id);
         },
         createElement: (tagName) => new Element(tagName),
+        // For the handlers a page attaches to the whole document rather than to
+        // one element -- closing an open menu when the click landed elsewhere.
+        addEventListener(type, handler) {
+            if (!documentListeners.has(type)) documentListeners.set(type, []);
+            documentListeners.get(type).push(handler);
+        },
         querySelectorAll: (selector) =>
             selector === 'main > section' ? sectionElements : []
     };
@@ -233,6 +248,12 @@ export function page({ html, path = '/', hash = '' }) {
         source,
         el: (id) => document.getElementById(id),
         text: (id) => document.getElementById(id).textContent,
+        /** Fire a handler the page attached to the document itself. */
+        elsewhere: async (type, target = new Element('div')) => {
+            for (const handler of documentListeners.get(type) ?? []) {
+                await handler({ preventDefault() {}, target });
+            }
+        },
         /** The rendered lines of a list, one string per child. */
         lines: (id) => document.getElementById(id).children.map((c) => c.textContent),
         /** A descendant button by the words on it, for clicking. */

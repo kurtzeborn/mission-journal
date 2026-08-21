@@ -120,10 +120,10 @@ describe('being turned away from an archive', () => {
 // Reaching the other archives you belong to.
 //
 // There is no dashboard, and every archive is behind a sign-in, so somebody
-// who loses one URL has the signed-in root redirect and this control and
-// nothing else. It is also the reason it appears on the refusal page: a person
-// who has just been told no is exactly the person who has lost a URL.
-describe('the archive switcher', () => {
+// who loses one URL has the signed-in root redirect and this list and nothing
+// else. It is also the reason it appears on the refusal page: a person who has
+// just been told no is exactly the person who has lost a URL.
+describe('the other archives in the menu', () => {
     const belongsTo = (...slugs) => ({
         status: 200,
         body: {
@@ -144,24 +144,24 @@ describe('the archive switcher', () => {
         });
 
     test('does not appear for the one archive somebody is already reading', async () => {
-        // Which is nearly everybody. A control whose only possible answer is
+        // Which is nearly everybody. An entry whose only possible answer is
         // "you are already here" is friction between them and the letters.
         const view = await reading(belongsTo(SLUG));
 
-        assert.equal(view.el('switcher').hidden, true);
+        assert.equal(view.el('archives').hidden, true);
     });
 
     test('lists the others by name when there is more than one', async () => {
         const view = await reading(belongsTo(SLUG, 'sister.backman'));
 
-        assert.equal(view.el('switcher').hidden, false);
-        assert.deepEqual(view.lines('switcher-list'), ['Elder backman']);
+        assert.equal(view.el('archives').hidden, false);
+        assert.deepEqual(view.lines('archives-list'), ['Elder backman']);
     });
 
     test('links to the archive, not to a page about it', async () => {
         const view = await reading(belongsTo(SLUG, 'sister.backman'));
 
-        assert.equal(view.link('switcher-list', 'Elder backman').href, '/sister.backman/');
+        assert.equal(view.link('archives-list', 'Elder backman').href, '/sister.backman/');
     });
 
     test('falls back to the slug when an archive has never been named', async () => {
@@ -170,7 +170,7 @@ describe('the archive switcher', () => {
             body: { memberships: [{ slug: SLUG }, { slug: 'sister.backman' }] }
         });
 
-        assert.deepEqual(view.lines('switcher-list'), ['sister.backman']);
+        assert.deepEqual(view.lines('archives-list'), ['sister.backman']);
     });
 
     test('offers every archive to somebody who has just been refused', async () => {
@@ -179,7 +179,7 @@ describe('the archive switcher', () => {
         const view = await reading(belongsTo('sister.backman', 'elder.other'), { status: 404, body: {} });
 
         assert.equal(view.el('denied').hidden, false);
-        assert.deepEqual(view.lines('switcher-list'), ['Elder backman', 'Elder other']);
+        assert.deepEqual(view.lines('archives-list'), ['Elder backman', 'Elder other']);
     });
 
     test('stays out of the way when the list cannot be fetched', async () => {
@@ -187,7 +187,7 @@ describe('the archive switcher', () => {
         // a masthead convenience must not be the thing anybody reads.
         const view = await reading({ status: 500, body: {} });
 
-        assert.equal(view.el('switcher').hidden, true);
+        assert.equal(view.el('archives').hidden, true);
     });
 
     test('does not put a second round trip in front of the letters', async () => {
@@ -280,13 +280,13 @@ describe('how long they have been out', () => {
     });
 });
 
-// Waiting for the switcher.
+// Waiting for the archive list.
 //
-// The list is a second round trip and it is not a fast one, so for a couple of
-// seconds the masthead looks finished and is not. Somebody who opened this
-// page in order to get to a different archive reads that as "the control is
-// not there" and gives up before it lands.
-describe('the switcher says it is coming', () => {
+// It is a second round trip and not a fast one. It is fetched into a panel
+// that stays closed until somebody opens it, so nothing in the masthead moves
+// -- but a menu opened mid-flight would otherwise show a group that is simply
+// not there yet.
+describe('the archive list says it is coming', () => {
     const membersOf = (...slugs) => ({
         status: 200,
         body: { memberships: slugs.map((slug) => ({ slug })) }
@@ -322,32 +322,31 @@ describe('the switcher says it is coming', () => {
         };
     }
 
-    test('holds the space while the list is being fetched', async () => {
+    test('says so in the menu while the list is being fetched', async () => {
         const view = await midFlight(membersOf(SLUG, 'sister.backman'));
 
-        assert.equal(view.el('switcher-wait').hidden, false);
-        // And does not pretend to be the control itself.
-        assert.equal(view.el('switcher').hidden, true);
+        assert.equal(view.el('archives-wait').hidden, false);
+        assert.equal(view.el('archives').hidden, false);
     });
 
-    test('gives way to the real control when it arrives', async () => {
+    test('gives way to the real list when it arrives', async () => {
         const view = await midFlight(membersOf(SLUG, 'sister.backman'));
 
         await view.finish();
 
-        assert.equal(view.el('switcher-wait').hidden, true);
-        assert.equal(view.el('switcher').hidden, false);
+        assert.equal(view.el('archives-wait').hidden, true);
+        assert.equal(view.el('archives').hidden, false);
     });
 
     test('goes away when there was nothing to draw', async () => {
-        // The common case: one archive, and no switcher on an archive page.
-        // A placeholder that stays up is a control that never comes.
+        // The common case: one archive, and no list of others on its own page.
+        // A placeholder that stays up is a list that never comes.
         const view = await midFlight(membersOf(SLUG));
 
         await view.finish();
 
-        assert.equal(view.el('switcher-wait').hidden, true);
-        assert.equal(view.el('switcher').hidden, true);
+        assert.equal(view.el('archives-wait').hidden, true);
+        assert.equal(view.el('archives').hidden, true);
     });
 
     test('goes away when the list cannot be fetched at all', async () => {
@@ -355,14 +354,14 @@ describe('the switcher says it is coming', () => {
 
         await view.finish();
 
-        assert.equal(view.el('switcher-wait').hidden, true);
-        assert.equal(view.el('switcher').hidden, true);
+        assert.equal(view.el('archives-wait').hidden, true);
+        assert.equal(view.el('archives').hidden, true);
     });
 
     test('is not left up by a refusal, where the list still matters', async () => {
-        // The switcher is drawn on the refusal page too, and with nothing
-        // excluded -- somebody who has just been told no is exactly the person
-        // who has lost a URL.
+        // The list is drawn on the refusal page too, and with nothing excluded
+        // -- somebody who has just been told no is exactly the person who has
+        // lost a URL.
         const view = page({ html: 'site.html', path: `/${SLUG}/` });
         view.context.Reader = { mount() {} };
         const net = fetching(async (url) => {
@@ -374,8 +373,77 @@ describe('the switcher says it is coming', () => {
         await settled();
 
         assert.equal(view.el('denied').hidden, false);
-        assert.equal(view.el('switcher-wait').hidden, true);
-        assert.equal(view.el('switcher').hidden, false);
+        assert.equal(view.el('archives-wait').hidden, true);
+        assert.equal(view.el('archives').hidden, false);
+    });
+});
+
+// One control in the masthead, holding everything that is not a letter.
+//
+// The row it replaces held six side by side. A reader had no use for four of
+// them, and on a phone the whole lot wrapped onto a second line and pushed the
+// letters below the fold.
+describe('the masthead menu', () => {
+    const loaded = (role) =>
+        archive({
+            answer: async (url) => {
+                if (url === '/.auth/me') return signedIn('gran@example.com');
+                if (url === '/api/memberships') return { status: 200, body: { memberships: [] } };
+                return { status: 200, body: { slug: SLUG, role, posts: [] } };
+            }
+        });
+
+    test('names the account in full, which the trigger can only truncate', async () => {
+        const view = await loaded('reader');
+
+        assert.equal(view.text('account-email'), 'gran@example.com');
+        assert.equal(view.text('menu-address'), 'gran@example.com');
+        assert.equal(view.text('menu-provider'), 'Signed in with Google');
+    });
+
+    test('the way out does not wait on anything that can fail', async () => {
+        // Sign out lives in here now, so the menu is in the markup rather than
+        // drawn once /.auth/me has answered.
+        const view = await archive({ answer: async () => new Error('offline') });
+
+        assert.equal(view.el('menu').hidden, false);
+        assert.match(view.source, /href="\/\.auth\/logout">Sign out/);
+    });
+
+    test('the archive group stays down for somebody who was refused', async () => {
+        // There is no archive there for any of those entries to act on.
+        const view = await archive({
+            answer: async (url) =>
+                url === '/.auth/me' ? signedIn('other@example.com') : { status: 404, body: {} }
+        });
+
+        assert.equal(view.el('menu-archive').hidden, true);
+    });
+
+    test('the archive group comes up with the letters', async () => {
+        const view = await loaded('reader');
+
+        assert.equal(view.el('menu-archive').hidden, false);
+        assert.equal(view.el('download').hidden, false);
+        assert.equal(view.el('book').hidden, true);
+    });
+
+    test('an open menu closes when the click lands somewhere else', async () => {
+        const view = await loaded('reader');
+        view.el('menu').open = true;
+
+        await view.elsewhere('click');
+
+        assert.equal(view.el('menu').open, false);
+    });
+
+    test('a click inside the menu leaves it open', async () => {
+        const view = await loaded('reader');
+        view.el('menu').open = true;
+
+        await view.elsewhere('click', view.el('menu'));
+
+        assert.equal(view.el('menu').open, true);
     });
 });
 
