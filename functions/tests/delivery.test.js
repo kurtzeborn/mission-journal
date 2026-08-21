@@ -8,7 +8,7 @@
 import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { deliveryKey, deliveryTrouble, recordDelivery } from '../src/lib/delivery.js';
+import { clearDelivery, deliveryKey, deliveryTrouble, recordDelivery } from '../src/lib/delivery.js';
 import { TABLES } from '../src/lib/tables.js';
 import { memoryStore } from './memory-store.js';
 
@@ -80,6 +80,58 @@ describe('writing down how a send went', () => {
         await recordDelivery({ tables: store, email: THEM, status: '', now: NOW, log: quiet });
 
         assert.equal((await store.listEntities(TABLES.deliveries, { partitionKey: 'delivery' })).length, 0);
+    });
+});
+
+describe('forgetting all of it once they turn up', () => {
+    test('signing in outranks the bounce that came before it', async () => {
+        // Nothing that writes one of these rows recurs, so a mark left alone
+        // is a mark left forever -- long after the person it is about has been
+        // reading the letters for months.
+        const store = memoryStore();
+        await recordDelivery({ tables: store, email: THEM, status: 'bounced', now: NOW, log: quiet });
+
+        await clearDelivery({ tables: store, emails: [THEM], log: quiet });
+
+        assert.equal(await rowFor(store, THEM), null);
+    });
+
+    test('both addresses are forgotten, not just the one that signed in', async () => {
+        // An invitation is sent to the address the owner typed and accepted by
+        // whichever account they please. The bounce is against the first; the
+        // people page looks up the second. Clearing only one leaves a row
+        // nothing will ever read again and nothing will ever clear.
+        const store = memoryStore();
+        await recordDelivery({ tables: store, email: 'grandma@aol.com', status: 'failed', now: NOW, log: quiet });
+
+        await clearDelivery({ tables: store, emails: ['g.example@gmail.com', 'grandma@aol.com'], log: quiet });
+
+        assert.equal(await rowFor(store, 'grandma@aol.com'), null);
+    });
+
+    test('the case it arrives in does not decide whether it is found', async () => {
+        const store = memoryStore();
+        await recordDelivery({ tables: store, email: THEM, status: 'failed', now: NOW, log: quiet });
+
+        await clearDelivery({ tables: store, emails: ['GRANDMA@Example.com'], log: quiet });
+
+        assert.equal(await rowFor(store, THEM), null);
+    });
+
+    test('an address we never wrote to is not an error', async () => {
+        // The common case by far: almost nobody has a row, and every sign-in
+        // asks anyway.
+        const store = memoryStore();
+        await clearDelivery({ tables: store, emails: ['stranger@example.com', ''], log: quiet });
+    });
+
+    test('a table that will not delete does not fail the page that asked', async () => {
+        const store = memoryStore();
+        store.deleteEntity = async () => {
+            throw new Error('storage is having a day');
+        };
+
+        await clearDelivery({ tables: store, emails: [THEM], log: quiet });
     });
 });
 

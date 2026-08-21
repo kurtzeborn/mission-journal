@@ -3,6 +3,7 @@ import { tableStore } from '../lib/clients.js';
 import { hardened } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { membershipsFor } from '../lib/memberships.js';
+import { clearDelivery } from '../lib/delivery.js';
 
 // Which archives does the person signed in right now belong to?
 //
@@ -24,13 +25,21 @@ export async function memberships({ request, tables }) {
         return { status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
     }
 
-    const memberships = await membershipsFor({
-        tables,
-        // `email`, not `userDetails` -- see the note in claim.js. Here the same
-        // mistake is silent rather than loud: an undefined email matches no
-        // membership row, so the caller is told they belong to nothing.
-        email: principal.email
-    });
+    // This is the nearest thing the API has to a sign-in: it is asked once per
+    // page load, by somebody who has just proved who they are, and by nobody
+    // else. Alongside rather than before, so clearing a mark almost nobody
+    // carries cannot slow down the answer everybody came for.
+    const [memberships] = await Promise.all([
+        membershipsFor({
+            tables,
+            // `email`, not `userDetails` -- see the note in claim.js. Here the
+            // same mistake is silent rather than loud: an undefined email
+            // matches no membership row, so the caller is told they belong to
+            // nothing.
+            email: principal.email
+        }),
+        clearDelivery({ tables, emails: [principal.email] })
+    ]);
 
     return {
         status: 200,

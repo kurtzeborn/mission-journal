@@ -28,6 +28,8 @@ import {
 } from '../src/functions/book.js';
 import { holdPending } from '../src/lib/pending.js';
 import { attachClaimToken } from '../src/lib/claim.js';
+import { deliveryKey, recordDelivery } from '../src/lib/delivery.js';
+import { TABLES } from '../src/lib/tables.js';
 
 const KEY = 'a-signing-key-from-key-vault';
 const SLUG = 'elder.example';
@@ -232,6 +234,21 @@ describe('the memberships handler', () => {
         const response = await memberships({ request: request(), tables: store });
 
         assert.equal(response.status, 401);
+    });
+
+    test('asking which archives are mine clears the mark against my address', async () => {
+        // The nearest thing this API has to a sign-in. Nothing that records a
+        // delivery outcome recurs, so without a hook here a bounce is shown to
+        // an owner for years after the person it names started signing in.
+        const store = memoryStore();
+        await recordDelivery({ tables: store, email: 'parent@example.com', status: 'failed', log: silent });
+
+        await memberships({
+            request: request({ principal: { userDetails: 'Parent@Example.COM' } }),
+            tables: store
+        });
+
+        assert.equal(await store.getEntity(TABLES.deliveries, 'delivery', deliveryKey('parent@example.com')), null);
     });
 });
 

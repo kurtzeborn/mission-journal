@@ -13,7 +13,8 @@ import { ROLE, resolveRole } from '../src/lib/acl.js';
 import { listMembers, removeMember, setMemberRole, validEmail } from '../src/lib/members.js';
 import { acceptInvite, describeInvite, inviteMember, INVITES_PER_DAY, listInvites, revokeInvite } from '../src/lib/invite.js';
 import { membershipsFor, recordMembership } from '../src/lib/memberships.js';
-import { recordDelivery } from '../src/lib/delivery.js';
+import { recordDelivery, deliveryKey } from '../src/lib/delivery.js';
+import { TABLES } from '../src/lib/tables.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../src/lib/claimtoken.js';
 
 const silent = { info() {}, warn() {}, error() {} };
@@ -413,6 +414,32 @@ describe('inviting somebody who has never signed in', () => {
         const listed = await listMembers({ store, slug: SLUG, actor: OWNER });
         const grandma = listed.find((m) => m.email === 'g.example@gmail.com');
         assert.equal(grandma.invitedEmail, 'grandma@aol.com');
+    });
+
+    test('the bounce against the address the owner typed is forgotten too', async () => {
+        // The invitation mail failed and she got the link some other way. The
+        // failure was recorded against `grandma@aol.com`, which the people page
+        // never looks up again -- so nothing would ever read that row, and
+        // nothing would ever clear it.
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+
+        await inviteMember({
+            store, tables: store, mailer, slug: SLUG, actor: OWNER,
+            email: 'grandma@aol.com', key: KEY, baseUrl: BASE, now: NOW, log: silent
+        });
+        await recordDelivery({ tables: store, email: 'grandma@aol.com', status: 'failed', now: NOW, log: silent });
+
+        const token = mailer.sent[0].text.match(/\/invite#(\S+)/)[1];
+        await acceptInvite({
+            store, tables: store, token, key: KEY,
+            principal: 'g.example@gmail.com', now: NOW, log: silent
+        });
+
+        assert.equal(
+            await store.getEntity(TABLES.deliveries, 'delivery', deliveryKey('grandma@aol.com')),
+            null
+        );
     });
 
     test('an address that did not change is not echoed back twice', async () => {

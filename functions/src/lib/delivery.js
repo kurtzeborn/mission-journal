@@ -25,6 +25,12 @@
 // the *last* thing that happened, which is the only question anybody asks of
 // it.
 //
+// **Signing in clears it too, and has to.** Nothing here recurs: an
+// invitation, a forwarding receipt and a book notice are all one-off, so for
+// most people there is no next send to overwrite a bad row with a good one.
+// The mark exists to find somebody who is not hearing from us, and somebody
+// standing in front of us has been found. See `clearDelivery`.
+//
 // **It is advisory and nothing reads it to make a decision.** Nothing here
 // refuses to send. Cloudflare already refuses, authoritatively, and a second
 // copy of that judgement in our storage could only ever be wrong in the
@@ -82,6 +88,37 @@ export async function recordDelivery({ tables, email, status, slug = '', now = (
     } catch (error) {
         log.error?.('delivery: could not record an outcome', { status, message: error?.message });
     }
+}
+
+/**
+ * Forget what we last knew about an address.
+ *
+ * Signing in outranks a bounce. The mark exists so an owner can chase somebody
+ * who is not hearing from us, and somebody who is standing here is not lost --
+ * so the moment they arrive it has nothing left to say, and leaving it up only
+ * teaches the owner to ignore the one that will matter later.
+ *
+ * This is also the only thing that clears a row in practice. Nothing that
+ * writes one recurs -- an invitation, a forwarding receipt and a book notice
+ * are each one-off -- so without this a mark set once outlives the problem by
+ * years.
+ *
+ * Swallows its own failures, for the reason `recordDelivery` does.
+ */
+export async function clearDelivery({ tables, emails = [], log = console }) {
+    if (!tables) return;
+
+    const unique = [...new Set(emails.map(lower).filter(Boolean))];
+
+    await Promise.all(
+        unique.map(async (email) => {
+            try {
+                await tables.deleteEntity(TABLES.deliveries, 'delivery', deliveryKey(email));
+            } catch (error) {
+                log.error?.('delivery: could not clear an outcome', { message: error?.message });
+            }
+        })
+    );
 }
 
 /**

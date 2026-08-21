@@ -29,7 +29,7 @@ import { claimTokenHash, issueClaimToken, PURPOSE, verifyClaimToken } from './cl
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { inviteEmail } from './invitemail.js';
 import { HUMAN_ADDRESS, mailFrom } from './mail.js';
-import { recordDelivery, deliveryTrouble } from './delivery.js';
+import { clearDelivery, recordDelivery, deliveryTrouble } from './delivery.js';
 import { recordMembership } from './memberships.js';
 import { issueOptOut, optedOut, unsubscribeHeaders } from './optout.js';
 import { validSlug } from './paths.js';
@@ -552,6 +552,12 @@ export async function acceptInvite({
 
     // --- 3. index --------------------------------------------------------
     await recordMembership({ tables, email, slug, role, now });
+
+    // Both addresses, because they need not be the same one. A bounce was
+    // recorded against the address the owner typed, and the people page reads
+    // trouble by the address they signed in with -- so the row for the first is
+    // one nothing would ever look at again, or clear.
+    await clearDelivery({ tables, emails: [email, row.email], log });
 
     log.info?.('invite: accepted', { slug, role });
     return { status: 'ok', slug, role };
