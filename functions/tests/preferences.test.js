@@ -34,13 +34,12 @@ describe('reading what somebody has asked for', () => {
         assert.equal(response.status, 401);
     });
 
-    test('an address with no row is off, and says it has never been asked', async () => {
+    test('an address with no row is off, which is what no row means', async () => {
         const store = memoryStore();
         const response = await read({ request: asking(THEM), tables: store });
 
         assert.equal(response.status, 200);
         assert.equal(response.jsonBody.digestFrequency, DIGEST.off);
-        assert.equal(response.jsonBody.answered, false);
         assert.equal(response.jsonBody.email, THEM);
     });
 

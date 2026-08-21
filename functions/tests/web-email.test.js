@@ -1,11 +1,9 @@
 // The one settings page that is not about an archive.
 //
-// It exists for two audiences at once, and they need different things from
-// it: somebody who was asked the question while joining and wants to change
-// their answer, and everybody who joined before the question existed and
-// therefore has no answer at all. The second group is why this page is linked
-// from the front page rather than mentioned in a message -- we are not
-// sending them any.
+// Nothing on the way in asks the question any more, so everybody arrives here
+// on `off` -- the families who joined before it existed and the ones who
+// joined this morning alike. That is why the page is reached from the account
+// menu rather than from a message: we are not sending them any.
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,8 +31,8 @@ describe('showing somebody what they chose', () => {
         assert.match(view.text('digest-as'), /grandma@example\.com/);
     });
 
-    test('somebody who was never asked sees never, which is what they are getting', async () => {
-        const { view } = await open(loaded({ email: 'grandma@example.com', digestFrequency: 'off', answered: false }));
+    test('somebody who has never asked sees never, which is what they are getting', async () => {
+        const { view } = await open(loaded({ email: 'grandma@example.com', digestFrequency: 'off' }));
 
         assert.equal(view.el('digest').value, 'off');
     });

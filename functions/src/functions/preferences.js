@@ -33,11 +33,7 @@ export async function read({ request, tables }) {
         // which one is in force. Somebody who pressed an unsubscribe link and
         // later wonders why nothing arrives is owed an answer better than a
         // dropdown that reads "monthly" and is lying.
-        suppressed: await optedOut({ tables, email: principal.email }),
-        // Whether this person has ever been asked. The claim and invitation
-        // flows ask on the way in, so an empty answer here means somebody who
-        // joined before any of this existed.
-        answered: Boolean(row)
+        suppressed: await optedOut({ tables, email: principal.email })
     });
 }
 
