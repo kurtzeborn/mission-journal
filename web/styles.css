@@ -88,6 +88,10 @@ body {
     flex-wrap: wrap;
     align-items: baseline;
     gap: 0.5rem 0.75rem;
+    /* The menu panel hangs from here rather than from its own trigger. On a
+       phone the row wraps and the trigger lands in the *left* corner, so a
+       panel anchored to its right edge hung off the side of the page. */
+    position: relative;
 }
 
 .wordmark {
@@ -215,9 +219,11 @@ a {
 /* One control for everything that is not a letter. A `details` rather than a
    hand-built menu: the browser already owns the open-and-close behaviour, the
    keyboard handling and the expanded state a screen reader announces, and none
-   of that is worth reimplementing. */
+   of that is worth reimplementing.
+
+   Deliberately not positioned: see `.masthead__inner`. */
 .menu {
-    position: relative;
+    min-width: 0;
 }
 
 /* Subordinate to the wordmark on purpose: it answers a question -- which
@@ -267,6 +273,8 @@ a {
     max-width: 8rem;
 }
 
+/* `top` is left alone so the panel keeps the place it would have had in flow,
+   directly under the trigger, while `right` comes from the masthead. */
 .menu__panel {
     position: absolute;
     right: 0;
