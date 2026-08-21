@@ -56,9 +56,20 @@ async function ingestFixture(store, name, ulid = '01TEST0000000000000000000') {
 
 test('subject normalization strips stacked reply and tag prefixes', () => {
     assert.equal(normalizeSubject('Re: [EXTERNAL] Fwd:  Week   34'), 'week 34');
-    assert.equal(normalizeSubject('FW: Re: Fwd: P-day'), 'p-day');
+    assert.equal(normalizeSubject('FW: Re: Fwd: P-day'), 'pday');
     assert.equal(normalizeSubject(''), '');
     assert.equal(normalizeSubject(null), '');
+});
+
+test('a subject retyped with different punctuation is the same subject', () => {
+    // The letter that arrived twice: the same subject, one extra exclamation
+    // mark, and every other dedupe field identical.
+    assert.equal(
+        normalizeSubject('Zone conference week!!'),
+        normalizeSubject('Zone conference week!')
+    );
+    assert.equal(normalizeSubject("Mother's day"), 'mothers day');
+    assert.equal(normalizeSubject('Week 34 -- Ghana'), 'week 34 ghana');
 });
 
 test('body head drops quoted lines and signature blocks', () => {
@@ -611,5 +622,27 @@ test('the text gate needs author, day, subject and body to all agree', () => {
 
     const otherBody = { ...base, text: 'We taught a lesson today.' };
     assert.equal(findDuplicate(dedupeKey(otherBody), existing), null);
+});
+
+test('a resend with an extra exclamation mark is still the same letter', () => {
+    // Sent twice, the second time with smaller photographs, and the subject
+    // retyped. Nothing but the punctuation told the two copies apart.
+    const resend = dedupeKey({
+        messageId: null,
+        from: 'elder.example@missionary.org',
+        dateHeader: 'Mon, 4 May 2026 11:36:00 -0700',
+        subject: 'Zone conference week!!',
+        text: 'Shalom shalom, this week was a lot better than last.'
+    });
+    const existing = [{
+        id: 'p1',
+        originalMessageId: null,
+        originalFrom: 'elder.example@missionary.org',
+        originalDate: '2026-05-04T11:43:00-07:00',
+        subject: 'Zone conference week!',
+        bodyHead100: bodyHead100('Shalom shalom, this week was a lot better than last.')
+    }];
+
+    assert.equal(findDuplicate(resend, existing).reason, 'text-match');
 });
 

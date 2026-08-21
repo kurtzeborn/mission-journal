@@ -9,6 +9,10 @@ import { dayInOwnOffset } from './dates.js';
 
 // Strip reply and forward markers, and bracketed tags a gateway prepends.
 // Iterative because clients stack them: "Re: [EXTERNAL] Fwd: Week 34".
+//
+// Punctuation goes last, once the prefixes that depend on it are peeled. A
+// missionary who sends the same letter twice types the subject twice, and the
+// second one came back with an extra exclamation mark.
 export function normalizeSubject(subject) {
     let s = String(subject ?? '');
     for (;;) {
@@ -18,7 +22,7 @@ export function normalizeSubject(subject) {
         if (next === s) break;
         s = next;
     }
-    return s.replace(/\s+/g, ' ').trim().toLowerCase();
+    return s.replace(/\p{P}/gu, '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 // The first 100 characters of what the author actually wrote: quoted replies
