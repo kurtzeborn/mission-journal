@@ -54,18 +54,9 @@
                  the claim page gives: mail providers fetch links before their
                  recipients read them, and an invitation spent by a scanner is
                  an invitation nobody can use. -->
+            <!-- Nothing is asked here. Email summaries start at never and are
+                 turned on from the account menu, which every page has. -->
             <form id="accept-form" hidden>
-                <!-- Asked here because this is somebody's first sign-in, the one
-                     moment the question is not an interruption. -->
-                <p id="digest-lede"></p>
-                <p>
-                    <label for="digest">You can receive summaries:</label><br>
-                    <select id="digest" name="digest">
-                        <option value="off" selected>Never</option>
-                        <option value="monthly">Monthly</option>
-                        <option value="weekly">Weekly</option>
-                    </select>
-                </p>
                 <p><button class="button" type="submit" id="accept-submit">Accept</button></p>
                 <p class="note" id="accept-as"></p>
             </form>

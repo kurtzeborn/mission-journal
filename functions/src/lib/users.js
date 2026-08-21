@@ -10,12 +10,13 @@
 //
 // Three things about the shape, each of which had a cheaper wrong answer:
 //
-//   **No row means no mail.** The plan says the preference is asked rather
-//   than assumed, and absence is the strictest possible reading of that: a
-//   person who has never been asked is a person we have never been told to
-//   write to. It also disposes of the `@missionary.org` case for free --
-//   those addresses are created by ingest and never sign in, so they never
-//   get a row, so they never get a digest. They wrote the letters.
+//   **No row means no mail.** Nothing on the way in writes one -- not a
+//   claim, not an invitation, not ingest -- so the only thing that can is
+//   somebody opening the settings page and asking to hear from us. That is
+//   the strictest possible reading of asked rather than assumed, and it
+//   disposes of the `@missionary.org` case for free: those addresses are
+//   created by ingest and never sign in, so they never get a row, so they
+//   never get a digest. They wrote the letters.
 //
 //   **This is not the opt-out, and it never overrides it.** A preference is a
 //   choice about which mail to receive; an opt-out is a statement about
@@ -94,26 +95,6 @@ export async function markDigested({ tables, email, at }) {
         rowKey: ROW,
         digestAt: at
     });
-}
-
-/**
- * The answer given on the way in, at a claim or an invitation.
- *
- * Swallows its own failure, which is the whole reason it is a function rather
- * than a call to `setDigest`. Joining an archive is the thing that had to
- * happen; how often we write about it is a question the same person can
- * answer again on a page they are now signed in to. Letting a bad write to
- * this index turn an accepted invitation into a refusal would trade the
- * important half for the trivial one.
- */
-export async function recordDigestChoice({ tables, email, frequency, now, log = console }) {
-    if (frequency === undefined || frequency === null || frequency === '') return;
-
-    try {
-        await setDigest({ tables, email, frequency, now });
-    } catch (error) {
-        log.error?.('user: could not record a digest preference', { detail: error.message });
-    }
 }
 
 /**

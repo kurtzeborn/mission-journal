@@ -17,7 +17,6 @@ import {
     everyUser,
     markDigested,
     readUser,
-    recordDigestChoice,
     setDigest,
     validFrequency
 } from '../src/lib/users.js';
@@ -96,33 +95,6 @@ describe('recording what somebody chose', () => {
     test('an empty address is refused rather than filed under nothing', async () => {
         const store = memoryStore();
         await assert.rejects(() => setDigest({ tables: store, email: '  ', frequency: DIGEST.monthly }));
-    });
-});
-
-describe('the answer given while joining', () => {
-    test('no answer leaves no row, because absence is the setting', async () => {
-        const store = memoryStore();
-        await recordDigestChoice({ tables: store, email: THEM, frequency: undefined });
-        assert.equal(await readUser({ tables: store, email: THEM }), null);
-    });
-
-    test('a broken table does not cost somebody the access they accepted', async () => {
-        const errors = [];
-        const broken = {
-            getEntity: async () => null,
-            upsertEntity: async () => {
-                throw new Error('table is on fire');
-            }
-        };
-
-        await recordDigestChoice({
-            tables: broken,
-            email: THEM,
-            frequency: DIGEST.monthly,
-            log: { error: (message) => errors.push(message) }
-        });
-
-        assert.equal(errors.length, 1);
     });
 });
 

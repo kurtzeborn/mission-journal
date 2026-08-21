@@ -170,21 +170,10 @@ describe('accepting', () => {
         assert.ok(!view.sections.includes('done'));
     });
 
-    test('the summaries are offered by name, and off unless somebody asks', async () => {
-        // A reader who says nothing should not start receiving mail because a
-        // form defaulted them into it.
-        const view = await invitePage({
-            answer: server({ described: READY, signedInAs: 'g.example@gmail.com' })
-        });
-
-        assert.match(view.text('digest-lede'), /summaries of activity in the Elder Example archive/);
-        assert.match(view.source, /<option value="off" selected>/);
-    });
-
-    test('the answer about email goes with it, because this is when we ask', async () => {
-        // The only moment this question gets asked of somebody who was
-        // invited. A page that dropped the answer would leave every reader on
-        // the default, which is silence, and nobody would know.
+    test('nobody is asked about email on the way in', async () => {
+        // The question used to stand between signing in and getting access.
+        // It now lives in the account menu, and the answer until somebody
+        // goes there is silence.
         const view = await invitePage({
             answer: server({
                 described: READY,
@@ -193,10 +182,12 @@ describe('accepting', () => {
             })
         });
 
-        view.el('digest').value = 'weekly';
+        assert.doesNotMatch(view.source, /<select/);
+
         await view.el('accept-form').dispatch('submit');
 
-        assert.equal(view.calls.find((c) => c.url === '/api/invite/accept').body.digestFrequency, 'weekly');
+        const accepted = view.calls.find((c) => c.url === '/api/invite/accept');
+        assert.deepEqual(Object.keys(accepted.body), ['token']);
     });
 
     test('an invitation withdrawn between opening and accepting is caught', async () => {

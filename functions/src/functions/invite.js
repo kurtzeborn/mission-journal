@@ -3,7 +3,6 @@ import { blobStore, signingKey, tableStore } from '../lib/clients.js';
 import { jsonResponse as json, readBody as body } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { acceptInvite, describeInvite } from '../lib/invite.js';
-import { recordDigestChoice } from '../lib/users.js';
 
 // Accepting an invitation.
 //
@@ -34,7 +33,7 @@ export async function accept({ request, context, store, tables, key }) {
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     if (!principal) return json(401, { status: 'unauthenticated' });
 
-    const { token, digestFrequency } = await body(request);
+    const { token } = await body(request);
     if (!token) return json(400, { status: 'invalid' });
 
     const result = await acceptInvite({
@@ -45,20 +44,6 @@ export async function accept({ request, context, store, tables, key }) {
         principal: principal.email,
         log: context
     });
-
-    // After the grant and never instead of it. This is the moment the plan
-    // calls first sign-in -- the one time somebody is attentively completing
-    // a flow -- so it is where the question is worth asking. It is also the
-    // moment they are least able to recover from it going wrong, which is why
-    // the answer is recorded last and cannot fail the acceptance.
-    if (result.status === 'ok') {
-        await recordDigestChoice({
-            tables,
-            email: principal.email,
-            frequency: digestFrequency,
-            log: context
-        });
-    }
 
     return json(result.status === 'ok' ? 200 : 409, result);
 }

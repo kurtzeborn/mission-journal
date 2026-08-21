@@ -4,8 +4,9 @@
 // which is why it is `/email` and not `/settings`. See the note in the markup.
 //
 // It exists as much for the families who were here before any of this as for
-// new ones: they were never asked the question, so their answer is off, and a
-// preference nobody can find is the same as a preference that is not offered.
+// new ones: nothing on the way in asks the question, so everybody's answer is
+// off until they come here, and a preference nobody can find is the same as a
+// preference that is not offered. The account menu is how they find it.
 
 const $ = (id) => document.getElementById(id);
 const show = (id) => {

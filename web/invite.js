@@ -107,10 +107,6 @@ function renderReady(described, principal) {
             ? 'You have been invited as an owner, so you will be able to read the letters, edit them, and invite other people.'
             : 'You have been invited as a reader, so you will be able to read the letters and download them.';
 
-    $('digest-lede').textContent =
-        'If you\u2019re interested, you can subscribe to periodic summaries of activity in ' +
-        `${described.missionary ? `the ${described.missionary} archive` : 'this archive'}.`;
-
     if (principal) {
         $('accept-form').hidden = false;
         $('accept-as').textContent = `You are signed in as ${principal}. This is the address that will get access.`;
@@ -129,10 +125,7 @@ async function submit(event, token) {
     $('accept-submit').disabled = true;
     show('working');
 
-    const result = await post('/api/invite/accept', {
-        token,
-        digestFrequency: $('digest').value
-    });
+    const result = await post('/api/invite/accept', { token });
 
     if (!result.ok || result.body.status !== 'ok') {
         if (result.status === 401) {

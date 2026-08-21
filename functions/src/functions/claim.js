@@ -5,7 +5,6 @@ import { setting } from '../lib/settings.js';
 import { readPrincipal } from '../lib/principal.js';
 import { describeClaim, redeemClaim } from '../lib/claim.js';
 import { resendClaim } from '../lib/offer.js';
-import { recordDigestChoice } from '../lib/users.js';
 
 // The claim token never appears in a URL.
 //
@@ -57,7 +56,7 @@ export async function redeem({ request, context, store, tables, key }) {
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     if (!principal) return json(401, { status: 'unauthenticated' });
 
-    const { token, displayName, digestFrequency } = await body(request);
+    const { token, displayName } = await body(request);
     if (!token) return json(400, { status: 'invalid' });
 
     const result = await redeemClaim({
@@ -77,18 +76,6 @@ export async function redeem({ request, context, store, tables, key }) {
         displayName: String(displayName ?? '').trim().slice(0, 80),
         log: context
     });
-
-    // Last, and unable to fail the claim. See the same call in invite.js: the
-    // archive coming into existence is the thing that mattered, and how often
-    // we write about it is answerable again on a page.
-    if (result.status === 'ok') {
-        await recordDigestChoice({
-            tables,
-            email: principal.email,
-            frequency: digestFrequency,
-            log: context
-        });
-    }
 
     return json(result.status === 'ok' ? 200 : 409, result);
 }
