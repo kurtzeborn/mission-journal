@@ -40,7 +40,7 @@ describe('narrowing the list', () => {
         view.search('Antigua');
 
         assert.deepEqual(shown(view), ['2026-03-25-9CRE']);
-        assert.equal(view.elements.searchCount.textContent, '1 of 3 letters match.');
+        assert.equal(view.$('.search__position').textContent, '1 match in 1 letter');
     });
 
     test('a search nothing answers says so rather than emptying the page in silence', () => {
@@ -48,7 +48,18 @@ describe('narrowing the list', () => {
         view.search('zeppelin');
 
         assert.deepEqual(shown(view), []);
-        assert.equal(view.elements.searchCount.textContent, 'No letters match that.');
+        assert.equal(view.$('.search__position').textContent, 'No letters match that.');
+    });
+
+    test('one sentence carries both counts, where there used to be two lines', () => {
+        const view = archive([
+            letter('2026-03-25-9CRE', '<p>Rain again.</p>', { subject: 'One' }),
+            letter('2026-03-16-28MW', '<p>Rain and more rain.</p>', { subject: 'Two' })
+        ]);
+        view.search('rain');
+
+        assert.equal(view.$('.search__position').textContent, '3 matches in 2 letters');
+        assert.equal(view.$$('.search__position').length, 1);
     });
 
     test('emptying the box puts the archive back exactly as it loaded', () => {
@@ -119,15 +130,23 @@ describe('marking the words themselves', () => {
 });
 
 describe('stepping between matches', () => {
-    test('the stepper appears only when there is somewhere to step', () => {
+    test('the arrows appear only when there is somewhere to step', () => {
         const view = archive();
         const nav = view.$('.search__nav');
+        const [previous, next] = view.$$('.search__step');
 
         assert.equal(nav.hidden, true);
 
         view.search('Antigua');
         assert.equal(nav.hidden, false);
-        assert.equal(view.$('.search__position').textContent, '1 matches');
+        assert.equal(next.hidden, false);
+
+        // The row stays up when nothing matched, because it is carrying the
+        // sentence that says so.
+        view.search('zeppelin');
+        assert.equal(nav.hidden, false);
+        assert.equal(previous.hidden, true);
+        assert.equal(next.hidden, true);
 
         view.search('');
         assert.equal(nav.hidden, true);
@@ -139,11 +158,11 @@ describe('stepping between matches', () => {
 
         const next = view.$$('.search__step').at(-1);
         view.click(next);
-        assert.equal(view.$('.search__position').textContent, '1 of 3');
+        assert.match(view.$('.search__position').textContent, /^1 of 3 matches in /);
         assert.equal(view.$('.hit--current').textContent, 'Rain');
 
         view.click(next);
-        assert.equal(view.$('.search__position').textContent, '2 of 3');
+        assert.match(view.$('.search__position').textContent, /^2 of 3 matches in /);
         // Only ever one, or the reader cannot tell which one they are on.
         assert.equal(view.$$('.hit--current').length, 1);
     });
@@ -156,7 +175,7 @@ describe('stepping between matches', () => {
 
         const previous = view.$('.search__step');
         view.click(previous);
-        assert.equal(view.$('.search__position').textContent, '3 of 3');
+        assert.match(view.$('.search__position').textContent, /^3 of 3 matches in /);
     });
 
     test('stepping onto a hit inside a closed letter opens it', () => {
@@ -187,6 +206,66 @@ describe('stepping between matches', () => {
         view.elements.searchForm.dispatchEvent(event);
 
         assert.equal(event.defaultPrevented, true);
-        assert.equal(view.$('.search__position').textContent, '1 of 3');
+        assert.match(view.$('.search__position').textContent, /^1 of 3 matches in /);
+    });
+});
+
+describe('opening and shutting the search', () => {
+    test('an archive arrives with search folded away behind its icon', () => {
+        const view = archive();
+
+        assert.equal(view.$('.search__fields').hidden, true);
+        assert.equal(view.$('.search__toggle').getAttribute('aria-expanded'), 'false');
+        assert.equal(view.$('.search__toggle').getAttribute('aria-label'), 'Search these letters');
+    });
+
+    test('shutting it throws the query away and gives the archive back', () => {
+        // A box that reopens still holding somebody's last search reopens onto
+        // a filtered archive, and the filtering is the part that looks broken.
+        const view = archive();
+        view.search('Antigua');
+        assert.deepEqual(shown(view), ['2026-03-25-9CRE']);
+
+        view.click(view.$('.search__toggle'));
+
+        assert.equal(view.$('.search__fields').hidden, true);
+        assert.equal(view.elements.searchInput.value, '');
+        assert.deepEqual(shown(view), POSTS.map((post) => post.id));
+    });
+
+    test('escape shuts it too', () => {
+        const view = archive();
+        view.search('Antigua');
+
+        view.key(view.elements.searchInput, 'Escape');
+
+        assert.equal(view.$('.search__fields').hidden, true);
+        assert.deepEqual(shown(view), POSTS.map((post) => post.id));
+    });
+});
+
+describe('clearing the box', () => {
+    test('the clear button is on screen the whole time there is something to clear', () => {
+        // Not only while a pointer happens to be over the field, which is what
+        // the browser's own cancel button does and what a phone cannot do.
+        const view = archive();
+        const clear = view.$('.search__clear');
+
+        assert.equal(clear.hidden, true);
+
+        view.search('Antigua');
+        assert.equal(clear.hidden, false);
+    });
+
+    test('clearing empties the box without shutting it', () => {
+        const view = archive();
+        view.search('Antigua');
+
+        view.click(view.$('.search__clear'));
+
+        assert.equal(view.elements.searchInput.value, '');
+        assert.equal(view.$('.search__fields').hidden, false);
+        assert.equal(view.$('.search__clear').hidden, true);
+        assert.deepEqual(shown(view), POSTS.map((post) => post.id));
     });
 });

@@ -411,7 +411,7 @@ button:focus-visible {
     gap: 0 0.75rem;
     width: 100%;
     min-height: 48px;
-    padding: 1rem 1.6rem 1rem 0;
+    padding: 0.5rem 1.6rem 0.5rem 0;
     margin: 0;
     background: none;
     border: 0;
@@ -469,8 +469,7 @@ button:focus-visible {
    Baseline alignment rather than centring, because the thing that has to line
    up is the clock's first line with the title's -- "at the same height" means
    the two pieces of text sit on one rule, not that a two-line block is
-   centred against a one-line one. The clock's second line hangs below, in the
-   space the title's own bottom margin was already holding open.
+   centred against a one-line one.
 
    Wrapping is left on and only the clock is allowed to shrink. A long name is
    the common case and it should keep the full measure; a clock squeezed into
@@ -483,7 +482,16 @@ button:focus-visible {
     gap: 0 1rem;
 }
 
+/* The label and the reading sit on one line and only stack if the screen is
+   too narrow to hold them. Stacked unconditionally, the clock spent three
+   lines of a phone screen -- its own two plus the one it pushed the title
+   onto -- on a detail nobody opened the archive to read. */
 .elapsed {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0 0.35rem;
     /* Right-justified against the measure, which on a narrow screen means
        right-justified under the title rather than beside it. */
     margin-left: auto;
@@ -495,7 +503,6 @@ button:focus-visible {
 }
 
 .elapsed__label {
-    display: block;
     font-size: 0.7rem;
     letter-spacing: 0.04em;
 }
@@ -504,7 +511,6 @@ button:focus-visible {
    every time they change. Without them the whole block twitches once a second,
    which is exactly the sort of movement that makes a page hard to read. */
 .elapsed__value {
-    display: block;
     font-variant-numeric: tabular-nums;
     font-size: 0.85rem;
     color: var(--ink);
@@ -1281,25 +1287,68 @@ h3:target {
     top: 0;
     z-index: 5;
     margin: 1.5rem 0 0;
-    padding: 0.75rem 0 0.6rem;
+    padding: 0.5rem 0;
     background: var(--paper);
     /* The letters underneath have to stop somewhere visible rather than
        sliding out from behind the box mid-word. */
     box-shadow: 0 0.6rem 0.6rem -0.6rem rgba(28, 25, 23, 0.18);
 }
 
+/* Shut, the whole of search is one icon. An archive is for reading, and a
+   permanent search box with a label above it was charging every reader who
+   never searches for a feature only some of them want. */
+.search__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.search__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 40px;
+    height: 40px;
+    color: var(--ink-soft);
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.search__toggle:hover {
+    color: var(--ink);
+    border-color: var(--accent);
+}
+
+.search__toggle[aria-expanded='true'] {
+    color: var(--ink);
+}
+
+.search__toggle:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}
+
+/* The box takes the rest of the row rather than a line of its own. */
+.search__fields {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .search__label {
-    display: block;
     font-family: system-ui, sans-serif;
     font-size: 0.9rem;
     color: var(--ink-soft);
-    margin-bottom: 0.35rem;
 }
 
 .search__input {
     width: 100%;
-    min-height: 48px;
-    padding: 0.6rem 0.8rem;
+    min-height: 40px;
+    /* Right padding clears the button sitting on top of it. */
+    padding: 0.4rem 2.4rem 0.4rem 0.8rem;
     font-family: inherit;
     font-size: 1.05rem;
     color: var(--ink);
@@ -1317,25 +1366,59 @@ h3:target {
     color: #a8a29e;
 }
 
+/* Several browsers only paint their own cancel button while the pointer is
+   over the field, which is a control a phone can never reach. */
+.search__input::-webkit-search-cancel-button {
+    display: none;
+}
+
+.search__clear {
+    position: absolute;
+    top: 50%;
+    right: 0.25rem;
+    width: 32px;
+    height: 32px;
+    transform: translateY(-50%);
+    font-size: 1.2rem;
+    line-height: 1;
+    color: var(--ink-soft);
+    background: none;
+    border: 0;
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.search__clear:hover {
+    color: var(--ink);
+}
+
+.search__clear:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}
+
 .search__nav {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 0.4rem;
-    margin-top: 0.45rem;
+    gap: 0.3rem;
+    margin-top: 0.4rem;
 }
 
 .search__position {
     font-family: system-ui, sans-serif;
     font-size: 0.78rem;
     color: var(--ink-soft);
-    margin-right: auto;
+    margin: 0 auto 0 0;
 }
 
+/* Smaller than the 48px the letters use. These are a pair of arrows a reader
+   taps repeatedly with a thumb already resting on them, not a target to be
+   found cold, and 34px still clears the 24px minimum. */
 .search__step {
-    min-width: 44px;
-    min-height: 44px;
-    font-size: 1rem;
+    min-width: 34px;
+    min-height: 34px;
+    font-size: 0.9rem;
     line-height: 1;
     color: var(--ink);
     background: #fff;

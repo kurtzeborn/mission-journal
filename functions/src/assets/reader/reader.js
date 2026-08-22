@@ -1101,6 +1101,36 @@ window.Reader = (function () {
         if (marks.length) root.normalize();
     }
 
+    // Drawn, not set in a font and not fetched. The downloaded archive is four
+    // files in a folder and an icon font is not one of them.
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+
+    function magnifier() {
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 16 16');
+        svg.setAttribute('width', '18');
+        svg.setAttribute('height', '18');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '1.8');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+
+        const glass = document.createElementNS(SVG_NS, 'circle');
+        glass.setAttribute('cx', '6.8');
+        glass.setAttribute('cy', '6.8');
+        glass.setAttribute('r', '4.6');
+
+        const handle = document.createElementNS(SVG_NS, 'line');
+        handle.setAttribute('x1', '10.4');
+        handle.setAttribute('y1', '10.4');
+        handle.setAttribute('x2', '14.2');
+        handle.setAttribute('y2', '14.2');
+
+        svg.append(glass, handle);
+        return svg;
+    }
+
     // Search runs entirely in the browser over the payload already in memory.
     // Nothing is sent back, which means a half-typed search for a grandchild's
     // name never leaves the device and there is no query log to protect. It is
@@ -1126,6 +1156,42 @@ window.Reader = (function () {
         // file. The site and the downloaded archive each carry their own copy
         // of the search form, and anything added to one has to be added by
         // hand to the other; making it here means there is one of it.
+        //
+        // The template's own label and input are moved into the row rather
+        // than recreated, so the `for`/`id` pairing and the ids the tests and
+        // app.js look up all survive the rearrangement.
+        const bar = document.createElement('div');
+        bar.className = 'search__bar';
+
+        const opener = document.createElement('button');
+        opener.type = 'button';
+        opener.className = 'search__toggle';
+        opener.setAttribute('aria-expanded', 'false');
+        opener.setAttribute('aria-controls', 'search-fields');
+        opener.append(magnifier());
+
+        const fields = document.createElement('div');
+        fields.className = 'search__fields';
+        fields.id = 'search-fields';
+        fields.hidden = true;
+
+        // Always on screen once there is something to clear, rather than the
+        // browser's own cancel button, which several of them only paint on
+        // hover -- and a control that appears when the pointer arrives is no
+        // control at all on a phone.
+        const clear = document.createElement('button');
+        clear.type = 'button';
+        clear.className = 'search__clear';
+        clear.setAttribute('aria-label', 'Clear the search');
+        clear.textContent = '×';
+        clear.hidden = true;
+
+        const label = searchForm.querySelector('.search__label');
+        if (label) label.classList.add('visually-hidden');
+
+        fields.append(...(label ? [label] : []), searchInput, clear);
+        bar.append(opener, fields);
+
         const nav = document.createElement('div');
         nav.className = 'search__nav';
         nav.hidden = true;
@@ -1142,15 +1208,33 @@ window.Reader = (function () {
         const previous = stepper('Previous match', '↑');
         const next = stepper('Next match', '↓');
 
-        const position = document.createElement('span');
+        // One line where there were two. "3 of 3 letters match" above "9
+        // matches" spent a quarter of a phone screen saying one thing twice.
+        const position = searchCount ?? document.createElement('span');
         position.className = 'search__position';
         position.setAttribute('aria-live', 'polite');
 
         nav.append(position, previous, next);
-        searchForm.append(nav);
+        searchForm.append(bar, nav);
 
         let marks = [];
         let at = -1;
+        let letters = 0;
+
+        const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+        // Reads as a sentence at every stage, because it is the only line the
+        // reader gets: how many were found, how far through them they are,
+        // and how much of the archive they are spread across.
+        const describe = () => {
+            if (!searchInput.value.trim()) return '';
+            if (!letters) return 'No letters match that.';
+
+            const spread = `in ${count(letters, 'letter', 'letters')}`;
+            if (!marks.length) return `Found ${spread}`;
+            if (at < 0) return `${count(marks.length, 'match', 'matches')} ${spread}`;
+            return `${at + 1} of ${count(marks.length, 'match', 'matches')} ${spread}`;
+        };
 
         const reset = () => {
             for (const view of views.values()) {
@@ -1162,6 +1246,7 @@ window.Reader = (function () {
             }
             marks = [];
             at = -1;
+            letters = 0;
         };
 
         // Moves the reader to a match, opening the letter it lives in. This is
@@ -1185,15 +1270,15 @@ window.Reader = (function () {
             // sticky, and a hit scrolled to the top of the viewport ends up
             // underneath it.
             mark.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            position.textContent = `${at + 1} of ${marks.length}`;
+            position.textContent = describe();
         };
 
         const apply = () => {
             const query = searchInput.value.trim();
             reset();
+            clear.hidden = !searchInput.value;
 
             if (!query) {
-                if (searchCount) searchCount.textContent = '';
                 nav.hidden = true;
                 position.textContent = '';
                 collapseToNewest(views);
@@ -1207,6 +1292,7 @@ window.Reader = (function () {
             const matched = new Set(
                 index.search(query, { prefix: true, fuzzy: 0.2 }).map((hit) => hit.id)
             );
+            letters = matched.size;
 
             const pattern = termsPattern(query);
 
@@ -1229,16 +1315,46 @@ window.Reader = (function () {
                 }
             }
 
-            if (searchCount) {
-                searchCount.textContent =
-                    matched.size === 0
-                        ? 'No letters match that.'
-                        : `${matched.size} of ${posts.length} letters match.`;
-            }
-
-            nav.hidden = marks.length === 0;
-            position.textContent = marks.length ? `${marks.length} matches` : '';
+            // The row carries the verdict as well as the stepper, so it stays
+            // up to say that nothing matched.
+            nav.hidden = false;
+            previous.hidden = marks.length === 0;
+            next.hidden = marks.length === 0;
+            position.textContent = describe();
         };
+
+        // Closing throws the query away. A search box that reopens still full
+        // of somebody's last search reopens onto a filtered archive, and the
+        // filtering is the part that looks like a fault.
+        const setOpen = (open) => {
+            opener.setAttribute('aria-expanded', String(open));
+            opener.setAttribute('aria-label', open ? 'Close the search' : 'Search these letters');
+            fields.hidden = !open;
+            if (open) {
+                searchInput.focus();
+                return;
+            }
+            // Guarded so that setting up the page does not count as a close:
+            // clearing an empty box would collapse the letter a digest link
+            // just opened.
+            if (!searchInput.value) return;
+            searchInput.value = '';
+            apply();
+        };
+
+        opener.addEventListener('click', () => {
+            setOpen(opener.getAttribute('aria-expanded') !== 'true');
+        });
+
+        clear.addEventListener('click', () => {
+            searchInput.value = '';
+            searchInput.focus();
+            apply();
+        });
+
+        searchInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') setOpen(false);
+        });
 
         // `at` is -1 until the reader steps for the first time, and stepping
         // back from nowhere means the last match rather than one before it.
@@ -1257,6 +1373,7 @@ window.Reader = (function () {
             goTo(at + 1);
         });
 
+        setOpen(false);
         searchForm.hidden = false;
     }
 
