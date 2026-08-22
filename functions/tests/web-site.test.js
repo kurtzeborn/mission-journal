@@ -245,12 +245,19 @@ describe('how long they have been out', () => {
 
         assert.equal(view.el('elapsed').hidden, false);
         assert.equal(view.text('elapsed-label'), 'Serving');
-        assert.match(view.text('elapsed-value'), /^\d+ days, \d\d:\d\d:\d\d$/);
+        // Four hundred days is a year and a month and a few days, whichever
+        // year and month they happen to be.
+        assert.match(view.text('elapsed-value'), /^1y 1m \d+d, \d\d:\d\d:\d\d$/);
+    });
 
-        // A day either side. This is elapsed time, not calendar subtraction,
-        // and a clock change inside a window this long moves it by an hour.
-        const days = Number(view.text('elapsed-value').split(' ')[0]);
-        assert.ok(Math.abs(days - 400) <= 1, `counted ${days} days`);
+    test('drops the units it has not reached yet', async () => {
+        // "0y 0m 6d" is six days, and the reading has to sit on one line
+        // beside its label, so the leading zeros are the first thing to go.
+        const fresh = await loaded(daysAgo(6));
+        assert.match(fresh.text('elapsed-value'), /^6d, \d\d:\d\d:\d\d$/);
+
+        const later = await loaded(daysAgo(100));
+        assert.match(later.text('elapsed-value'), /^3m \d+d, \d\d:\d\d:\d\d$/);
     });
 
     test('turns round into a countdown once somebody says when they come home', async () => {
@@ -260,9 +267,7 @@ describe('how long they have been out', () => {
 
         assert.equal(view.el('elapsed').hidden, false);
         assert.equal(view.text('elapsed-label'), 'Home in');
-
-        const days = Number(view.text('elapsed-value').split(' ')[0]);
-        assert.ok(Math.abs(days - 83) <= 1, `counted ${days} days`);
+        assert.match(view.text('elapsed-value'), /^2m \d+d, \d\d:\d\d:\d\d$/);
     });
 
     test('the countdown ticks, and the total it becomes does not', async () => {
@@ -278,7 +283,7 @@ describe('how long they have been out', () => {
 
         assert.equal(view.el('elapsed').hidden, false);
         assert.equal(view.text('elapsed-label'), 'Served');
-        assert.equal(view.text('elapsed-value'), '729 days');
+        assert.match(view.text('elapsed-value'), /^1y 11m \d+d$/);
         assert.equal(view.el('elapsed-value').getAttribute('role'), null);
     });
 
@@ -301,8 +306,8 @@ describe('how long they have been out', () => {
 
         assert.equal(view.el('elapsed').hidden, false);
         assert.equal(view.text('elapsed-label'), 'Serving');
-        // Two calendar years to the day, so 730 or 731 depending on which two.
-        assert.match(view.text('elapsed-value'), /^73[01] days, 00:00:00$/);
+        // Two calendar years to the day, whichever two they are.
+        assert.equal(view.text('elapsed-value'), '2y 0m 0d, 00:00:00');
         // And never starts ticking, because there is nothing left to count.
         assert.equal(view.context.timers.length, 0);
     });

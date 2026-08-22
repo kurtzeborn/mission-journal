@@ -43,7 +43,7 @@
     // `Serving` while it counts up, `Home in` once there is a return date to
     // count down to, `Served` after that date has passed. Each is a word or
     // two rather than a caption, because the label and the number are one
-    // phrase -- "Home in 84 days, 06:11:02" -- and a phrase fits on a line of
+    // phrase -- "Home in 2m 24d, 06:11:02" -- and a phrase fits on a line of
     // a phone where a caption and a reading did not.
     //
     // Only drawn when somebody has filled a date in, which most have not.
@@ -65,18 +65,58 @@
         return Number.isNaN(when.getTime()) ? null : when;
     };
 
-    const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`;
+    // Calendar units, not fixed-length ones. A month is anything from 28 days
+    // to 31, so the months are counted by stepping the start date forward one
+    // at a time and measuring what is left over, rather than dividing by an
+    // average that matches no month there has ever been.
+    const addMonths = (date, n) => {
+        const out = new Date(date.getTime());
+        out.setDate(1);
+        out.setMonth(out.getMonth() + n);
+        // The 31st of a thirty-day month is its 30th, not the 1st of the month
+        // after, which is where setMonth on its own would land it.
+        const last = new Date(out.getFullYear(), out.getMonth() + 1, 0).getDate();
+        out.setDate(Math.min(date.getDate(), last));
+        return out;
+    };
 
-    // Days and a clock, rather than years and months. Months are the ambiguous
-    // unit -- "one year, five months" is a different length depending on which
-    // five -- and a mission is short enough that the day count stays a number
-    // people can hold in their head.
-    const spell = (ms) => {
-        const days = Math.floor(ms / DAY);
-        const rest = ms - days * DAY;
+    // Wall-clock milliseconds, which is not elapsed milliseconds twice a year.
+    // The day has to roll over at local midnight or the reading is a day out
+    // for half the year, on the same reasoning that makes startOfDay local.
+    const wall = (from, to) =>
+        to.getTime() - from.getTime() + (from.getTimezoneOffset() - to.getTimezoneOffset()) * MINUTE;
+
+    const breakdown = (from, to) => {
+        let months = Math.max(
+            (to.getFullYear() - from.getFullYear()) * 12 + to.getMonth() - from.getMonth(),
+            0
+        );
+        while (months > 0 && wall(addMonths(from, months), to) < 0) months -= 1;
+
+        const rest = Math.max(wall(addMonths(from, months), to), 0);
+        return {
+            years: Math.floor(months / 12),
+            months: months % 12,
+            days: Math.floor(rest / DAY),
+            rest: rest % DAY
+        };
+    };
+
+    // Single letters, because the whole reading has to sit on one line of a
+    // phone beside its label. Units before the first one that has a number in
+    // it are dropped -- "0y 0m 6d" is six days -- and the days are always kept
+    // so the reading is never empty.
+    const span = ({ years, months, days }) => {
+        const units = [[years, 'y'], [months, 'm'], [days, 'd']];
+        while (units.length > 1 && units[0][0] === 0) units.shift();
+        return units.map(([n, unit]) => `${n}${unit}`).join(' ');
+    };
+
+    const spell = (from, to) => {
+        const cut = breakdown(from, to);
         const pad = (n) => String(n).padStart(2, '0');
-        const clock = `${pad(Math.floor(rest / HOUR))}:${pad(Math.floor(rest / MINUTE) % 60)}:${pad(Math.floor(rest / SECOND) % 60)}`;
-        return `${plural(days, 'day')}, ${clock}`;
+        const clock = `${pad(Math.floor(cut.rest / HOUR))}:${pad(Math.floor(cut.rest / MINUTE) % 60)}:${pad(Math.floor(cut.rest / SECOND) % 60)}`;
+        return `${span(cut)}, ${clock}`;
     };
 
     function runClock(startDate, returnDate) {
@@ -115,25 +155,23 @@
             }
 
             if (home && now < home.getTime()) {
-                say('Home in', spell(home.getTime() - now));
+                say('Home in', spell(new Date(now), home));
                 return false;
             }
 
             if (home) {
                 // A total, not a reading, so it loses the seconds and the
-                // role that promises they are moving. Rounded rather than
-                // floored because the span crosses daylight saving and a
-                // mission is not 729 days and 23 hours long.
+                // role that promises they are moving.
                 if (!from) {
                     box.hidden = true;
                     return true;
                 }
                 value.removeAttribute('role');
-                say('Served', plural(Math.round((home.getTime() - from.getTime()) / DAY), 'day'));
+                say('Served', span(breakdown(from, home)));
                 return true;
             }
 
-            say('Serving', spell(Math.min(now, until.getTime()) - from.getTime()));
+            say('Serving', spell(from, new Date(Math.min(now, until.getTime()))));
             return now >= until.getTime();
         };
 
