@@ -248,7 +248,7 @@ export async function addPhoto({ request, context, store }) {
     // PDF gets told what went wrong instead of "that picture could not be
     // read".
     if (!isPhotoType(request.headers.get('content-type'))) {
-        return problem(415, 'that is not a kind of picture this site can show');
+        return problem(415, 'this site does not support a file format you tried to add');
     }
 
     const bytes = Buffer.from(await request.arrayBuffer());

@@ -232,6 +232,15 @@
             return 'That picture is too big. Nothing was changed.';
         }
 
+        // Prefixed differently from the rest, because the generic word for a
+        // rejected request is "Refused" and on a picture that reads as a
+        // judgement about what is in it. The only 415 an owner can provoke is
+        // a file this site cannot decode.
+        if (response.status === 415) {
+            const detail = await response.json().catch(() => null);
+            return `Upload failed: ${detail?.error ?? 'that file could not be read as a picture'}`;
+        }
+
         if (!response.ok) {
             // The API explains a 400 in its own words -- "not editable:
             // originalFrom" is more use than "something went wrong".
