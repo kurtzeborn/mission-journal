@@ -22,3 +22,10 @@ obj/
 
 # Logs
 *.log
+
+# Scratch
+# A leading underscore marks a throwaway: a query dump, a downloaded posts.json.
+# Some of it is real letter content and this repository is public, so the
+# pattern is ignored rather than the individual files.
+_*
+ai-errors.json
