@@ -1,14 +1,11 @@
 // wordcloud2.js v1.2.3 -- vendored, unmodified, from the npm package's src/wordcloud2.js.
 // https://github.com/timdream/wordcloud2.js  MIT, see LICENSE-wordcloud2.txt beside this file.
 //
-// A plain script rather than a module, for the same reason minisearch.js is one:
-// the reader has to run from a file:// URL inside a downloaded zip, and browsers
-// will not load ES modules from a file that has no origin. This one puts
-// WordCloud on the global.
-//
-// Vendored rather than bundled because the reader has no build step, and rather
-// than loaded from a CDN because the Content-Security-Policy admits no
-// third-party origin. Updating means replacing this file deliberately.
+// Vendored rather than depended on because web/ is not an npm project and has
+// no build step, so there is nothing to resolve a package into a script tag,
+// and rather than loaded from a CDN because script-src is 'self'. The package
+// is UMD and puts WordCloud on the global, which is all a plain script tag
+// needs. Updating means replacing this file deliberately.
 
 /*!
  * wordcloud2.js
