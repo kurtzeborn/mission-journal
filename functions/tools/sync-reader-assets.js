@@ -22,7 +22,8 @@ export const SHARED_READER_FILES = [
     { from: join('web', 'reader.js'), to: 'reader.js' },
     { from: join('web', 'styles.css'), to: 'styles.css' },
     { from: join('web', 'logo.png'), to: 'logo.png' },
-    { from: join('web', 'vendor', 'minisearch.js'), to: 'minisearch.js' }
+    { from: join('web', 'vendor', 'minisearch.js'), to: 'minisearch.js' },
+    { from: join('web', 'vendor', 'wordcloud2.js'), to: 'wordcloud2.js' }
 ];
 
 export const ASSET_DIR = join(here, '..', 'src', 'assets', 'reader');

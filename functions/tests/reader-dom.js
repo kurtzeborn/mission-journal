@@ -61,6 +61,27 @@ function stubs(window, record) {
         record.commands.push({ command, value });
         return true;
     };
+
+    // wordcloud2 packs words by drawing them on a canvas and reading the pixels
+    // back, and jsdom has no canvas -- loading the real one here throws before
+    // it draws anything. This stands in at exactly the seam the reader uses: it
+    // takes the list and turns out the same spans, carrying the same class and
+    // the same attributes, so everything the reader does with a word afterwards
+    // is still under test. Where the words land is the library's business, and
+    // that is checked in a browser.
+    window.WordCloud = (element, options) => {
+        record.wordcloud.push(options);
+        for (const item of options.list) {
+            const span = document.createElement('span');
+            span.textContent = item.word;
+            span.className = options.classes ?? '';
+            span.style.fontSize = `${options.weightFactor(item.weight)}px`;
+            for (const [name, value] of Object.entries(item.attributes ?? {})) {
+                span.setAttribute(name, value);
+            }
+            element.append(span);
+        }
+    };
 }
 
 /**
@@ -76,7 +97,7 @@ function stubs(window, record) {
 export function page({ url = 'https://pdayletters.com/isaac.backman' } = {}) {
     const dom = new JSDOM(read('web/site.html'), { runScripts: 'outside-only', url });
     const { window } = dom;
-    const record = { scrolled: [], commands: [] };
+    const record = { scrolled: [], commands: [], wordcloud: [] };
 
     stubs(window, record);
 

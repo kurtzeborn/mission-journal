@@ -117,6 +117,7 @@ describe('what goes into the archive', () => {
             'styles.css',
             'logo.png',
             'minisearch.js',
+            'wordcloud2.js',
             'archive.js',
             'posts.json'
         ]) {

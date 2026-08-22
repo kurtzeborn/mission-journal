@@ -26,23 +26,6 @@ const POSTS = [
     )
 ];
 
-// Enough distinct words for the scatter to have something to scatter, with one
-// of them well ahead of the rest so there is a biggest word to point at.
-const BUSY = [
-    letter(
-        '2026-04-20-1AAA',
-        `<p>${'Volcano '.repeat(9)} chapel cathedral district baptism candles branch canoe earthquake.</p>`
-    ),
-    letter(
-        '2026-04-13-2BBB',
-        '<p>Volcano chapel cathedral district apartment blackout children coffee companion cobblestones.</p>'
-    ),
-    letter(
-        '2026-04-06-3CCC',
-        '<p>Volcano chapel district apartment blackout children coffee dog elder market mountain.</p>'
-    )
-];
-
 function archive(posts = POSTS) {
     const view = page();
     view.mount({ posts });
@@ -128,25 +111,53 @@ describe('what the cloud is made of', () => {
         assert.ok(!view.cloudWords().includes('week'));
     });
 
-    test('the words are scattered rather than sorted, so the eye wanders over them', () => {
+    test('a pasted link is not a sentence, so the id in it is not a word', () => {
+        // A shared album arrives as its own link text, and split on punctuation
+        // the id in it comes apart into runs of letters that look like words.
+        const view = opened([
+            letter(
+                '2026-03-30-7LNK',
+                '<p>Album! <a href="#">https://photos.app.goo.gl/egtkcgt-kxqodvf</a> Volcano.</p>'
+            )
+        ].concat(POSTS));
+
+        for (const junk of ['egtkcgt', 'kxqodvf', 'photos', 'https', 'goo']) {
+            assert.ok(!view.cloudWords().includes(junk), `did not expect ${junk}`);
+        }
+        assert.ok(view.cloudWords().includes('volcano'));
+    });
+
+    test('the commonest word is handed over first, because the packing starts there', () => {
         const words = opened().cloudWords();
 
-        assert.ok(words.length > 3);
-        assert.notDeepEqual(words, [...words].sort((a, b) => a.localeCompare(b)));
+        assert.equal(words[0], 'rain');
     });
 
-    test('the same archive scatters the same way every time it is opened', () => {
+    test('the same archive counts the same way every time it is opened', () => {
         assert.deepEqual(opened().cloudWords(), opened().cloudWords());
     });
+});
 
-    test('some of them stand on their end, and the biggest never do', () => {
-        const view = opened(BUSY);
-        const upright = view.$$('.cloud__word--upright');
+describe('what the reader asks the library for', () => {
+    test('colour is left to the stylesheet, so hover and focus are one rule', () => {
+        const options = opened().record.wordcloud.at(-1);
 
-        assert.ok(upright.length > 0);
-        for (const word of upright) {
-            assert.ok(Number.parseFloat(word.style.fontSize) < 1.9, word.dataset.word);
-        }
+        assert.equal(options.color, null);
+        assert.equal(options.classes, 'cloud__word');
+    });
+
+    test('some of the words are turned on their end', () => {
+        const options = opened().record.wordcloud.at(-1);
+
+        assert.ok(options.rotateRatio > 0 && options.rotateRatio < 1);
+    });
+
+    test('it is redrawn on the pixels it has, so a reopened cloud is packed again', () => {
+        const view = opened();
+        view.click(view.$('.cloud__close'));
+        view.click(view.button('Word cloud'));
+
+        assert.equal(view.record.wordcloud.length, 2);
     });
 });
 
@@ -159,11 +170,10 @@ describe('how big a word is', () => {
         assert.ok(sizeOf(view, 'antigua') > sizeOf(view, 'beans'));
     });
 
-    test('the smallest word is still a readable size', () => {
+    test('no word is so small it cannot be read beside the biggest', () => {
         const view = opened();
 
-        assert.ok(sizeOf(view, 'beans') >= 1, sizeOf(view, 'beans'));
-        assert.ok(sizeOf(view, 'rain') <= 2.6, sizeOf(view, 'rain'));
+        assert.ok(sizeOf(view, 'rain') / sizeOf(view, 'beans') <= 5);
     });
 
     test('an archive where everything came up once has no biggest word', () => {
@@ -216,6 +226,20 @@ describe('picking a word out of it', () => {
 
         const last = view.record.scrolled.at(-1);
         assert.equal(last.node, view.elements.searchForm);
+    });
+
+    test('a word can be reached and picked without a mouse', () => {
+        // The library makes spans, so being operable from the keyboard is
+        // something the reader has to add rather than something it inherits.
+        const view = opened();
+        const word = view.$('.cloud__word[data-word="timetable"]');
+
+        assert.equal(word.getAttribute('tabindex'), '0');
+        assert.equal(word.getAttribute('role'), 'button');
+
+        view.key(word, 'Enter');
+
+        assert.equal(view.elements.searchInput.value, 'timetable');
     });
 });
 

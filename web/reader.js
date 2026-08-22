@@ -1003,10 +1003,18 @@ window.Reader = (function () {
             .split(/\s+/)
     );
 
+    // A pasted link is usually its own link text, so the URL is in the visible
+    // words of the letter and not only in an href. Split on punctuation it
+    // becomes the alphabetic runs of a Google Photos share id -- "egtkcgt",
+    // "kxqodvf" -- which look like words, are counted like words, and are not
+    // words. Anything with a scheme, an @ or a slash in it goes first.
+    const LINKS = /\b(?:[a-z][\w+.-]*:\/\/|www\.|mailto:)\S*|\S+@\S+\.\S+|\S*\/\S*/gi;
+
     // Letters only, so years and house numbers stay out of it, and apostrophes
     // folded away so "don't" and "dont" are one word rather than two.
     const wordsIn = (text) =>
         text
+            .replace(LINKS, ' ')
             .toLowerCase()
             .replace(/[\u2018\u2019]/g, "'")
             .split(/[^\p{L}']+/u)
@@ -1018,16 +1026,9 @@ window.Reader = (function () {
     // not already say louder.
     const MOST = 60;
 
-    // A number made out of the letters of the word. It is not random, but it
-    // scatters like it is, and it is the same number every time -- so the same
-    // archive draws the same cloud on every visit rather than a new picture of
-    // the same letters each time somebody looks.
-    const scramble = (word) => {
-        let hash = 0;
-        for (let i = 0; i < word.length; i += 1) hash = (hash * 31 + word.charCodeAt(i)) % 99991;
-        return hash;
-    };
-
+    // Commonest first, which is the order wordcloud2 wants: it works outwards
+    // from the middle, so whatever leads the list gets the best of the space.
+    // Ties break on the word so the same archive draws the same cloud twice.
     function countWords(posts) {
         const tally = new Map();
         for (const post of posts) {
@@ -1036,25 +1037,71 @@ window.Reader = (function () {
             }
         }
 
-        // Cut by count, then shuffled, because a cloud sorted by anything is a
-        // list wearing a costume. Scattering the sizes is what makes the eye
-        // wander over it instead of reading it from one end to the other.
         return [...tally]
             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-            .slice(0, MOST)
-            .sort((a, b) => scramble(a[0]) - scramble(b[0]) || a[0].localeCompare(b[0]));
+            .slice(0, MOST);
     }
 
-    // Logarithmic, and relative to the cloud's own font size rather than the
-    // page's. A word that came up four times as often is not four times as
-    // interesting, and the type range that reads as a cloud on a laptop is a
-    // wall of headlines on a phone -- so the ratio between the words is fixed
-    // here and the size they are all measured against is left to the stylesheet.
-    const sizeOf = (n, least, most) => {
-        if (most <= least) return 1.4;
-        const step = (Math.log(n) - Math.log(least)) / (Math.log(most) - Math.log(least));
-        return 1 + step * 1.6;
-    };
+    // Logarithmic. A word that came up four times as often is not four times as
+    // interesting, and on a linear scale one runaway word flattens the other
+    // fifty-nine into a single illegible size.
+    function scale(words, box) {
+        const counts = words.map(([, n]) => n);
+        const most = Math.max(...counts);
+        const least = Math.min(...counts);
+
+        // Tied to the box rather than fixed, because the same type that reads
+        // as a cloud on a laptop is a wall of headlines on a phone.
+        const top = Math.max(20, Math.min(box.clientWidth, box.clientHeight) * 0.19);
+        const floor = Math.max(11, top * 0.24);
+
+        return (n) => {
+            if (most <= least) return (top + floor) / 2;
+            const step = (Math.log(n) - Math.log(least)) / (Math.log(most) - Math.log(least));
+            return floor + step * (top - floor);
+        };
+    }
+
+    // The library packs the words; everything the reader touches is still ours.
+    // In DOM mode it emits a span per word, and each item on the list can carry
+    // the attributes that span is given -- so the words come out of it already
+    // labelled, focusable and carrying the word they stand for.
+    function draw(view) {
+        if (!view.words.length) return;
+
+        const weight = scale(view.words, view.box);
+        view.box.textContent = '';
+
+        window.WordCloud(view.box, {
+            list: view.words.map(([word, n]) => ({
+                word,
+                weight: n,
+                attributes: {
+                    'data-word': word,
+                    role: 'button',
+                    tabindex: '0',
+                    'aria-label': `${word}, ${n} ${n === 1 ? 'time' : 'times'}`
+                }
+            })),
+            weightFactor: weight,
+            fontFamily: getComputedStyle(view.box).fontFamily,
+            // Left to the stylesheet, so hover, focus and any future dark mode
+            // are one rule rather than sixty inline colours.
+            color: null,
+            classes: 'cloud__word',
+            // The step the packing works in. Finer than this and laying out
+            // sixty words takes long enough to see; coarser and the gaps show.
+            gridSize: 6,
+            rotateRatio: 0.3,
+            rotationSteps: 2,
+            minRotation: -Math.PI / 2,
+            maxRotation: Math.PI / 2,
+            shape: 'square',
+            drawOutOfBound: false,
+            shrinkToFit: true,
+            backgroundColor: 'transparent'
+        });
+    }
 
     let cloud = null;
 
@@ -1081,8 +1128,8 @@ window.Reader = (function () {
         head.className = 'cloud__head';
         head.append(title, close);
 
-        // Said once here rather than on each of sixty buttons, where it would
-        // be sixty times the noise for a screen reader and nothing at all for
+        // Said once here rather than on each of sixty words, where it would be
+        // sixty times the noise for a screen reader and nothing at all for
         // everybody else.
         const note = document.createElement('p');
         note.className = 'cloud__note';
@@ -1091,11 +1138,23 @@ window.Reader = (function () {
         const box = document.createElement('div');
         box.className = 'cloud__words';
 
-        box.addEventListener('click', (event) => {
-            const word = event.target.closest('.cloud__word');
+        const take = (target) => {
+            const word = target.closest?.('.cloud__word');
             if (!word) return;
             dialog.close();
             cloud.pick?.(word.dataset.word);
+        };
+
+        box.addEventListener('click', (event) => take(event.target));
+
+        // The words are spans, because that is what the library makes. Giving
+        // them a role and a tab stop is only half of a button -- this is the
+        // other half.
+        box.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            if (!event.target.closest?.('.cloud__word')) return;
+            event.preventDefault();
+            take(event.target);
         });
 
         dialog.addEventListener('keydown', (event) => {
@@ -1106,10 +1165,20 @@ window.Reader = (function () {
             if (event.target === dialog) dialog.close();
         });
 
+        // A packed layout is packed for a shape, so turning the phone or
+        // dragging the window makes the old one wrong. Held off until the
+        // dragging stops, because each pass walks sixty words.
+        let settling = null;
+        window.addEventListener('resize', () => {
+            if (!dialog.open) return;
+            clearTimeout(settling);
+            settling = setTimeout(() => draw(cloud), 200);
+        });
+
         dialog.append(head, note, box);
         document.body.append(dialog);
 
-        cloud = { dialog, box, pick: null };
+        cloud = { dialog, box, words: [], pick: null };
         return cloud;
     }
 
@@ -1119,37 +1188,14 @@ window.Reader = (function () {
 
         // Counted the first time somebody asks and not before. Most readers
         // never open it, and walking every letter on the way to drawing the
-        // first one is a cost they should not pay.
-        if (!view.box.firstChild) {
-            const tally = countWords(posts);
-            const counts = tally.map(([, n]) => n);
-            // The rarest word that made the cut anchors the small end, not a
-            // count of one that may not be in the archive at all.
-            const most = counts.length ? Math.max(...counts) : 1;
-            const least = counts.length ? Math.min(...counts) : 1;
+        // first one is a cost they should not pay. Kept afterwards because a
+        // resize redraws from the same tally.
+        if (!view.words.length) view.words = countWords(posts);
 
-            for (const [word, n] of tally) {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'cloud__word';
-                button.dataset.word = word;
-                button.textContent = word;
-
-                const size = sizeOf(n, least, most);
-                button.style.fontSize = `${size.toFixed(2)}em`;
-
-                // Every fifth word or so stands on its end, which is what stops
-                // the rows reading as rows. The big ones are left lying down --
-                // upright they are as tall as the whole cloud and push a hole
-                // through the middle of it.
-                if (size < 1.9 && scramble(word) % 5 === 0) button.classList.add('cloud__word--upright');
-
-                button.setAttribute('aria-label', `${word}, ${n} ${n === 1 ? 'time' : 'times'}`);
-                view.box.append(button);
-            }
-        }
-
+        // Opened first: the box has no width until it is on screen, and the
+        // packing is measured in the pixels it actually has.
         view.dialog.showModal();
+        draw(view);
     }
 
     // --- months -----------------------------------------------------------

@@ -32,7 +32,8 @@ const ASSETS = {
     'offline.js': asset('offline.js'),
     'styles.css': asset('styles.css'),
     'logo.png': asset('logo.png'),
-    'minisearch.js': asset('minisearch.js')
+    'minisearch.js': asset('minisearch.js'),
+    'wordcloud2.js': asset('wordcloud2.js')
 };
 
 // A fixed timestamp on every entry. Zip entries carry an mtime, and using the
