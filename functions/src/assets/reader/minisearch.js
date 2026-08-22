@@ -1,15 +1,16 @@
 // MiniSearch v7.2.0 -- vendored, unmodified, from the npm package's dist/umd/index.js.
 // https://github.com/lucaong/minisearch  MIT, see LICENSE-minisearch.txt beside this file.
 //
-// The UMD build rather than the ESM one, and that is not a style choice. The
-// same reader HTML has to run from a web server and from a file:// URL inside
-// a downloaded zip, and browsers refuse to load ES modules over file:// -- the
-// module fetch is subject to CORS and a file has no origin. UMD loads as a
-// plain script in both places and puts MiniSearch on the global.
+// The UMD build rather than the ESM one, and this is the one place the zip
+// genuinely decides something: search has to work offline -- an archive you
+// cannot search is a folder of files -- and browsers refuse to load ES modules
+// over file://, since the module fetch is subject to CORS and a file has no
+// origin. UMD loads as a plain script in both places and puts MiniSearch on
+// the global.
 //
-// Vendored rather than bundled because the reader has no build step, and
-// rather than loaded from a CDN because the Content-Security-Policy admits no
-// third-party origin. Updating means replacing this file deliberately.
+// Vendored rather than depended on because web/ is not an npm project and has
+// no build step, and rather than loaded from a CDN because script-src is
+// 'self'. Updating means replacing this file deliberately.
 (function (global, factory) {
     typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
     typeof define === 'function' && define.amd ? define(factory) :
