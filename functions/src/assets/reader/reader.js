@@ -1018,6 +1018,16 @@ window.Reader = (function () {
     // not already say louder.
     const MOST = 60;
 
+    // A number made out of the letters of the word. It is not random, but it
+    // scatters like it is, and it is the same number every time -- so the same
+    // archive draws the same cloud on every visit rather than a new picture of
+    // the same letters each time somebody looks.
+    const scramble = (word) => {
+        let hash = 0;
+        for (let i = 0; i < word.length; i += 1) hash = (hash * 31 + word.charCodeAt(i)) % 99991;
+        return hash;
+    };
+
     function countWords(posts) {
         const tally = new Map();
         for (const post of posts) {
@@ -1026,14 +1036,13 @@ window.Reader = (function () {
             }
         }
 
-        // Cut by count, then laid out alphabetically. Ties are broken by the
-        // word so the same archive gives the same cloud every time, and a
-        // reader who is looking for a particular word can find it as well as
-        // notice it.
+        // Cut by count, then shuffled, because a cloud sorted by anything is a
+        // list wearing a costume. Scattering the sizes is what makes the eye
+        // wander over it instead of reading it from one end to the other.
         return [...tally]
             .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
             .slice(0, MOST)
-            .sort((a, b) => a[0].localeCompare(b[0]));
+            .sort((a, b) => scramble(a[0]) - scramble(b[0]) || a[0].localeCompare(b[0]));
     }
 
     // Logarithmic, and relative to the cloud's own font size rather than the
@@ -1125,7 +1134,16 @@ window.Reader = (function () {
                 button.className = 'cloud__word';
                 button.dataset.word = word;
                 button.textContent = word;
-                button.style.fontSize = `${sizeOf(n, least, most).toFixed(2)}em`;
+
+                const size = sizeOf(n, least, most);
+                button.style.fontSize = `${size.toFixed(2)}em`;
+
+                // Every fifth word or so stands on its end, which is what stops
+                // the rows reading as rows. The big ones are left lying down --
+                // upright they are as tall as the whole cloud and push a hole
+                // through the middle of it.
+                if (size < 1.9 && scramble(word) % 5 === 0) button.classList.add('cloud__word--upright');
+
                 button.setAttribute('aria-label', `${word}, ${n} ${n === 1 ? 'time' : 'times'}`);
                 view.box.append(button);
             }
@@ -1723,7 +1741,8 @@ window.Reader = (function () {
                 all.textContent = opening ? 'Collapse all' : 'Expand all';
             });
 
-            // The far end of the row, away from Expand all. One rearranges the
+            // The far end of the row from Expand all, which sits over on the
+            // right above the Expand buttons it works on. One rearranges the
             // list in front of you and the other opens a window over the top
             // of it, and a thumb reaching for one should not land on the other.
             const cloudButton = document.createElement('button');
@@ -1732,7 +1751,7 @@ window.Reader = (function () {
             cloudButton.textContent = 'Word cloud';
             cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
 
-            toolbar.append(all, cloudButton);
+            toolbar.append(cloudButton, all);
             list.parentNode.insertBefore(toolbar, list);
         }
 

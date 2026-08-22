@@ -26,6 +26,23 @@ const POSTS = [
     )
 ];
 
+// Enough distinct words for the scatter to have something to scatter, with one
+// of them well ahead of the rest so there is a biggest word to point at.
+const BUSY = [
+    letter(
+        '2026-04-20-1AAA',
+        `<p>${'Volcano '.repeat(9)} chapel cathedral district baptism candles branch canoe earthquake.</p>`
+    ),
+    letter(
+        '2026-04-13-2BBB',
+        '<p>Volcano chapel cathedral district apartment blackout children coffee companion cobblestones.</p>'
+    ),
+    letter(
+        '2026-04-06-3CCC',
+        '<p>Volcano chapel district apartment blackout children coffee dog elder market mountain.</p>'
+    )
+];
+
 function archive(posts = POSTS) {
     const view = page();
     view.mount({ posts });
@@ -42,13 +59,14 @@ const sizeOf = (view, word) =>
     Number.parseFloat(view.$(`.cloud__word[data-word="${word}"]`).style.fontSize);
 
 describe('getting to the cloud', () => {
-    test('it is a button on the same row as Expand all', () => {
+    test('it is a button on the same row as Expand all, at the other end of it', () => {
         const view = archive();
         const toolbar = view.$('.toolbar');
 
+        // Expand all sits on the right, over the Expand buttons it works on.
         assert.deepEqual(
             [...toolbar.querySelectorAll('button')].map((el) => el.textContent),
-            ['Expand all', 'Word cloud']
+            ['Word cloud', 'Expand all']
         );
     });
 
@@ -99,7 +117,7 @@ describe('what the cloud is made of', () => {
             letter('2026-03-16-28MW', '<p>The hut by the sea again, and the sea again.</p>')
         ]);
 
-        assert.deepEqual(view.cloudWords(), ['again', 'ate', 'hut', 'sea']);
+        assert.deepEqual(view.cloudWords().sort(), ['again', 'ate', 'hut', 'sea']);
     });
 
     test('subject lines are not letters, so they are not counted', () => {
@@ -110,11 +128,25 @@ describe('what the cloud is made of', () => {
         assert.ok(!view.cloudWords().includes('week'));
     });
 
-    test('the words are laid out alphabetically, so one can be found as well as noticed', () => {
-        const view = opened();
-        const words = view.cloudWords();
+    test('the words are scattered rather than sorted, so the eye wanders over them', () => {
+        const words = opened().cloudWords();
 
-        assert.deepEqual(words, [...words].sort((a, b) => a.localeCompare(b)));
+        assert.ok(words.length > 3);
+        assert.notDeepEqual(words, [...words].sort((a, b) => a.localeCompare(b)));
+    });
+
+    test('the same archive scatters the same way every time it is opened', () => {
+        assert.deepEqual(opened().cloudWords(), opened().cloudWords());
+    });
+
+    test('some of them stand on their end, and the biggest never do', () => {
+        const view = opened(BUSY);
+        const upright = view.$$('.cloud__word--upright');
+
+        assert.ok(upright.length > 0);
+        for (const word of upright) {
+            assert.ok(Number.parseFloat(word.style.fontSize) < 1.9, word.dataset.word);
+        }
     });
 });
 
