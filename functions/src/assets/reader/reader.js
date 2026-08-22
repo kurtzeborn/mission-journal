@@ -739,11 +739,14 @@ window.Reader = (function () {
         // will not open one from script without a real click on a real file
         // input -- so it is present and hidden rather than replaced by the
         // button. `accept` is a hint the picker uses to grey out documents;
-        // the format allowlist that matters is on the server.
+        // the format allowlist that matters is on the server. The extensions
+        // are spelled out beside `image/*` because Windows resolves that
+        // wildcard through its registry, which has never heard of any of
+        // them, and would otherwise grey out a phone's own photographs.
         const add = button('Add pictures');
         const picker = document.createElement('input');
         picker.type = 'file';
-        picker.accept = 'image/*';
+        picker.accept = 'image/*,.heic,.heif,.webp,.avif';
         picker.multiple = true;
         picker.hidden = true;
         picker.setAttribute('aria-hidden', 'true');

@@ -45,6 +45,70 @@ export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 export const isPhotoType = (mimeType) =>
     PHOTO_TYPES.has(String(mimeType ?? '').toLowerCase().split(';')[0].trim());
 
+// An ISO base media file that is not AVIF. HEIC and AVIF share a container
+// and differ only in the codec inside it, and the brand at byte 8 is the
+// cheapest way to tell them apart. Only consulted after sharp has already
+// declined the bytes, so a false positive costs one failed decode.
+const looksLikeHeic = (bytes) =>
+    bytes.length > 12 &&
+    bytes.toString('latin1', 4, 8) === 'ftyp' &&
+    !bytes.toString('latin1', 8, 12).startsWith('avi');
+
+/**
+ * Hand sharp a version of these bytes that this build of libvips can read.
+ *
+ * Phones store a HEIC photograph as a grid of small tiles, one `iref` entry
+ * each -- 48 of them for a 4032x3024 picture. The libheif inside sharp caps
+ * that at 16 and rejects the file at its header, so in practice *every* HEIC
+ * a camera produces is unreadable here, and there is no sharp option to lift
+ * the cap. The wasm decoder below has no such limit. It is imported only on
+ * the failing path: it is several megabytes, and making a cold instance pay
+ * for it to open a JPEG would be a poor trade.
+ *
+ * @param {Buffer} input
+ * @returns {Promise<{bytes: Buffer, options: object, width: number, height: number}>}
+ */
+async function open(input) {
+    const options = { limitInputPixels: MAX_PIXELS, animated: false };
+
+    try {
+        const meta = await sharp(input, options).metadata();
+
+        // Turned by hand, because `metadata()` describes the *file* and not
+        // the pipeline: the `rotate()` applied later has no bearing on what it
+        // reports, so a phone photograph shot upright comes back as the
+        // landscape rectangle its sensor recorded while the rendition beside
+        // it is stored portrait. Nothing downstream reads the picture to find
+        // out -- these two numbers are the only shape the book and the reader
+        // ever see -- so recording the sensor's rectangle draws a portrait
+        // photograph into a landscape hole, stretched half as wide again as
+        // it should be. Orientations 5 through 8 are the four that involve a
+        // quarter turn; 1 through 4 are uprights and flips, which change no
+        // dimensions.
+        const turned = (meta.orientation ?? 1) >= 5;
+        return {
+            bytes: input,
+            options,
+            width: (turned ? meta.height : meta.width) ?? 0,
+            height: (turned ? meta.width : meta.height) ?? 0
+        };
+    } catch (err) {
+        if (!looksLikeHeic(input)) throw err;
+
+        const { default: decode } = await import('heic-decode');
+        const { width, height, data } = await decode({ buffer: input });
+
+        // Already upright: libheif applies the container's own rotation while
+        // decoding, and raw pixels carry no EXIF for `rotate()` to read.
+        return {
+            bytes: Buffer.from(data.buffer, data.byteOffset, data.byteLength),
+            options: { ...options, raw: { width, height, channels: 4 } },
+            width,
+            height
+        };
+    }
+}
+
 /**
  * Decode one attachment into display renditions.
  *
@@ -58,39 +122,21 @@ export const isPhotoType = (mimeType) =>
  */
 export async function transcode(bytes) {
     try {
-        const input = Buffer.from(bytes);
-
-        // `rotate()` with no argument applies the EXIF orientation and then
-        // drops it. Without it, every photo shot in portrait renders on its
-        // side once the metadata is stripped.
-        const base = sharp(input, { limitInputPixels: MAX_PIXELS, animated: false }).rotate();
-
-        const meta = await base.metadata();
-
-        // Turned by hand, because `metadata()` describes the *file* and not
-        // the pipeline: the `rotate()` above has no bearing on what it
-        // reports, so a phone photograph shot upright comes back as the
-        // landscape rectangle its sensor recorded while the rendition beside
-        // it is stored portrait. Nothing downstream reads the picture to find
-        // out -- these two numbers are the only shape the book and the reader
-        // ever see -- so recording the sensor's rectangle draws a portrait
-        // photograph into a landscape hole, stretched half as wide again as
-        // it should be. Orientations 5 through 8 are the four that involve a
-        // quarter turn; 1 through 4 are uprights and flips, which change no
-        // dimensions.
-        const turned = (meta.orientation ?? 1) >= 5;
-        const width = (turned ? meta.height : meta.width) ?? 0;
-        const height = (turned ? meta.width : meta.height) ?? 0;
+        const { bytes: input, options, width, height } = await open(Buffer.from(bytes));
 
         if (!width || !height) return null;
         if (Math.max(width, height) < MIN_PHOTO_EDGE) return null;
 
+        // `rotate()` with no argument applies the EXIF orientation and then
+        // drops it. Without it, every photo shot in portrait renders on its
+        // side once the metadata is stripped.
+        //
         // sharp drops all metadata unless withMetadata() is called, so EXIF —
         // including GPS coordinates, which on a missionary's photo is a
         // location the family may not intend to publish — never reaches
         // rendered/.
         const render = (edge) =>
-            sharp(input, { limitInputPixels: MAX_PIXELS, animated: false })
+            sharp(input, options)
                 .rotate()
                 .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
                 .webp({ quality: 82 })

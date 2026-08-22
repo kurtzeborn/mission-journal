@@ -299,6 +299,30 @@
         return null;
     }
 
+    // Chrome reads File.type out of the Windows registry, which carries no
+    // entry for .heic, .webp or .avif -- so on Windows the browser reports
+    // nothing at all for three formats this site accepts, and the upload was
+    // turned away as an unknown kind of file. The extension is the only other
+    // thing we are told about it, and the server checks the bytes anyway.
+    const TYPE_BY_EXTENSION = {
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        gif: 'image/gif',
+        webp: 'image/webp',
+        tif: 'image/tiff',
+        tiff: 'image/tiff',
+        bmp: 'image/bmp',
+        heic: 'image/heic',
+        heif: 'image/heif',
+        avif: 'image/avif'
+    };
+
+    const typeOf = (file) =>
+        file.type ||
+        TYPE_BY_EXTENSION[String(file.name ?? '').split('.').pop().toLowerCase()] ||
+        'application/octet-stream';
+
     // Pictures go up one at a time and the page is reloaded once at the end,
     // because each upload is its own commit and reloading between them would
     // throw away the rest of the selection. The first failure stops the run
@@ -313,7 +337,7 @@
                 postId,
                 '/photos',
                 {
-                    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+                    headers: { 'Content-Type': typeOf(file) },
                     body: file
                 },
                 false

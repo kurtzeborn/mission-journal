@@ -293,6 +293,17 @@ test('a small image is never enlarged and furniture is refused outright', async 
 test('undecodable bytes yield null rather than throwing', async () => {
     assert.equal(await transcode(Buffer.from('not an image at all')), null);
     assert.equal(await transcode(Buffer.alloc(0)), null);
+
+    // An ISO base media header carrying a HEIC brand and nothing behind it:
+    // the shape that sends `transcode` past sharp and on to the wasm decoder.
+    // That second attempt has to fail the same quiet way the first one does,
+    // or one malformed attachment takes the whole letter down with it.
+    const heicish = Buffer.concat([
+        Buffer.from([0, 0, 0, 24]),
+        Buffer.from('ftypheic'),
+        Buffer.alloc(12)
+    ]);
+    assert.equal(await transcode(heicish), null);
 });
 
 test('a photograph shot upright is recorded upright', async () => {
