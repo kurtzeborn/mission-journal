@@ -144,6 +144,21 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "Terms and privacy are one document, served at both addresses. /privacy exists because a privacy notice is asked for by URL -- by a sign-in provider's review, or by somebody who guessed -- and answering that with a 404 is the wrong answer to the right question. Anonymous is not a relaxation: this is read before deciding whether to sign in, and a privacy notice behind a sign-in wall discloses nothing to the people it is written for.",
+      "route": "/terms",
+      "rewrite": "/terms.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/privacy",
+      "rewrite": "/terms.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/terms.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/favicon.ico",
       "allowedRoles": ["anonymous", "authenticated"]
     },

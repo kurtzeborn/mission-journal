@@ -1,0 +1,49 @@
+name: Takedown
+
+# A takedown request is the only issue in this repository with a clock on it,
+# and GitHub treats it like any other. This makes it arrive differently.
+#
+# It notifies by assigning rather than by sending mail. Assignment already
+# produces an email from GitHub, so there is no SMTP credential to hold, no
+# repository secret to rotate, and nothing new that can expire quietly -- which
+# matters here, because a notifier that fails silently is worse than none: the
+# request would sit unread while the page promises somebody is reading it.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    # The title prefix comes from the issue form. Matching on it as well as on
+    # the label means the automation still works before anybody has created the
+    # label in this repository.
+    if: >-
+      startsWith(github.event.issue.title, 'Takedown:') ||
+      contains(github.event.issue.labels.*.name, 'takedown')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label, assign and acknowledge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh label create takedown \
+            --repo "$REPO" \
+            --color d9a441 \
+            --description "A request to remove something, or to claim an archive" \
+            --force
+
+          gh issue edit "$ISSUE" --repo "$REPO" \
+            --add-label takedown \
+            --add-assignee kurtzeborn
+
+          gh issue comment "$ISSUE" --repo "$REPO" --body \
+          'Thank you — this has been flagged and somebody will read it.
+
+          Worth repeating: **this issue is public.** Please keep letters, photographs and contact details out of it. If the request needs those to be understood, say so and we will find another way to carry it on.
+
+          Two outcomes are available to us, and it is better to be plain about them: somebody can be added as an owner of an archive, or an archive can be deleted entirely. Both are recorded with a written reason.'

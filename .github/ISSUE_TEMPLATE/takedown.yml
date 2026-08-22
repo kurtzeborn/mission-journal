@@ -1,0 +1,49 @@
+name: Takedown or privacy request
+description: Ask for something to be removed, or claim an archive that is yours.
+title: 'Takedown: '
+labels: [takedown]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue will be public.** Anyone can read what you type here.
+
+        Do not paste letters, photographs, email addresses, or anybody's contact
+        details. Say just enough to identify the request — somebody will pick it
+        up and take the details somewhere private.
+
+  - type: input
+    id: archive
+    attributes:
+      label: Which archive
+      description: Its web address, or the missionary's name if that is all you have.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: relationship
+    attributes:
+      label: Your connection to it
+      options:
+        - I am the missionary whose letters these are
+        - I appear in the letters, or my child does
+        - I own or help run this archive
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: request
+    attributes:
+      label: What you are asking for
+      description: A sentence is enough. Leave anything private out of it.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: understood
+    attributes:
+      label: Before you submit
+      options:
+        - label: I understand this issue is public, and I have kept private details out of it.
+          required: true

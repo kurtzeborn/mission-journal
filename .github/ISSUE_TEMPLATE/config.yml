@@ -1,0 +1,12 @@
+# Blank issues stay enabled deliberately. Ordinary support is meant to arrive
+# here freely, and a chooser that makes a bug report harder than a takedown
+# would have the priorities backwards.
+blank_issues_enabled: true
+
+contact_links:
+  - name: How the service works
+    url: https://pdayletters.com/faq
+    about: Most questions are already answered here.
+  - name: Terms and privacy
+    url: https://pdayletters.com/terms
+    about: What we may do with the letters, and what we do with your data.
