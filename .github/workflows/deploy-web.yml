@@ -9,7 +9,12 @@ on:
     branches: [main]
     paths:
       - 'web/**'
+      - 'tools/vendor-web.js'
       - '.github/workflows/deploy-web.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'tools/vendor-web.js'
   workflow_dispatch:
 
 # The deployment token is a write credential for the whole site, so no job here
@@ -22,7 +27,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # web/vendor holds copies of files from node_modules, and a copy is only as
+  # good as the last time somebody remembered to make it. This is the job that
+  # remembers. It runs on pull requests as well, which is the case that matters:
+  # a Dependabot bump raises the version in package.json and cannot re-run the
+  # copy step, so without this the lock file would claim one version while the
+  # site went on serving another.
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+        working-directory: web
+
+      - run: npm run vendor:check
+        working-directory: web
+
   deploy:
+    needs: vendor
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,8 +63,12 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: upload
           app_location: web
-          # No build step by design: the reader is plain HTML, CSS and ESM, so
-          # there is nothing to compile and nothing to keep patched.
+          # No build on deploy by design: the pages are plain HTML, CSS and
+          # classic scripts. web/package.json exists so that the browser
+          # libraries in web/vendor are resolved and locked by npm rather than
+          # downloaded by hand -- but the copying happens at development time
+          # and is committed, so there is nothing to compile here. The `vendor`
+          # job above is what makes that safe.
           skip_app_build: true
           output_location: ''
           api_location: ''

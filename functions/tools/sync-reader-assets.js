@@ -9,6 +9,10 @@
 // makes the other match, and archive.test.js fails the build if they ever
 // differ. Run it after touching any of the files below.
 //
+// Two of them are themselves copies, made from web/node_modules by
+// tools/vendor-web.js, so the chain for a library is npm -> web/vendor -> here.
+// Run that one first if a version changed.
+//
 //   node tools/sync-reader-assets.js
 
 import { copyFileSync, mkdirSync } from 'node:fs';

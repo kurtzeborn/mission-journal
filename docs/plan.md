@@ -1266,6 +1266,16 @@ Struck-through items are done. Each links to the phase that built it, where the 
 
   One part stays outside the lock's guarantee: **`sharp` ships platform-specific native binaries as optional dependencies**, so versions are pinned but binary selection happens at install time on the build agent. Same lock, different machine, different artifact.
 
+- **The browser libraries were outside all of this until 2026-08-21, and they are the ones a family actually runs.** MiniSearch, wordcloud2 and Font Awesome sat under `web/vendor` as files somebody had downloaded by hand. Nothing recorded which version they were beyond a comment, nothing would have said so if one were superseded, and Dependabot could not see them: it reads `package.json` files, and `web/` had none. **The only dependencies in the system that execute on a reader's machine were the only ones with no supply-chain signal at all.**
+
+  **`web/package.json` now exists, and it changes nothing about how the site is served.** There is still no bundler and no build on deploy — Static Web Apps uploads the folder as it stands. npm's job here is to resolve, lock and audit; `tools/vendor-web.js` then copies the one file out of each package that a `<script>` tag can name, writing a generated header saying where it came from. Eight files, three packages.
+
+  **Copies are committed rather than produced at deploy time**, for two reasons that are not about preference. The Function App needs them too — `sync-reader-assets.js` copies them on again for the offline archive, and that deployment cannot reach outside `functions/`. And a committed copy is one whose exact served bytes were reviewed.
+
+  **Which makes drift the risk, and it is a worse failure than the one being fixed**: Dependabot raises a version, nobody re-runs the copy, and the lock file now asserts something the site is not doing. So `npm run vendor:check` is a job in `deploy-web.yml` that the deploy `needs`, and it runs on pull requests, which is precisely the case Dependabot creates. A bump that has not been vendored cannot merge green and cannot deploy.
+
+  **This was cheap because it was checked rather than assumed.** The three packages were installed at the versions the hand-downloaded files claimed, re-copied by the script, and diffed: every library body and every licence came out byte-identical, so the hand copies had been faithful and nothing shipped to a reader changed. Only the headers moved.
+
 - **The storage identities are split by scope so `permanentDelete` never reaches `raw/` from the credential exposed to inbound mail.** Checked against the live account on 2026-08-05, the Function App's identity held **Storage Blob Data Owner**, account-wide, and had done since this phase — so the identity processing attacker-supplied mail could permanently erase the one part of the system that cannot be rebuilt.
 
   **The grant was deliberate, which is why it survived.** `main.bicep` carried a comment on it: *Blob Data Owner rather than Contributor: the Functions host manages its own leases and the deployment package container, which Contributor cannot do.* Microsoft's guidance says the opposite — that `Storage Blob Data Contributor` scoped to the deployment storage account is what a system-assigned identity needs. The documentation cannot settle which is right, so the split avoids having to answer it:

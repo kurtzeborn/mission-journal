@@ -46,6 +46,22 @@ updates:
         patterns:
           - '*'
 
+  # The browser libraries. These are the only dependencies that run on a
+  # reader's machine rather than ours, so an advisory here is the one a family
+  # is exposed to -- and they were hand-downloaded and invisible to this file
+  # until web/package.json existed. A bump alone does not ship anything: the
+  # files under web/vendor are copies, and the `vendor` job in deploy-web.yml
+  # fails the pull request until `npm run vendor` has been run against it.
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      browser:
+        patterns:
+          - '*'
+
   # Actions are referenced by moving tag, not by commit SHA, which is a
   # deliberate choice made elsewhere. Given that, the useful thing Dependabot
   # can do is tell us when a major version is superseded -- `actions/checkout@v4`
