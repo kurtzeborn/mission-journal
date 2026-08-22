@@ -971,6 +971,169 @@ window.Reader = (function () {
         return scratch.content.textContent ?? '';
     }
 
+    // --- the word cloud ---------------------------------------------------
+    //
+    // Two years of letters is a great many words and no shape at all. The
+    // cloud is the shape: the places, the people and the things that kept
+    // coming back, sized by how often. It is the only view of the archive
+    // that is not a list of dates, and every word in it is a way into the
+    // search -- which is what makes it more than an ornament.
+    //
+    // Counted here rather than on the server, on the same terms as the
+    // search: the letters are already in memory and nothing has to leave the
+    // device to be told what is in them. It works from file:// too.
+
+    // The words that are in every letter because they are in every sentence.
+    // Deliberately shorter than a proper stopword list -- these are somebody's
+    // letters, not a corpus, and "home", "week" and "love" earn their place
+    // even though a search engine would throw all three away.
+    const NOISE = new Set(
+        `a about after all also am an and any are as at be because been before
+         being but by can could did do does doing done down each even ever
+         every few for from get got had has have having he her here hers him
+         his how i if in into is it its just like me more most much my no nor
+         not now of off on once one only or other our out over own said same
+         she should so some such than that the their them then there these
+         they thing things this those though through to too under until up us
+         very was we well were what when where which while who why will with
+         would yet you your
+         cant didnt dont hes im isnt its ive id ill shes thats theres theyre
+         wasnt weve wont youre`
+            .trim()
+            .split(/\s+/)
+    );
+
+    // Letters only, so years and house numbers stay out of it, and apostrophes
+    // folded away so "don't" and "dont" are one word rather than two.
+    const wordsIn = (text) =>
+        text
+            .toLowerCase()
+            .replace(/[\u2018\u2019]/g, "'")
+            .split(/[^\p{L}']+/u)
+            .map((word) => word.replace(/'/g, ''))
+            .filter((word) => word.length > 2 && !NOISE.has(word));
+
+    // Enough to fill a screen and read as a crowd. Past this the tail is words
+    // that came up twice, and sixty of those say nothing the first sixty did
+    // not already say louder.
+    const MOST = 60;
+
+    function countWords(posts) {
+        const tally = new Map();
+        for (const post of posts) {
+            for (const word of wordsIn(textOf(post))) {
+                tally.set(word, (tally.get(word) ?? 0) + 1);
+            }
+        }
+
+        // Cut by count, then laid out alphabetically. Ties are broken by the
+        // word so the same archive gives the same cloud every time, and a
+        // reader who is looking for a particular word can find it as well as
+        // notice it.
+        return [...tally]
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+            .slice(0, MOST)
+            .sort((a, b) => a[0].localeCompare(b[0]));
+    }
+
+    // Logarithmic, and relative to the cloud's own font size rather than the
+    // page's. A word that came up four times as often is not four times as
+    // interesting, and the type range that reads as a cloud on a laptop is a
+    // wall of headlines on a phone -- so the ratio between the words is fixed
+    // here and the size they are all measured against is left to the stylesheet.
+    const sizeOf = (n, least, most) => {
+        if (most <= least) return 1.4;
+        const step = (Math.log(n) - Math.log(least)) / (Math.log(most) - Math.log(least));
+        return 1 + step * 1.6;
+    };
+
+    let cloud = null;
+
+    function ensureCloud() {
+        if (cloud) return cloud;
+
+        const dialog = document.createElement('dialog');
+        dialog.className = 'cloud';
+
+        const title = document.createElement('h2');
+        title.className = 'cloud__title';
+        title.id = 'cloud-title';
+        title.textContent = 'Word cloud';
+        dialog.setAttribute('aria-labelledby', title.id);
+
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'cloud__close';
+        close.setAttribute('aria-label', 'Close the word cloud');
+        close.textContent = '\u00d7';
+        close.addEventListener('click', () => dialog.close());
+
+        const head = document.createElement('div');
+        head.className = 'cloud__head';
+        head.append(title, close);
+
+        // Said once here rather than on each of sixty buttons, where it would
+        // be sixty times the noise for a screen reader and nothing at all for
+        // everybody else.
+        const note = document.createElement('p');
+        note.className = 'cloud__note';
+        note.textContent = 'What these letters keep coming back to. Pick a word to search for it.';
+
+        const box = document.createElement('div');
+        box.className = 'cloud__words';
+
+        box.addEventListener('click', (event) => {
+            const word = event.target.closest('.cloud__word');
+            if (!word) return;
+            dialog.close();
+            cloud.pick?.(word.dataset.word);
+        });
+
+        dialog.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') dialog.close();
+        });
+
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) dialog.close();
+        });
+
+        dialog.append(head, note, box);
+        document.body.append(dialog);
+
+        cloud = { dialog, box, pick: null };
+        return cloud;
+    }
+
+    function openCloud(posts, pick) {
+        const view = ensureCloud();
+        view.pick = pick;
+
+        // Counted the first time somebody asks and not before. Most readers
+        // never open it, and walking every letter on the way to drawing the
+        // first one is a cost they should not pay.
+        if (!view.box.firstChild) {
+            const tally = countWords(posts);
+            const counts = tally.map(([, n]) => n);
+            // The rarest word that made the cut anchors the small end, not a
+            // count of one that may not be in the archive at all.
+            const most = counts.length ? Math.max(...counts) : 1;
+            const least = counts.length ? Math.min(...counts) : 1;
+
+            for (const [word, n] of tally) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'cloud__word';
+                button.dataset.word = word;
+                button.textContent = word;
+                button.style.fontSize = `${sizeOf(n, least, most).toFixed(2)}em`;
+                button.setAttribute('aria-label', `${word}, ${n} ${n === 1 ? 'time' : 'times'}`);
+                view.box.append(button);
+            }
+        }
+
+        view.dialog.showModal();
+    }
+
     // --- months -----------------------------------------------------------
     //
     // The contents and the list of letters are the same object at two zoom
@@ -1241,7 +1404,7 @@ window.Reader = (function () {
     // also what lets the downloaded copy search at all, with no backend.
     function setUpSearch(posts, views, groups, elements) {
         const { searchForm, searchInput, searchCount } = elements;
-        if (!searchForm || !searchInput) return;
+        if (!searchForm || !searchInput) return null;
 
         const index = new MiniSearch({
             fields: ['subject', 'body'],
@@ -1472,6 +1635,18 @@ window.Reader = (function () {
         });
 
         searchForm.hidden = false;
+
+        // Handed back so the word cloud can search for the word it was given.
+        // It is the only thing outside this function that puts something in
+        // the box, and it goes through the same path a person typing does.
+        return {
+            pick(word) {
+                searchInput.value = word;
+                apply();
+                searchInput.focus();
+                searchForm.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            }
+        };
     }
 
     /**
@@ -1522,6 +1697,8 @@ window.Reader = (function () {
         collapseToNewest(views, groups);
         openFromHash(views, groups);
 
+        const search = setUpSearch(posts, views, groups, elements);
+
         // One control for the whole list, built here for the same reason the
         // search stepper is: there are two page templates hosting this file
         // and only one of this. It earns its place on the archives that are
@@ -1546,12 +1723,20 @@ window.Reader = (function () {
                 all.textContent = opening ? 'Collapse all' : 'Expand all';
             });
 
-            toolbar.append(all);
+            // The far end of the row, away from Expand all. One rearranges the
+            // list in front of you and the other opens a window over the top
+            // of it, and a thumb reaching for one should not land on the other.
+            const cloudButton = document.createElement('button');
+            cloudButton.type = 'button';
+            cloudButton.className = 'button button--quiet button--compact';
+            cloudButton.textContent = 'Word cloud';
+            cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
+
+            toolbar.append(all, cloudButton);
             list.parentNode.insertBefore(toolbar, list);
         }
 
         state.hidden = true;
-        setUpSearch(posts, views, groups, elements);
     }
 
     return { mount, formatDate };

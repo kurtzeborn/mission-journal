@@ -139,6 +139,12 @@ export function page({ url = 'https://pdayletters.com/isaac.backman' } = {}) {
 
         lightbox: () => $('dialog.lightbox'),
 
+        /** The word cloud dialog, once something has caused it to exist. */
+        cloud: () => $('dialog.cloud'),
+
+        /** Every word in the cloud, in the order it was laid out. */
+        cloudWords: () => $$('.cloud__word').map((el) => el.dataset.word),
+
         /** The photo currently on screen at full size, or null. */
         enlarged() {
             const dialog = $('dialog.lightbox');

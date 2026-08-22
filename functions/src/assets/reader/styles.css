@@ -641,7 +641,9 @@ button:focus-visible {
 
 .toolbar {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     margin-top: 1.25rem;
 }
 
@@ -964,6 +966,103 @@ button:focus-visible {
 .lightbox__close:focus-visible {
     outline: 3px solid var(--paper);
     outline-offset: 3px;
+}
+
+/* --- the word cloud --- */
+
+/* A page of letters is a list of dates. This is the only view of the same
+   archive that is about what is in them, so it opens over the top rather than
+   replacing anything -- it is somewhere to look, not somewhere to go. */
+.cloud {
+    width: min(42rem, 92vw);
+    max-height: 86vh;
+    margin: auto;
+    padding: 1rem 1.25rem 1.75rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    border-radius: var(--radius);
+    overflow: auto;
+}
+
+.cloud::backdrop {
+    background: rgba(28, 25, 23, 0.6);
+}
+
+.cloud__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.cloud__title {
+    margin: 0;
+    font-size: 1.1rem;
+}
+
+.cloud__close {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    font-size: 1.4rem;
+    line-height: 1;
+    color: var(--ink-soft);
+    background: none;
+    border: 0;
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.cloud__close:hover {
+    color: var(--ink);
+}
+
+.cloud__close:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.cloud__note {
+    margin: 0.2rem 0 1.25rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+}
+
+/* A row of words that wraps, rather than a shape packed by script. The
+   packing is what makes a cloud pretty and what makes it unreadable, and a
+   wrapped row keeps the words on a baseline where they can still be read. */
+.cloud__words {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0 0.6rem;
+    /* Every word is a multiple of this, so one number moves the whole cloud
+       between a phone and a desktop and the sizes stay in proportion. */
+    font-size: clamp(0.72rem, 2.6vw, 0.85rem);
+}
+
+.cloud__word {
+    padding: 0 0.15rem;
+    font-family: inherit;
+    line-height: 1.3;
+    color: var(--ink);
+    background: none;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.cloud__word:hover {
+    color: var(--accent);
+    background: #efece8;
+}
+
+.cloud__word:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 1px;
 }
 
 /* A letter that is out of view, seen by an owner.
