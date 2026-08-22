@@ -74,7 +74,9 @@ function stubs(window, record) {
         for (const item of options.list) {
             const span = document.createElement('span');
             span.textContent = item.word;
-            span.className = options.classes ?? '';
+            span.className = typeof options.classes === 'function'
+                ? options.classes(item.word, item.weight)
+                : options.classes ?? '';
             span.style.fontSize = `${options.weightFactor(item.weight)}px`;
             for (const [name, value] of Object.entries(item.attributes ?? {})) {
                 span.setAttribute(name, value);

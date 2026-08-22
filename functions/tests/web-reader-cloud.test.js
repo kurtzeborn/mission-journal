@@ -143,7 +143,19 @@ describe('what the reader asks the library for', () => {
         const options = opened().record.wordcloud.at(-1);
 
         assert.equal(options.color, null);
-        assert.equal(options.classes, 'cloud__word');
+        assert.match(options.classes('rain', 4), /^cloud__word cloud__word--\d$/);
+    });
+
+    test('a word is not all one colour, and not a different one each time', () => {
+        const first = opened();
+        const tones = first.$$('.cloud__word').map((word) => word.className.split(' ')[1]);
+
+        assert.ok(new Set(tones).size > 1, 'expected more than one tone in the cloud');
+
+        // Off the word, not off where it landed, so repacking cannot recolour it.
+        const again = opened().$$('.cloud__word').map((word) => word.className.split(' ')[1]);
+
+        assert.deepEqual(again, tones);
     });
 
     test('some of the words are turned on their end', () => {

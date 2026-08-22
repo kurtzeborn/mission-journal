@@ -1041,13 +1041,27 @@ button:focus-visible {
 /* Position, size and rotation are set on each span as it is placed. What is
    left here is everything about how a word looks rather than where it is. */
 .cloud__word {
-    color: var(--ink);
     cursor: pointer;
     border-radius: 4px;
 }
 
+/* One tone per word, picked off the word itself in reader.js. They are pastels
+   pulled toward the ink rather than true pastels: at the small end a word is
+   11px, and anything pale enough to look like sugar at that size cannot be
+   read. Every one of these clears 5:1 against the paper. The first is the
+   site's own accent, so the cloud belongs to the same page as the buttons. */
+.cloud__word--0 { color: #2f5d50; } /* sea green, the accent */
+.cloud__word--1 { color: #3a5c72; } /* slate blue */
+.cloud__word--2 { color: #5a4a72; } /* muted plum */
+.cloud__word--3 { color: #7b4a5c; } /* dusty rose */
+.cloud__word--4 { color: #8a5a3c; } /* clay */
+.cloud__word--5 { color: #6b6234; } /* olive */
+
+/* Darkening to the ink rather than moving to some seventh colour, because the
+   word under the pointer has to look picked whichever of the six it started
+   as, and there is no single colour that reads as a change from all of them. */
 .cloud__word:hover {
-    color: var(--accent);
+    color: var(--ink);
 }
 
 .cloud__word:focus-visible {

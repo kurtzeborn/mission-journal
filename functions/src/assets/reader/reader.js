@@ -1062,6 +1062,21 @@ window.Reader = (function () {
         };
     }
 
+    // How many tones the stylesheet defines. Six is enough that a word rarely
+    // sits next to its own colour and few enough that they still read as a set.
+    const TONES = 6;
+
+    // Off the word rather than off its position, so a word keeps its colour when
+    // a resize repacks the cloud and lands it somewhere else entirely.
+    function toneOf(word) {
+        let hash = 0;
+        for (let i = 0; i < word.length; i += 1) {
+            hash = (hash * 31 + word.charCodeAt(i)) % 100003;
+        }
+
+        return hash % TONES;
+    }
+
     // The library packs the words; everything the reader touches is still ours.
     // In DOM mode it emits a span per word, and each item on the list can carry
     // the attributes that span is given -- so the words come out of it already
@@ -1088,7 +1103,7 @@ window.Reader = (function () {
             // Left to the stylesheet, so hover, focus and any future dark mode
             // are one rule rather than sixty inline colours.
             color: null,
-            classes: 'cloud__word',
+            classes: (word) => `cloud__word cloud__word--${toneOf(word)}`,
             // The step the packing works in. Finer than this and laying out
             // sixty words takes long enough to see; coarser and the gaps show.
             gridSize: 6,
