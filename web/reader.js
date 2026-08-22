@@ -1264,40 +1264,30 @@ window.Reader = (function () {
         // The template's own label and input are moved into the row rather
         // than recreated, so the `for`/`id` pairing and the ids the tests and
         // app.js look up all survive the rearrangement.
-        const bar = document.createElement('div');
-        bar.className = 'search__bar';
-
-        const opener = document.createElement('button');
-        opener.type = 'button';
-        opener.className = 'search__toggle';
-        opener.setAttribute('aria-expanded', 'false');
-        opener.setAttribute('aria-controls', 'search-fields');
-        opener.append(magnifier());
-
         const fields = document.createElement('div');
         fields.className = 'search__fields';
-        fields.id = 'search-fields';
-        fields.hidden = true;
+
+        // The magnifier says what the box is for in the width of a glyph,
+        // which is cheaper than the label it replaces -- a whole line of
+        // vertical space, on a bar that never scrolls away.
+        const icon = magnifier();
+        icon.setAttribute('class', 'search__icon');
 
         // Always on screen once there is something to clear, rather than the
         // browser's own cancel button, which several of them only paint on
         // hover -- and a control that appears when the pointer arrives is no
         // control at all on a phone.
-        //
-        // It is the way out, not a way to start over: the magnifier is across
-        // the row and out of reach of a thumb that is already on the box.
         const clear = document.createElement('button');
         clear.type = 'button';
         clear.className = 'search__clear';
-        clear.setAttribute('aria-label', 'Clear and close the search');
+        clear.setAttribute('aria-label', 'Clear the search');
         clear.textContent = '×';
         clear.hidden = true;
 
         const label = searchForm.querySelector('.search__label');
         if (label) label.classList.add('visually-hidden');
 
-        fields.append(...(label ? [label] : []), searchInput, clear);
-        bar.append(opener, fields);
+        fields.append(...(label ? [label] : []), icon, searchInput, clear);
 
         const nav = document.createElement('div');
         nav.className = 'search__nav';
@@ -1322,7 +1312,7 @@ window.Reader = (function () {
         position.setAttribute('aria-live', 'polite');
 
         nav.append(position, previous, next);
-        searchForm.append(bar, nav);
+        searchForm.append(fields, nav);
 
         let marks = [];
         let at = -1;
@@ -1446,33 +1436,22 @@ window.Reader = (function () {
             position.textContent = describe();
         };
 
-        // Closing throws the query away. A search box that reopens still full
-        // of somebody's last search reopens onto a filtered archive, and the
-        // filtering is the part that looks like a fault.
-        const setOpen = (open) => {
-            opener.setAttribute('aria-expanded', String(open));
-            opener.setAttribute('aria-label', open ? 'Close the search' : 'Search these letters');
-            fields.hidden = !open;
-            if (open) {
-                searchInput.focus();
-                return;
-            }
-            // Guarded so that setting up the page does not count as a close:
-            // clearing an empty box would collapse the letter a digest link
-            // just opened.
+        // Guarded so that a stray Escape on an empty box does not count as a
+        // search being cleared: apply() would collapse the letter a digest
+        // link just opened.
+        const clearSearch = () => {
             if (!searchInput.value) return;
             searchInput.value = '';
             apply();
         };
 
-        opener.addEventListener('click', () => {
-            setOpen(opener.getAttribute('aria-expanded') !== 'true');
+        clear.addEventListener('click', () => {
+            clearSearch();
+            searchInput.focus();
         });
 
-        clear.addEventListener('click', () => setOpen(false));
-
         searchInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') setOpen(false);
+            if (event.key === 'Escape') clearSearch();
         });
 
         // `at` is -1 until the reader steps for the first time, and stepping
@@ -1492,7 +1471,6 @@ window.Reader = (function () {
             goTo(at + 1);
         });
 
-        setOpen(false);
         searchForm.hidden = false;
     }
 

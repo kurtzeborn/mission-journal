@@ -1368,56 +1368,18 @@ h3:target {
     position: sticky;
     top: 0;
     z-index: 5;
-    margin: 1.5rem 0 0;
-    padding: 0.5rem 0;
+    margin: 1.2rem 0 0;
+    padding: 0.4rem 0;
     background: var(--paper);
     /* The letters underneath have to stop somewhere visible rather than
        sliding out from behind the box mid-word. */
     box-shadow: 0 0.6rem 0.6rem -0.6rem rgba(28, 25, 23, 0.18);
 }
 
-/* Shut, the whole of search is one icon. An archive is for reading, and a
-   permanent search box with a label above it was charging every reader who
-   never searches for a feature only some of them want. */
-.search__bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.search__toggle {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex: none;
-    width: 40px;
-    height: 40px;
-    color: var(--ink-soft);
-    background: #fff;
-    border: 1px solid var(--rule);
-    border-radius: var(--radius);
-    cursor: pointer;
-}
-
-.search__toggle:hover {
-    color: var(--ink);
-    border-color: var(--accent);
-}
-
-.search__toggle[aria-expanded='true'] {
-    color: var(--ink);
-}
-
-.search__toggle:focus-visible {
-    outline: 3px solid var(--accent);
-    outline-offset: 1px;
-}
-
-/* The box takes the rest of the row rather than a line of its own. */
+/* One row, always open. It is a single short line, so it earns its place at
+   the top of the page instead of asking to be summoned. */
 .search__fields {
     position: relative;
-    flex: 1 1 auto;
-    min-width: 0;
 }
 
 .search__label {
@@ -1426,13 +1388,24 @@ h3:target {
     color: var(--ink-soft);
 }
 
+/* Inside the box rather than beside it, so the icon costs width and not
+   height. Nothing is clickable about it -- the box behind it already is. */
+.search__icon {
+    position: absolute;
+    top: 50%;
+    left: 0.6rem;
+    transform: translateY(-50%);
+    color: var(--ink-soft);
+    pointer-events: none;
+}
+
 .search__input {
     width: 100%;
-    min-height: 40px;
-    /* Right padding clears the button sitting on top of it. */
-    padding: 0.4rem 2.4rem 0.4rem 0.8rem;
+    min-height: 36px;
+    /* The sides clear the icon under the text and the button on top of it. */
+    padding: 0.3rem 2.2rem 0.3rem 2.2rem;
     font-family: inherit;
-    font-size: 1.05rem;
+    font-size: 0.95rem;
     color: var(--ink);
     background: #fff;
     border: 1px solid var(--rule);
@@ -1457,11 +1430,11 @@ h3:target {
 .search__clear {
     position: absolute;
     top: 50%;
-    right: 0.25rem;
-    width: 32px;
-    height: 32px;
+    right: 0.2rem;
+    width: 30px;
+    height: 30px;
     transform: translateY(-50%);
-    font-size: 1.2rem;
+    font-size: 1.15rem;
     line-height: 1;
     color: var(--ink-soft);
     background: none;
@@ -1484,7 +1457,7 @@ h3:target {
     align-items: center;
     justify-content: flex-end;
     gap: 0.3rem;
-    margin-top: 0.4rem;
+    margin-top: 0.3rem;
 }
 
 .search__position {

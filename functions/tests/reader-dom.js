@@ -131,10 +131,8 @@ export function page({ url = 'https://pdayletters.com/isaac.backman' } = {}) {
             node.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
         },
 
-        /** Type into the search box the way a person does, opening it first. */
+        /** Type into the search box the way a person does. */
         search(query) {
-            const opener = $('.search__toggle');
-            if (opener?.getAttribute('aria-expanded') !== 'true') this.click(opener);
             elements.searchInput.value = query;
             elements.searchInput.dispatchEvent(new window.Event('input', { bubbles: true }));
         },

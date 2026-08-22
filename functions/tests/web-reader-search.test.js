@@ -210,36 +210,31 @@ describe('stepping between matches', () => {
     });
 });
 
-describe('opening and shutting the search', () => {
-    test('an archive arrives with search folded away behind its icon', () => {
+describe('the shape of the search bar', () => {
+    test('the box is on screen from the moment the archive arrives', () => {
         const view = archive();
 
-        assert.equal(view.$('.search__fields').hidden, true);
-        assert.equal(view.$('.search__toggle').getAttribute('aria-expanded'), 'false');
-        assert.equal(view.$('.search__toggle').getAttribute('aria-label'), 'Search these letters');
+        assert.equal(view.elements.searchForm.hidden, false);
+        assert.equal(view.$('.search__input').hidden, false);
+        assert.ok(view.$('.search__icon'));
     });
 
-    test('shutting it throws the query away and gives the archive back', () => {
-        // A box that reopens still holding somebody's last search reopens onto
-        // a filtered archive, and the filtering is the part that looks broken.
+    test('the label is read but not seen, so the bar stays one line high', () => {
+        const view = archive();
+        const label = view.$('.search__label');
+
+        assert.ok(label.classList.contains('visually-hidden'));
+        assert.equal(label.getAttribute('for'), view.elements.searchInput.id);
+    });
+
+    test('escape empties the box and gives the archive back', () => {
         const view = archive();
         view.search('Antigua');
         assert.deepEqual(shown(view), ['2026-03-25-9CRE']);
 
-        view.click(view.$('.search__toggle'));
-
-        assert.equal(view.$('.search__fields').hidden, true);
-        assert.equal(view.elements.searchInput.value, '');
-        assert.deepEqual(shown(view), POSTS.map((post) => post.id));
-    });
-
-    test('escape shuts it too', () => {
-        const view = archive();
-        view.search('Antigua');
-
         view.key(view.elements.searchInput, 'Escape');
 
-        assert.equal(view.$('.search__fields').hidden, true);
+        assert.equal(view.elements.searchInput.value, '');
         assert.deepEqual(shown(view), POSTS.map((post) => post.id));
     });
 });
@@ -257,18 +252,15 @@ describe('clearing the box', () => {
         assert.equal(clear.hidden, false);
     });
 
-    test('clearing is the way out, and folds the search away with it', () => {
-        // The magnifier is across the row from a thumb resting on the box, so
-        // the button under the thumb is the one that has to end the search.
+    test('clearing empties the box and leaves it ready for the next search', () => {
         const view = archive();
         view.search('Antigua');
 
         view.click(view.$('.search__clear'));
 
         assert.equal(view.elements.searchInput.value, '');
-        assert.equal(view.$('.search__fields').hidden, true);
-        assert.equal(view.$('.search__toggle').getAttribute('aria-expanded'), 'false');
         assert.equal(view.$('.search__clear').hidden, true);
+        assert.equal(view.document.activeElement, view.elements.searchInput);
         assert.deepEqual(shown(view), POSTS.map((post) => post.id));
     });
 });
