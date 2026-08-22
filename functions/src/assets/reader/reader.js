@@ -933,13 +933,15 @@ window.Reader = (function () {
             run(`Adding pictures${many}…`, () => admin.addPhotos(post.id, files));
         });
 
-        remove.addEventListener('click', () => {
-            if (!admin.confirmDelete(post)) return;
+        // Awaited, because the answer now comes from a dialog drawn on the
+        // page rather than from the browser stopping the world.
+        remove.addEventListener('click', async () => {
+            if (!(await admin.confirmDelete(post))) return;
             run('Deleting…', () => admin.remove(post.id));
         });
 
-        revert?.addEventListener('click', () => {
-            if (!admin.confirmRestore(post)) return;
+        revert?.addEventListener('click', async () => {
+            if (!(await admin.confirmRestore(post))) return;
             run('Restoring…', () => admin.restore(post.id));
         });
 

@@ -1069,6 +1069,70 @@ button:focus-visible {
     outline-offset: 2px;
 }
 
+/* --- asking first --- */
+
+/* Narrow on purpose. The question is one line and the detail is two, and a
+   dialog wide enough for the archive would set them across a measure nobody
+   reads a warning at. */
+.ask {
+    width: min(30rem, 92vw);
+    margin: auto;
+    padding: 1.25rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    border-radius: var(--radius);
+}
+
+.ask::backdrop {
+    background: rgba(28, 25, 23, 0.6);
+}
+
+.ask__question {
+    margin: 0 0 0.5rem;
+    font-size: 1.05rem;
+    line-height: 1.35;
+}
+
+.ask__detail {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+}
+
+.ask__buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+}
+
+.ask__button {
+    min-height: 44px;
+    padding: 0.5rem 1.1rem;
+    font: inherit;
+    font-size: 0.9rem;
+    color: var(--ink);
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.ask__button:hover {
+    border-color: var(--accent);
+}
+
+/* Red, because every question asked through this dialog is about something
+   that will not come back. The same red as the archive's own delete. */
+.ask__button--go {
+    color: #fff;
+    background: #9b2226;
+    border-color: #9b2226;
+}
+
 /* A letter that is out of view, seen by an owner.
 
    Dimmed rather than badged. The badge was a pill on its own line above the

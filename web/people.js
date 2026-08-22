@@ -7,6 +7,8 @@
 // re-checks all of it on every call regardless; this decides what to draw, not
 // who is allowed to do it.
 
+/* global Confirm */
+
 (() => {
     'use strict';
 
@@ -151,9 +153,18 @@
                     // whose consequence is invisible: the person is simply
                     // gone the next time they look.
                     const sure = person.pending
-                        ? `Withdraw the invitation to ${person.email}?`
-                        : `Remove ${person.email} from this archive?\n\nThey will no longer be able to read the letters. Nothing is emailed to them.`;
-                    if (!window.confirm(sure)) return 'cancelled';
+                        ? {
+                              question: `Withdraw the invitation to ${person.email}?`,
+                              action: 'Withdraw'
+                          }
+                        : {
+                              question: `Remove ${person.email} from this archive?`,
+                              detail:
+                                  'They will no longer be able to read the letters. ' +
+                                  'Nothing is emailed to them.',
+                              action: 'Remove'
+                          };
+                    if (!(await Confirm.ask(sure))) return 'cancelled';
                     await api(`/${encodeURIComponent(person.pending ? person.id : person.email)}`, {
                         method: 'DELETE'
                     });

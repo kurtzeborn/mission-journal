@@ -255,7 +255,10 @@ export function page({ html, path = '/', hash = '' }) {
     };
 
     context.window = context;
-    context.window.confirm = () => context.confirmed;
+    // The site's own dialog, stubbed to the answer a test asked for. It draws
+    // itself into a page this DOM does not have, and the question under test
+    // is only ever which branch the answer took.
+    context.Confirm = { ask: async () => context.confirmed };
     context.self = context;
 
     return {

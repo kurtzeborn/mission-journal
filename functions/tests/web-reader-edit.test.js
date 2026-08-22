@@ -44,11 +44,13 @@ function owner({
                 calls.push({ verb: 'restore', id });
                 return restore(id);
             },
-            confirmDelete: () => {
+            // Async, like the site's own: the answer comes from a dialog on
+            // the page now, so it arrives a turn after the button is pressed.
+            confirmDelete: async () => {
                 calls.push({ verb: 'confirm' });
                 return confirm;
             },
-            confirmRestore: () => {
+            confirmRestore: async () => {
                 calls.push({ verb: 'confirm' });
                 return confirm;
             }
@@ -223,18 +225,20 @@ describe('hiding and deleting', () => {
         assert.deepEqual(saved(calls), { hidden: true });
     });
 
-    test('deleting asks first, and a refusal sends nothing', () => {
+    test('deleting asks first, and a refusal sends nothing', async () => {
         const { view, calls } = owner({ confirm: false });
 
         view.click(view.button('Delete'));
+        await settled();
 
         assert.deepEqual(calls.map((call) => call.verb), ['confirm']);
     });
 
-    test('deleting after agreeing to it goes through', () => {
+    test('deleting after agreeing to it goes through', async () => {
         const { view, calls } = owner();
 
         view.click(view.button('Delete'));
+        await settled();
 
         assert.deepEqual(calls.map((call) => call.verb), ['confirm', 'remove']);
     });
@@ -307,10 +311,11 @@ describe('putting a letter back the way it arrived', () => {
         assert.equal(view.button('Restore original').hidden, false);
     });
 
-    test('restoring asks first, and sends nothing if the answer is no', () => {
+    test('restoring asks first, and sends nothing if the answer is no', async () => {
         const { view, calls } = owner({ post: EDITED, confirm: false });
 
         view.click(view.button('Restore original'));
+        await settled();
 
         assert.deepEqual(
             calls.map((call) => call.verb),
@@ -318,10 +323,11 @@ describe('putting a letter back the way it arrived', () => {
         );
     });
 
-    test('restoring sends the post id once the answer is yes', () => {
+    test('restoring sends the post id once the answer is yes', async () => {
         const { view, calls } = owner({ post: EDITED });
 
         view.click(view.button('Restore original'));
+        await settled();
 
         assert.deepEqual(
             calls.map((call) => call.verb),

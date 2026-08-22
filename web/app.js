@@ -5,7 +5,7 @@
 // handling an expired session. The drawing is Reader.mount(), which the
 // downloaded zip calls with exactly the same arguments.
 
-/* global Reader */
+/* global Reader, Confirm */
 
 (function () {
     'use strict';
@@ -476,12 +476,14 @@
                       restore: (postId) => send('POST', postId, null, '/restore'),
                       addPhotos,
                       confirmDelete: (post) =>
-                          window.confirm(
-                              `Remove "${post.subject || 'Untitled'}" from the site?\n\n` +
+                          Confirm.ask({
+                              question: `Remove "${post.subject || 'Untitled'}" from the site?`,
+                              detail:
                                   'The original letter is kept in the archive, so this can be ' +
                                   'undone by re-forwarding it. To take a letter out of view ' +
-                                  'while you decide, use Hide instead.'
-                          ),
+                                  'while you decide, use Hide instead.',
+                              action: 'Delete'
+                          }),
                       // Names whose work is about to go, because it may not be
                       // this owner's -- an archive can have several, and
                       // there is no revision history to recover it from
@@ -489,13 +491,15 @@
                       // with it: the letter is rebuilt from the message that
                       // arrived, and that message never had them.
                       confirmRestore: (post) =>
-                          window.confirm(
-                              `Put "${post.subject || 'Untitled'}" back to the letter that ` +
-                                  'arrived?\n\n' +
-                                  `This discards every change made to it${
-                                      post.editedBy ? `, including ${post.editedBy}'s` : ''
-                                  }, and any pictures added to it here. It cannot be undone.`
-                          )
+                          Confirm.ask({
+                              question: `Put "${
+                                  post.subject || 'Untitled'
+                              }" back to the letter that arrived?`,
+                              detail: `This discards every change made to it${
+                                  post.editedBy ? `, including ${post.editedBy}'s` : ''
+                              }, and any pictures added to it here. It cannot be undone.`,
+                              action: 'Restore original'
+                          })
                   }
                 : null;
 
