@@ -22,7 +22,7 @@
     "mailauth": "^4.8.0",
     "pdfkit": "^0.19.1",
     "postal-mime": "^2.4.0",
-    "sanitize-html": "^2.17.6",
+    "sanitize-html": "^2.17.7",
     "sharp": "^0.35.3",
     "yazl": "^3.3.1"
   },
