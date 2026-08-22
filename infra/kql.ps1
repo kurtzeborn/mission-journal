@@ -20,8 +20,26 @@ if (-not $token) { throw 'Could not get a token. Run `az login` first.' }
 
 $body = @{ query = $Kql } | ConvertTo-Json -Compress
 
-$response = Invoke-RestMethod -Method Post -Uri "https://api.applicationinsights.io/v1/apps/$AppId/query" `
-    -Headers @{ Authorization = "Bearer $token"; 'Content-Type' = 'application/json' } -Body $body
+try {
+    $response = Invoke-RestMethod -Method Post -Uri "https://api.applicationinsights.io/v1/apps/$AppId/query" `
+        -Headers @{ Authorization = "Bearer $token"; 'Content-Type' = 'application/json' } -Body $body
+}
+catch {
+    # The part worth reading -- which token failed to parse, and where -- is in
+    # the response body, and it is nested: the outer message only ever says
+    # "The request had some invalid properties". Without this the query error
+    # is invisible and the run dies three lines later on a null table instead.
+    $detail = $_.ErrorDetails.Message
+    if (-not $detail) { throw }
+
+    $err = ($detail | ConvertFrom-Json).error
+    $message = $err.message
+    while ($err.innererror) {
+        $err = $err.innererror
+        if ($err.message) { $message = $err.message }
+    }
+    throw "Query rejected: $message"
+}
 
 $columns = $response.tables[0].columns.name
 foreach ($row in $response.tables[0].rows) {
