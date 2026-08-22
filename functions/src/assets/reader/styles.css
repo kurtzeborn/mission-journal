@@ -397,6 +397,91 @@ button:focus-visible {
     padding: 0;
 }
 
+/* --- months --- */
+
+/* The contents and the letters are one list at two zoom levels. A month
+   heading folds the letters under it away, so two years shuts down to a couple
+   of dozen rows and opens back up in place. There is no second copy of the
+   subject lines anywhere, which is the whole reason for doing it this way. */
+.month {
+    border-top: 1px solid var(--rule);
+}
+
+/* Quieter than a letter's summary line in every way it can be -- smaller, sans
+   serif, a shorter row. It is scaffolding, and it has to lose to the thing it
+   is holding up. */
+.month__toggle {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: 0 0.75rem;
+    position: relative;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.4rem 1.6rem 0.4rem 0;
+    margin: 0;
+    background: none;
+    border: 0;
+    border-radius: var(--radius);
+    font-family: system-ui, sans-serif;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.month__toggle:hover .month__name {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.month__toggle:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.month__name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.month__count {
+    font-size: 0.75rem;
+    color: var(--ink-soft);
+}
+
+/* The same arrow a letter has, turned the same way for the same reason. */
+.month__toggle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 0.3rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-top: -0.35rem;
+    border-right: 2px solid var(--ink-soft);
+    border-bottom: 2px solid var(--ink-soft);
+    transform: rotate(-135deg);
+    transition: transform 0.15s ease;
+}
+
+.month--folded .month__toggle::after {
+    margin-top: -0.5rem;
+    transform: rotate(45deg);
+}
+
+.month__posts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+/* The month's own rule already separates it from what is above it, so the
+   first letter underneath does not need a second one a few pixels below. */
+.month__posts .post:first-child {
+    border-top: 0;
+}
+
 .post {
     border-top: 1px solid var(--rule);
 }
@@ -482,10 +567,12 @@ button:focus-visible {
     gap: 0 1rem;
 }
 
-/* The label and the reading sit on one line and only stack if the screen is
-   too narrow to hold them. Stacked unconditionally, the clock spent three
-   lines of a phone screen -- its own two plus the one it pushed the title
-   onto -- on a detail nobody opened the archive to read. */
+/* The label and the reading are one phrase -- "Home in 84 days, 06:11:02" --
+   so they are set at one size and told apart by colour alone. They sit on one
+   line and stack only if the screen is too narrow to hold them. Stacked
+   unconditionally, the clock spent three lines of a phone screen -- its own
+   two plus the one it pushed the title onto -- on a detail nobody opened the
+   archive to read. */
 .elapsed {
     display: flex;
     flex-wrap: wrap;
@@ -498,13 +585,9 @@ button:focus-visible {
     margin-bottom: 0.9rem;
     text-align: right;
     font-family: system-ui, sans-serif;
+    font-size: 0.78rem;
     color: var(--ink-soft);
     line-height: 1.3;
-}
-
-.elapsed__label {
-    font-size: 0.7rem;
-    letter-spacing: 0.04em;
 }
 
 /* Tabular figures so the seconds do not shove the rest of the line sideways
@@ -512,7 +595,6 @@ button:focus-visible {
    which is exactly the sort of movement that makes a page hard to read. */
 .elapsed__value {
     font-variant-numeric: tabular-nums;
-    font-size: 0.85rem;
     color: var(--ink);
 }
 

@@ -32,14 +32,21 @@
     const photoSrc = (photoId, size) =>
         `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(photoId)}/${size}.webp`;
 
-    // --- how long they have been out --------------------------------------
+    // --- the clock ---------------------------------------------------------
     //
-    // A clock at the top of the archive, counting up from the day the mission
-    // began. It is the one thing on this page that is not a letter, and it
-    // earns the space because it answers the question every visiting relative
-    // asks first and nobody wants to work out on their fingers.
+    // One line at the top of the archive. It is the only thing on this page
+    // that is not a letter, and it earns the space because it answers the
+    // question every visiting relative asks first and nobody wants to work out
+    // on their fingers.
     //
-    // Only drawn when the owner has filled the date in, which most have not.
+    // It reads three ways, and the label is the only thing that says which:
+    // `Serving` while it counts up, `Home in` once there is a return date to
+    // count down to, `Served` after that date has passed. Each is a word or
+    // two rather than a caption, because the label and the number are one
+    // phrase -- "Home in 84 days, 06:11:02" -- and a phrase fits on a line of
+    // a phone where a caption and a reading did not.
+    //
+    // Only drawn when somebody has filled a date in, which most have not.
     // A counter reading zero, or a blank where a number belongs, is worse than
     // no counter at all.
 
@@ -58,6 +65,8 @@
         return Number.isNaN(when.getTime()) ? null : when;
     };
 
+    const plural = (n, word) => `${n} ${n === 1 ? word : `${word}s`}`;
+
     // Days and a clock, rather than years and months. Months are the ambiguous
     // unit -- "one year, five months" is a different length depending on which
     // five -- and a mission is short enough that the day count stays a number
@@ -67,36 +76,64 @@
         const rest = ms - days * DAY;
         const pad = (n) => String(n).padStart(2, '0');
         const clock = `${pad(Math.floor(rest / HOUR))}:${pad(Math.floor(rest / MINUTE) % 60)}:${pad(Math.floor(rest / SECOND) % 60)}`;
-        return `${days} ${days === 1 ? 'day' : 'days'}, ${clock}`;
+        return `${plural(days, 'day')}, ${clock}`;
     };
 
-    function countUp(startDate) {
+    function runClock(startDate, returnDate) {
         const box = document.getElementById('elapsed');
+        const label = document.getElementById('elapsed-label');
         const value = document.getElementById('elapsed-value');
         const from = startOfDay(startDate);
-        if (!box || !value || !from) return;
+        const home = startOfDay(returnDate);
+        if (!box || !label || !value || (!from && !home)) return;
 
-        // Two years to the day, which is the longest a mission runs. Past that
-        // the clock stops rather than being hidden: somebody who has come home
-        // still served, and the archive is a record of it. Sisters serve
-        // eighteen months and will see it stop early only if the owner also
-        // fills in a return date, which nothing here reads yet.
-        const until = new Date(from.getTime());
-        until.setFullYear(until.getFullYear() + 2);
+        // Two years to the day, which is the longest a mission runs. It is a
+        // stand-in for a return date and nothing else, so it applies only
+        // where there is no real one: past it the clock stops rather than
+        // being hidden, because somebody who has come home still served.
+        // Sisters serve eighteen months and will see it stop late unless the
+        // owner fills the return date in.
+        const until = from && new Date(from.getTime());
+        if (until) until.setFullYear(until.getFullYear() + 2);
+
+        const say = (word, reading) => {
+            label.textContent = word;
+            value.textContent = reading;
+            box.hidden = false;
+        };
 
         // Returns true when there is nothing left to count.
         const tick = () => {
             const now = Date.now();
+
             // A start date in the future is a report date somebody typed
             // early. Nothing to show yet, and it appears on its own the day it
             // arrives without anybody reloading.
-            if (now < from.getTime()) {
+            if (from && now < from.getTime()) {
                 box.hidden = true;
                 return false;
             }
 
-            value.textContent = spell(Math.min(now, until.getTime()) - from.getTime());
-            box.hidden = false;
+            if (home && now < home.getTime()) {
+                say('Home in', spell(home.getTime() - now));
+                return false;
+            }
+
+            if (home) {
+                // A total, not a reading, so it loses the seconds and the
+                // role that promises they are moving. Rounded rather than
+                // floored because the span crosses daylight saving and a
+                // mission is not 729 days and 23 hours long.
+                if (!from) {
+                    box.hidden = true;
+                    return true;
+                }
+                value.removeAttribute('role');
+                say('Served', plural(Math.round((home.getTime() - from.getTime()) / DAY), 'day'));
+                return true;
+            }
+
+            say('Serving', spell(Math.min(now, until.getTime()) - from.getTime()));
             return now >= until.getTime();
         };
 
@@ -303,7 +340,7 @@
         title.textContent = heading;
         document.title = `${heading} — Pday Letters`;
 
-        countUp(payload.startDate);
+        runClock(payload.startDate, payload.returnDate);
 
         const download = document.getElementById('download');
         if (download) {

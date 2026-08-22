@@ -173,10 +173,11 @@ export async function saveProfile({
             tables,
             slug,
             missionaryDisplayName: name,
-            // Always offered, empty included: the archive page reads the start
-            // date off this row, so an owner who clears the field has to see
-            // the timer go away.
-            missionStartDate: began
+            // Always offered, empty included: the archive page reads both
+            // dates off this row, so an owner who clears a field has to see
+            // the clock change to match.
+            missionStartDate: began,
+            missionReturnDate: when
         });
     } catch (err) {
         // Not fatal, and deliberately not rolled back. The rename is saved;

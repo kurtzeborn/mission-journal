@@ -138,12 +138,18 @@
         <div class="archive-head">
             <h1 id="site-title" class="post__subject">&nbsp;</h1>
             <div class="elapsed" id="elapsed" hidden>
-                <span class="elapsed__label">Time in the mission field:</span>
+                <!--
+                    Empty until the script decides which of the three readings
+                    this archive gets: Serving, Home in, or Served. The label
+                    and the value are one phrase, not a caption and a number.
+                -->
+                <span class="elapsed__label" id="elapsed-label"></span>
                 <!--
                     role="timer" and nothing else. It carries no aria-live, so
                     a screen reader announces it when the reader asks and not
                     once a second forever, which is what a live region on a
-                    clock actually does.
+                    clock actually does. Dropped altogether once the reading is
+                    a total that has stopped moving.
                 -->
                 <span class="elapsed__value" id="elapsed-value" role="timer"></span>
             </div>

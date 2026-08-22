@@ -523,6 +523,10 @@ window.Reader = (function () {
         view.item.classList.toggle('post--open', open);
         view.toggle.setAttribute('aria-expanded', String(open));
         view.panel.hidden = !open;
+        // A letter cannot be open inside a folded month. Everything that opens
+        // one from the outside -- a digest link, a search hit, Expand all --
+        // goes through here, so this is the only place that has to know.
+        if (open && view.group) setFolded(view.group, false);
     }
 
     function renderPost(post, photoSrc, admin) {
@@ -967,11 +971,108 @@ window.Reader = (function () {
         return scratch.content.textContent ?? '';
     }
 
+    // --- months -----------------------------------------------------------
+    //
+    // The contents and the list of letters are the same object at two zoom
+    // levels. Rather than a menu holding a second copy of every subject line,
+    // the months are headings in the list itself: folded, two years of letters
+    // is two dozen rows that fit on one screen; unfolded, it is the list it
+    // always was. Nothing has to be kept in step with anything, because there
+    // is only one of it.
+    //
+    // Nothing is grouped until there are two months to tell apart. A single
+    // heading over the whole archive is a row that says nothing.
+
+    // Above this many letters the months arrive folded. Below it the archive
+    // is already a screen or two of dates, and folding it would be hiding a
+    // short list in order to save scrolling past a short list.
+    const FOLD_ABOVE = 12;
+
+    const monthName = (key) => {
+        const [year, month] = key.split('-');
+        return new Date(Date.UTC(+year, +month - 1, 1)).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'long',
+            timeZone: 'UTC'
+        });
+    };
+
+    const countLetters = (n) => `${n} ${n === 1 ? 'letter' : 'letters'}`;
+
+    function setFolded(group, folded) {
+        group.item.classList.toggle('month--folded', folded);
+        group.toggle.setAttribute('aria-expanded', String(!folded));
+        group.inner.hidden = folded;
+    }
+
+    // Returns the groups, or an empty list when the archive is not worth
+    // grouping -- in which case the letters go straight into the list and
+    // nothing else in this file behaves any differently.
+    function groupByMonth(posts, views, list) {
+        const groups = [];
+        const byKey = new Map();
+
+        for (const post of posts) {
+            const key = String(post.originalDate ?? '').slice(0, 7);
+            // One letter nobody can date would leave a heading with no month
+            // to name, so the whole archive goes ungrouped rather than mostly.
+            if (!/^\d{4}-\d{2}$/.test(key)) return [];
+
+            if (!byKey.has(key)) {
+                byKey.set(key, { key, views: [] });
+                groups.push(byKey.get(key));
+            }
+            byKey.get(key).views.push(views.get(post.id));
+        }
+
+        if (groups.length < 2) return [];
+
+        for (const group of groups) {
+            group.item = document.createElement('li');
+            group.item.className = 'month';
+
+            group.inner = document.createElement('ol');
+            group.inner.className = 'month__posts';
+            group.inner.id = `month-${group.key}`;
+            for (const view of group.views) group.inner.append(view.item);
+
+            group.toggle = document.createElement('button');
+            group.toggle.type = 'button';
+            group.toggle.className = 'month__toggle';
+            group.toggle.setAttribute('aria-expanded', 'true');
+            group.toggle.setAttribute('aria-controls', group.inner.id);
+
+            const name = document.createElement('span');
+            name.className = 'month__name';
+            name.textContent = monthName(group.key);
+
+            group.count = document.createElement('span');
+            group.count.className = 'month__count';
+            group.count.textContent = countLetters(group.views.length);
+
+            group.toggle.append(name, group.count);
+            group.item.append(group.toggle, group.inner);
+            list.append(group.item);
+
+            for (const view of group.views) view.group = group;
+
+            group.toggle.addEventListener('click', () => {
+                setFolded(group, group.toggle.getAttribute('aria-expanded') === 'true');
+            });
+        }
+
+        return groups;
+    }
+
     // The resting state of the page: the newest letter open, everything else
     // shut. Applied on load and again whenever the search box is emptied, so
     // clearing a search puts the page back where it started rather than
     // leaving every letter the reader happened to visit hanging open.
-    function collapseToNewest(views) {
+    function collapseToNewest(views, groups = []) {
+        for (const group of groups) setFolded(group, views.size > FOLD_ABOVE);
+
+        // The newest letter is opened last on purpose: opening it unfolds the
+        // month it is in, which is the one month that should not be shut.
         let first = true;
         for (const view of views.values()) {
             setExpanded(view, first);
@@ -996,7 +1097,7 @@ window.Reader = (function () {
     // buttons, so the only way the fragment changes after load is somebody
     // editing the address bar, and re-collapsing the page under a reader who
     // did that is worse than ignoring them.
-    function openFromHash(views) {
+    function openFromHash(views, groups = []) {
         const hash = String(location.hash || '');
         if (!hash.startsWith('#panel-')) return;
 
@@ -1013,6 +1114,9 @@ window.Reader = (function () {
         const wanted = views.get(id);
         if (!wanted) return;
 
+        // Re-folded rather than left as the newest letter found them, so that
+        // arriving on one letter leaves exactly one month open: its own.
+        for (const group of groups) setFolded(group, views.size > FOLD_ABOVE);
         for (const view of views.values()) setExpanded(view, view === wanted);
         wanted.item.scrollIntoView();
     }
@@ -1135,7 +1239,7 @@ window.Reader = (function () {
     // Nothing is sent back, which means a half-typed search for a grandchild's
     // name never leaves the device and there is no query log to protect. It is
     // also what lets the downloaded copy search at all, with no backend.
-    function setUpSearch(posts, views, elements) {
+    function setUpSearch(posts, views, groups, elements) {
         const { searchForm, searchInput, searchCount } = elements;
         if (!searchForm || !searchInput) return;
 
@@ -1179,10 +1283,13 @@ window.Reader = (function () {
         // browser's own cancel button, which several of them only paint on
         // hover -- and a control that appears when the pointer arrives is no
         // control at all on a phone.
+        //
+        // It is the way out, not a way to start over: the magnifier is across
+        // the row and out of reach of a thumb that is already on the box.
         const clear = document.createElement('button');
         clear.type = 'button';
         clear.className = 'search__clear';
-        clear.setAttribute('aria-label', 'Clear the search');
+        clear.setAttribute('aria-label', 'Clear and close the search');
         clear.textContent = '×';
         clear.hidden = true;
 
@@ -1244,6 +1351,10 @@ window.Reader = (function () {
                 view.hits.textContent = '';
                 view.item.hidden = false;
             }
+            for (const group of groups) {
+                group.item.hidden = false;
+                group.count.textContent = countLetters(group.views.length);
+            }
             marks = [];
             at = -1;
             letters = 0;
@@ -1281,7 +1392,7 @@ window.Reader = (function () {
             if (!query) {
                 nav.hidden = true;
                 position.textContent = '';
-                collapseToNewest(views);
+                collapseToNewest(views, groups);
                 return;
             }
 
@@ -1315,6 +1426,18 @@ window.Reader = (function () {
                 }
             }
 
+            // Every month is opened, because a search is a question about the
+            // whole archive and an answer folded away is not one. The heading
+            // counts what is left rather than what the month holds, so a month
+            // showing one letter does not claim to hold four, and a month
+            // showing none goes with them.
+            for (const group of groups) {
+                setFolded(group, false);
+                const showing = group.views.filter((view) => !view.item.hidden).length;
+                group.count.textContent = countLetters(showing);
+                group.item.hidden = showing === 0;
+            }
+
             // The row carries the verdict as well as the stepper, so it stays
             // up to say that nothing matched.
             nav.hidden = false;
@@ -1346,11 +1469,7 @@ window.Reader = (function () {
             setOpen(opener.getAttribute('aria-expanded') !== 'true');
         });
 
-        clear.addEventListener('click', () => {
-            searchInput.value = '';
-            searchInput.focus();
-            apply();
-        });
+        clear.addEventListener('click', () => setOpen(false));
 
         searchInput.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') setOpen(false);
@@ -1412,13 +1531,18 @@ window.Reader = (function () {
 
         const views = new Map();
         for (const post of posts) {
-            const view = renderPost(post, photoSrc, admin);
-            views.set(post.id, view);
-            list.append(view.item);
+            views.set(post.id, renderPost(post, photoSrc, admin));
         }
 
-        collapseToNewest(views);
-        openFromHash(views);
+        // Either puts every letter into a month and the months into the list,
+        // or hands back nothing and leaves the letters to go in flat.
+        const groups = groupByMonth(posts, views, list);
+        if (!groups.length) {
+            for (const view of views.values()) list.append(view.item);
+        }
+
+        collapseToNewest(views, groups);
+        openFromHash(views, groups);
 
         // One control for the whole list, built here for the same reason the
         // search stepper is: there are two page templates hosting this file
@@ -1436,6 +1560,10 @@ window.Reader = (function () {
 
             all.addEventListener('click', () => {
                 const opening = all.textContent === 'Expand all';
+                // Folded first when shutting, because opening a letter
+                // unfolds its month and doing the two in the other order
+                // would undo half the work as it went.
+                for (const group of groups) setFolded(group, !opening);
                 for (const view of views.values()) setExpanded(view, opening);
                 all.textContent = opening ? 'Collapse all' : 'Expand all';
             });
@@ -1445,7 +1573,7 @@ window.Reader = (function () {
         }
 
         state.hidden = true;
-        setUpSearch(posts, views, elements);
+        setUpSearch(posts, views, groups, elements);
     }
 
     return { mount, formatDate };

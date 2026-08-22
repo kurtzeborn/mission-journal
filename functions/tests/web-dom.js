@@ -37,11 +37,27 @@ class Element {
         this.href = '';
         this.value = '';
         this.type = '';
+        this.attributes = new Map();
         this.listeners = new Map();
         this.classList = {
             added: [],
             add: (...names) => this.classList.added.push(...names)
         };
+    }
+
+    // Attributes the markup wrote and the script may take back. `role="timer"`
+    // on a clock that has stopped is the case this exists for: it is a
+    // promise to a screen reader that the number is still moving.
+    getAttribute(name) {
+        return this.attributes.has(name) ? this.attributes.get(name) : null;
+    }
+
+    setAttribute(name, value) {
+        this.attributes.set(name, String(value));
+    }
+
+    removeAttribute(name) {
+        this.attributes.delete(name);
     }
 
     // Text lives in child nodes, exactly as it does in a browser. It matters:
@@ -130,7 +146,10 @@ function markup(file) {
                 // safe if it really does start that way, and a test that set
                 // the initial state itself could never notice the attribute
                 // being dropped.
-                disabled: /\bdisabled\b/.test(bare)
+                disabled: /\bdisabled\b/.test(bare),
+                attrs: new Map(
+                    [...attrs.matchAll(/\b([\w-]+)="([^"]*)"/g)].map(([, name, v]) => [name, v])
+                )
             });
         }
     }
@@ -153,6 +172,7 @@ export function page({ html, path = '/', hash = '' }) {
         const element = new Element('div');
         element.hidden = start.hidden;
         element.disabled = start.disabled;
+        for (const [name, value] of start.attrs) element.setAttribute(name, value);
         elements.set(id, element);
     }
 

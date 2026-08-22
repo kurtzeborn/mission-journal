@@ -72,15 +72,24 @@ export async function touchSiteActivity({ tables, slug, lastPostAt, receivedAt }
  * clearing the field in settings passes an empty string, which is offered and
  * therefore does overwrite. Undefined means "I have no opinion"; empty means
  * "there is no date", and the two must not collapse into each other.
+ *
+ * `missionReturnDate` follows the same rule for the same reason.
  */
-export async function setSiteProfile({ tables, slug, missionaryDisplayName, missionStartDate }) {
+export async function setSiteProfile({
+    tables,
+    slug,
+    missionaryDisplayName,
+    missionStartDate,
+    missionReturnDate
+}) {
     if (!slug) return;
 
     await tables.upsertEntity(TABLES.sites, {
         partitionKey: slug,
         rowKey: ROW,
         missionaryDisplayName: missionaryDisplayName ?? '',
-        ...(missionStartDate === undefined ? {} : { missionStartDate })
+        ...(missionStartDate === undefined ? {} : { missionStartDate }),
+        ...(missionReturnDate === undefined ? {} : { missionReturnDate })
     });
 }
 
@@ -93,7 +102,8 @@ export async function setSiteProfile({ tables, slug, missionaryDisplayName, miss
  * empty values and the caller falls back to the slug.
  *
  * @returns {Promise<Map<string, {lastPostAt: string, lastReceivedAt: string,
- *   missionaryDisplayName: string, missionStartDate: string}>>}
+ *   missionaryDisplayName: string, missionStartDate: string,
+ *   missionReturnDate: string}>>}
  */
 export async function sitesBySlug({ tables, slugs }) {
     const found = new Map();
@@ -104,7 +114,8 @@ export async function sitesBySlug({ tables, slugs }) {
             lastPostAt: row?.lastPostAt ?? '',
             lastReceivedAt: row?.lastReceivedAt ?? '',
             missionaryDisplayName: row?.missionaryDisplayName ?? '',
-            missionStartDate: row?.missionStartDate ?? ''
+            missionStartDate: row?.missionStartDate ?? '',
+            missionReturnDate: row?.missionReturnDate ?? ''
         });
     }
 
@@ -168,4 +179,8 @@ export async function forgetSite({ tables, slug }) {
  * keeps a name ending in a digit from colliding with a date.
  */
 export const siteFacts = (row) =>
-    `${row?.missionaryDisplayName ?? ''}\u0000${row?.missionStartDate ?? ''}`;
+    [
+        row?.missionaryDisplayName ?? '',
+        row?.missionStartDate ?? '',
+        row?.missionReturnDate ?? ''
+    ].join('\u0000');

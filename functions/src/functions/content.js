@@ -63,6 +63,10 @@ async function handler(request, context) {
             // counts up from it in front of the whole family; the settings
             // form that sets it stays owners-only.
             startDate: site?.missionStartDate ?? '',
+            // The day it ends, when anybody has said. Turns the clock round
+            // into a countdown, which is the reading the family wants once
+            // there is a date to want it against.
+            returnDate: site?.missionReturnDate ?? '',
             role: result.role,
             // Only ever true for the one or two addresses in OPERATOR_EMAILS,
             // and it drives a banner rather than a permission -- the operator

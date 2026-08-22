@@ -257,14 +257,17 @@ describe('clearing the box', () => {
         assert.equal(clear.hidden, false);
     });
 
-    test('clearing empties the box without shutting it', () => {
+    test('clearing is the way out, and folds the search away with it', () => {
+        // The magnifier is across the row from a thumb resting on the box, so
+        // the button under the thumb is the one that has to end the search.
         const view = archive();
         view.search('Antigua');
 
         view.click(view.$('.search__clear'));
 
         assert.equal(view.elements.searchInput.value, '');
-        assert.equal(view.$('.search__fields').hidden, false);
+        assert.equal(view.$('.search__fields').hidden, true);
+        assert.equal(view.$('.search__toggle').getAttribute('aria-expanded'), 'false');
         assert.equal(view.$('.search__clear').hidden, true);
         assert.deepEqual(shown(view), POSTS.map((post) => post.id));
     });
