@@ -60,6 +60,33 @@ window.Reader = (function () {
         };
     }
 
+    // --- deferred pictures -------------------------------------------------
+    //
+    // A photograph inside a closed letter is not fetched at all. Its URL waits
+    // in `data-src` until `setExpanded` opens the panel it is in.
+    //
+    // `loading="lazy"` alone does not do this, which is worth writing down
+    // because it looks like it should. The sanitizer strips width and height
+    // from stored markup, so an <img> that has not loaded yet is zero pixels
+    // high; a hundred of them stack into a document shorter than the screen,
+    // every one lands inside the browser's lazy threshold, and the archive is
+    // fetched in a single burst. That was happening: one page load pulled
+    // ninety full-size photographs, for one open letter that wanted five.
+
+    const photoUrl = (img) => img.getAttribute('src') ?? img.getAttribute('data-src');
+
+    // Writes to whichever of the two the image is currently using, so code
+    // that re-points a photo need not know whether it has been opened yet.
+    const setPhotoUrl = (img, url) =>
+        img.setAttribute(img.hasAttribute('src') ? 'src' : 'data-src', url);
+
+    function loadPhotos(root) {
+        for (const img of root.querySelectorAll('img[data-src]')) {
+            img.setAttribute('src', img.getAttribute('data-src'));
+            img.removeAttribute('data-src');
+        }
+    }
+
     function repointPhotos(root, photoSrc) {
         for (const img of root.querySelectorAll('img')) {
             // getAttribute, not .src: the property resolves against the
@@ -76,14 +103,16 @@ window.Reader = (function () {
             // whose src it does not recognize. That is how an edit deletes
             // every picture in a letter, and it is not worth risking twice.
             img.setAttribute('data-photo', ref.raw);
-            img.setAttribute('src', photoSrc(ref.id, ref.size));
 
-            // Set here rather than in the stored markup, because the stored
-            // markup for letters already in the archive would not get it
-            // without a re-render. Two dozen letters carry roughly thirteen
-            // megabytes of full-size WebP between them, and without this the
-            // browser reaches for all of it before the reader can show a
-            // single word. Images near the top still load immediately.
+            // Two dozen letters carry roughly thirteen megabytes of full-size
+            // WebP between them, and none of it is wanted until one is opened.
+            img.removeAttribute('src');
+            img.setAttribute('data-src', photoSrc(ref.id, ref.size));
+
+            // For the pictures in a letter that is open: `data-src` decides
+            // whether a photo loads, these decide when. Set here rather than
+            // in the stored markup, which letters already in the archive would
+            // not get without a re-render.
             img.setAttribute('loading', 'lazy');
             img.setAttribute('decoding', 'async');
         }
@@ -317,8 +346,8 @@ window.Reader = (function () {
             const img = frame.querySelector('img');
             const ref = photoRefOf(img?.getAttribute('data-photo'));
             if (ref) {
-                img.dataset.column = img.getAttribute('src');
-                img.src = photoSrc(ref.id, 'thumb');
+                img.dataset.column = photoUrl(img);
+                setPhotoUrl(img, photoSrc(ref.id, 'thumb'));
             }
 
             row.append(frame);
@@ -365,7 +394,7 @@ window.Reader = (function () {
             const img = frame.querySelector('img');
             if (img) {
                 if (img.dataset.column) {
-                    img.setAttribute('src', img.dataset.column);
+                    setPhotoUrl(img, img.dataset.column);
                     delete img.dataset.column;
                 }
                 frame.replaceWith(img);
@@ -447,7 +476,7 @@ window.Reader = (function () {
             link.setAttribute('aria-label', 'View larger');
 
             const img = document.createElement('img');
-            img.src = photoSrc(photo.id, 'thumb');
+            img.dataset.src = photoSrc(photo.id, 'thumb');
             img.alt = '';
             img.loading = 'lazy';
             img.decoding = 'async';
@@ -523,6 +552,10 @@ window.Reader = (function () {
         view.item.classList.toggle('post--open', open);
         view.toggle.setAttribute('aria-expanded', String(open));
         view.panel.hidden = !open;
+        // The only place a photograph in a letter starts loading. Closing does
+        // not put them back: the bytes are in the cache by then, and dropping
+        // the src would only make reopening flash.
+        if (open) loadPhotos(view.panel);
         // A letter cannot be open inside a folded month. Everything that opens
         // one from the outside -- a digest link, a search hit, Expand all --
         // goes through here, so this is the only place that has to know.
@@ -844,6 +877,9 @@ window.Reader = (function () {
             // Redrawn from the copy the page loaded rather than left as typed,
             // so Cancel means cancel.
             fillBody(body, post, photoSrc);
+            // Refilling put the photos back in their deferred state, and this
+            // letter is already open -- nothing is going to open it again.
+            loadPhotos(body);
             close();
         };
 
@@ -864,6 +900,7 @@ window.Reader = (function () {
             for (const img of scratch.querySelectorAll('img[data-photo]')) {
                 img.setAttribute('src', img.getAttribute('data-photo'));
                 img.removeAttribute('data-photo');
+                img.removeAttribute('data-src');
                 img.removeAttribute('loading');
                 img.removeAttribute('decoding');
             }
