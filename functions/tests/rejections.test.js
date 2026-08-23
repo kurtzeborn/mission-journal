@@ -41,14 +41,18 @@ const recorder = () => {
     return mailer;
 };
 
-const forward = async (store, name, { ulid = '01TEST0000000000000000000', bypass = '', mailer } = {}) => {
+const forward = async (
+    store,
+    name,
+    { ulid = '01TEST0000000000000000000', bypass = '', mailer, config: cfg = config } = {}
+) => {
     store.seed(ulid, await raw(name));
     return runIngest({
         ulid,
         store,
         tables: store,
         mailer: mailer ?? recorder(),
-        config,
+        config: cfg,
         log: silent,
         now: NOW,
         bypass,
@@ -251,6 +255,23 @@ describe('the operator bypass', () => {
 
         assert.notEqual(result.status, 'rejected');
         assert.ok(store.json('pending', 'elder.example/claim.json'));
+    });
+
+    test('and the forwarder is offered the site, which is the point', async () => {
+        // Without this the operator has forced a site into existence that
+        // nobody has been told about and nobody can claim -- worse than the
+        // rejection, because at least a rejection replies.
+        const store = memoryStore();
+        const mailer = recorder();
+        await forward(store, 'outlook-web-attached', {
+            bypass: 'scott@example.org',
+            mailer,
+            config: { ...config, claimTokenKey: 'test-key', baseUrl: 'https://example.org' }
+        });
+
+        const claim = mailer.sent.find((m) => m.to === 'scott@kurtzeborn.org');
+        assert.ok(claim, 'the forwarder was never told');
+        assert.match(claim.text, /https:\/\/example\.org\/claim/);
     });
 
     test('what it produces is still only a pending archive', async () => {
