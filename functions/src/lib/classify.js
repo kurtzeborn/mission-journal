@@ -142,9 +142,9 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
         // written. Inline text can be re-sent as an attachment. An attachment
         // that did not verify used to be a dead end -- the sender had already
         // followed the only advice we had -- but the cause is now known and
-        // has two answers: forward again from Outlook on the web, which does
-        // not rebuild the message, or have the missionary send the letter
-        // directly. Both are worth a reply, and they are different replies.
+        // has two answers: forward again from Outlook on the web, which leaves
+        // the letter's own headers alone, or have the missionary send the
+        // letter directly. Both are worth a reply, and they are different ones.
         // See nudge.js.
         if (extracted.source === 'inline') {
             return reject('bootstrap-not-attached', { sender, author, slug });

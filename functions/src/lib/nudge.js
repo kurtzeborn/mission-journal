@@ -47,8 +47,8 @@ const SIGNATURE = 'Pday Letters';
 //
 //   `rebuilt` -- the letter was attached, correctly, and the client rebuilt it
 //   on the way out, which erases the proof that the missionary wrote it. Not
-//   fixable from a menu, and the desktop Outlook client does it to every
-//   message it forwards. This is the one that needs a way out.
+//   fixable from a menu, and the classic desktop Outlook client does it to
+//   every message it forwards. This is the one that needs a way out.
 //
 // Offering the relay from both costs nothing in security, which is worth
 // stating because it looks as though it should. The author address on an
@@ -239,14 +239,15 @@ function rebuiltEmail({ author, faq, askUrl, requester }) {
         'archive without that proof, and forwarding it the same way again will',
         'not work.',
         '',
-        'This happens with the Outlook app on Windows and on Android. There are',
-        'two ways around it.',
+        'This happens with the classic Outlook app on Windows and with the',
+        'Outlook app on Android. There are two ways around it.',
         '',
         '1. Forward it again from Outlook on the web.',
         '',
         '   Open outlook.com in a browser, find the letter, and use',
         `   More actions (…) > Forward as attachment to ${POST_ADDRESS}.`,
-        '   Outlook on the web does not rebuild the message, so this works.',
+        '   Outlook on the web keeps the part we need, so this works. The new',
+        '   Outlook for Windows is the same program and works just as well.',
         '',
         ...route2.text,
         '',
@@ -261,9 +262,9 @@ function rebuiltEmail({ author, faq, askUrl, requester }) {
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
         `<p>Thanks for forwarding a letter from <strong>${escape(author)}</strong> to ${SIGNATURE}.</p>`,
         '<p>You attached it, which is exactly right. The problem is not something you did. Your mail program rebuilt the letter as it sent it, and that erases the proof that the missionary wrote it. We cannot start an archive without that proof, and forwarding it the same way again will not work.</p>',
-        '<p>This happens with the Outlook app on Windows and on Android. There are two ways around it.</p>',
+        '<p>This happens with the classic Outlook app on Windows and with the Outlook app on Android. There are two ways around it.</p>',
         '<p><strong>1. Forward it again from Outlook on the web.</strong></p>',
-        `<p>Open outlook.com in a browser, find the letter, and use More actions (&hellip;) &gt; Forward as attachment to <strong>${POST_ADDRESS}</strong>. Outlook on the web does not rebuild the message, so this works.</p>`,
+        `<p>Open outlook.com in a browser, find the letter, and use More actions (&hellip;) &gt; Forward as attachment to <strong>${POST_ADDRESS}</strong>. Outlook on the web keeps the part we need, so this works. The new Outlook for Windows is the same program and works just as well.</p>`,
         ...route2.html,
         '<p>Either way, this is only needed for the first letter.</p>',
         `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,

@@ -71,7 +71,7 @@ test('an altered body fails before any key is fetched', async () => {
 const SIGNED_ON = new Date('2026-08-03T16:00:00Z');
 const A_WEEK = 7 * 86400_000;
 
-async function forwardOfSignedLetter({ expires }) {
+async function forwardOfSignedLetter({ expires, mangle }) {
     const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 
     const letter = [
@@ -119,7 +119,7 @@ async function forwardOfSignedLetter({ expires }) {
         'Content-Type: message/rfc822',
         'Content-Disposition: attachment; filename="letter.eml"',
         '',
-        signatures + letter,
+        signatures + (mangle ? mangle(letter) : letter),
         '--OUTER--',
         ''
     ].join('\r\n');
@@ -177,6 +177,45 @@ test('an unsigned message falls back to the epoch', async () => {
         earliestSigningTime(Buffer.from('From: nobody@example.com\r\n\r\nhello')),
         new Date(0)
     );
+});
+
+// --- the headers on their own ----------------------------------------------
+
+test('a rewritten body still verifies on the headers alone', async () => {
+    // What an Exchange forward does to every letter it carries: the body comes
+    // back re-encoded so `bh=` cannot match, while `b=` over From, Date,
+    // Subject and Message-ID is untouched. There is no ARC seal here at all,
+    // which is the state Exchange leaves most forwards in, and the letter is
+    // accepted anyway -- who owns the archive is a question the headers answer
+    // by themselves.
+    const result = await forwardOfSignedLetter({
+        mangle: (letter) => letter.replace('and we taught', 'and we&nbsp;taught')
+    });
+
+    assert.equal(result.verified, true, `expected a pass, got ${result.reason}`);
+    assert.equal(result.reason, 'pass-headers');
+    assert.equal(result.coverage, COVERAGE.headers);
+    assert.equal(result.arc.sealed, false);
+    assert.equal(result.arc.reason, 'no-arc-chain');
+});
+
+test('a rewritten From is not recoverable from the headers', async () => {
+    // The line between the two. A body nobody vouches for is accepted with its
+    // provenance recorded as `headers`; a From nobody vouches for would be the
+    // archive attributed to the wrong missionary, and `b=` covers it. Both are
+    // rewritten here because a client that touches the headers has always
+    // re-encoded the body as well -- that is what makes the signature
+    // `neutral` and sends it down the recoverable path in the first place.
+    const result = await forwardOfSignedLetter({
+        mangle: (letter) =>
+            letter
+                .replace(/^From: .*$/m, 'From: Someone Else <someone.else@missionary.org>')
+                .replace('and we taught', 'and we&nbsp;taught')
+    });
+
+    assert.equal(result.verified, false);
+    assert.equal(result.reason, 'author-signature-neutral');
+    assert.equal(result.coverage, null);
 });
 
 // --- what requires the pristine captures -----------------------------------
@@ -267,16 +306,66 @@ test('the other Outlook clients cannot be re-verified at all', { skip: gated }, 
     }
 });
 
+// --- one letter, three clients ---------------------------------------------
+//
+// Captured within the hour from a single mailbox, so the letter is a constant
+// and the client is the only variable. It was taken because the earlier
+// captures were three different letters, which left the obvious objection --
+// that the letter and not the client decided it -- unanswered.
+
+test('the same letter passes from the web and fails from the desktop', { skip: gated }, async () => {
+    const expected = {
+        'unsealed-outlook-web-attached': 'pass-headers',
+        'unsealed-outlook-new-desktop-attached': 'pass-headers',
+        // Drops `To:` entirely and converts `Date:` to UTC. Both are in `b=`.
+        'unsealed-outlook-desktop-attached': 'author-signature-neutral'
+    };
+
+    for (const [name, reason] of Object.entries(expected)) {
+        const result = await verifyPristine(name);
+        assert.equal(result.reason, reason, `${name} gave ${result.reason}`);
+    }
+});
+
+test('a headers-only pass does not need a seal', { skip: gated }, async () => {
+    // The capture the rule was relaxed for. Microsoft sealed the other web
+    // forward and not this one, from the same mailbox and the same client, so
+    // requiring a seal was refusing letters on something the sender has no
+    // way to influence.
+    const result = await verifyPristine('unsealed-outlook-web-attached');
+
+    assert.equal(result.verified, true, `expected a pass, got ${result.reason}`);
+    assert.equal(result.coverage, COVERAGE.headers);
+    assert.equal(result.arc.reason, 'no-arc-chain');
+});
+
+test('the new Outlook for Windows is Outlook on the web', { skip: gated }, async () => {
+    // Byte-identical embedded originals. Worth asserting rather than noting,
+    // because the advice we mail people names both clients and would be half
+    // wrong the day Microsoft forks them again.
+    const digest = async (name) => {
+        const { embeddedBytes } = await extractOriginal(
+            await readFile(join(privateFixtures, `${name}.eml`))
+        );
+        return crypto.createHash('sha256').update(Buffer.from(embeddedBytes)).digest('hex');
+    };
+
+    assert.equal(
+        await digest('unsealed-outlook-new-desktop-attached'),
+        await digest('unsealed-outlook-web-attached')
+    );
+});
+
 // --- the seal, adversarially ------------------------------------------------
 //
 // The seal is only worth anything if breaking it is detectable, and the way to
 // find out is to break it. Each of these rewrites the sealed record to say
 // something more useful to an attacker than what Microsoft actually attested.
 //
-// The distinction that matters in the results: `headers-pass-but-seal-*` means
-// the signature caught the edit. `headers-pass-but-sealed` would mean the seal
-// still verified and we declined for some other reason -- which for a forged
-// record would mean the seal was not covering what we think it covers.
+// The seal no longer decides anything -- the header signature does -- so what
+// these prove is narrower than it was: an edited record must never read back
+// as sealed. A `pass-headers-sealed` on a forged record would mean the seal is
+// not covering what we think it covers.
 const tamper = async (name, edit) => {
     const extracted = await extractOriginal(await readFile(join(privateFixtures, `${name}.eml`)));
     const text = Buffer.from(extracted.embeddedBytes).toString('latin1');
@@ -298,8 +387,8 @@ test('a forged sealed record breaks the seal', { skip: gated }, async () => {
 
     for (const [what, edit] of Object.entries(edits)) {
         const result = await tamper('outlook-web-attached', edit);
-        assert.equal(result.verified, false, `${what} was accepted`);
-        assert.match(result.reason, /^headers-pass-but-seal-/, `${what}: ${result.reason}`);
+        assert.equal(result.arc.sealed, false, `${what} still read as sealed`);
+        assert.equal(result.reason, 'pass-headers', `${what}: ${result.reason}`);
     }
 });
 
@@ -326,4 +415,5 @@ test('whitespace in the sealed record is not tampering', { skip: gated }, async 
     );
 
     assert.equal(result.verified, true, result.reason);
+    assert.equal(result.reason, 'pass-headers-sealed', 'the seal stopped being read at all');
 });

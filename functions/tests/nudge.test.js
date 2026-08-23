@@ -265,7 +265,7 @@ describe('advising a forwarder who quoted instead of attaching', () => {
 
         for (const phrase of [
             'rebuilt the letter as it sent it',
-            'Outlook on the web does not rebuild the message',
+            'Outlook on the web keeps the part we need',
             'never spoofed or faked on this',
             'only needed for the first letter'
         ]) {

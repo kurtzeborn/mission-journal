@@ -234,10 +234,10 @@ export async function verifyEmbeddedDkim(extracted, { resolver, trustedSealers }
         if (!(await headerSignatureHolds(result, resolve))) continue;
 
         // Headers hold, so the letter is from who it says on the date it says.
-        // That still leaves the body unaccounted for, and a body nobody
-        // vouches for is a body anyone could have written. The seal is what
-        // closes it: the provider that rewrote the body signed a record of
-        // having verified the original in full.
+        // A seal goes further and accounts for the body as well: the provider
+        // that rewrote it signing a record of having verified the original in
+        // full. Worth asking for, and worth naming in the result when it is
+        // there.
         const arc = await verifyArcSeal(outcome.arc, { resolver: resolve, trustedSealers });
 
         const attestsAuthor =
@@ -246,21 +246,18 @@ export async function verifyEmbeddedDkim(extracted, { resolver, trustedSealers }
             signedByAuthor(arc.attested.dmarcFromDomain, authorDomain) &&
             arc.attested.dkimDomains.some((d) => signedByAuthor(d, authorDomain));
 
-        if (attestsAuthor) {
-            return {
-                verified: true,
-                coverage: COVERAGE.headers,
-                reason: 'pass-headers-sealed',
-                authorDomain,
-                signatures,
-                arc
-            };
-        }
-
+        // Not required, though, and requiring it was wrong. Exchange seals
+        // some of the mail it rewrites and not the rest, so the seal was
+        // deciding letters on a coin the sender does not hold -- the same
+        // client on the same mailbox produces one forward with a Microsoft
+        // seal and one without. What `b=` proves is From, Date, Subject and
+        // Message-ID against the missionary's own key, and that is the whole
+        // of what a bootstrap asks: who owns this archive. The body is taken
+        // on the forwarder's word, and `coverage` is the field that says so.
         return {
-            verified: false,
-            coverage: null,
-            reason: `headers-pass-but-${arc.reason}`,
+            verified: true,
+            coverage: COVERAGE.headers,
+            reason: attestsAuthor ? 'pass-headers-sealed' : 'pass-headers',
             authorDomain,
             signatures,
             arc
