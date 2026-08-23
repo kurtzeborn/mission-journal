@@ -19,6 +19,7 @@ import { offerClaim, invitationDue } from './offer.js';
 import { nudgeOnce, NUDGE } from './nudge.js';
 import { acknowledgeForward } from './ack.js';
 import { explainRejection, isTold } from './rejection.js';
+import { recordRejection } from './rejections.js';
 import { withinDailyCap } from './cap.js';
 import { RELAY_TTL_DAYS } from './relay.js';
 import { issueClaimToken, PURPOSE } from './claimtoken.js';
@@ -138,6 +139,7 @@ function relayUrl({ slug, verdict, config, now }) {
  * @param {object} [input.log]         { info, warn, error }
  * @param {function} [input.now]       injectable clock
  * @param {function} [input.verifyDkim] async (extracted) => { verified, reason, signatures }
+ * @param {string} [input.bypass]      an operator's address, overriding the bootstrap refusals
  */
 export async function runIngest({
     ulid,
@@ -147,7 +149,8 @@ export async function runIngest({
     config,
     log = console,
     now = () => new Date(),
-    verifyDkim = verifyEmbeddedDkim
+    verifyDkim = verifyEmbeddedDkim,
+    bypass = ''
 }) {
     const rawName = `${ulid}.raw`;
     const blob = await store.readBlob('inbox', rawName);
@@ -246,11 +249,41 @@ export async function runIngest({
         headers: extracted.headers,
         config,
         lookupAcl: () => acl,
-        dkimVerified: dkim.verified
+        dkimVerified: dkim.verified,
+        bypass: Boolean(bypass)
     });
+
+    // Said plainly and separately, because it is the one decision in this
+    // service a person made rather than a rule. It names them, and it is the
+    // only evidence that an archive was started without the evidence we
+    // ordinarily insist on.
+    if (bypass) {
+        log.warn?.('ingest: operator bypass', {
+            ulid,
+            by: bypass,
+            slug: verdict.slug ?? null,
+            dkimVerified: dkim.verified,
+            dkimReason: dkim.reason,
+            source: extracted.source
+        });
+    }
 
     if (verdict.class === CLASS.rejected) {
         logRejection({ log, config, ulid, extracted, verdict, now });
+
+        // Written before anything is mailed. The reply may fail, and a person
+        // who was refused and never told is precisely who this record is for.
+        if (tables) {
+            await recordRejection({
+                tables,
+                ulid,
+                slug: validSlug(verdict.slug),
+                verdict,
+                extracted,
+                now,
+                log
+            });
+        }
 
         // The two rejections that get an answer, and they get different ones.
         // See nudge.js. Every other rejection stays silent, because its sender

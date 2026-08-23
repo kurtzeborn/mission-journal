@@ -9,8 +9,9 @@
 // would tie destruction to an event that happens whenever somebody pushes.
 
 import { app } from '@azure/functions';
-import { blobStore } from '../lib/clients.js';
+import { blobStore, tableStore } from '../lib/clients.js';
 import { purgeExpired } from '../lib/purge.js';
+import { purgeRejections } from '../lib/rejections.js';
 import { setting } from '../lib/settings.js';
 
 async function handler(timer, context) {
@@ -23,16 +24,22 @@ async function handler(timer, context) {
 
     const result = await purgeExpired({ store: blobStore(), log: context, dryRun });
 
+    // Rides along rather than getting its own timer: it is the same idea on
+    // the same nightly clock, and it is not covered by `dryRun`, which guards
+    // the destruction of letters. Nothing here is a letter.
+    const forgotten = await purgeRejections({ tables: tableStore(), log: context });
+
     context.log('purge: swept pending sites', {
         scanned: result.scanned,
         purged: result.purged.length,
         letters: result.purged.reduce((total, site) => total + site.letters, 0),
         kept: result.kept.length,
+        rejectionsForgotten: forgotten.forgotten,
         dryRun,
         pastDue: Boolean(timer?.isPastDue)
     });
 
-    return result;
+    return { ...result, rejections: forgotten };
 }
 
 app.timer('purge', {

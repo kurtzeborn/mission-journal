@@ -327,6 +327,11 @@ var tableNames = [
   // it exists to be shown to an owner, so that "grandmother never hears from
   // us" is a visible fact rather than a KQL query nobody thinks to run.
   'deliveries'
+  // One row per first letter that was refused, kept for as long as the inbox
+  // blob it names. Authoritative in the same quiet way as `deletions`: a
+  // rejection is otherwise invisible to everyone except the person it happened
+  // to, who has been told only that it did not work.
+  'rejections'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [

@@ -54,7 +54,13 @@ export const TABLES = {
     // silence: not "they asked us to stop" but "we tried and it did not
     // arrive". Derived -- Cloudflare's suppression list is the authority and
     // this is our readable copy of what it did to us. See delivery.js.
-    deliveries: 'deliveries'
+    deliveries: 'deliveries',
+    // PartitionKey = slug, RowKey = the message's ULID. One row per first
+    // letter that was refused, and the only durable trace of one: a rejection
+    // keeps nothing but the inbox blob, which nothing reads, and a log line,
+    // which nobody is watching. Without this the person it happened to is the
+    // only one who knows. See rejections.js.
+    rejections: 'rejections'
 };
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {

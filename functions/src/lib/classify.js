@@ -66,8 +66,10 @@ export function aclSlugFor({ extracted, config }) {
  * @param {boolean} input.dkimVerified did the embedded original's own
  *                                     signature re-verify? Computed by the
  *                                     caller, since it needs DNS.
+ * @param {boolean} [input.bypass]     an operator has looked at a letter this
+ *                                     already refused and said start it anyway
  */
-export function classify({ extracted, headers, config, lookupAcl, dkimVerified = false }) {
+export function classify({ extracted, headers, config, lookupAcl, dkimVerified = false, bypass = false }) {
     const missionaryDomains = (config.missionaryDomains ?? []).map((d) => d.toLowerCase());
 
     // Selected by authserv-id, never by position. Absent means `none`, which
@@ -146,14 +148,30 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
         // the letter's own headers alone, or have the missionary send the
         // letter directly. Both are worth a reply, and they are different ones.
         // See nudge.js.
-        if (extracted.source === 'inline') {
-            return reject('bootstrap-not-attached', { sender, author, slug });
-        }
-        if (extracted.source !== 'rfc822') {
+        if (extracted.source !== 'inline' && extracted.source !== 'rfc822') {
             return reject('no-recoverable-original', { sender, author, slug });
         }
-        if (!dkimVerified) {
-            return reject('bootstrap-unverified', { sender, author, slug });
+
+        // And when neither answer works, a person. `bypass` is an operator
+        // saying they have read the letter and are satisfied it is what it
+        // claims to be -- the escape hatch for the case the rules get wrong,
+        // which is a returned missionary whose address no longer exists, or a
+        // family whose only mail client is the one that breaks the signature.
+        //
+        // It is a real hole and it is meant to be: whoever holds it can create
+        // any archive in anyone's name. What keeps it honest is that it is
+        // reachable only from OPERATOR_EMAILS, only for a letter already in the
+        // rejections list, and never without a line in the log naming who used
+        // it. The letter still only ever goes to a *pending* site, so the
+        // archive it starts still has to be claimed by someone with the
+        // missionary's mail before anybody can read it.
+        if (!bypass) {
+            if (extracted.source === 'inline') {
+                return reject('bootstrap-not-attached', { sender, author, slug });
+            }
+            if (!dkimVerified) {
+                return reject('bootstrap-unverified', { sender, author, slug });
+            }
         }
 
         return {

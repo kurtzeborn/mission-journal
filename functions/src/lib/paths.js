@@ -60,3 +60,13 @@ export function validSlug(slug) {
     const s = String(slug ?? '').toLowerCase();
     return SLUG.test(s) && !s.includes('..') ? s : null;
 }
+
+// Crockford's base32, uppercase, twenty-six characters. The Worker generates
+// these and nothing else ever should, but they arrive from a URL on the
+// manage page and are concatenated straight into `inbox/{ulid}.raw`.
+const ULID = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+
+export function validUlid(ulid) {
+    const value = String(ulid ?? '').toUpperCase();
+    return ULID.test(value) ? value : null;
+}

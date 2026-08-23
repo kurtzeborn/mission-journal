@@ -1,15 +1,17 @@
-// The operator's page: what is arriving, what has been deleted, and one door
-// back.
+// The operator's page: what is arriving, what was turned away, what has been
+// deleted, and the doors back from the last two.
 //
-// Two tables and they are opposites. Arrivals always has every archive in it
-// and the common case is confirming the top row is recent -- it is the only
-// view in the service that spans archives, so it is the only place ingest
-// having stopped can be noticed. Deletions is ordinarily empty and is the
-// entire recovery path for a deletion somebody regrets, since there is no
-// owner-facing undo: the confirmation on the settings page says the archive is
-// gone and nothing here contradicts it.
+// Arrivals always has every archive in it and the common case is confirming
+// the top row is recent -- it is the only view in the service that spans
+// archives, so it is the only place ingest having stopped can be noticed.
+// Refusals should be empty and every row in it is a family who tried to start
+// an archive and could not; it is the only place a rejection is visible at
+// all, since one writes nothing and tells only the person it happened to.
+// Deletions is ordinarily empty and is the entire recovery path for a deletion
+// somebody regrets, since there is no owner-facing undo: the confirmation on
+// the settings page says the archive is gone and nothing here contradicts it.
 //
-// The page is not linked from anywhere, and both APIs behind it refuse
+// The page is not linked from anywhere, and every API behind it refuses
 // everyone not on OPERATOR_EMAILS with a 404, so a stranger who finds the URL
 // sees the same "nothing here" as a stranger who mistypes one.
 
@@ -210,6 +212,159 @@
         drawFlow(archives);
     }
 
+    // The refusals half. Every row is somebody who tried to start an archive
+    // and was told no, so the buttons are ordered the way they should be
+    // tried: the harmless one first, the forcing one last.
+    const REFUSALS = {
+        'bootstrap-not-attached': {
+            why: 'Pasted in, not attached',
+            kind: 'attach'
+        },
+        'bootstrap-unverified': {
+            why: 'The signature did not survive the forward',
+            kind: 'rebuilt'
+        }
+    };
+
+    const refusedSaid = () => $('refused-said');
+
+    async function act(rejection, what, button, buttons) {
+        const where = refusedSaid();
+        for (const other of buttons) other.disabled = true;
+        where.textContent = `Working on ${rejection.slug}\u2026`;
+
+        const at = `/api/manage/rejections/${encodeURIComponent(rejection.slug)}/${encodeURIComponent(rejection.ulid)}`;
+        const url =
+            what === 'advise'
+                ? `${at}/advise?to=${encodeURIComponent(rejection.sender)}` +
+                  `&author=${encodeURIComponent(rejection.author)}` +
+                  `&kind=${encodeURIComponent(REFUSALS[rejection.reason]?.kind ?? 'attach')}`
+                : `${at}/${what}`;
+
+        let response;
+        try {
+            response = await fetch(url, { method: 'POST', cache: 'no-store' });
+        } catch {
+            where.textContent = 'Could not reach the server. Nothing was changed.';
+            for (const other of buttons) other.disabled = false;
+            return;
+        }
+
+        if (!response.ok) {
+            where.textContent =
+                response.status === 404
+                    ? 'That letter is no longer here. It may have aged out of the inbox.'
+                    : 'Something went wrong. Nothing was changed.';
+            for (const other of buttons) other.disabled = false;
+            return;
+        }
+
+        const body = await response.json();
+
+        if (what === 'advise') {
+            where.textContent = `Advice sent again to ${rejection.sender}.`;
+            for (const other of buttons) other.disabled = false;
+            return;
+        }
+
+        // `rejected` is the ordinary outcome of a retry that did not help, and
+        // it is worth saying which refusal it hit: the same letter can fail a
+        // second way once the first is out of the road.
+        if (body.status === 'rejected') {
+            where.textContent = `Still refused: ${body.reason ?? 'no reason given'}.`;
+            for (const other of buttons) other.disabled = false;
+            return;
+        }
+
+        where.textContent = `${rejection.slug} is started. It is waiting to be claimed.`;
+        loadRefused();
+    }
+
+    function action(rejection, label, what, buttons, ask) {
+        const button = document.createElement('button');
+        button.className = 'button button--compact';
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', async () => {
+            if (ask && !(await ask())) return;
+            act(rejection, what, button, buttons);
+        });
+        buttons.push(button);
+        return button;
+    }
+
+    function drawRefused(rejections) {
+        const rows = $('refused-rows');
+        rows.replaceChildren();
+
+        for (const rejection of rejections) {
+            const row = document.createElement('tr');
+            cell(row, rejection.slug);
+            cell(row, rejection.sender || '\u2014');
+            cell(row, rejection.subject || '\u2014');
+            cell(row, day(rejection.at));
+            cell(row, REFUSALS[rejection.reason]?.why ?? rejection.reason);
+
+            const buttons = [];
+            const actions = cell(row, '');
+            actions.className = 'actions';
+            actions.appendChild(action(rejection, 'Retry', 'retry', buttons));
+            actions.appendChild(action(rejection, 'Advise again', 'advise', buttons));
+
+            // The only irreversible one on this page, and the only one that
+            // creates something out of evidence we do not have. Asked plainly,
+            // by name, because an operator working down a list of rows should
+            // have to read the slug they are about to conjure a site for.
+            actions.appendChild(
+                action(rejection, 'Start it anyway', 'bypass', buttons, () =>
+                    window.Confirm.ask({
+                        question: `Start ${rejection.slug} without verifying the letter?`,
+                        detail:
+                            `Nothing proves this letter came from ${rejection.author || 'the missionary'} ` +
+                            'except your own reading of it. The archive will be held until somebody claims it.',
+                        action: 'Start it anyway'
+                    })
+                )
+            );
+
+            rows.appendChild(row);
+        }
+
+        $('refused-state').hidden = true;
+        $('refused').hidden = false;
+    }
+
+    async function loadRefused() {
+        const where = $('refused-state');
+        where.hidden = false;
+        $('refused').hidden = true;
+
+        let response;
+        try {
+            response = await fetch('/api/manage/rejections', { cache: 'no-store' });
+        } catch {
+            where.textContent = 'Could not load the refusals. Please try again.';
+            return;
+        }
+
+        if (!response.ok) {
+            where.textContent = 'Could not load the refusals.';
+            return;
+        }
+
+        const body = await response.json();
+        const rejections = Array.isArray(body.rejections) ? body.rejections : [];
+
+        // Worth saying rather than showing an empty table, and worth saying
+        // this way round: nothing here is the good outcome.
+        if (!rejections.length) {
+            where.textContent = 'No first letters have been turned away.';
+            return;
+        }
+
+        drawRefused(rejections);
+    }
+
     async function load() {
         let response;
         try {
@@ -242,6 +397,7 @@
         // already settled the only question they share, which is whether the
         // page should be on screen at all.
         loadFlow();
+        loadRefused();
 
         // The ordinary state, and worth saying plainly rather than showing an
         // empty table: the point of the visit is usually to confirm that

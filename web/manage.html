@@ -28,10 +28,12 @@
     exactly the people it was untrue for. A refused visitor now gets the same
     answer as anyone who mistypes a URL.
 
-    Two tables, and they are opposites. The deletions list is ordinarily empty,
-    which is the state it is designed around: the common case is confirming
-    that nothing is waiting. The arrivals list always has every archive in it,
-    and the common case is confirming that the top row is recent.
+    Three tables. The deletions list is ordinarily empty, which is the state it
+    is designed around: the common case is confirming that nothing is waiting.
+    The arrivals list always has every archive in it, and the common case is
+    confirming that the top row is recent. The refusals list is the one with
+    buttons that change somebody's mind for them, and it should be empty too --
+    a row in it is a family who tried to start an archive and could not.
 -->
 
 <body>
@@ -92,6 +94,46 @@
 
             <hr class="rule">
 
+            <!--
+                The half that exists because a rejection is otherwise
+                invisible. A refused first letter writes nothing, renders
+                nothing, and tells only the person it happened to -- who is
+                told their mail client is at fault and to try again. When
+                trying again fails, the nudge has already been sent once and
+                stays quiet. This is the only place that silence is audible.
+            -->
+            <h2>Letters turned away</h2>
+
+            <p class="note">
+                First letters that were refused, and the archives they would have started.
+                <strong>Retry</strong> runs the letter through the ordinary rules again, which is
+                worth doing whenever those rules have changed. <strong>Advise again</strong>
+                re-sends the emailed explanation to whoever forwarded it. <strong>Start it
+                anyway</strong> creates the archive without the evidence we normally require
+                &mdash; the letter is still held until somebody claims the site, but nothing
+                except your judgement says it is genuine.
+            </p>
+
+            <div id="refused-state" class="state">Loading&hellip;</div>
+
+            <table id="refused" class="deletions" hidden>
+                <thead>
+                    <tr>
+                        <th scope="col">Archive</th>
+                        <th scope="col">Forwarded by</th>
+                        <th scope="col">Subject</th>
+                        <th scope="col">Refused</th>
+                        <th scope="col">Why</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody id="refused-rows"></tbody>
+            </table>
+
+            <p class="note" id="refused-said" role="status" aria-live="polite"></p>
+
+            <hr class="rule">
+
             <h2>Deleted archives</h2>
 
             <p class="note">
@@ -120,6 +162,7 @@
         </div>
     </main>
 
+    <script src="/confirm.js"></script>
     <script src="/manage.js"></script>
 </body>
 

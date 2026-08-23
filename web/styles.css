@@ -1285,6 +1285,22 @@ button:focus-visible {
     max-width: 18rem;
 }
 
+/* The refusals table is the one with a subject line in it, which is somebody
+   else's words and the longest thing on the page. It wraps; the dates beside
+   it do not. */
+#refused td:nth-child(3) {
+    max-width: 18rem;
+}
+
+/* Three buttons in one cell, and on a phone they stack rather than squeezing
+   the columns beside them. The gap is what stops "Start it anyway" from
+   sitting close enough to "Retry" to be hit by mistake. */
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
 /* --- jump links --- */
 
 /* The box at the top of a page that offers to send you further down it. Shared

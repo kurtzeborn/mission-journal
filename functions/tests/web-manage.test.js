@@ -219,6 +219,178 @@ describe('the other table, which is every archive there is', () => {
     });
 });
 
+const REFUSED = [
+    {
+        slug: 'elder.stuck',
+        ulid: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
+        at: '2026-08-02T09:00:00.000Z',
+        sender: 'mum@example.com',
+        author: 'elder.stuck@missionary.org',
+        subject: 'Week one',
+        reason: 'bootstrap-unverified'
+    },
+    {
+        slug: 'sister.stuck',
+        ulid: '01BX5ZZKBKACTAV9WEVGEMMVRZ',
+        at: '2026-08-01T09:00:00.000Z',
+        sender: 'dad@example.com',
+        author: 'sister.stuck@missionary.org',
+        subject: '',
+        reason: 'bootstrap-not-attached'
+    }
+];
+
+// The third table, which is the one with buttons that force things. Every row
+// in it is a family who tried to start an archive and could not, so an
+// operator reading it is deciding on somebody's behalf -- what the tests below
+// pin is that the page says which letter, from whom, and refused why, before
+// any of that is offered.
+describe('the letters that never got in', () => {
+    const refusing = (rejections, over = {}) => async (url) =>
+        url.includes('rejections')
+            ? { status: 200, body: { rejections }, ...over }
+            : { status: 200, body: { deletions: [] } };
+
+    const refusedRows = (view) => view.el('refused-rows').children;
+
+    test('one row per refusal, newest as the API ordered it', async () => {
+        const view = await manage({ answer: refusing(REFUSED) });
+
+        assert.equal(refusedRows(view).length, 2);
+        assert.equal(view.el('refused').hidden, false);
+        assert.equal(cells(refusedRows(view)[0])[0], 'elder.stuck');
+    });
+
+    test('who forwarded it, what it was called, and why it was refused', async () => {
+        const view = await manage({ answer: refusing(REFUSED) });
+
+        const [slug, sender, subject, refused, why] = cells(refusedRows(view)[0]);
+        assert.equal(slug, 'elder.stuck');
+        assert.equal(sender, 'mum@example.com');
+        assert.equal(subject, 'Week one');
+        assert.doesNotMatch(refused, /T\d\d:/);
+        // Not the raw reason code. The person reading this has to decide
+        // whether to force the letter through, and `bootstrap-unverified`
+        // does not tell them anything about the letter.
+        assert.match(why, /signature/i);
+    });
+
+    test('a subject reaches the page as text, not as markup', async () => {
+        // Somebody else's words, out of a header the service did not write,
+        // shown to the one account that can force an archive into existence.
+        const nasty = '<img src=x onerror=alert(1)>';
+        const view = await manage({ answer: refusing([{ ...REFUSED[0], subject: nasty }]) });
+
+        assert.equal(cells(refusedRows(view)[0])[2], nasty);
+    });
+
+    test('three buttons, in the order they should be tried', async () => {
+        const view = await manage({ answer: refusing(REFUSED) });
+
+        assert.deepEqual(
+            refusedRows(view)[0]
+                .descendants()
+                .filter((node) => node.tagName === 'button')
+                .map((node) => node.textContent),
+            ['Retry', 'Advise again', 'Start it anyway']
+        );
+    });
+
+    test('a retry asks for nothing but a retry', async () => {
+        // The harmless door: the same rules, run again. Worth doing whenever
+        // the rules have changed, which is what stranded the letters this was
+        // built for.
+        const view = await manage({ answer: refusing(REFUSED) });
+        await view.button('refused-rows', 'Retry').dispatch('click');
+        await settled();
+
+        assert.ok(
+            view.calls.some(
+                (call) =>
+                    call.url ===
+                        '/api/manage/rejections/elder.stuck/01ARZ3NDEKTSV4RRFFQ69G5FAV/retry' &&
+                    call.method === 'POST'
+            ),
+            'the retry never reached the API'
+        );
+    });
+
+    test('advising again carries the address and the right advice', async () => {
+        // Two kinds of nudge, and sending the wrong one is worse than sending
+        // nothing: it tells somebody to do the thing they already did.
+        const view = await manage({ answer: refusing(REFUSED) });
+        await view.button('refused-rows', 'Advise again').dispatch('click');
+        await settled();
+
+        const call = view.calls.find((c) => c.url.includes('/advise'));
+        assert.ok(call, 'nothing was sent');
+        assert.match(call.url, /to=mum%40example\.com/);
+        assert.match(call.url, /kind=rebuilt/);
+    });
+
+    test('forcing one through is asked about first', async () => {
+        // The only irreversible thing on the page and the only one that
+        // creates something out of evidence we do not have.
+        const view = await manage({ answer: refusing(REFUSED) });
+        view.context.confirmed = false;
+
+        await view.button('refused-rows', 'Start it anyway').dispatch('click');
+        await settled();
+
+        assert.equal(
+            view.calls.some((call) => call.url.includes('/bypass')),
+            false,
+            'an archive was created after the question was declined'
+        );
+    });
+
+    test('and goes through when the answer is yes', async () => {
+        const view = await manage({ answer: refusing(REFUSED) });
+        await view.button('refused-rows', 'Start it anyway').dispatch('click');
+        await settled();
+
+        assert.ok(view.calls.some((call) => call.url.includes('/bypass')));
+    });
+
+    test('a retry that fails again says what it failed on', async () => {
+        // The ordinary outcome, and silence here would leave an operator
+        // pressing the button a second time.
+        const view = await manage({
+            answer: async (url) =>
+                url.includes('/retry')
+                    ? { status: 200, body: { status: 'rejected', reason: 'bootstrap-unverified' } }
+                    : url.includes('rejections')
+                        ? { status: 200, body: { rejections: REFUSED } }
+                        : { status: 200, body: { deletions: [] } }
+        });
+
+        await view.button('refused-rows', 'Retry').dispatch('click');
+        await settled();
+
+        assert.match(view.text('refused-said'), /Still refused: bootstrap-unverified/);
+    });
+
+    test('nothing to show is said plainly, because it is the good outcome', async () => {
+        const view = await manage({ answer: refusing([]) });
+
+        assert.match(view.text('refused-state'), /No first letters have been turned away/i);
+        assert.equal(view.el('refused').hidden, true);
+    });
+
+    test('and a failure here does not take the rest of the page down', async () => {
+        const view = await manage({
+            answer: async (url) =>
+                url.includes('rejections')
+                    ? { status: 500, body: '' }
+                    : { status: 200, body: { deletions: DELETIONS } }
+        });
+
+        assert.match(view.text('refused-state'), /Could not load/i);
+        assert.equal(view.el('refused').hidden, true);
+        assert.equal(rows(view).length, 2);
+    });
+});
+
 describe('who the page tells nothing to', () => {
     test('a signed-in visitor who is not an operator is shown a dead end', async () => {
         // The API answers 404 rather than 403 so the route is not confirmed,

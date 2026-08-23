@@ -28,6 +28,7 @@ import { createMailer } from './mail.js';
 import { setting } from './settings.js';
 import { createBlobStore } from './store.js';
 import { createTableStore } from './tables.js';
+import { trustedSealersFrom } from './arc.js';
 
 let blobs = null;
 let tables = null;
@@ -70,6 +71,40 @@ export function signingKey(who, context) {
         return null;
     }
     return key;
+}
+
+/**
+ * The settings `runIngest` reads, in one place.
+ *
+ * Two entry points run the same classification now -- the queue, and an
+ * operator replaying a letter it refused -- and the second is worthless if it
+ * judges by different rules than the first. A second copy of this object would
+ * drift the moment a domain was added to one and not the other, and the
+ * symptom would be a retry button that reports a different verdict than the
+ * one on the page.
+ */
+export function ingestConfig() {
+    const list = (name, fallback = '') =>
+        setting(name, fallback)
+            .split(',')
+            .map((d) => d.trim().toLowerCase())
+            .filter(Boolean);
+
+    return {
+        authservId: setting('AUTHSERV_ID', 'mx.cloudflare.net'),
+        missionaryDomains: list('MISSIONARY_DOMAINS', 'missionary.org'),
+        // No fallback. An empty list means "accept anything", which is what
+        // this did before the setting was read at all, so a missing app setting
+        // cannot quietly start rejecting mail.
+        acceptedIngestDomains: list('ACCEPTED_INGEST_DOMAINS'),
+        claimTokenKey: setting('CLAIM_TOKEN_KEY', ''),
+        baseUrl: setting('PUBLIC_BASE_URL', 'https://pdayletters.com'),
+        // Whose ARC seal we are willing to treat as evidence. Defaults to the
+        // one provider we actually need, rather than to mailauth's list, which
+        // is a general-purpose "these forwarders are usually honest" set and
+        // much wider than anything here has a reason to trust.
+        trustedArcSealers: trustedSealersFrom(setting('TRUSTED_ARC_SEALERS', ''))
+    };
 }
 
 /** Reset between tests. Never called in production -- nothing there restarts. */

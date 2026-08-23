@@ -350,3 +350,19 @@ export async function nudgeOnce({
     log.info?.('nudge: sent', { slug, kind, status: result.status });
     return { status: result.status };
 }
+
+/**
+ * Forget having advised somebody, so that the advice can be given again.
+ *
+ * The once-only rule is right for the automatic path and wrong for a person:
+ * an operator looking at a refused letter can see that the advice was sent
+ * weeks ago and went unread, or was sent when the advice itself was wrong --
+ * which it was, until recently, for every Outlook user. Rather than a second
+ * kind of nudge with its own key, this simply removes the suppression and
+ * lets the ordinary send run.
+ */
+export async function forgetNudge({ tables, to, slug, kind = NUDGE.attach }) {
+    if (!tables || !to || !slug) return false;
+    await tables.deleteEntity(TABLES.nudges, String(to).toLowerCase(), `${slug}:${kind}`);
+    return true;
+}
