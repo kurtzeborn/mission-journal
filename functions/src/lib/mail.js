@@ -153,9 +153,18 @@ export function createMailer({ accountId, token, allowlist = '', fetch: doFetch 
      * has already done the thing that mattered -- the letter is stored -- and
      * none of them should turn a mail failure into a lost message.
      *
+     * `replyTo` is a parameter rather than something a caller puts in
+     * `headers`, because Cloudflare rejects the whole message if it is. Its
+     * `headers` object is an allowlist, and every header with a first-class
+     * field of its own -- `From`, `To`, `Cc`, `Bcc`, `Subject`, `Reply-To` --
+     * is refused there with a 400 and no partial send. That cost this service
+     * every claim link and every receipt it ever tried to send: the two
+     * messages carrying `Reply-To` were the two that never arrived, and the
+     * failure was a log line nobody was reading.
+     *
      * @returns {Promise<{status: 'sent'|'blocked'|'bounced'|'failed', detail?: string}>}
      */
-    async function send({ from, to, subject, text, html, headers = {}, log = console }) {
+    async function send({ from, to, replyTo = '', subject, text, html, headers = {}, log = console }) {
         if (!permitted(allowed, to)) {
             // Error, not warn. While the allowlist is narrow this fires for
             // ordinary reasons, but "we decided not to tell someone their
@@ -183,7 +192,15 @@ export function createMailer({ accountId, token, allowlist = '', fetch: doFetch 
                     authorization: `Bearer ${token}`,
                     'content-type': 'application/json'
                 },
-                body: JSON.stringify({ from, to, subject, text, html, headers })
+                body: JSON.stringify({
+                    from,
+                    to,
+                    ...(replyTo ? { reply_to: replyTo } : {}),
+                    subject,
+                    text,
+                    html,
+                    headers
+                })
             });
             body = await response.json();
         } catch (error) {

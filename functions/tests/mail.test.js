@@ -116,6 +116,27 @@ describe('sending', () => {
         assert.equal(calls[0].body.headers['In-Reply-To'], '<abc@x>');
     });
 
+    test('a reply address travels as a field, because as a header it is refused', async () => {
+        // Cloudflare's `headers` object is an allowlist, and anything with a
+        // first-class field of its own is rejected there with a 400 and no
+        // partial send. Every claim link and every receipt this service tried
+        // to send was lost that way before anyone noticed.
+        const { mailer, calls } = mailerWith([ok]);
+
+        await mailer.send({ ...message, replyTo: 'hello@pdayletters.com', log: quiet });
+
+        assert.equal(calls[0].body.reply_to, 'hello@pdayletters.com');
+        assert.equal('Reply-To' in calls[0].body.headers, false);
+    });
+
+    test('and is left out entirely when there is nowhere else to reply', async () => {
+        const { mailer, calls } = mailerWith([ok]);
+
+        await mailer.send({ ...message, log: quiet });
+
+        assert.equal('reply_to' in calls[0].body, false);
+    });
+
     test('a permanent bounce is a failure, not a success with a quiet note', async () => {
         const bounced = {
             ok: true,
@@ -229,6 +250,8 @@ describe('offering a pending site', () => {
         // RFC 3834: this is a response to a specific message, not mail that
         // nothing triggered.
         assert.equal(calls[0].body.headers['Auto-Submitted'], 'auto-replied');
+        // A field, not a header. As a header this whole message is refused.
+        assert.equal(calls[0].body.reply_to, 'hello@pdayletters.com');
         assert.match(calls[0].body.text, /\/claim#/);
     });
 

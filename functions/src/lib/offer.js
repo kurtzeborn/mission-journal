@@ -84,13 +84,13 @@ export async function offerClaim({ store, mailer, slug, key, baseUrl, to = '', f
     const result = await mailer.send({
         from: mailFrom(POST_ADDRESS),
         to: recipient,
+        // Somewhere a person reads, because `from` is an ingest address.
+        replyTo: HUMAN_ADDRESS,
         subject: body.subject,
         text: body.text,
         html: body.html,
         headers: {
             ...threading,
-            // Somewhere a person reads, because `from` is an ingest address.
-            'Reply-To': HUMAN_ADDRESS,
             // RFC 3834. `auto-replied` rather than `auto-generated` because
             // this goes out in direct response to a specific message; the
             // latter is for mail nothing triggered, like a periodic digest.

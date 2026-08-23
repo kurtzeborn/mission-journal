@@ -309,10 +309,11 @@ export async function runClaimVerb({
     const result = await mailer.send({
         from: mailFrom(CLAIM_ADDRESS),
         to: sender,
+        replyTo: HUMAN_ADDRESS,
         subject: body.subject,
         text: body.text,
         html: body.html,
-        headers: { ...threading, 'Reply-To': HUMAN_ADDRESS, 'Auto-Submitted': 'auto-replied' },
+        headers: { ...threading, 'Auto-Submitted': 'auto-replied' },
         log
     });
 

@@ -126,7 +126,10 @@ describe('sending it', () => {
         assert.equal(mailer.sent[0].headers['In-Reply-To'], '<their-forward@example.com>');
         assert.equal(mailer.sent[0].headers.References, '<their-forward@example.com>');
         // A reply to a receipt must reach a person, not the ingest pipeline.
-        assert.equal(mailer.sent[0].headers['Reply-To'], 'hello@pdayletters.com');
+        // A field, not a header: Cloudflare refuses the whole message if
+        // `Reply-To` arrives in `headers`.
+        assert.equal(mailer.sent[0].replyTo, 'hello@pdayletters.com');
+        assert.equal(mailer.sent[0].headers['Reply-To'], undefined);
         assert.equal(mailer.sent[0].headers['Auto-Submitted'], 'auto-replied');
     });
 

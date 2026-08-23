@@ -156,12 +156,12 @@ export async function acknowledgeForward({
         // ingested as a letter -- see mail.js.
         from: mailFrom(POST_ADDRESS),
         to: recipient,
+        replyTo: HUMAN_ADDRESS,
         subject: body.subject,
         text: body.text,
         html: body.html,
         headers: {
             'Auto-Submitted': 'auto-replied',
-            'Reply-To': HUMAN_ADDRESS,
             ...(messageId ? { 'In-Reply-To': messageId, References: messageId } : {})
         },
         log
