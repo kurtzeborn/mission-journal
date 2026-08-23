@@ -391,6 +391,154 @@ describe('the letters that never got in', () => {
     });
 });
 
+const WAITING = [
+    {
+        slug: 'mallory.example',
+        sender: 'mallory.example@missionary.org',
+        recipient: 'mum@example.com',
+        messageCount: 1,
+        hasDirect: false,
+        createdAt: '2026-08-23T03:34:38.000Z',
+        expiresAt: '2026-09-06T03:34:38.000Z',
+        offeredAt: null,
+        offerCount: 0
+    },
+    {
+        slug: 'sister.told',
+        sender: 'sister.told@missionary.org',
+        recipient: 'dad@example.com',
+        messageCount: 4,
+        hasDirect: false,
+        createdAt: '2026-08-01T09:00:00.000Z',
+        expiresAt: '2026-09-15T09:00:00.000Z',
+        offeredAt: '2026-08-02T09:00:00.000Z',
+        offerCount: 1
+    }
+];
+
+// The fourth table. The letters are safe, so nothing here is urgent in the way
+// a refusal is -- but nobody has been told they exist, and the countdown is
+// running. What the tests pin is that an operator can tell the two rows apart
+// before pressing anything: one has never been offered, one has.
+describe('the archives nobody has claimed', () => {
+    const waiting = (pending, over = {}) => async (url) =>
+        url.includes('manage/pending')
+            ? { status: 200, body: { pending }, ...over }
+            : { status: 200, body: { deletions: [] } };
+
+    const waitingRows = (view) => view.el('waiting-rows').children;
+
+    test('says where the link would go, and whether one ever went', async () => {
+        const view = await manage({ answer: waiting(WAITING) });
+
+        const [slug, to, letters, offered] = cells(waitingRows(view)[0]);
+        assert.equal(slug, 'mallory.example');
+        assert.equal(to, 'mum@example.com');
+        assert.equal(letters, '1');
+        // The whole reason the table exists: this is the row where the one
+        // email that would have told anybody never arrived.
+        assert.equal(offered, 'never');
+    });
+
+    test('a first offer is not asked about, having nothing to break', async () => {
+        const view = await manage({ answer: waiting(WAITING) });
+        view.context.confirmed = false;
+
+        await view.button('waiting-rows', 'Send the claim link').dispatch('click');
+        await settled();
+
+        assert.ok(
+            view.calls.some(
+                (call) =>
+                    call.url === '/api/manage/pending/mallory.example/offer' && call.method === 'POST'
+            ),
+            'the offer never reached the API'
+        );
+    });
+
+    test('a second one is, because it invalidates the first', async () => {
+        const view = await manage({ answer: waiting(WAITING) });
+        view.context.confirmed = false;
+
+        await view.button('waiting-rows', 'Send it again').dispatch('click');
+        await settled();
+
+        assert.equal(
+            view.calls.some((call) => call.url.includes('sister.told')),
+            false,
+            'a live claim link was invalidated after the question was declined'
+        );
+    });
+
+    test('and names the address it reached', async () => {
+        const view = await manage({
+            answer: async (url) =>
+                url.includes('/offer')
+                    ? { status: 200, body: { slug: 'mallory.example', status: 'sent' } }
+                    : url.includes('manage/pending')
+                        ? { status: 200, body: { pending: WAITING } }
+                        : { status: 200, body: { deletions: [] } }
+        });
+
+        await view.button('waiting-rows', 'Send the claim link').dispatch('click');
+        await settled();
+
+        assert.match(view.text('waiting-said'), /mum@example\.com/);
+    });
+
+    test('the allowlist is named rather than reported as a failure', async () => {
+        // While it is narrow this is the likeliest answer, and "something went
+        // wrong" would send an operator to the logs for a setting.
+        const view = await manage({
+            answer: async (url) =>
+                url.includes('/offer')
+                    ? { status: 200, body: { slug: 'mallory.example', status: 'blocked' } }
+                    : url.includes('manage/pending')
+                        ? { status: 200, body: { pending: WAITING } }
+                        : { status: 200, body: { deletions: [] } }
+        });
+
+        await view.button('waiting-rows', 'Send the claim link').dispatch('click');
+        await settled();
+
+        assert.match(view.text('waiting-said'), /not on the mail allowlist/i);
+    });
+
+    test('a site with no return address offers no button to press', async () => {
+        const view = await manage({
+            answer: waiting([{ ...WAITING[0], recipient: '' }])
+        });
+
+        const row = waitingRows(view)[0];
+        assert.equal(
+            row.descendants().some((node) => node.tagName === 'button'),
+            false,
+            'a claim link was offered with nowhere to send it'
+        );
+        assert.match(cells(row)[5], /No return address/i);
+    });
+
+    test('nothing waiting is said plainly', async () => {
+        const view = await manage({ answer: waiting([]) });
+
+        assert.match(view.text('waiting-state'), /No archives are waiting/i);
+        assert.equal(view.el('waiting').hidden, true);
+    });
+
+    test('and a failure here does not take the rest of the page down', async () => {
+        const view = await manage({
+            answer: async (url) =>
+                url.includes('manage/pending')
+                    ? { status: 500, body: '' }
+                    : { status: 200, body: { deletions: DELETIONS } }
+        });
+
+        assert.match(view.text('waiting-state'), /Could not load/i);
+        assert.equal(view.el('waiting').hidden, true);
+        assert.equal(rows(view).length, 2);
+    });
+});
+
 describe('who the page tells nothing to', () => {
     test('a signed-in visitor who is not an operator is shown a dead end', async () => {
         // The API answers 404 rather than 403 so the route is not confirmed,

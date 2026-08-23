@@ -55,7 +55,7 @@ export const pendingRawName = (ulid) => `${ulid}.eml`;
  * @param {function} input.now
  * @param {object} [input.log]
  */
-export async function holdPending({ store, slug, ulid, raw, envelope = {}, subject = '', sender = '', messageId = '', hasDirect = false, now, log }) {
+export async function holdPending({ store, slug, ulid, raw, envelope = {}, subject = '', sender = '', forwarder = '', messageId = '', hasDirect = false, now, log }) {
     // The envelope rides along with the bytes. It is not recoverable from the
     // message -- it is what the sending server said, not what the message
     // claims -- and promotion writes it into the archive months later, so
@@ -68,7 +68,7 @@ export async function holdPending({ store, slug, ulid, raw, envelope = {}, subje
         }
     });
 
-    const manifest = await touchClaim({ store, slug, hasDirect, subject, sender, messageId, now });
+    const manifest = await touchClaim({ store, slug, hasDirect, subject, sender, forwarder, messageId, now });
 
     log?.info?.('ingest: held pending', {
         ulid,
@@ -85,7 +85,7 @@ export async function holdPending({ store, slug, ulid, raw, envelope = {}, subje
 // missionary forwarding a backlog in one sitting produces several messages
 // racing each other, and an unguarded write would lose all but one -- taking
 // the message count and, worse, the rolling expiry with it.
-async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', messageId = '', now }) {
+async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', forwarder = '', messageId = '', now }) {
     const name = `${slug}/claim.json`;
     const at = now().toISOString();
 
@@ -118,6 +118,11 @@ async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', m
             // The address the letters came from, shown on the claim page so a
             // recipient can tell whose archive they are being offered.
             sender: existing?.sender ?? sender,
+            // Who forwarded it, which on a bootstrap is the only address a
+            // claim link may go to -- `sender` above is the missionary the
+            // letters are about, and is the one person who must not be sent
+            // one. The first forwarder, not the latest: they hold the link.
+            forwarder: existing?.forwarder || forwarder || null,
             // The newest held letter's own `Message-ID`, kept so the claim
             // email can thread as a reply to it. The newest rather than the
             // first: the recipient wrote it most recently, so it is the one
@@ -149,4 +154,83 @@ async function touchClaim({ store, slug, hasDirect, subject = '', sender = '', m
     }
 
     throw new Error(`pending: could not update claim.json for ${slug}`);
+}
+
+const decodeMeta = (value) => {
+    try {
+        return decodeURIComponent(value ?? '');
+    } catch {
+        return '';
+    }
+};
+
+/**
+ * Where a claim link for a pending site should go.
+ *
+ * In order of how much we actually know. The last address offered comes
+ * first, because minting supersedes and that person is holding the link this
+ * one replaces. Then the recorded forwarder. `sender` is only ever right on a
+ * direct site -- on a forwarded one it is the missionary, who must not be
+ * handed a credential for an archive they never asked for.
+ *
+ * The envelope of the newest held letter is the last resort, for sites held
+ * before the forwarder was written down. It is what the sending server said
+ * rather than what the message claims, so it is the better guess of the two
+ * even though it comes last.
+ */
+export async function pendingRecipient({ store, slug, manifest }) {
+    const emailed = manifest?.emailedAddresses ?? [];
+    if (emailed.length) return emailed[emailed.length - 1];
+    if (manifest?.forwarder) return manifest.forwarder;
+    if (manifest?.hasDirect && manifest.sender) return manifest.sender;
+
+    const held = (await store.listBlobs('pending', `${slug}/`)).filter((name) => name.endsWith('.eml')).sort();
+    if (!held.length) return '';
+
+    const blob = await store.readBlob('pending', held[held.length - 1]);
+    return decodeMeta(blob?.metadata?.envelopefrom);
+}
+
+/**
+ * Every site holding letters nobody has claimed.
+ *
+ * Unreadable manifests are reported rather than skipped, which is the
+ * opposite of what the purge and reminder sweeps do. They decline to act on
+ * what they cannot read; this is a page whose whole purpose is to show an
+ * operator what is stuck, and a manifest nobody can parse is the most stuck
+ * thing there is.
+ */
+export async function listPending({ store, log = console }) {
+    const names = await store.listBlobs('pending', '');
+    const sites = [];
+
+    for (const name of names.filter((entry) => entry.endsWith('/claim.json'))) {
+        const slug = name.slice(0, -'/claim.json'.length);
+
+        let manifest;
+        try {
+            const blob = await store.readBlob('pending', name);
+            manifest = blob ? JSON.parse(Buffer.from(blob.bytes).toString('utf8')) : null;
+        } catch (error) {
+            log.error?.('pending: unreadable manifest', { slug, error: error.message });
+            sites.push({ slug, unreadable: true });
+            continue;
+        }
+
+        if (!manifest || manifest.claimedAt) continue;
+
+        sites.push({
+            slug,
+            sender: manifest.sender ?? '',
+            recipient: await pendingRecipient({ store, slug, manifest }),
+            messageCount: manifest.messageCount ?? 0,
+            hasDirect: Boolean(manifest.hasDirect),
+            createdAt: manifest.createdAt ?? null,
+            expiresAt: manifest.expiresAt ?? null,
+            offeredAt: manifest.claimEmailSentAt ?? null,
+            offerCount: manifest.claimEmailCount ?? 0
+        });
+    }
+
+    return sites.sort((a, b) => String(a.expiresAt).localeCompare(String(b.expiresAt)));
 }

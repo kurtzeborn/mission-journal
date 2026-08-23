@@ -423,6 +423,10 @@ export async function runIngest({
             // a wrong subject is a cosmetic error on a held letter, not a
             // misdirected credential.
             sender: verdict.author ?? '',
+            // Only on a bootstrap. A direct send has no forwarder, and
+            // recording the missionary as their own would send the claim link
+            // back to the address the site is about.
+            forwarder: bootstrapping ? (verdict.forwarder ?? '') : '',
             // Threading follows whoever is going to be written to. A direct
             // send is answered to the missionary, so the reply threads onto
             // the letter they sent. A bootstrap forward is answered to the

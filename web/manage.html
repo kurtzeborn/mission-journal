@@ -28,12 +28,13 @@
     exactly the people it was untrue for. A refused visitor now gets the same
     answer as anyone who mistypes a URL.
 
-    Three tables. The deletions list is ordinarily empty, which is the state it
+    Four tables. The deletions list is ordinarily empty, which is the state it
     is designed around: the common case is confirming that nothing is waiting.
     The arrivals list always has every archive in it, and the common case is
     confirming that the top row is recent. The refusals list is the one with
     buttons that change somebody's mind for them, and it should be empty too --
-    a row in it is a family who tried to start an archive and could not.
+    a row in it is a family who tried to start an archive and could not. The
+    waiting list is where a claim email that never arrived becomes visible.
 -->
 
 <body>
@@ -131,6 +132,42 @@
             </table>
 
             <p class="note" id="refused-said" role="status" aria-live="polite"></p>
+
+            <hr class="rule">
+
+            <!--
+                Below the refusals, because a letter that was turned away is
+                the louder problem: nothing was kept. Here the letters are
+                safe and only the invitation went missing, which is quieter
+                and, until this table, entirely invisible.
+            -->
+            <h2>Archives waiting to be claimed</h2>
+
+            <p class="note">
+                Letters held for archives nobody has claimed yet, soonest to expire first.
+                <strong>Offered</strong> is when the claim link was emailed &mdash; if it is
+                blank, nobody has ever been told these letters exist. <strong>Send the
+                claim link</strong> writes to the address shown and invalidates any earlier
+                link, so it is worth asking whether the first one simply went to spam.
+            </p>
+
+            <div id="waiting-state" class="state">Loading&hellip;</div>
+
+            <table id="waiting" class="deletions" hidden>
+                <thead>
+                    <tr>
+                        <th scope="col">Archive</th>
+                        <th scope="col">Claim link goes to</th>
+                        <th scope="col">Letters</th>
+                        <th scope="col">Offered</th>
+                        <th scope="col">Expires</th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                </thead>
+                <tbody id="waiting-rows"></tbody>
+            </table>
+
+            <p class="note" id="waiting-said" role="status" aria-live="polite"></p>
 
             <hr class="rule">
 

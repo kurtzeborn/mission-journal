@@ -1,5 +1,5 @@
-// The operator's page: what is arriving, what was turned away, what has been
-// deleted, and the doors back from the last two.
+// The operator's page: what is arriving, what was turned away, what is
+// waiting to be claimed, and the doors back from the last two.
 //
 // Arrivals always has every archive in it and the common case is confirming
 // the top row is recent -- it is the only view in the service that spans
@@ -7,6 +7,8 @@
 // Refusals should be empty and every row in it is a family who tried to start
 // an archive and could not; it is the only place a rejection is visible at
 // all, since one writes nothing and tells only the person it happened to.
+// Waiting is the same silence one step later: the letters were kept, and the
+// email that would have told somebody so is the part that went missing.
 // Deletions is ordinarily empty and is the entire recovery path for a deletion
 // somebody regrets, since there is no owner-facing undo: the confirmation on
 // the settings page says the archive is gone and nothing here contradicts it.
@@ -365,6 +367,132 @@
         drawRefused(rejections);
     }
 
+    // The waiting half. Every row is an archive holding letters that nobody
+    // has been able to open, and the column that matters is "Offered": blank
+    // means the one email that would have told anybody was never delivered.
+    async function offerAgain(site, button) {
+        const where = $('waiting-said');
+        button.disabled = true;
+        where.textContent = `Writing to ${site.recipient}\u2026`;
+
+        let response;
+        try {
+            response = await fetch(`/api/manage/pending/${encodeURIComponent(site.slug)}/offer`, {
+                method: 'POST',
+                cache: 'no-store'
+            });
+        } catch {
+            where.textContent = 'Could not reach the server. Nothing was sent.';
+            button.disabled = false;
+            return;
+        }
+
+        if (!response.ok) {
+            where.textContent = 'Something went wrong. Nothing was sent.';
+            button.disabled = false;
+            return;
+        }
+
+        const body = await response.json();
+
+        if (body.status !== 'sent') {
+            // `blocked` is the allowlist, and while it is narrow it is the
+            // likeliest answer here -- worth naming rather than reporting as
+            // a failure the operator might go looking for in the logs.
+            where.textContent =
+                body.status === 'blocked'
+                    ? `${site.recipient} is not on the mail allowlist, so nothing was sent.`
+                    : `Could not send it: ${body.status}.`;
+            button.disabled = false;
+            return;
+        }
+
+        where.textContent = `The claim link for ${site.slug} is on its way to ${site.recipient}.`;
+        loadWaiting();
+    }
+
+    function drawWaiting(sites) {
+        const rows = $('waiting-rows');
+        rows.replaceChildren();
+
+        for (const site of sites) {
+            const row = document.createElement('tr');
+            cell(row, site.slug);
+            cell(row, site.recipient || '\u2014');
+            cell(row, String(site.messageCount));
+            cell(row, site.offeredAt ? day(site.offeredAt) : 'never');
+            cell(row, day(site.expiresAt));
+
+            const actions = cell(row, '');
+            actions.className = 'actions';
+
+            // Nothing to press when there is no address. The manifest records
+            // the missionary, not whoever forwarded the letters, and on the
+            // oldest held sites that is all there is -- writing to them would
+            // hand a stranger's archive to the person it is about.
+            if (!site.recipient) {
+                actions.textContent = 'No return address';
+                rows.appendChild(row);
+                continue;
+            }
+
+            const button = document.createElement('button');
+            button.className = 'button button--compact';
+            button.type = 'button';
+            button.textContent = site.offerCount ? 'Send it again' : 'Send the claim link';
+            button.addEventListener('click', async () => {
+                // Only when one has already gone out. Re-minting invalidates
+                // whatever link is in somebody's inbox, and the first press
+                // on a site nobody has ever been told about cannot break
+                // anything, so asking then would be ceremony.
+                if (site.offerCount) {
+                    const ok = await window.Confirm.ask({
+                        question: `Send ${site.slug} a new claim link?`,
+                        detail: `Any link already sent to ${site.recipient} will stop working.`,
+                        action: 'Send it again'
+                    });
+                    if (!ok) return;
+                }
+                offerAgain(site, button);
+            });
+            actions.appendChild(button);
+
+            rows.appendChild(row);
+        }
+
+        $('waiting-state').hidden = true;
+        $('waiting').hidden = false;
+    }
+
+    async function loadWaiting() {
+        const where = $('waiting-state');
+        where.hidden = false;
+        $('waiting').hidden = true;
+
+        let response;
+        try {
+            response = await fetch('/api/manage/pending', { cache: 'no-store' });
+        } catch {
+            where.textContent = 'Could not load the waiting archives. Please try again.';
+            return;
+        }
+
+        if (!response.ok) {
+            where.textContent = 'Could not load the waiting archives.';
+            return;
+        }
+
+        const body = await response.json();
+        const sites = Array.isArray(body.pending) ? body.pending : [];
+
+        if (!sites.length) {
+            where.textContent = 'No archives are waiting to be claimed.';
+            return;
+        }
+
+        drawWaiting(sites);
+    }
+
     async function load() {
         let response;
         try {
@@ -398,6 +526,7 @@
         // page should be on screen at all.
         loadFlow();
         loadRefused();
+        loadWaiting();
 
         // The ordinary state, and worth saying plainly rather than showing an
         // empty table: the point of the visit is usually to confirm that
