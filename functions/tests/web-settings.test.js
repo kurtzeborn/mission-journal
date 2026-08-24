@@ -6,6 +6,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { fetching, page, run, settled } from './web-dom.js';
 
 const SLUG = 'elder.example';
@@ -28,6 +29,25 @@ const loaded = (deleteAnswer) => async (url, init) =>
 const gone = { status: 200, body: { slug: SLUG, purgeAfter: '2026-09-07T09:00:00.000Z', members: 2 } };
 
 const deletes = (view) => view.calls.filter((call) => call.method === 'DELETE');
+
+// Four short questions, each with a paragraph under it, made a page that read
+// as an essay with inputs in it -- and pushed the last question off a phone
+// screen. The explanations are still there; they are folded away until asked
+// for.
+describe('the explanation beside each field', () => {
+    const source = readFileSync(new URL('../../web/settings.html', import.meta.url), 'utf8')
+        .replace(/<!--[\s\S]*?-->/g, '');
+
+    test('one per field, closed, and labeled with something a screen reader can read', () => {
+        const hints = [...source.matchAll(/<details class="hint"([^>]*)>/g)];
+        const marks = [...source.matchAll(/<summary class="hint__mark"([^>]*)>/g)];
+
+        assert.equal(hints.length, 4);
+        assert.equal(hints.filter(([, attrs]) => /\bopen\b/.test(attrs)).length, 0);
+        assert.equal(marks.length, 4);
+        assert.equal(marks.every(([, attrs]) => attrs.includes('aria-label=')), true);
+    });
+});
 
 // Two of the three fields are dates, and both of them do something: one is
 // what the archive counts up from in front of the whole family, the other is

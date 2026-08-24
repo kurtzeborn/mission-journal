@@ -146,9 +146,8 @@ describe('the other table, which is every archive there is', () => {
         assert.equal(flowRows(view).length, 2);
         assert.equal(view.el('flow').hidden, false);
 
-        const [slug, name, state, received, posted] = cells(flowRows(view)[0]);
+        const [slug, state, received, posted] = cells(flowRows(view)[0]);
         assert.equal(slug, 'elder.recent');
-        assert.equal(name, 'Elder Recent');
         assert.equal(state, 'live');
         assert.match(received, /2026/);
         assert.match(posted, /2026/);
@@ -174,14 +173,14 @@ describe('the other table, which is every archive there is', () => {
             archives: [{ slug: 'elder.new', name: '', state: 'live', lastPostAt: '', lastReceivedAt: '', held: 0 }]
         });
 
-        assert.deepEqual(cells(flowRows(view)[0]), ['elder.new', '\u2014', 'live', '\u2014', '\u2014', '\u2014']);
+        assert.deepEqual(cells(flowRows(view)[0]), ['elder.new', 'live', '\u2014', '\u2014', '\u2014']);
         assert.match(view.text('flow-state'), /No letters have arrived/i);
     });
 
     test('letters waiting say how many and until when', async () => {
         const view = await arriving({ lastReceivedAt: ARCHIVES[0].lastReceivedAt, archives: ARCHIVES });
 
-        assert.match(cells(flowRows(view)[1])[5], /^3 letters, until /);
+        assert.match(cells(flowRows(view)[1])[4], /^3 letters, until /);
     });
 
     test('letters stuck on a live archive say so without a date', async () => {
@@ -192,15 +191,16 @@ describe('the other table, which is every archive there is', () => {
             archives: [{ ...ARCHIVES[0], held: 1 }]
         });
 
-        assert.equal(cells(flowRows(view)[0])[5], '1 letter');
+        assert.equal(cells(flowRows(view)[0])[4], '1 letter');
     });
 
-    test('a name reaches the page as text, not as markup', async () => {
-        // A display name taken from an email header the service did not write.
-        const nasty = '<img src=x onerror=alert(1)>';
-        const view = await arriving({ lastReceivedAt: '', archives: [{ ...ARCHIVES[0], name: nasty }] });
+    test('the display name is not repeated beside the slug it made', async () => {
+        // One fewer column on the table that grows forever. The slug is
+        // derived from the name, so the two said the same thing twice.
+        const view = await arriving({ lastReceivedAt: '', archives: ARCHIVES });
 
-        assert.equal(cells(flowRows(view)[0])[1], nasty);
+        assert.equal(cells(flowRows(view)[0]).length, 5);
+        assert.equal(cells(flowRows(view)[0]).includes('Elder Recent'), false);
     });
 
     test('and a failure here does not take the deletions down with it', async () => {

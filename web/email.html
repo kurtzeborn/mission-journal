@@ -13,6 +13,8 @@
     <meta name="description" content="Choose how often Pday Letters emails you about new letters.">
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
 </head>
 
 <body>
@@ -20,6 +22,34 @@
         <div class="masthead__inner">
             <a class="wordmark" href="/"><img class="wordmark__mark" src="/logo.png" alt="" width="192" height="192">Pday Letters</a>
             <span class="beta">beta</span>
+            <span class="masthead__spacer"></span>
+            <!-- Ships visible, unlike the landing page's copy of it: this route
+                 is authenticated, so there is no signed-out state to draw. The
+                 label is a placeholder until /.auth/me answers, and saying
+                 which address this page is about matters more here than
+                 anywhere -- the setting belongs to the address, not to the
+                 person, and plenty of people keep more than one. -->
+            <details class="menu" id="menu">
+                <summary class="button button--quiet button--compact menu__trigger">
+                    <i class="account__icon" id="account-icon" aria-hidden="true"></i>
+                    <span class="visually-hidden" id="account-provider"></span>
+                    <span class="menu__name" id="account-email">Account</span>
+                </summary>
+                <div class="menu__panel">
+                    <p class="menu__who">
+                        <span id="menu-provider">Signed in</span><br>
+                        <span class="menu__address" id="menu-address"></span>
+                    </p>
+                    <div class="menu__group" id="archives" hidden>
+                        <p class="menu__label">Your archives</p>
+                        <p class="menu__wait" id="archives-wait" hidden>Loading&hellip;</p>
+                        <ul class="menu__list" id="archives-list"></ul>
+                    </div>
+                    <ul class="menu__list">
+                        <li><a href="/.auth/logout">Sign out</a></li>
+                    </ul>
+                </div>
+            </details>
         </div>
     </header>
 
@@ -102,6 +132,7 @@
         </section>
     </main>
 
+    <script src="/account.js"></script>
     <script src="/email.js"></script>
 </body>
 

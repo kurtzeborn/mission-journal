@@ -153,7 +153,6 @@
         for (const archive of archives) {
             const row = document.createElement('tr');
             cell(row, archive.slug);
-            cell(row, archive.name || '\u2014');
             cell(row, archive.state);
             cell(row, archive.lastReceivedAt ? day(archive.lastReceivedAt) : '\u2014');
             cell(row, archive.lastPostAt ? day(archive.lastPostAt) : '\u2014');

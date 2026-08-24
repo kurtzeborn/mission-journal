@@ -1160,6 +1160,78 @@ button:focus-visible {
     font-size: 0.95rem;
 }
 
+/* --- the mark beside a label --- */
+
+/* One question and its answer, where the answer is folded away until it is
+   asked for. The settings page carried four explanations standing open at
+   once, which is longer than the form they explain and pushed the last
+   question off a phone screen.
+
+   A `details` again, for the reasons the masthead menu is one, and they share
+   a `name` so opening the second closes the first. */
+.field {
+    /* The panel hangs from here rather than from its own mark. The mark sits
+       at the end of the label, and on a phone that is most of the way across
+       the screen -- so a panel anchored to it hung off the right edge. */
+    position: relative;
+    margin: 1rem 0;
+}
+
+.hint {
+    display: inline-block;
+    margin-left: 0.35rem;
+}
+
+.hint__mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.2rem;
+    height: 1.2rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    font-family: system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--ink-soft);
+    cursor: pointer;
+    /* Chrome and Safari would draw a disclosure triangle inside the circle. */
+    list-style: none;
+}
+
+.hint__mark::-webkit-details-marker {
+    display: none;
+}
+
+.hint__mark:hover,
+.hint[open] .hint__mark {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Absolute, so opening one does not shove the field it belongs to down the
+   page and move the input out from under the pointer. `top` is left alone for
+   the same reason the menu panel leaves it: the flow position is already
+   directly under the mark. */
+.hint__panel {
+    position: absolute;
+    left: 0;
+    z-index: 20;
+    margin-top: 0.35rem;
+    width: max-content;
+    max-width: min(24rem, 100%);
+    padding: 0.65rem 0.85rem;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--ink-soft);
+}
+
 /* An operator reading an archive they do not belong to.
 
    Loud on purpose, and at the top of the content rather than in the masthead:
@@ -1276,6 +1348,23 @@ button:focus-visible {
    dates off the side of a phone. */
 .deletions td:nth-child(4) {
     max-width: 18rem;
+}
+
+/* The arrivals table is the one that grows without bound: every archive the
+   service has ever had is a row in it, for as long as it exists. Smaller and
+   tighter than the others so the answer somebody came for stays on one
+   screen. */
+.deletions--dense {
+    font-size: 0.8rem;
+}
+
+.deletions--dense th,
+.deletions--dense td {
+    padding: 0.3rem 0.6rem;
+}
+
+.deletions--dense th {
+    font-size: 0.68rem;
 }
 
 /* The refusals table is the one with a subject line in it, which is somebody

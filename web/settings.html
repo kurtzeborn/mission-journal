@@ -25,47 +25,68 @@
         <div id="state" class="state">Loading&hellip;</div>
 
         <section id="everything" hidden>
+            <!--
+                Each field's explanation lives behind the mark beside its
+                label. Standing open, the four of them were longer than the
+                form and pushed the last question off a phone screen -- so the
+                page read as an essay with inputs in it rather than as four
+                short questions. `name` is shared so the browser closes one
+                when another opens.
+            -->
             <form id="profile">
-                <p>
-                    <label for="displayName">What this archive is called</label><br>
+                <div class="field">
+                    <label for="displayName">What this archive is called</label>
+                    <details class="hint" name="hint">
+                        <summary class="hint__mark" aria-label="What this is for">i</summary>
+                        <div class="hint__panel">
+                            This heads every page of the archive, labels it on your list of
+                            archives, and goes out in the invitations you send. Most people use
+                            the name the letters are signed with.
+                        </div>
+                    </details><br>
                     <input id="displayName" name="displayName" type="text" maxlength="60" autocomplete="off"
                         required placeholder="Elder Example">
-                </p>
-                <p class="note">
-                    This heads every page of the archive, labels it on your list of archives, and
-                    goes out in the invitations you send. Most people use the name the letters are
-                    signed with.
-                </p>
+                </div>
 
-                <p>
-                    <label for="mission">Which mission <span class="note">(if known)</span></label><br>
+                <div class="field">
+                    <label for="mission">Which mission <span class="note">(if known)</span></label>
+                    <details class="hint" name="hint">
+                        <summary class="hint__mark" aria-label="What this is for">i</summary>
+                        <div class="hint__panel">
+                            Printed on the cover if you order a book, along with the dates below.
+                            Write it however you say it &mdash; nothing checks it against a list.
+                        </div>
+                    </details><br>
                     <input id="mission" name="mission" type="text" maxlength="80" autocomplete="off"
                         placeholder="Argentina Buenos Aires North Mission">
-                </p>
-                <p class="note">
-                    Printed on the cover if you order a book, along with the dates below. Write it
-                    however you say it &mdash; nothing checks it against a list.
-                </p>
+                </div>
 
-                <p>
-                    <label for="startDate">When the mission started <span class="note">(if known)</span></label><br>
+                <div class="field">
+                    <label for="startDate">When the mission started <span class="note">(if known)</span></label>
+                    <details class="hint" name="hint">
+                        <summary class="hint__mark" aria-label="What this is for">i</summary>
+                        <div class="hint__panel">
+                            Fill this in and the archive counts up from it, so everyone reading can
+                            see how long they have been out. Leave it blank and no counter is
+                            shown.
+                        </div>
+                    </details><br>
                     <input id="startDate" name="startDate" type="date">
-                </p>
-                <p class="note">
-                    Fill this in and the archive counts up from it, so everyone reading can see how
-                    long they have been out. Leave it blank and no counter is shown.
-                </p>
+                </div>
 
-                <p>
-                    <label for="returnDate">When they come home <span class="note">(if known)</span></label><br>
+                <div class="field">
+                    <label for="returnDate">When they come home <span class="note">(if known)</span></label>
+                    <details class="hint" name="hint">
+                        <summary class="hint__mark" aria-label="What this is for">i</summary>
+                        <div class="hint__panel">
+                            Fill this in and the counter turns round into a countdown, then settles
+                            into a total once the day has passed. It is also used to work out when
+                            to remind you about things, and printed on the cover if you order a
+                            book. Leave it blank and the count up stops at two years.
+                        </div>
+                    </details><br>
                     <input id="returnDate" name="returnDate" type="date">
-                </p>
-                <p class="note">
-                    Fill this in and the counter turns round into a countdown, then settles into a
-                    total once the day has passed. It is also used to work out when to remind you
-                    about things, and printed on the cover if you order a book. Leave it blank and
-                    the count up stops at two years.
-                </p>
+                </div>
 
                 <p><button class="button" type="submit" id="save">Save</button></p>
                 <p class="note" id="said" role="status" aria-live="polite"></p>

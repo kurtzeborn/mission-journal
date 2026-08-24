@@ -1,8 +1,10 @@
-// Who is signed in, on the public landing page.
+// Who is signed in, on the pages that are not an archive.
 //
-// This page is served anonymously and is the first thing a nervous relative
-// sees, so the signed-out state is what ships in the markup and works with no
-// JavaScript at all. The swap happens afterwards, once /.auth/me answers.
+// The landing page is served anonymously and is the first thing a nervous
+// relative sees, so the signed-out state is what ships in its markup and works
+// with no JavaScript at all. The swap happens afterwards, once /.auth/me
+// answers. Pages behind a role have no such state and ship the menu visible,
+// which is why `signed-out` is optional here.
 //
 // It also offers the archives that address belongs to, which it could not do
 // until `/api/memberships` existed. It offers them rather than redirecting:
@@ -25,7 +27,7 @@
     async function showAccount() {
         const signedOut = document.getElementById('signed-out');
         const menu = document.getElementById('menu');
-        if (!signedOut || !menu) return;
+        if (!menu) return;
 
         let principal;
         try {
@@ -53,7 +55,7 @@
         document.getElementById('account-email').textContent = principal.userDetails;
         document.getElementById('menu-address').textContent = principal.userDetails;
 
-        signedOut.hidden = true;
+        if (signedOut) signedOut.hidden = true;
         menu.hidden = false;
 
         await showArchives();

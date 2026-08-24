@@ -7,6 +7,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { fetching, page, run, settled } from './web-dom.js';
 
 const open = async (answer) => {
@@ -21,6 +22,21 @@ const saved = { status: 200, body: { digestFrequency: 'weekly' } };
 
 const loaded = (body) => (url, init) =>
     (init?.method ?? 'GET') === 'GET' ? { status: 200, body } : saved;
+
+// This page is reached from the account menu, and until now it was the one
+// signed-in page that did not carry that menu itself -- so the way in was also
+// a dead end. The route is authenticated, so there is no signed-out state to
+// draw and the menu ships visible.
+describe('the masthead', () => {
+    const source = readFileSync(new URL('../../web/email.html', import.meta.url), 'utf8')
+        .replace(/<!--[\s\S]*?-->/g, '');
+
+    test('carries the account menu, drawn by the script the landing page uses', () => {
+        assert.match(source, /<details class="menu" id="menu">/);
+        assert.match(source, /<script src="\/account\.js">/);
+        assert.match(source, /href="\/\.auth\/logout"/);
+    });
+});
 
 describe('showing somebody what they chose', () => {
     test('the setting comes back selected, not guessed at', async () => {

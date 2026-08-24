@@ -28,7 +28,7 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
-      "route": "/home.js",
+      "route": "/account.js",
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {

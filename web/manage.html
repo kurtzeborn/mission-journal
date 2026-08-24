@@ -79,11 +79,17 @@
 
             <div id="flow-state" class="state">Loading&hellip;</div>
 
-            <table id="flow" class="deletions" hidden>
+            <!--
+                Set small and tight, because this is the one table that grows
+                with the service: every archive is a row forever, and the
+                answer somebody comes for is in the top few. No display name
+                column -- the slug is made from it, so the two said the same
+                thing twice across the widest table on the page.
+            -->
+            <table id="flow" class="deletions deletions--dense" hidden>
                 <thead>
                     <tr>
                         <th scope="col">Archive</th>
-                        <th scope="col">Name</th>
                         <th scope="col">State</th>
                         <th scope="col">Last received</th>
                         <th scope="col">Newest letter</th>
