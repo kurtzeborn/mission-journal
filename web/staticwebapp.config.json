@@ -32,6 +32,11 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "Beside account.js and for the same reason: a shared script loaded by pages on both sides of the sign-in wall. Every anonymous page below that lands out of an email loads it, and the catch-all would otherwise 401 it and leave those pages inert. It carries no archive data -- an element lookup, a section toggle, the fragment-to-sessionStorage move, and the two provider hrefs.",
+      "route": "/page.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "The claim page is reached by someone with no account at all, following a link out of an email. It must render before there is any session to check.",
       "route": "/claim",
       "rewrite": "/claim.html",

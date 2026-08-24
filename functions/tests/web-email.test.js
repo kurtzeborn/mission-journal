@@ -13,7 +13,7 @@ import { fetching, page, run, settled } from './web-dom.js';
 const open = async (answer) => {
     const view = page({ html: 'email.html', path: '/email' });
     const net = fetching(answer);
-    run('email.js', { context: view.context, fetch: net.fetch });
+    run(['page.js', 'email.js'], { context: view.context, fetch: net.fetch });
     await settled();
     return { view, net };
 };

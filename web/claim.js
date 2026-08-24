@@ -4,33 +4,15 @@
 // records URLs: the access log, App Insights, the Referer header, and the link
 // scanner that fetches mail links before their recipient sees them. So it is
 // read from `location.hash`, immediately moved into `sessionStorage`, and
-// stripped from the address bar. Every request that carries it is a POST with
-// the token in the body.
-//
-// `sessionStorage` rather than a variable because claiming requires signing
-// in, and signing in means leaving the page entirely and coming back. The
-// fragment would not reliably survive that round trip; a same-origin session
-// value does.
+// stripped from the address bar -- see `takeToken` in page.js. Every request
+// that carries it is a POST with the token in the body.
+
+/* global Page */
 
 const KEY = 'claim-token';
 
-const $ = (id) => document.getElementById(id);
-const show = (id) => {
-    for (const section of document.querySelectorAll('main > section')) section.hidden = true;
-    $(id).hidden = false;
-};
-
-function takeToken() {
-    const fromHash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
-    if (fromHash) {
-        sessionStorage.setItem(KEY, fromHash);
-        // Out of the address bar, so it is not shoulder-read, bookmarked, or
-        // pasted into a support conversation along with the rest of the URL.
-        history.replaceState(null, '', location.pathname);
-        return fromHash;
-    }
-    return sessionStorage.getItem(KEY) ?? '';
-}
+const { $, show, aimSignIn } = Page;
+const takeToken = () => Page.takeToken(KEY);
 
 const post = async (path, payload) => {
     const response = await fetch(path, {
@@ -228,9 +210,7 @@ function renderReady(described, principal) {
             : `You are signed in as ${principal}. This address will own the archive.`;    } else {
         // Come back to this page after signing in. The token is already in
         // sessionStorage, so it does not need to survive the redirect itself.
-        const back = encodeURIComponent(location.pathname);
-        $('signin-aad').href = `/.auth/login/aad?post_login_redirect_uri=${back}`;
-        $('signin-google').href = `/.auth/login/google?post_login_redirect_uri=${back}`;
+        aimSignIn();
         $('signin-block').hidden = false;
     }
 

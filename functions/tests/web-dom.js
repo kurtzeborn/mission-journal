@@ -326,11 +326,16 @@ export function fetching(answer) {
  * thing that ships. Both scripts start work as they load, and both start it
  * with an await, so one turn of the microtask queue is not enough -- callers
  * await `settled()` to let the whole chain finish.
+ *
+ * Takes a list when the page loads a shared script first, in the order the
+ * markup loads them.
  */
-export function run(file, { context, fetch }) {
-    const source = readFileSync(new URL(`../../web/${file}`, import.meta.url), 'utf8');
+export function run(files, { context, fetch }) {
     context.fetch = fetch;
-    runInNewContext(source, context, { filename: file });
+    for (const file of [files].flat()) {
+        const source = readFileSync(new URL(`../../web/${file}`, import.meta.url), 'utf8');
+        runInNewContext(source, context, { filename: file });
+    }
 }
 
 /** Let every pending promise chain finish. */

@@ -10,23 +10,12 @@
 // wonder whether it is a scam. So this page leads with the name of the person
 // who invited them.
 
+/* global Page */
+
 const KEY = 'invite-token';
 
-const $ = (id) => document.getElementById(id);
-const show = (id) => {
-    for (const section of document.querySelectorAll('main > section')) section.hidden = true;
-    $(id).hidden = false;
-};
-
-function takeToken() {
-    const fromHash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
-    if (fromHash) {
-        sessionStorage.setItem(KEY, fromHash);
-        history.replaceState(null, '', location.pathname);
-        return fromHash;
-    }
-    return sessionStorage.getItem(KEY) ?? '';
-}
+const { $, show, aimSignIn } = Page;
+const takeToken = () => Page.takeToken(KEY);
 
 const post = async (path, payload) => {
     const response = await fetch(path, {
@@ -111,9 +100,7 @@ function renderReady(described, principal) {
         $('accept-form').hidden = false;
         $('accept-as').textContent = `You are signed in as ${principal}. This is the address that will get access.`;
     } else {
-        const back = encodeURIComponent(location.pathname);
-        $('signin-aad').href = `/.auth/login/aad?post_login_redirect_uri=${back}`;
-        $('signin-google').href = `/.auth/login/google?post_login_redirect_uri=${back}`;
+        aimSignIn();
         $('signin-block').hidden = false;
     }
 

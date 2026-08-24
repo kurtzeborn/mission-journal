@@ -8,11 +8,9 @@
 // off until they come here, and a preference nobody can find is the same as a
 // preference that is not offered. The account menu is how they find it.
 
-const $ = (id) => document.getElementById(id);
-const show = (id) => {
-    for (const section of document.querySelectorAll('main > section')) section.hidden = true;
-    $(id).hidden = false;
-};
+/* global Page */
+
+const { $, show, aimSignIn } = Page;
 
 // A rejected fetch is the network, not the answer. Distinguished from a 401
 // here because they need opposite pages: one says sign in, the other says we
@@ -32,9 +30,7 @@ async function call(method, payload, path = '/api/preferences') {
 }
 
 function offerSignIn() {
-    const back = encodeURIComponent(location.pathname);
-    $('signin-aad').href = `/.auth/login/aad?post_login_redirect_uri=${back}`;
-    $('signin-google').href = `/.auth/login/google?post_login_redirect_uri=${back}`;
+    aimSignIn();
     show('signin');
 }
 

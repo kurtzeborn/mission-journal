@@ -15,7 +15,7 @@ const TOKEN = 'a-token-from-the-email';
 async function invitePage({ answer, hash = `#${TOKEN}` }) {
     const view = page({ html: 'invite.html', path: '/invite', hash });
     const net = fetching(answer);
-    run('invite.js', { context: view.context, fetch: net.fetch });
+    run(['page.js', 'invite.js'], { context: view.context, fetch: net.fetch });
     await settled();
     return { ...view, calls: net.calls };
 }

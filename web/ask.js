@@ -13,23 +13,12 @@
 // every scanner in the path would spend somebody's letter-writing time on a
 // request nobody made.
 
+/* global Page */
+
 const KEY = 'relay-token';
 
-const $ = (id) => document.getElementById(id);
-const show = (id) => {
-    for (const section of document.querySelectorAll('main > section')) section.hidden = true;
-    $(id).hidden = false;
-};
-
-function takeToken() {
-    const fromHash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
-    if (fromHash) {
-        sessionStorage.setItem(KEY, fromHash);
-        history.replaceState(null, '', location.pathname);
-        return fromHash;
-    }
-    return sessionStorage.getItem(KEY) ?? '';
-}
+const { $, show } = Page;
+const takeToken = () => Page.takeToken(KEY);
 
 const post = async (path, payload) => {
     // A rejected fetch is the network, not the answer. Left to propagate it

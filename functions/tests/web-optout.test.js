@@ -14,7 +14,7 @@ const TOKEN = 'a-signed-token';
 const open = async ({ answer, hash = `#${TOKEN}` }) => {
     const view = page({ html: 'optout.html', path: '/optout', hash });
     const net = fetching(answer);
-    run('optout.js', { context: view.context, fetch: net.fetch });
+    run(['page.js', 'optout.js'], { context: view.context, fetch: net.fetch });
     await settled();
     return { view, net };
 };
@@ -64,7 +64,7 @@ describe('being offered a way out', () => {
         const view = page({ html: 'optout.html', path: '/optout', hash: '' });
         view.context.sessionStorage.setItem('optout-token', TOKEN);
         const net = fetching(ready());
-        run('optout.js', { context: view.context, fetch: net.fetch });
+        run(['page.js', 'optout.js'], { context: view.context, fetch: net.fetch });
         await settled();
 
         assert.equal(view.el('ready').hidden, false);
@@ -73,7 +73,7 @@ describe('being offered a way out', () => {
     test('arriving with no token at all is a plain refusal, not a crash', async () => {
         const view = page({ html: 'optout.html', path: '/optout', hash: '' });
         const net = fetching(ready());
-        run('optout.js', { context: view.context, fetch: net.fetch });
+        run(['page.js', 'optout.js'], { context: view.context, fetch: net.fetch });
         await settled();
 
         assert.equal(view.el('failed').hidden, false);

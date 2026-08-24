@@ -13,23 +13,12 @@
 // enough, a scanner would decide, and the person the message was for would
 // stop hearing from us without ever knowing why.
 
+/* global Page */
+
 const KEY = 'optout-token';
 
-const $ = (id) => document.getElementById(id);
-const show = (id) => {
-    for (const section of document.querySelectorAll('main > section')) section.hidden = true;
-    $(id).hidden = false;
-};
-
-function takeToken() {
-    const fromHash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
-    if (fromHash) {
-        sessionStorage.setItem(KEY, fromHash);
-        history.replaceState(null, '', location.pathname);
-        return fromHash;
-    }
-    return sessionStorage.getItem(KEY) ?? '';
-}
+const { $, show } = Page;
+const takeToken = () => Page.takeToken(KEY);
 
 const post = async (path, payload) => {
     // A rejected fetch is the network, not the answer. Left to propagate it
