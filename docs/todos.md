@@ -2,7 +2,7 @@
 
 Things that come due on a clock rather than in response to a change, and that therefore have no natural prompt in the [plan](plan.md). Everything here is work the service needs *after* it is built, which is exactly the category that gets forgotten while it is still being built.
 
-The organising principle: **a task nobody is reminded of is a task that fails silently.** Most items below are cheap when scheduled and expensive when discovered, and several of them fail in ways that produce no error at all — a claim email that stops being sent, a domain that stops resolving, a signed-in user who is suddenly signed out. Standing this up properly is the last item before [leaving beta](plan.md#phase-12--leaving-beta).
+The organising principle: **a task nobody is reminded of is a task that fails silently.** Most items below are cheap when scheduled and expensive when discovered, and several of them fail in ways that produce no error at all — a claim email that stops being sent, a domain that stops resolving, a signed-in user who is suddenly signed out. This page is what [Phase 12](plan.md#phase-12--leaving-beta) meant by standing up a maintenance schedule.
 
 ---
 
@@ -90,27 +90,13 @@ Three things worth remembering about the mechanism:
 - **`az eventgrid system-topic event-subscription show` cannot read this subscription** — the CLI pins an API version older than the feature. Verify with `az resource show --api-version 2025-02-15` instead.
 - **`SecretNewVersionCreated` is deliberately not subscribed.** The vault emits it on every write, so a rotation — the fix — would raise an alert of its own.
 
-**Key Vault cannot renew any of this,** and serves an expired secret quite happily. Auto-renewal is certificates-only for integrated CAs, and `exp` is advisory rather than enforced on read. So the date is a warning that can never cause an outage of its own, and every rotation above is done by hand.
+**Key Vault cannot renew any of this,** and serves an expired secret quite happily. Auto-renewal is certificates-only for integrated CAs, and `exp` is advisory rather than enforced on read. So the date is a warning that can never cause an outage of its own, and every rotation above is done by hand. Real automation would be a Function reacting to the near-expiry event and calling Graph or the Cloudflare API — justifiable across a set, hard to justify for one secret every two years.
 
 ### The alignment goal
 
-**Tracked in [issue #7](https://github.com/kurtzeborn/mission-journal/issues/7).** The rotation steps above are the reference; the issue holds the decision and the date.
+**Met.** Every dated credential now falls in **August** — 2027-08-01, 2027-08-31 and 2028-08-04 — so rotation arrives in one season rather than three times a year unannounced. Nothing further is planned here; the table above is the schedule.
 
-**The notification deliberately does not go through our own mailer.** Every message this service sends uses `cloudflare-api-token` — one of the secrets being watched. An alert about that token expiring, sent with that token, would fail exactly when it mattered. Azure Monitor's email path shares nothing with the system it reports on.
-
-Three things worth remembering about the mechanism:
-
-- **`MonitorAlert` needs `eventDeliverySchema: 'CloudEventSchemaV1_0'`,** which is not the default. Without it the deployment fails naming the schema but not the resource that wanted it. `Microsoft.EventGrid` must also be registered on the subscription first.
-- **`az eventgrid system-topic event-subscription show` cannot read this subscription** — the CLI pins an API version older than the feature and refuses. Verify with `az resource show --api-version 2025-02-15` instead.
-- **`SecretNewVersionCreated` is deliberately not subscribed.** The vault emits it on every write, so including it would make a rotation — the fix — raise an alert of its own.
-
-### What is still not covered
-
-**Key Vault cannot renew any of these.** Auto-renewal is a certificates-only feature for integrated CAs, so the alert is the entire mechanism — every rotation below is done by hand. Real automation would be a Function reacting to the near-expiry event and calling Graph or the Cloudflare API, which is justifiable across a set and hard to justify for one secret every two years.
-
-**Key Vault also serves an expired secret quite happily.** `exp` is advisory for secrets and is not enforced on read, so a date set early is a warning rather than a scheduled outage — which is what makes it safe to set these honestly.
-
-Three of the credentials in the table live outside Key Vault, so none of this sees them: both GitHub Actions secrets and the registrar. Because `exp` is advisory, a secret holding nothing but a note could carry the GitHub deploy token's real date and surface in the same alert. That is a trick rather than a design, and it earns its place only if the alternative is a calendar entry nobody shares — revisit it during the [alignment pass](#the-alignment-goal), when the whole set is being handled at once anyway.
+Three of the credentials in the table live outside Key Vault, so the alert does not see them: both GitHub Actions secrets and the registrar. Because `exp` is advisory, a secret holding nothing but a note could carry the GitHub deploy token's real date and surface in the same alert. **Considered during the alignment pass and not done** — it is a trick rather than a design, and now that everything falls in one August the calendar entry it would replace only has to fire once.
 
 ---
 
@@ -135,7 +121,7 @@ Three of the credentials in the table live outside Key Vault, so none of this se
 
 ### Quarterly
 
-- **`npm audit`.** Permanently red on `mailauth`'s transitive advisories, which were [measured as unreachable](plan.md#phase-8--outbound-mail-and-preferences). That is the hazard: a permanently red audit is one a real advisory gets scrolled past in. Either add an allowlist so the output means something again, or accept that this check requires reading rather than glancing.
+- **`npm audit`.** Run `npm run audit` in `functions/` rather than `npm audit` itself. The raw audit is permanently red on `mailauth`'s transitive advisories, which were [measured as unreachable](plan.md#phase-8--outbound-mail-and-preferences) and are all marked *no fix available*; a permanently red check is one a real advisory gets scrolled past in. `tools/audit-check.js` compares advisory **IDs** against `functions/audit-baseline.json` and fails only on ones nobody has looked at yet, so green means *nothing new* rather than *nothing at all*. The quarterly job is therefore small: run it, and if it fails, either fix the dependency or add the ID to the baseline **with a note saying why it is unreachable**. An entry without a reason is a silenced alarm.
 - **Storage growth.** `inbox/` and `exports/` both expire on their own now — 30 days and 7 days, set by the `lifecycle` policy in `infra/main.bicep`, and the `arrivals` table is swept nightly by the `sweep` timer, which drops counting rows older than 30 days. What is worth a quarterly look is the containers with no rule at all: `raw/` and `rendered/` grow for as long as the archives live, which is the intended behavior and the reason the bill will only ever go up.
   - **The `nudges` table is deliberately not swept.** Most of its rows are once-ever gates — deleting one re-sends a message somebody already got — and only the `ack:` rows are dated. They accumulate one row per forwarder per archive per day, which is small enough that the risk of a sweep touching the wrong prefix is the larger number.
 

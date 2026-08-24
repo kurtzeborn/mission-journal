@@ -119,13 +119,13 @@ Three of the constraints above cannot be verified until someone with a real `@mi
 
 ## Design decisions
 
-### The service is in beta until the privacy policy ships
+### The service carries a beta mark until December 2026
 
 Every surface carrying the product name — the public landing page, the site header, the footer of outbound email — carries a small **beta** mark beside it. Deliberately subtle: one word next to the name, not a banner, not an interstitial, nothing to dismiss.
 
-**It is a factual claim, not a disclaimer.** There is no terms of use, no privacy policy, no written takedown process, and — per [Building blind](#building-blind) — several paths that have never run against a real `@missionary.org` account. Someone about to hand over two years of their family's letters is entitled to know that going in.
+**It began as a factual claim rather than a disclaimer.** There was no terms of use, no privacy policy and no written takedown process, and — per [Building blind](#building-blind) — several paths had never run against a real `@missionary.org` account. Someone about to hand over two years of their family's letters was entitled to know that going in.
 
-**Publishing the privacy policy is what removes it.** A single checkable event rather than a judgment call about readiness. See [Phase 12](#phase-12--leaving-beta).
+**All three documents have since shipped**, at [terms.html](../web/terms.html). What the mark now claims is the narrower and still-true thing: that the service is young and has not yet been through a full mission. **It comes off no earlier than December 2026** — a date rather than an event, because nothing is outstanding and the only remaining evidence is time. See [Phase 12](#phase-12--leaving-beta).
 
 ### Domains
 
@@ -904,18 +904,18 @@ Asking beats either default. Opting everyone in silently makes the service's fir
 
 > **As built, freshness is `receivedAt`, not `lastPostAt`.** Same distinction the operator's `/manage/last-received` view is built around, pointed at a reader instead of an operator: a family forwarding two years of backlog in one evening has just given everybody twenty letters to read, and on the letter's own date that is a digest covering 2024 which goes to nobody. `lastReceivedAt` on the site row is used only as a skip, to avoid reading `posts.json` for an archive that has been quiet all cycle.
 
-#### Text messages (stretch)
+#### Text messages — not doing this
 
-An opt-in mobile number per user, texted a short line and a link when a letter posts. Nobody misses a text — that is the entire argument for it, and it is a good one.
+**Cut.** An opt-in mobile number per user, texted a short line and a link when a letter posts. Nobody misses a text — that was the entire argument for it, and it was a good one. It is written down as a decision rather than deleted, so it is not re-proposed as though the objections had never been counted.
 
-Held as a stretch goal because it is the only feature in the plan that leaves the current cost and compliance envelope:
+It was the only feature in the plan that left the cost and compliance envelope, in four ways at once:
 
 - **It isn't free.** Outbound SMS carries a per-message fee and requires a rented number, against a service budgeted at ~$12–15/month in total.
 - **US A2P messaging requires sender registration** (10DLC or toll-free verification) before carriers deliver reliably. That is an application with a review, not a config toggle.
 - **`STOP` handling is mandatory**, which means an inbound message path, per-number opt-out state, and honoring it permanently — a second unsubscribe system running alongside the HMAC email one.
 - **It introduces phone numbers**, the first genuinely sensitive personal data the service would hold. Everything stored today is an email address the person already handed to a mail provider.
 
-**If built, it is per-post rather than digested.** A monthly text is pointless; immediacy is the only thing SMS offers that email doesn't. Default off, always, with the number collected on the settings page and confirmed by a round-trip code before anything is sent to it.
+The digest at [Phase 10](#phase-10--new-letter-notifications) is the answer to the same need, and letters home are not urgent.
 
 ### Editing and hiding posts
 
@@ -1174,7 +1174,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Store `Message-ID` so acks thread~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [ ] Per-user notification preferences page — [Phase 8](#phase-8--outbound-mail-and-preferences) *(`digestFrequency` shipped at `/email`; the two ack flags are not built)*
 - [x] Monthly digest of new letters — [Phase 10](#phase-10--new-letter-notifications)
-- [ ] Text messages — [Phase 10](#phase-10--new-letter-notifications) *(stretch)*
+- [x] ~~Text messages~~ — cut, see [Text messages](#text-messages--not-doing-this)
 
 **Owner and operator tools**
 
@@ -1349,7 +1349,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 **Shipped.** See the [Reader UI backlog](#reader-ui-backlog) for what a first real read-through exposed — the phase is built, not finished.
 
 - **Public landing page at `/`** — what the service is and the `post@pdayletters.com` address. Unauthenticated, entirely generic, no per-site information. `claim@` instructions arrive with the claim flow in Phase 7.
-- **Subtle `beta` mark** beside the product name wherever it appears. Removed in Phase 12 and not before. See [The service is in beta](#the-service-is-in-beta-until-the-privacy-policy-ships).
+- **Subtle `beta` mark** beside the product name wherever it appears. Removed in Phase 12 and not before. See [The service carries a beta mark](#the-service-carries-a-beta-mark-until-december-2026).
 - Path-routed `/{missionary-slug}` reader: list posts sorted by `originalDate`, post view, photo album, MiniSearch index built client-side from `posts.json`, with search text derived by stripping tags from `bodyHtml`.
 - Content is served through `/api/content/…` and `/api/photo/…` from the start. There is deliberately no anonymous escape hatch — a temporary flag that exposes real family mail is precisely the kind of thing that survives to production.
 - **Base the type scale, contrast, and touch targets on the actual audience.** Grandparents are the primary readers, and this is far cheaper to decide here than to retrofit.
@@ -1603,7 +1603,7 @@ Shipped since, and previously listed here as outstanding:
 - **`digestFrequency` is off until somebody asks for it** — the monthly/weekly/never question is on the page at `/email`, reached from the account menu on every page, and nowhere else. It was on the claim and invitation forms until the menu existed to hold it; taking it off those forms is what got joining down to two steps. Nothing else creates a row, so an address that has never asked is never written to.
 - **Empty digests are never sent**, and the cycle ends anyway. There is nothing in a quiet window to miss.
 - **Deviations from the design above** are recorded inline under [New-letter notifications](#new-letter-notifications): the page is `/email` rather than `/settings`, there is no thumbnail, freshness is arrival rather than the letter's own date, cycles are 30 and 7 days, and a failed send is not retried.
-- **Stretch — SMS.** Still not started, and still blocked on the cost, A2P registration, and `STOP`-handling questions in [Text messages](#text-messages-stretch).
+- **SMS is cut**, on cost, A2P registration, `STOP` handling and the fact that it would introduce phone numbers. See [Text messages](#text-messages--not-doing-this).
 
 ### Phase 11 — Journal Publish
 **In progress.** The layout engine, the pipeline that drives it, and the provider integration are built, and the provider account has answered a real call.
@@ -1634,7 +1634,7 @@ Phase 12 is [Leaving beta](#phase-12--leaving-beta), and it is deliberately the 
 
 Raised after reading the first real archive end to end. **None of these block anything technically**, and together they block showing the site to family: the page is one long unbroken column, and length is the problem each item attacks from a different side.
 
-**Items 1 to 4 have shipped.** Three things about how they landed are worth keeping, because none of them were in the ask:
+**Closed.** Items 1 to 4 shipped, as did the [word cloud](#word-cloud), [in-place editing](#the-editor-edits-the-letter-not-its-markup) and [owner-added pictures](#owners-can-add-pictures-to-a-post); the [two navigation experiments](#two-experiments-in-navigating-a-long-archive) were closed unbuilt because the problem they aimed at had stopped being the problem. Three things about how items 1 to 4 landed are worth keeping, because none of them were in the ask:
 
 - **Item 1 asked for a visible affordance on each photo, and it has been removed again.** A "View larger" pill printed over every picture in the archive read as clutter long before it read as an invitation. The cue is now the zoom cursor and, on touch, the near-universal habit of tapping a picture. The words survive on `aria-label`, because the frame is a button wrapping an image with empty alt text and would otherwise have no accessible name at all.
 - **A photo has to earn its float.** Wrapping text around a small picture is only worth doing when there is text to wrap; measured against the real archive, most photos do not have any. `reader.js` counts the letter between each photo and the next, and under roughly three lines the picture stands on its own at full width instead. Photos also `clear` each other unconditionally, because two floats side by side squeeze the column to about sixteen characters and that guard needs no judgment to be right.
@@ -1699,15 +1699,15 @@ Show the words a missionary actually uses — the names, the places, the things 
 - **Clicking a word runs the search.** This is the whole reason it is worth building rather than being decoration. Hit marking and next/previous stepping already exist, so a word in the cloud becomes a way of *discovering* a query for machinery that is already there to answer it.
 - **A picture after all.** This bullet used to read *"a list, not a picture"*, on the grounds that a packed cloud is a large amount of code and hostile to a screen reader and to a thumb. All three were wrong. [wordcloud2.js](https://github.com/timdream/wordcloud2.js) is 37 KB of MIT with no dependencies, and handed anything other than a `<canvas>` it emits a `<span>` per word — so the words carry `role="button"`, `tabindex="0"` and an `aria-label` naming the word and its count, answer Enter and Space, and are ordinary DOM the stylesheet colors. It is also better at the job: it is the shape people recognize, and it fits sixty words where a flowed list fits a screenful of two. **The estimate that killed it the first time was made without looking for a library.**
 - **The words are counted in the browser and nowhere else**, on first open rather than on load, because most readers never ask and walking every letter is not a cost they should pay. Nothing about the letters leaves the device, which is the promise search already makes.
-- **Frequency shipped; spread is still the better measure and is still open.** What is built counts raw occurrences. The argument below stands — a word repeated thirty times in one letter is a story about that week, and a word appearing once in twenty letters is what the mission was about — and switching the tally to count *letters* rather than occurrences is a few lines in `countWords` whenever it earns the attention.
-- **The stop list is the hard part, and it is not just English.** Still true and still unfinished: what shipped is a short English list that deliberately keeps `home`, `week` and `love`. A missionary in Guatemala writes bilingual letters, and `de`, `que`, `la` and `y` will outrank every real word if only an English list is applied. Beyond function words there is a second layer of noise specific to this corpus: `Elder`, `Sister`, `district`, `transfer` and the missionary's own name appear in nearly every letter and distinguish nothing. Subject lines are excluded already, since otherwise `week` wins every archive.
+- **Frequency is the measure, and that is settled.** What shipped counts raw occurrences. The argument for counting *letters* rather than occurrences — a word repeated thirty times in one letter is a story about that week, a word appearing once in twenty letters is what the mission was about — is a good one and did not survive contact with the clouds themselves, which are legible and useful as they are. A few lines in `countWords` if it ever stops being true.
+- **The stop list is English plus this corpus, and that is where it stops.** A short English list that deliberately keeps `home`, `week` and `love`, with schemes, `@` and slashes stripped so a pasted link cannot become two invented words. A bilingual archive will let `de`, `que` and `la` through, and `Elder`, `Sister`, `district` and `transfer` still distinguish nothing — both are real and neither has been worth a list of its own yet. Subject lines are excluded already, since otherwise `week` wins every archive.
 - **A pasted link is not a sentence, and this was found in the wild.** A Google Photos share URL arrives as its own visible link text, so it is in the letter's words and not only in an `href`; split on punctuation, `photos.app.goo.gl/egtkcgt-kxqodvf` becomes `egtkcgt` and `kxqodvf`, which look like words and are not. Anything carrying a scheme, an `@` or a slash is stripped before the text is split.
 - **Six colors, picked off a hash of the word rather than at random**, so a word keeps its color when a resize repacks the cloud. They are the site's accent plus five siblings, pulled toward the ink rather than being true pastels, because a word can be 11px and nothing pale reads at that size.
 - **It does not undo the work that shortened the page**, because it is a modal rather than a panel in the flow. The original bullet asked for collapsed-by-default wherever it landed; a dialog is the stronger form of the same answer.
 - **The packing cannot be tested where the rest of the reader is.** wordcloud2 measures words by drawing them on a canvas, and jsdom has no canvas — the real library throws on load there. A recorded fake stands in at exactly the seam the reader uses, so everything done *with* a word is still under test; where a word lands is browser-verified only. Two words in sixty typically fail to place and are dropped, which is the library working as configured rather than a bug.
 - **It ships in the zip as well**, which cost one more vendored file and no design compromise. That is the shape to aim for: not offline-first, just offline-if-free.
 
-Open: whether stemming earns its keep, since `teach`, `teaching` and `taught` are one idea and three words; and whether an owner needs a way to suppress a word that is noise for their missionary and signal for someone else's. Answered: it covers the whole site rather than one letter.
+Two remaining questions were answered by using the thing: **stemming does not earn its keep** — `teach`, `teaching` and `taught` read as three related words rather than as noise, and collapsing them costs a stemmer and a class of surprising merges; and **an owner does not need a way to suppress a word**, because the cloud covers the whole site rather than one letter and no archive has yet produced a word worth hiding.
 
 ### Owners can add pictures to a post
 
@@ -1731,12 +1731,10 @@ Open: whether the same mechanism should let an owner replace a dead album *link*
 
 ### Two experiments in navigating a long archive
 
-Both of these are **worth building far enough to look at and no further.** Neither is obviously an improvement, and the reason to write them down is that the argument for each is easy to make in the abstract and the objection to each only shows up on screen. Build, look, and be willing to throw away.
+**Closed, unbuilt.** Both were written down as *worth building far enough to look at and no further*, and neither got that far because the problem they were aimed at stopped being the problem. Collapsed letters, marked search hits with a stepper, and the word cloud together turned the wall of prose into something a reader can survey; a second layer of navigation on top of that is machinery in search of a complaint. Recorded rather than deleted, because the arguments are still the right ones if the reader ever gets long again.
 
-- **Letters grouped into collapsible months.** "August 2025" as a heading with the month's letters beneath it, closed by default. The case for it: a full mission is around a hundred letters, and a flat list of a hundred dates is a different problem from the flat wall of prose that collapsing already solved. The case against it: it puts a second thing to click in front of every letter, and the summary lines are already dates — a reader scanning for "sometime in the spring" may find the month headings redundant rather than helpful. Watch what it does to search in particular: a hit inside a closed letter inside a closed month needs *two* things opened to reach it, and the stepper currently opens one.
-- **A floating table of contents down the left.** Dates, sticky, scrolling the letter into view when clicked. The case for it: it is the only proposal that shows where you are in the mission rather than only what is next. The case against it: the layout has just been deliberately narrowed to keep the prose at a comfortable measure, and a left rail either eats into that or pushes the column off-center — the same argument that killed the right-hand photo gutter, pointed the other way. It also has nowhere to go on a phone, which is where most of this is read, so it would be a desktop-only feature and the desktop is not where the problem is.
-
-Both are cheap to prototype because the reader already has what they need: `views` is an ordered map keyed by post id, `setExpanded` is the only way anything opens, and the dates are already parsed. Neither should ship without seeing the two of them and the plain list side by side.
+- **Letters grouped into collapsible months.** The case for it: a full mission is around a hundred letters, and a flat list of a hundred dates is a different problem from the flat wall of prose that collapsing already solved. The case against it, and the one that won: it puts a second thing to click in front of every letter, the summary lines are already dates, and a hit inside a closed letter inside a closed month needs *two* things opened to reach it while the stepper opens one. The months did find a home — as the chapters of the printed book, where there is no stepper to break.
+- **A floating table of contents down the left.** The case for it: it is the only proposal that shows where you are in the mission rather than only what is next. The case against it, and the one that won: the layout was deliberately narrowed to keep the prose at a comfortable measure, and a left rail either eats into that or pushes the column off-center — the same argument that killed the right-hand photo gutter, pointed the other way. It also has nowhere to go on a phone, which is where most of this is read.
 
 ---
 
@@ -1756,13 +1754,13 @@ Feature-specific questions stay with their own sections. This one spans the serv
 
 ## Phase 12 — Leaving beta
 
-**Not started**, and deliberately the final section of this document, so anything discovered later is written above it rather than after it. The [beta mark](#the-service-is-in-beta-until-the-privacy-policy-ships) stays until this ships, and this ships only when everything above it is done — including the [Reader UI backlog](#reader-ui-backlog) and the [open questions](#open-questions-to-confirm).
+**Written, and waiting on the calendar.** Everything this phase asked for has shipped; the [beta mark](#the-service-is-in-beta-until-the-privacy-policy-ships) comes off **no earlier than December 2026**, by decision rather than by any outstanding work. It is deliberately the final section of this document, so anything discovered later is written above it rather than after it.
 
 Written last for a second reason: it has to describe what was built rather than what was planned. A privacy policy drafted from a design documents a system that does not exist.
 
-- **Terms of use:** who owns the content (the missionary and their family, never the service), what the service may do with it (store, render, print on request — nothing else), and the acceptable-use line.
-- **Privacy policy:** what is retained and for how long, that `raw/` is kept indefinitely and deliberately, the 30-day erase window on deletion, that submitting a book discloses its contents to the print provider, and who can see what — **including that service operators can reach any site**, per [Operator access is visible and logged](#operator-access-is-visible-and-logged). That disclosure is the reason this cannot be boilerplate.
-- **Takedown and dispute process:** the written policy behind the mechanism [The 60-day cliff](#the-60-day-cliff) already describes — what evidence is required, who decides, and what the outcomes are (add an owner, or delete the site).
-- **Transactional-mail position:** a short statement that claim emails, acks, invitations, and digests are responses to a specific action rather than marketing, and that each carries an opt-out. **The mechanism half already shipped** — see [Invitations](#invitations) — so what remains here is the statement, not the plumbing.
-- **Stand up the maintenance schedule in [todos.md](todos.md), and align every credential to a common expiry month.** Left alone, secrets expire on the dates they happened to be created, so rotation arrives several times a year unannounced. **This belongs here rather than earlier**: the alignment is only meaningful once the set has stopped changing.
-- **Then remove the beta mark.** Publishing this is what ends beta. There is no separate announcement and no other gate.
+- **Terms of use — shipped**, at [terms.html](../web/terms.html): who owns the content (the missionary and their family, never the service), what the service may do with it (store, render, print on request — nothing else), and the acceptable-use line.
+- **Privacy policy — shipped**, in the same document: what is retained and for how long, that `raw/` is kept indefinitely and deliberately, the 30-day erase window on deletion, that submitting a book discloses its contents to the print provider, and who can see what — **including that service operators can reach any site**, per [Operator access is visible and logged](#operator-access-is-visible-and-logged). That disclosure is the reason it could not be boilerplate.
+- **Takedown and dispute process — shipped**, under *Takedown and disputes* in the same document, backing the mechanism [The 60-day cliff](#the-60-day-cliff) describes: what evidence is required, who decides, and what the outcomes are.
+- **Transactional-mail position — shipped**, under *Your choices*: every message is a response to something somebody did, we do not send marketing, and every one carries both a settings link and an unsubscribe link. The mechanism half landed earlier — see [Invitations](#invitations).
+- **The maintenance schedule — shipped**, in [todos.md](todos.md), and the credentials now expire in the same month, which is what [issue #7](https://github.com/kurtzeborn/mission-journal/issues/7) asked for.
+- **Removing the beta mark is a December decision.** Nothing above blocks it. Holding the mark through the autumn buys a season of real use — a full book ordered and delivered, and a mission's worth of letters through the pipeline — before the site stops saying it is still being built.
