@@ -205,21 +205,12 @@
         );
     }
 
-    // The wire half of `send`, without the assumption that the body is JSON or
-    // that the page has a version to defend. Pictures are sent as raw bytes,
-    // and adding two in a row would fail on the second if it carried the ETag
-    // the first one had just moved -- see the note on the API side.
-    async function call(method, postId, suffix, init, reload = true) {
-        let response;
-        try {
-            response = await fetch(
-                `/api/posts/${encodeURIComponent(slug)}/${encodeURIComponent(postId)}${suffix}`,
-                { method, redirect: 'manual', ...init }
-            );
-        } catch {
-            return 'Could not reach the server. Nothing was changed.';
-        }
-
+    // What to tell an owner when a write did not land, or null when it did.
+    // A table rather than a procedure, and kept apart from `call` for that
+    // reason: this is the half somebody comes back to when a relative reports
+    // a sentence they did not understand, and it reads badly wrapped around a
+    // fetch.
+    async function explain(response) {
         if (response.status === 401 || response.type === 'opaqueredirect') {
             return 'Your session expired. Reload the page and sign in again.';
         }
@@ -249,6 +240,27 @@
                 ? `Refused: ${detail.error}`
                 : `That did not work (${response.status}).`;
         }
+
+        return null;
+    }
+
+    // The wire half of `send`, without the assumption that the body is JSON or
+    // that the page has a version to defend. Pictures are sent as raw bytes,
+    // and adding two in a row would fail on the second if it carried the ETag
+    // the first one had just moved -- see the note on the API side.
+    async function call(method, postId, suffix, init, reload = true) {
+        let response;
+        try {
+            response = await fetch(
+                `/api/posts/${encodeURIComponent(slug)}/${encodeURIComponent(postId)}${suffix}`,
+                { method, redirect: 'manual', ...init }
+            );
+        } catch {
+            return 'Could not reach the server. Nothing was changed.';
+        }
+
+        const failed = await explain(response);
+        if (failed) return failed;
 
         // Re-reading is what keeps the page honest: the server decides what a
         // letter now says, including what its sanitizer removed from an edit.
