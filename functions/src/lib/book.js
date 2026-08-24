@@ -31,6 +31,7 @@ import sharp from 'sharp';
 import { flowBody, inlinePhotoIds } from './bookflow.js';
 import { clothOf } from './cover.js';
 import { fillLine, segments } from './typeset.js';
+import { countWords, packCloud } from './words.js';
 
 // pdfkit publishes no ESM entry point, so it comes in through require the way
 // yazl does in archive.js.
@@ -144,6 +145,21 @@ const aspectOf = (photo) =>
 
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
+
+// The word cloud on the back of the title page. The largest size is what one
+// word can be without crowding the fifty-nine behind it; the smallest is the
+// point below which a word set among much larger ones stops being read at
+// all. `CLOUD_PALE` is the grey the rarest word is printed in -- light enough
+// to recede, dark enough to survive a press that is not being careful.
+const CLOUD_TOP = 34;
+const CLOUD_FLOOR = 9.5;
+const CLOUD_PALE = 0x9a;
+const CLOUD_INK = 0x1a;
+
+// Below this the page is left blank instead. A dozen words do not pack into
+// anything that reads as a cloud -- they land as a dozen words scattered over
+// a page, which looks like a fault rather than a design.
+const CLOUD_LEAST = 12;
 
 // What a press needs, and what a screen needs, and the gap between them is
 // the whole reason there are two renditions of every book. At 300 the column
@@ -1451,12 +1467,34 @@ function setBackCover(doc, { slug, cloth, state }) {
     state.cover = false;
 }
 
-function setTitlePage(doc, { title, profile, state }) {
+/**
+ * The title page, with the imprint at its foot.
+ *
+ * The imprint -- what this is, where it came from, when it was printed --
+ * conventionally sits on the back of this page, and did until the word cloud
+ * wanted that side. Moving it down here rather than pushing it further into
+ * the book costs nothing: three lines of ten-point italic at the foot of a
+ * title page is where half the books on a shelf carry their publisher, and
+ * the page had nothing below the middle anyway.
+ */
+function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
     state.indent = 0;
     doc.addPage();
 
     doc.y = PAGE.height * 0.3;
     setNameplate(doc, { title, profile, x: LEFT, width: COLUMN, size: 30 });
+
+    doc.font('italic').fontSize(10).fillColor(QUIET);
+    doc.y = PAGE.height * 0.78;
+
+    for (const line of [
+        `pdayletters.com/${slug}`,
+        `Printed from the archive on ${String(madeAt).slice(0, 10)}.`,
+        'Set in Crimson Text.'
+    ]) {
+        doc.text(line, LEFT, doc.y, { width: COLUMN, align: 'center' });
+        doc.moveDown(0.4);
+    }
 }
 
 function setContents(doc, { entries, state }) {
@@ -1512,28 +1550,99 @@ function setContents(doc, { entries, state }) {
 }
 
 /**
- * The back of the title page.
+ * The word cloud, on the back of the title page.
  *
- * Which is where a colophon belongs, and putting it there solves a second
- * problem for free. Letters open on left-hand pages, so the front matter has
- * to end on a right-hand one; a title page alone would leave its own verso
- * blank and push everything out of phase.
+ * The one page of the book that is not letters, dates or photographs. Two
+ * years of mail is a great many words and no shape at all; this is the shape,
+ * and the reader has drawn it on screen since the archive shipped. In print it
+ * has to earn its leaf, which this page does in the way a frontispiece always
+ * has -- it is the first thing seen after the title, and it says what the
+ * whole book turned out to be about before a word of it is read.
+ *
+ * **Here rather than anywhere else because this leaf already existed.** The
+ * front matter has to end on a right-hand page so that the first letter opens
+ * on a left-hand one, which meant the title page's verso was always going to
+ * be printed and until now carried nothing but the imprint. Putting the cloud
+ * on a leaf of its own would have cost two sheets rather than none: its own,
+ * and the blank one that the shifted parity would then force before the first
+ * letter. The imprint moved to the foot of the title page instead.
+ *
+ * Nothing here is clickable and nothing is searchable, which is most of what
+ * the screen version is for. What survives the move to paper is the part
+ * somebody would want on paper.
  */
-function setColophon(doc, { title, slug, madeAt, state }) {
+function setCloud(doc, { words, state }) {
     state.indent = 0;
     doc.addPage();
 
-    doc.y = PAGE.height * 0.62;
-    doc.font('italic').fontSize(11).fillColor(QUIET);
+    // An archive with almost nothing in it yet. The leaf stays -- the parity
+    // above depends on it -- and a blank verso facing the contents is what a
+    // book does anyway.
+    if (words.length < CLOUD_LEAST) return;
 
-    for (const line of [
-        `${title} \u00b7 pdayletters.com/${slug}`,
-        `Printed from the archive on ${String(madeAt).slice(0, 10)}.`,
-        'Set in Crimson Text.'
-    ]) {
-        doc.text(line, LEFT, doc.y, { width: COLUMN, align: 'center' });
-        doc.moveDown(0.4);
+    const box = { width: COLUMN, height: TEXT_BOTTOM - MARGIN.top - 34 };
+    const weight = cloudScale(words);
+
+    // Set once, outside the packing, because `measure` below is called some
+    // thousands of times and each call would otherwise re-resolve the face.
+    doc.font('semibold');
+
+    const placed = packCloud(words, {
+        width: box.width,
+        height: box.height,
+        size: weight.size,
+        measure: (word, size) => doc.fontSize(size).widthOfString(word)
+    });
+
+    for (const item of placed) {
+        doc.fontSize(item.size).fillColor(weight.ink(item.count));
+
+        // A point of slack on the width. `widthOfString` and the width the
+        // text call then consumes agree to within rounding, and a string that
+        // lands a hundredth of a point over its box wraps to a second line
+        // that is drawn on top of whatever was packed beneath it.
+        doc.text(item.word, LEFT + item.x, MARGIN.top + item.y, {
+            width: item.width + 1,
+            lineBreak: false
+        });
     }
+
+    doc.font('italic').fontSize(9.5).fillColor(QUIET);
+    doc.text('The words that came up most often.', LEFT, TEXT_BOTTOM - 26, {
+        width: COLUMN,
+        align: 'center',
+        lineBreak: false
+    });
+}
+
+/**
+ * Point size and ink for a word, from how often it was written.
+ *
+ * Logarithmic, as on screen and for the same reason: a word that came up four
+ * times as often is not four times as interesting, and on a linear scale one
+ * runaway word flattens the other fifty-nine into a single illegible size.
+ *
+ * The ink follows the same curve as the size, which the screen version does
+ * not do -- there the colors are arbitrary and only there to separate one word
+ * from its neighbour. On paper there is one ink, so the only way a small word
+ * can recede is to be paler, and a page of sixty words all in text black reads
+ * as a mistake rather than as a cloud.
+ */
+function cloudScale(words) {
+    const counts = words.map(([, n]) => n);
+    const most = Math.max(...counts);
+    const least = Math.min(...counts);
+
+    const step = (n) =>
+        most <= least ? 0.5 : (Math.log(n) - Math.log(least)) / (Math.log(most) - Math.log(least));
+
+    return {
+        size: (n) => CLOUD_FLOOR + step(n) * (CLOUD_TOP - CLOUD_FLOOR),
+        ink: (n) => {
+            const value = Math.round(CLOUD_PALE - step(n) * (CLOUD_PALE - CLOUD_INK));
+            return [value, value, value];
+        }
+    };
 }
 
 /**
@@ -1544,10 +1653,10 @@ function setColophon(doc, { title, slug, madeAt, state }) {
  *
  * @returns {Promise<Map<string, number>>} post id to the folio it opened on
  */
-async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, cloth, picture, least, state }) {
+async function setBook(doc, { slug, posts, profile, title, entries, words, imagesFor, cloth, picture, least, state }) {
     setFrontCover(doc, { title, profile, cloth, picture, state });
-    setTitlePage(doc, { title, profile, state });
-    setColophon(doc, { title, slug, madeAt: state.madeAt, state });
+    setTitlePage(doc, { title, slug, profile, madeAt: state.madeAt, state });
+    setCloud(doc, { words, state });
     setContents(doc, { entries, state });
 
     state.furniture = true;
@@ -1565,6 +1674,24 @@ async function setBook(doc, { slug, posts, profile, title, entries, imagesFor, c
 }
 
 const NO_IMAGES = new Map();
+
+/**
+ * A letter's words, with the markup taken off.
+ *
+ * Through the same parser the book is set from rather than a regex over the
+ * HTML, which is the same choice the reader makes and for the same reason: a
+ * regex would count tag names and attribute values as words in the letter, so
+ * an archive full of pasted links would find that its commonest word was
+ * "href".
+ */
+function plainTextOf(post, slug) {
+    if (!post.bodyHtml) return post.bodyText ?? '';
+
+    return flowBody(post.bodyHtml, slug)
+        .flatMap((block) => block.runs ?? [])
+        .map((run) => run.text)
+        .join(' ');
+}
 
 /**
  * How wide each of a letter's photographs will actually be printed.
@@ -1681,6 +1808,12 @@ export function buildInterior({
         page: 0
     }));
 
+    // Counted once and handed to both passes. Not because it is expensive --
+    // it is a walk over text already in memory -- but because the two passes
+    // have to agree on the layout to the point, and a tally computed twice is
+    // one more thing that could come back different.
+    const words = countWords(ordered.map((post) => plainTextOf(post, slug)));
+
     // The measuring pass. It reads no blobs at all -- every rectangle it
     // needs is already recorded on the post -- so it costs layout arithmetic
     // and nothing else, and it is thrown away the moment it has answered the
@@ -1700,6 +1833,7 @@ export function buildInterior({
             profile,
             title,
             entries,
+            words,
             imagesFor: () => NO_IMAGES,
             cloth,
             picture: null,
@@ -1740,6 +1874,7 @@ export function buildInterior({
             profile,
             title,
             entries,
+            words,
             cloth,
             picture,
             // One letter's pictures at a time, and one picture at a time

@@ -499,7 +499,8 @@ describe('setting a whole book', () => {
     it('opens every letter on a left-hand page', async () => {
         // Which is what puts a one-page letter's photographs on the leaf
         // facing it. It also has to survive the front matter: the title page
-        // and colophon are there partly to land the first letter correctly.
+        // and the word cloud are there partly to land the first letter
+        // correctly.
         const { stream, done } = build();
         const [, result] = await Promise.all([readPdf(stream), done]);
 
@@ -769,6 +770,78 @@ describe('binding the book in a color', () => {
         assert.ok(result.pages > 0);
         assert.equal(boards(bytes).length, 2);
         assert.equal(warned[0]?.event, 'book.coverFailed');
+    });
+});
+
+describe('the word cloud in the front of the book', () => {
+    // Twenty words, the first twenty times as common as the last. A real
+    // archive is shaped roughly like this and a fixture where everything
+    // appears once would set the whole cloud at one size and prove nothing.
+    const vocabulary = [
+        'companion', 'transfer', 'baptism', 'district', 'investigator',
+        'chapel', 'branch', 'president', 'apartment', 'scriptures',
+        'conference', 'testimony', 'language', 'bicycle', 'laundry',
+        'miracle', 'portuguese', 'service', 'temple', 'dinner'
+    ];
+
+    const wordy = (id, date, subject) =>
+        post(id, date, subject, {
+            bodyHtml: `<p>${vocabulary
+                .map((word, rank) => `${word} `.repeat(vocabulary.length - rank))
+                .join('')}</p>`
+        });
+
+    const build = (posts) =>
+        buildInterior({
+            store: memoryStore(),
+            slug: 'isaac.backman',
+            posts,
+            profile: { displayName: 'Elder Isaac Backman' },
+            madeAt: '2026-06-01T00:00:00.000Z'
+        });
+
+    // Every point size pdfkit was asked to set anything in, anywhere in the
+    // file. A cloud is sixty words at sixty sizes, so it shows up here as a
+    // crowd and its absence shows up as a handful.
+    const sizes = (bytes) =>
+        new Set([...drawnIn(bytes).matchAll(/\/F\d+ ([\d.]+) Tf/g)].map((match) => match[1]));
+
+    it('costs the book no paper at all', async () => {
+        // The cloud takes the title page's verso, which was already being
+        // printed for the imprint. A leaf of its own would have cost two --
+        // itself, and the blank the flipped parity would force before the
+        // first letter -- so this is the whole argument for where it went.
+        // Title 1, cloud 2, one page of contents 3, first letter 4.
+        const { stream, done } = build([
+            wordy('a', '2026-01-04', 'Week one'),
+            wordy('b', '2026-02-08', 'Week six')
+        ]);
+        const [, result] = await Promise.all([readPdf(stream), done]);
+
+        assert.equal(contentsPages(2), 1);
+        assert.equal(result.opens[0].page, 4);
+    });
+
+    it('sets the words at a whole range of sizes', async () => {
+        const { stream, done } = build([
+            wordy('a', '2026-01-04', 'Week one'),
+            wordy('b', '2026-02-08', 'Week six')
+        ]);
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+
+        assert.ok(sizes(bytes).size > 20, `only ${sizes(bytes).size} sizes in the whole book`);
+    });
+
+    it('leaves the leaf blank rather than printing three words large', async () => {
+        // An archive of two short letters has no cloud in it, and a handful of
+        // words blown up to fill a page looks like a mistake rather than like
+        // a summary. The leaf still gets printed, because the imprint's verso
+        // is where the parity comes from.
+        const thin = build([post('a', '2026-01-04', 'Week one')]);
+        const [thinBytes, result] = await Promise.all([readPdf(thin.stream), thin.done]);
+
+        assert.equal(result.opens[0].page, 4);
+        assert.ok(sizes(thinBytes).size < 20, 'something was set on the blank leaf');
     });
 });
 
