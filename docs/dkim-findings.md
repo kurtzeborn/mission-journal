@@ -2,7 +2,7 @@
 
 Measured research behind [the design plan](plan.md). This is the evidence for how `verifyEmbeddedDkim` and the ARC fallback are built; the plan itself only summarizes the conclusions.
 
-The tables below are asserted by `functions/tests/dkim.test.js` and `functions/tests/arc.test.js` rather than left as research notes, so a change in any of these clients' behaviour surfaces as a test failure. The assertions that need the pristine captures and a DNS lookup skip when the private repo is absent — which is every CI run.
+The tables below are asserted by `functions/tests/dkim.test.js` and `functions/tests/arc.test.js` rather than left as research notes, so a change in any of these clients' behavior surfaces as a test failure. The assertions that need the pristine captures and a DNS lookup skip when the private repo is absent — which is every CI run.
 
 ## What re-verification actually recovers
 
