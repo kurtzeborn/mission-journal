@@ -2,7 +2,7 @@ import { app } from '@azure/functions';
 import { hardened, jsonResponse as json } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { tableStore } from '../lib/clients.js';
-import { optedOut } from '../lib/optout.js';
+import { optedOut, forgetOptOut } from '../lib/optout.js';
 import { DIGEST, readUser, setDigest, validFrequency } from '../lib/users.js';
 
 // How often, if at all, we should write to the person signed in right now.
@@ -57,6 +57,23 @@ export async function write({ request, tables }) {
     return json(200, { digestFrequency: wanted });
 }
 
+/**
+ * Undo an unsubscribe.
+ *
+ * Its own verb rather than a value on the dropdown, because it is not a
+ * frequency: somebody can be suppressed and set to monthly at once, and the
+ * page has to be able to say so. The address comes from the sign-in and
+ * nowhere else, which is the whole reason this can be offered at all.
+ */
+export async function resume({ request, tables, log = console }) {
+    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
+    if (!principal?.email) return refuse();
+
+    await forgetOptOut({ tables, email: principal.email, log });
+
+    return json(200, { suppressed: false });
+}
+
 app.http('preferences-read', {
     authLevel: 'anonymous',
     methods: ['GET'],
@@ -69,4 +86,11 @@ app.http('preferences-write', {
     methods: ['PUT'],
     route: 'preferences',
     handler: (request) => write({ request, tables: tableStore() })
+});
+
+app.http('preferences-resume', {
+    authLevel: 'anonymous',
+    methods: ['DELETE'],
+    route: 'preferences/suppression',
+    handler: (request, context) => resume({ request, tables: tableStore(), log: context })
 });

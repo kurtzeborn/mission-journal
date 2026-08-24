@@ -63,12 +63,29 @@
 
             <!-- Shown only to an address that pressed an unsubscribe link.
                  Without it the page would offer a choice it cannot honour and
-                 say nothing about why the mail never comes. -->
-            <p class="note" id="suppressed" hidden>
-                This address has asked us to stop emailing it entirely, so nothing will be sent
-                whatever is chosen above. Write to
-                <a href="mailto:hello@pdayletters.com">hello@pdayletters.com</a> to undo that.
-            </p>
+                 say nothing about why the mail never comes.
+
+                 The way back is a button here rather than an address to write
+                 to. Whoever is reading this has just proved the address is
+                 theirs by signing in with it, which is better proof than an
+                 email to a person would ever be -- and asking somebody to
+                 compose a message to undo something they undid with one click
+                 is a way of making the promise hard to withdraw. -->
+            <div id="suppressed" hidden>
+                <p class="note">
+                    This address has asked us to stop emailing it entirely, so nothing will be
+                    sent whatever is chosen above &mdash; including an invitation from a family
+                    who wants you to read their letters.
+                </p>
+                <p>
+                    <button class="button" type="button" id="resume">Start emailing me again</button>
+                </p>
+                <p class="note">
+                    This only lifts the block. Nothing is sent until you choose weekly or
+                    monthly above, and invitations still have to be sent by somebody.
+                </p>
+                <p class="note" id="resume-said" role="status" aria-live="polite"></p>
+            </div>
 
             <p class="note">
                 <a href="/faq#new-letter-emails">What these emails contain</a>

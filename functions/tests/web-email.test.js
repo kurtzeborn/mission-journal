@@ -110,3 +110,52 @@ describe('changing it', () => {
         assert.equal(view.el('signin').hidden, false);
     });
 });
+
+// The way back from an unsubscribe. It has to be here rather than in an email
+// to somebody, because the one thing we have promised that address is that we
+// will not email it.
+describe('taking an unsubscribe back', () => {
+    const suppressed = (over = {}) =>
+        loaded({ email: 'grandma@example.com', digestFrequency: 'monthly', suppressed: true, ...over });
+
+    test('the block is lifted by its own verb, not by the dropdown', async () => {
+        const { view, net } = await open(suppressed());
+
+        await view.el('resume').dispatch('click');
+        await settled();
+
+        const call = net.calls.find((c) => c.method === 'DELETE');
+        assert.ok(call, 'nothing was sent');
+        assert.equal(call.url, '/api/preferences/suppression');
+    });
+
+    test('and the panel goes, having stopped being true', async () => {
+        const { view } = await open((url, init) =>
+            init?.method === 'DELETE'
+                ? { status: 200, body: { suppressed: false } }
+                : { status: 200, body: { email: 'grandma@example.com', digestFrequency: 'monthly', suppressed: true } }
+        );
+
+        await view.el('resume').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('suppressed').hidden, true);
+    });
+
+    test('a failure leaves the button alive and says so', async () => {
+        // The worst outcome here is somebody believing they are back on the
+        // list when they are not, and then waiting for mail that never comes.
+        const { view } = await open((url, init) =>
+            init?.method === 'DELETE'
+                ? { status: 500, body: {} }
+                : { status: 200, body: { email: 'grandma@example.com', digestFrequency: 'monthly', suppressed: true } }
+        );
+
+        await view.el('resume').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('suppressed').hidden, false);
+        assert.equal(view.el('resume').disabled, false, 'the button stayed dead');
+        assert.match(view.text('resume-said'), /did not work/);
+    });
+});

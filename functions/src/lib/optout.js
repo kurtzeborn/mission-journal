@@ -132,6 +132,32 @@ export async function optedOut({ tables, email }) {
 }
 
 /**
+ * Take it back.
+ *
+ * The opt-out is spent from a link because the person pressing it has no
+ * account here and wants none. Undoing one is the opposite situation and
+ * takes the opposite proof: signing in with the address itself. A link that
+ * could restore mail to an address would be a way to sign a stranger back up,
+ * which is the thing the rest of this module exists to prevent.
+ *
+ * Deleting the row rather than marking it withdrawn, because a suppression
+ * list nobody can leave is a suppression list that eventually stops being
+ * believed -- and because what the row is for is answering "may we write to
+ * this address", to which the answer is now simply yes.
+ */
+export async function forgetOptOut({ tables, email, log = console }) {
+    const them = lower(email);
+    if (!them) return { status: 'invalid' };
+
+    await tables.deleteEntity(TABLES.optouts, 'optout', optOutKey(them));
+
+    // No address, matching `optout: recorded` above. Whether a given person
+    // wants our mail is not a thing to leave lying around in a log.
+    log.info?.('optout: withdrawn');
+    return { status: 'ok' };
+}
+
+/**
  * The headers that make a mail client show an Unsubscribe button.
  *
  * Both forms, and the `mailto:` first, because they fail differently: the URL

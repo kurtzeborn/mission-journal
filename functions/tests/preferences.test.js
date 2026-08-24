@@ -10,8 +10,8 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
-import { read, write } from '../src/functions/preferences.js';
-import { issueOptOut, recordOptOut } from '../src/lib/optout.js';
+import { read, resume, write } from '../src/functions/preferences.js';
+import { issueOptOut, optedOut, recordOptOut } from '../src/lib/optout.js';
 import { DIGEST, readUser, setDigest } from '../src/lib/users.js';
 
 const THEM = 'grandma@example.com';
@@ -104,5 +104,80 @@ describe('changing it', () => {
         };
 
         assert.equal((await write({ request, tables: store })).status, 400);
+    });
+});
+
+describe('undoing an unsubscribe', () => {
+    const suppress = async (store, email = THEM) =>
+        recordOptOut({
+            tables: store,
+            token: issueOptOut({ email, slug: 'elder.example', key: KEY, now: at('2026-08-02T00:00:00Z') }),
+            key: KEY,
+            now: at('2026-08-02T00:00:00Z'),
+            log: silent
+        });
+
+    test('a stranger cannot put another address back on the list', async () => {
+        // The whole point of the suppression is that a third party typed the
+        // address in the first place. Letting one untype it would undo it.
+        const response = await resume({ request: asking(null), tables: null, log: silent });
+        assert.equal(response.status, 401);
+    });
+
+    test('signing in with the address is what lifts it', async () => {
+        const store = memoryStore();
+        await suppress(store);
+
+        const response = await resume({ request: asking(THEM), tables: store, log: silent });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.jsonBody.suppressed, false);
+        assert.equal(await optedOut({ tables: store, email: THEM }), false);
+    });
+
+    test('and lifts only that one', async () => {
+        const store = memoryStore();
+        await suppress(store);
+        await suppress(store, 'someone.else@example.com');
+
+        await resume({ request: asking(THEM), tables: store, log: silent });
+
+        assert.equal(await optedOut({ tables: store, email: 'someone.else@example.com' }), true);
+    });
+
+    test('an address that never unsubscribed is not an error', async () => {
+        // The same link may be pressed twice, and so may this button.
+        const store = memoryStore();
+        const response = await resume({ request: asking(THEM), tables: store, log: silent });
+
+        assert.equal(response.status, 200);
+        assert.equal(await optedOut({ tables: store, email: THEM }), false);
+    });
+
+    test('the frequency they had chosen is left alone', async () => {
+        // Lifting a block is not choosing to be emailed. Somebody who was on
+        // monthly before should still be, and somebody who was off should
+        // stay off rather than be signed up by the act of unblocking.
+        const store = memoryStore();
+        await setDigest({ tables: store, email: THEM, frequency: DIGEST.monthly, now: at('2026-08-01T00:00:00Z') });
+        await suppress(store);
+
+        await resume({ request: asking(THEM), tables: store, log: silent });
+
+        assert.equal((await readUser({ tables: store, email: THEM })).digestFrequency, DIGEST.monthly);
+    });
+
+    test('the address is never written to the log', async () => {
+        const store = memoryStore();
+        await suppress(store);
+
+        const lines = [];
+        await resume({ request: asking(THEM), tables: store, log: { info: (m, d) => lines.push(JSON.stringify([m, d])) } });
+
+        assert.equal(
+            lines.some((line) => line.includes(THEM)),
+            false,
+            'whether a person wants our mail was left lying around in a log'
+        );
     });
 });

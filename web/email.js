@@ -18,9 +18,9 @@ const show = (id) => {
 // here because they need opposite pages: one says sign in, the other says we
 // are broken, and showing the wrong one sends somebody to authenticate
 // against an outage.
-async function call(method, payload) {
+async function call(method, payload, path = '/api/preferences') {
     try {
-        const response = await fetch('/api/preferences', {
+        const response = await fetch(path, {
             method,
             headers: payload ? { 'Content-Type': 'application/json' } : {},
             body: payload ? JSON.stringify(payload) : undefined
@@ -57,6 +57,26 @@ async function save(event) {
         : 'That did not save. Please try again in a moment.';
 }
 
+// Lifting a block, not choosing a frequency, so the whole panel goes rather
+// than being left on screen saying something that has stopped being true.
+async function resume() {
+    const button = $('resume');
+    button.disabled = true;
+
+    const result = await call('DELETE', null, '/api/preferences/suppression');
+
+    if (result.status === 401) return offerSignIn();
+
+    if (!result.ok) {
+        button.disabled = false;
+        $('resume-said').textContent = 'That did not work. Please try again in a moment.';
+        return;
+    }
+
+    $('suppressed').hidden = true;
+    $('digest-as').textContent = 'We can email this address again.';
+}
+
 async function start() {
     const result = await call('GET');
 
@@ -67,6 +87,7 @@ async function start() {
     $('suppressed').hidden = !result.body.suppressed;
     $('digest-as').textContent = result.body.email ? `Signed in as ${result.body.email}.` : '';
     $('digest-form').addEventListener('submit', save);
+    $('resume').addEventListener('click', resume);
 
     show('ready');
 }
