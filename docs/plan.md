@@ -589,6 +589,7 @@ Missionaries with more photos than an email will carry link a shared album inste
 
 - **Auth:** Static Web Apps **Standard** with Google and Microsoft identity providers. **Google is required, not optional** — `@missionary.org` is Google Workspace, so the missionary population is Google-native, and personal Gmail is the most likely identity for the family members around them too. Google is a *custom* provider in SWA, which is available only on Standard; that tier was already the plan's baseline for other reasons, so this adds no cost.
 - **Model:** per-missionary allowlist keyed on the authenticated user's email address.
+- **The key is the lowercased address and nothing more, which leaves one live gap.** `readPrincipal` lowercases `userDetails` once and `resolveRole` compares it exactly, so an address that is *the same mailbox spelled differently* does not match: Google treats `jane.doe@gmail.com` and `janedoe@gmail.com` as one account but hands back only the spelling the account was registered with, and a Microsoft account's primary address can change under an entry that keeps pointing at the old one. Either way the invited person signs in successfully and then cannot see the archive, which reads as the service being broken rather than as a typo. The fix the [design review](https://github.com/kurtzeborn/mission-journal/issues/2) proposed — bind the entry to the provider's stable `userId` on acceptance and keep the address for display — is the right one, and `readPrincipal` already returns that `userId`. **Tracked in [issue #13](https://github.com/kurtzeborn/mission-journal/issues/13).**
 - **Roles per missionary's letters site:**
   - `owner` — full admin rights: invite, revoke, add/remove other owners, and edit, hide, or delete any post — see [Editing and hiding posts](#editing-and-hiding-posts). **Multiple owners allowed** so the missionary can share admin duties (typically with a parent) without a separate role tier. There is always at least one owner — the "remove owner" action refuses if it would drop the count to zero.
   - `reader` — invited viewer. Read-only for site content; can also download the offline archive and order a printed book for themselves (see [Post-mission archive](#post-mission-archive) and [Journal Publish](#journal-publish)).
@@ -1346,7 +1347,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - SWA route rules gating `/{missionary-slug}/*`, plus the **`401` deep-link override** — cheap, and the difference between a bookmark that works and a bare error. The `/login` chooser, the `403` page, and the site switcher are Phase 9.
 
 ### Phase 4 — Reader UI and search
-**Shipped.** See the [Reader UI backlog](#reader-ui-backlog) for what a first real read-through exposed — the phase is built, not finished.
+**Shipped**, and so is the [Reader UI backlog](#reader-ui-backlog) that a first real read-through exposed.
 
 - **Public landing page at `/`** — what the service is and the `post@pdayletters.com` address. Unauthenticated, entirely generic, no per-site information. `claim@` instructions arrive with the claim flow in Phase 7.
 - **Subtle `beta` mark** beside the product name wherever it appears. Removed in Phase 12 and not before. See [The service carries a beta mark](#the-service-carries-a-beta-mark-until-december-2026).
