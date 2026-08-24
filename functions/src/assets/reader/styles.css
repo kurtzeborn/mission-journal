@@ -10,13 +10,6 @@
     --accent-ink: #ffffff;
     --radius: 10px;
     --measure: 34rem;
-    /* The archive is the one page that is read rather than consulted, and the
-       only one with pictures in it. On a desktop the rest of the site is
-       correct at the measure -- a page of instructions does not improve for
-       being wider -- while the archive at the same width looks like a phone
-       stranded in the middle of a monitor. So it gets a container of its own.
-       Overridden further down at a desktop width. */
-    --archive: 34rem;
     font-size: 19px;
 }
 
@@ -27,10 +20,15 @@
    because a photo the missionary embedded is where it is for a reason -- the
    paragraph beside it is what it is a picture of -- and anything that moves it
    out of the text to use up a wide screen throws that away. So this is as wide
-   as a line of prose can be read comfortably and no wider. */
+   as a line of prose can be read comfortably and no wider.
+
+   One measure, every page. The archive had a container of its own for a while,
+   on the argument that a page of instructions does not improve for being wider.
+   True in itself, and still the wrong answer: it meant walking from the FAQ
+   into an archive resized the site under you. */
 @media (min-width: 64rem) {
     :root {
-        --archive: 42rem;
+        --measure: 42rem;
     }
 }
 
@@ -67,11 +65,6 @@ body {
     max-width: var(--measure);
     margin: 0 auto;
     padding: 1.5rem 1.25rem 4rem;
-}
-
-.wrap--archive,
-.masthead--archive .masthead__inner {
-    max-width: var(--archive);
 }
 
 /* --- masthead --- */
@@ -186,7 +179,7 @@ a {
 /* Destructive, and only ever reached after typing the archive's name.
 
    Red, but not the loudest thing on the page it lives on: the danger section
-   is already closed by default and already below a rule, so the colour is
+   is already closed by default and already below a rule, so the color is
    confirming what somebody has worked to reach rather than warning them off
    something they might hit by accident. */
 .button--danger {
@@ -217,7 +210,7 @@ a {
 /* --- the masthead menu --- */
 
 /* One control for everything that is not a letter. A `details` rather than a
-   hand-built menu: the browser already owns the open-and-close behaviour, the
+   hand-built menu: the browser already owns the open-and-close behavior, the
    keyboard handling and the expanded state a screen reader announces, and none
    of that is worth reimplementing.
 
@@ -551,10 +544,10 @@ button:focus-visible {
 
 /* The title and the count-up clock share a line.
 
-   Baseline alignment rather than centring, because the thing that has to line
+   Baseline alignment rather than centering, because the thing that has to line
    up is the clock's first line with the title's -- "at the same height" means
    the two pieces of text sit on one rule, not that a two-line block is
-   centred against a one-line one.
+   centered against a one-line one.
 
    Wrapping is left on and only the clock is allowed to shrink. A long name is
    the common case and it should keep the full measure; a clock squeezed into
@@ -568,7 +561,7 @@ button:focus-visible {
 }
 
 /* The label and the reading are one phrase -- "Home in 84 days, 06:11:02" --
-   so they are set at one size and told apart by colour alone. They sit on one
+   so they are set at one size and told apart by color alone. They sit on one
    line and stack only if the screen is too narrow to hold them. Stacked
    unconditionally, the clock spent three lines of a phone screen -- its own
    two plus the one it pushed the title onto -- on a detail nobody opened the
@@ -700,7 +693,7 @@ button:focus-visible {
        sliver of text down the edge. `clear` says a photo always starts below
        the one before it. reader.js also promotes the tight cases to full
        width, which handles most of this -- but that reads the letter's text
-       to decide, and this needs no judgement to be right. */
+       to decide, and this needs no judgment to be right. */
     clear: left;
     display: block;
     width: 45%;
@@ -745,7 +738,7 @@ button:focus-visible {
 
 /* Set by reader.js on a photo with too little letter after it to wrap around:
    the last picture before another one, or the one at the end above "Love,
-   Declan". It stands on its own instead, centred, still exactly where it was
+   Declan". It stands on its own instead, centered, still exactly where it was
    written.
 
    Last on purpose. These have the same specificity as the rules they undo, so
@@ -1057,9 +1050,9 @@ button:focus-visible {
 .cloud__word--4 { color: #8a5a3c; } /* clay */
 .cloud__word--5 { color: #6b6234; } /* olive */
 
-/* Darkening to the ink rather than moving to some seventh colour, because the
+/* Darkening to the ink rather than moving to some seventh color, because the
    word under the pointer has to look picked whichever of the six it started
-   as, and there is no single colour that reads as a change from all of them. */
+   as, and there is no single color that reads as a change from all of them. */
 .cloud__word:hover {
     color: var(--ink);
 }
@@ -1143,7 +1136,7 @@ button:focus-visible {
    nothing to read in order to understand it.
 
    Opacity rather than a paler ink, so the pictures dim with the words. A held
-   letter with full-strength photos beside grey text reads as broken. */
+   letter with full-strength photos beside gray text reads as broken. */
 .post--hidden {
     opacity: 0.55;
 }
@@ -1433,7 +1426,7 @@ h3:target {
     white-space: nowrap;
 }
 
-/* Filled rather than coloured. Owners can remove people, so the distinction has
+/* Filled rather than colored. Owners can remove people, so the distinction has
    to survive being read by somebody who cannot tell the two greens apart. */
 .role--owner {
     border-color: transparent;
@@ -1486,7 +1479,7 @@ h3:target {
 }
 
 /* Full-width for the same reason `.people__trouble` is, and warm rather than
-   red: nobody has done anything wrong, and an alarming colour beside a
+   red: nobody has done anything wrong, and an alarming color beside a
    grandmother's address reads as an accusation. */
 .people__undelivered {
     flex: 1 0 100%;
@@ -1807,7 +1800,7 @@ h3:target {
     border-radius: 3px;
     /* Boards are printed on card and photographed under a light. Neither is
        reproducible in a browser, but a shadow at least stops it reading as a
-       coloured rectangle in the middle of a form. */
+       colored rectangle in the middle of a form. */
     box-shadow: 0 2px 8px rgba(28, 25, 23, 0.25);
     overflow: hidden;
     background: #ffffff;
@@ -1878,7 +1871,7 @@ h3:target {
 .cover__cloth[aria-pressed='true'] {
     border-color: var(--ink);
     /* A ring rather than a tick: a tick has to be drawn in an ink that reads
-       against eight different colours, and this reads against all of them. */
+       against eight different colors, and this reads against all of them. */
     box-shadow: 0 0 0 2px var(--paper) inset;
 }
 

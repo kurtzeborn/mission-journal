@@ -81,7 +81,7 @@ describe('empty block removal', () => {
 
     test('a break before the letter starts separates nothing', () => {
         // Outlook for Android opens every message with three of these above
-        // its own advertisement. Honouring them would put blank lines at the
+        // its own advertisement. Honoring them would put blank lines at the
         // top of almost every forward.
         assert.equal(sanitizeBody('<div><br></div><div><br></div><p>Hi</p>'), '<p>Hi</p>');
     });
@@ -289,7 +289,7 @@ describe('our own access links never reach the archive', () => {
 
     test('an ordinary link in a letter is left alone', () => {
         // The scrub is host-agnostic, so this is the boundary worth pinning:
-        // it keys on the path and the fragment, not on any URL we recognise.
+        // it keys on the path and the fragment, not on any URL we recognize.
         const html = '<p>Read <a href="https://churchofjesuschrist.org/study">this</a>.</p>';
         assert.match(sanitizeBody(html), /churchofjesuschrist\.org\/study/);
         assert.match(sanitizeBody('<p>See https://example.com/claims for more.</p>'), /\/claims/);

@@ -266,7 +266,7 @@ describe('the slug that came back to life', () => {
         assert.equal(world.purge.remaining(), before);
     });
 
-    test('the appointment is cancelled rather than retried tomorrow', async () => {
+    test('the appointment is canceled rather than retried tomorrow', async () => {
         // It will never become appropriate again, and a record that retries
         // daily is an alarm that fires forever.
         const world = await reoccupied();

@@ -16,7 +16,7 @@
 // user-assigned identity by default, the split this module exists to enforce
 // would be undone invisibly and every one of those modules would silently gain
 // the right to erase. Naming the identity here does not prevent that, but it
-// does mean this module's behaviour does not depend on the answer.
+// does mean this module's behavior does not depend on the answer.
 //
 // **Three passes, and it is not the sequence you would guess.** Measured
 // against the real account, not read in a document:
@@ -115,7 +115,7 @@ export function createPurgeStore({ accountName, clientId, fetch: send = fetch })
          * Paged by the iterator, which matters here and does not elsewhere: a
          * full mission with versioning on is tens of thousands of entries, and
          * this is the one listing in the service that is not bounded by a
-         * family's own behaviour.
+         * family's own behavior.
          */
         async listVersions(container, prefix) {
             const found = [];

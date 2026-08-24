@@ -386,7 +386,7 @@ export async function resendInvite({
  *
  * A tombstone rather than a delete. Two things rest on the row surviving: the
  * daily cap counts it, so revoking cannot buy another send; and the token stays
- * explicitly refused rather than merely unrecognised, which closes the gap
+ * explicitly refused rather than merely unrecognized, which closes the gap
  * where a later row at the same hash could make a withdrawn link work again.
  *
  * The owner still sees it vanish -- `listInvites` filters tombstones out -- and

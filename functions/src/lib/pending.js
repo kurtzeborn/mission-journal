@@ -30,7 +30,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const PENDING_DAYS = { direct: 60, forwardOnly: 14 };
 
 // How many letter subjects the claim page gets to show. Enough for someone to
-// recognise their missionary's voice and believe the link is real; few enough
+// recognize their missionary's voice and believe the link is real; few enough
 // that a stolen link does not hand over a summary of the whole archive.
 export const SAMPLE_SUBJECTS = 3;
 

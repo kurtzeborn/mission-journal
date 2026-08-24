@@ -2,7 +2,7 @@
 //
 // This is the part of `reader.js` with the least margin for error. It rewrites
 // markup that came out of somebody else's mail client, on a page where a
-// mistake is not a wrong colour but a missing photograph -- and the same file
+// mistake is not a wrong color but a missing photograph -- and the same file
 // runs inside the downloaded zip, which a family cannot fetch again if it goes
 // wrong. Until now all of it was verified by opening a browser and looking.
 
@@ -30,7 +30,7 @@ describe('finding the photos in a letter', () => {
         // string on the website and different ones in the downloaded zip, so
         // both are kept. Losing the stored one is how an owner's edit deletes
         // a picture: the server's sanitizer drops an <img> whose src it does
-        // not recognise.
+        // not recognize.
         assert.equal(photo.getAttribute('data-photo'), stored('p1'));
         assert.equal(photo.getAttribute('src'), stored('p1'));
         assert.equal(photo.getAttribute('loading'), 'lazy');

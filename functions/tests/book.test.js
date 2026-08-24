@@ -460,7 +460,7 @@ describe('setting a whole book', () => {
 
         // And it is actually written somewhere, on every sheet including the
         // covers -- each page's resources gain the graphics state that holds
-        // the wash of grey. Counted there rather than in the content stream
+        // the wash of gray. Counted there rather than in the content stream
         // because the content streams are compressed, and searched for the
         // state rather than the words because the text is drawn from a subset
         // font and the words are not in the file as words.
@@ -677,7 +677,7 @@ describe('setting a whole book', () => {
     });
 });
 
-describe('binding the book in a colour', () => {
+describe('binding the book in a color', () => {
     const posts = [post('a', '2026-01-04', 'Week one')];
 
     const build = (overrides = {}) =>
@@ -691,7 +691,7 @@ describe('binding the book in a colour', () => {
         });
 
     // Two boards, front and back, each the whole sheet. Anything less is a
-    // book with a white edge round its cover. The colour is written after the
+    // book with a white edge round its cover. The color is written after the
     // rectangle because that is the order pdfkit emits a filled path in, and
     // as `scn` in a named space rather than as `rg`.
     const boards = (bytes) => [
@@ -714,11 +714,11 @@ describe('binding the book in a colour', () => {
         assert.ok(Math.abs(Number(blue) - 0x49 / 255) < 0.01);
     });
 
-    it('binds a book nobody has chosen a colour for', async () => {
+    it('binds a book nobody has chosen a color for', async () => {
         const { stream, done } = build();
         const [bytes] = await Promise.all([readPdf(stream), done]);
 
-        // Whatever the default is, it is a colour and it is on both boards.
+        // Whatever the default is, it is a color and it is on both boards.
         // A white cover is the one answer an owner has already rejected.
         assert.equal(boards(bytes).length, 2);
     });
@@ -744,7 +744,7 @@ describe('binding the book in a colour', () => {
     });
 
     it('does not move a single page by choosing a cover', async () => {
-        // The measuring pass is given the colour but not the picture, and
+        // The measuring pass is given the color but not the picture, and
         // this is the reason that is safe: a cover is one page whatever is
         // printed on it. If it ever stopped being one page, the contents
         // would start naming the wrong folios and nothing else would say so.

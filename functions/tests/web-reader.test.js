@@ -3,7 +3,7 @@
 // The letters are a list of disclosures, and almost everything here is about
 // what is open, what is closed and what the summary line says -- which is the
 // only thing most readers ever see, because a full mission collapsed is a
-// screen of dates and a full mission expanded is several metres of column.
+// screen of dates and a full mission expanded is several meters of column.
 
 // Forced west of UTC before anything else runs. The dates in a letter carry no
 // timezone -- they are already expressed in the missionary's own offset -- so

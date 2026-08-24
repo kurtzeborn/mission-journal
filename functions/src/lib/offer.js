@@ -155,7 +155,7 @@ const INVITATION_GAP_DAYS = [30, 90, 180];
  * Read from the pending manifest rather than the missionary's `users` row.
  * The row would let the schedule survive a purge and recreation; the manifest
  * needs no new state and no new write, and a purge has by then deleted the
- * letters the invitation was about, so starting over is the honest behaviour
+ * letters the invitation was about, so starting over is the honest behavior
  * rather than a shortcoming.
  */
 export function invitationDue(manifest, now = new Date()) {

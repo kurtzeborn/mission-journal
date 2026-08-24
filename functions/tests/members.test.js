@@ -333,7 +333,7 @@ describe('changing what somebody may do', () => {
     });
 
     test('an invented role is refused rather than written', async () => {
-        // resolveRole refuses to read an unrecognised role, so writing one
+        // resolveRole refuses to read an unrecognized role, so writing one
         // would silently revoke access rather than grant something odd. Both
         // ends have to refuse.
         const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);

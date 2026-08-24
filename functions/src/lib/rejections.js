@@ -20,7 +20,7 @@
 // **The row lives exactly as long as the message it names.** `inbox/{ulid}.raw`
 // is on a thirty-day lifecycle rule, and both doors out of here -- replay and
 // bypass -- read that blob. A row outliving it would be an offer of help that
-// cannot be honoured, which is worse than no offer.
+// cannot be honored, which is worse than no offer.
 
 import { TABLES } from './tables.js';
 

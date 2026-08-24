@@ -30,11 +30,11 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 // and orders placed in it are never printed and never charged. It is the
 // default here rather than the exception, because the failure mode of the
 // other default is a real book printed and shipped by a test. Separate is
-// meant literally: the live merchant key is not recognised here at all, so
+// meant literally: the live merchant key is not recognized here at all, so
 // using this base means registering for it first.
 export const TEST_BASE = 'https://test.www.peecho.com';
 
-// US Letter portrait as Peecho lists it, in millimetres. Informational for a
+// US Letter portrait as Peecho lists it, in millimeters. Informational for a
 // listing that pins a product by id -- they use it for the preview and the
 // spine -- but wrong numbers here would show the buyer the wrong book.
 export const TRIM_MM = { width: 216, height: 280 };

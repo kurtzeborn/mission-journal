@@ -31,7 +31,7 @@ import { domainOf } from './authresults.js';
 // Cloudflare refuses messages over 25 MiB at SMTP time, so anything larger
 // than that in the inbox did not come from the mail path and is not a letter.
 // The cap is applied before the parse call, not after: a MIME parser fed
-// untrusted input is an attack surface, and the cheapest defence is not
+// untrusted input is an attack surface, and the cheapest defense is not
 // running it.
 export const MAX_RAW_BYTES = 26 * 1024 * 1024;
 
@@ -51,7 +51,7 @@ export const recipientDomains = (to) =>
 /**
  * Whether a message was addressed to a domain this service ingests for.
  *
- * Defence in depth, not the primary control: what actually reaches the Worker
+ * Defense in depth, not the primary control: what actually reaches the Worker
  * is decided by Cloudflare's routing rules, and today exactly one zone points
  * at it. This exists so that pointing a second domain at the same Worker — by
  * accident, or by someone else — is a rejection rather than a publication.

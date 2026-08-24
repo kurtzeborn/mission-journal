@@ -18,14 +18,14 @@
 //
 // What keeps that from being a lie rather than a lag: the palette, the trim,
 // the plate height, the faces and the date format are all *imported* from the
-// files that own them, so a colour or a size can only ever be changed in one
+// files that own them, so a color or a size can only ever be changed in one
 // place. Only the arithmetic of stacking four lines is duplicated, and this
 // image is a hundred pixels tall on the page it appears on.
 //
 // It is deliberately not pixel-exact. pdfkit's `moveDown` measures the
 // current face's line height and that is not a number available here, so the
 // gaps below are the same multiples against an assumed leading. A thumbnail
-// that is a millimetre out is a thumbnail; a thumbnail in the wrong colour,
+// that is a millimeter out is a thumbnail; a thumbnail in the wrong color,
 // with the wrong name or the wrong photograph is a misrepresentation, and
 // those are the parts that come from the shared constants.
 
@@ -60,7 +60,7 @@ const FACES = {
 
 const facePath = (file) => fileURLToPath(new URL(`../assets/book/${file}`, import.meta.url));
 
-// Text is handed to pango as markup so it can carry its own colour, which
+// Text is handed to pango as markup so it can carry its own color, which
 // means the name of a missionary whose family typed an ampersand into it
 // would otherwise be markup too.
 const escaped = (text) =>
@@ -71,16 +71,16 @@ const escaped = (text) =>
 
 /**
  * One line -- or one wrapped paragraph -- set in a face, at a size, in a
- * colour, trimmed to its own ink.
+ * color, trimmed to its own ink.
  *
  * Trimmed is what sharp does rather than what is asked for: the result comes
  * back as wide as the glyphs, not as wide as the box, which is why every
- * caller centres by measuring instead of by asking for an aligned box.
+ * caller centers by measuring instead of by asking for an aligned box.
  */
-const setLine = ({ face, size, colour, text, width = MEASURE }) =>
+const setLine = ({ face, size, color, text, width = MEASURE }) =>
     sharp({
         text: {
-            text: `<span foreground="${colour}">${escaped(text)}</span>`,
+            text: `<span foreground="${color}">${escaped(text)}</span>`,
             font: `${face.family} ${size}`,
             fontfile: facePath(face.file),
             rgba: true,
@@ -142,7 +142,7 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
 
         if (cover.bytes) {
             layers.push({
-                // Filled and centre-cropped, exactly as `drawImage` does it
+                // Filled and center-cropped, exactly as `drawImage` does it
                 // for the PDF: a strip off an edge is a far smaller lie than
                 // a face stretched to fit.
                 input: await sharp(cover.bytes)
@@ -166,11 +166,11 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
             y += buffer.info.height;
         };
 
-        await place(setLine({ face: FACES.semibold, size, colour: cloth.ink, text: title }));
+        await place(setLine({ face: FACES.semibold, size, color: cloth.ink, text: title }));
 
         // The hairline under the name. It is the one mark on the board that
         // is not type, and it is what stops the name floating in a field of
-        // colour.
+        // color.
         y += 0.5 * size * LEADING;
         const rule = Math.round(MEASURE * 0.34);
         layers.push({
@@ -187,7 +187,7 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
             setLine({
                 face: FACES.italic,
                 size: size * 0.43,
-                colour: cloth.quiet,
+                color: cloth.quiet,
                 text: profile.mission || 'Letters from the mission'
             })
         );
@@ -199,7 +199,7 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
                 setLine({
                     face: FACES.regular,
                     size: size * 0.4,
-                    colour: cloth.quiet,
+                    color: cloth.quiet,
                     text: span.join(' \u2013 ')
                 })
             );
@@ -207,7 +207,7 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
 
         y = BOARD.height - MARGIN.bottom - 14;
         await place(
-            setLine({ face: FACES.italic, size: 11, colour: cloth.quiet, text: 'pdayletters.com' })
+            setLine({ face: FACES.italic, size: 11, color: cloth.quiet, text: 'pdayletters.com' })
         );
 
         return await sharp({

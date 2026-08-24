@@ -35,7 +35,7 @@
 //   pressed a button minutes ago and to nobody else, so there is no list to
 //   leave and no `List-Unsubscribe` on them -- the same reasoning that keeps
 //   those headers off the acknowledgement in `ack.js`. The global opt-out is
-//   still honoured by the caller, because a person who has asked us to stop
+//   still honored by the caller, because a person who has asked us to stop
 //   writing to them has asked exactly that.
 
 import { escapeHtml as escape } from './mail.js';

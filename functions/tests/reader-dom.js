@@ -45,7 +45,7 @@ function stubs(window, record) {
     };
 
     // The real close() fires a `close` event, and reader.js hangs the "drop
-    // the photo out of memory" behaviour off it. A stub that only removed the
+    // the photo out of memory" behavior off it. A stub that only removed the
     // attribute would leave that line untested and a leak unnoticed.
     HTMLDialogElement.prototype.close = function close() {
         if (!this.hasAttribute('open')) return;

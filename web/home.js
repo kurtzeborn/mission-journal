@@ -40,7 +40,7 @@
 
         if (!principal) return;
 
-        // An unrecognised provider still gets the address, just without a mark.
+        // An unrecognized provider still gets the address, just without a mark.
         const provider = PROVIDERS[principal.identityProvider];
         if (provider) {
             document.getElementById('account-icon').classList.add('fa-brands', provider.glyph);

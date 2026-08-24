@@ -3,7 +3,7 @@
 // The interesting part of this table is not the reading and writing, which is
 // three columns in one partition. It is the rules about absence: a row that
 // does not exist means silence, a row with no `digestAt` means due now, and a
-// frequency nobody recognises means off. Each of those is the safe answer to
+// frequency nobody recognizes means off. Each of those is the safe answer to
 // a different accident, and each is easy to break by tidying.
 
 import { test, describe } from 'node:test';

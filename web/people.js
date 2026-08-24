@@ -164,7 +164,7 @@
                                   'Nothing is emailed to them.',
                               action: 'Remove'
                           };
-                    if (!(await Confirm.ask(sure))) return 'cancelled';
+                    if (!(await Confirm.ask(sure))) return 'canceled';
                     await api(`/${encodeURIComponent(person.pending ? person.id : person.email)}`, {
                         method: 'DELETE'
                     });
@@ -211,7 +211,7 @@
     // An action may return a string to mean "this did not happen, and here is
     // why". Anything else means it did, and the list is reloaded to show it.
     //
-    // `cancelled` is the one string that reports nothing, because the person
+    // `canceled` is the one string that reports nothing, because the person
     // who dismissed the confirmation already knows what they chose.
     function button(label, action, trouble) {
         const el = document.createElement('button');
@@ -231,7 +231,7 @@
 
             if (typeof outcome === 'string') {
                 el.disabled = false;
-                if (trouble && outcome !== 'cancelled') {
+                if (trouble && outcome !== 'canceled') {
                     trouble.textContent = `${outcome} `;
                     if (EXPLAINED[outcome]) {
                         const why = document.createElement('a');

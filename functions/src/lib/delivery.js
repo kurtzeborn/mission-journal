@@ -33,7 +33,7 @@
 //
 // **It is advisory and nothing reads it to make a decision.** Nothing here
 // refuses to send. Cloudflare already refuses, authoritatively, and a second
-// copy of that judgement in our storage could only ever be wrong in the
+// copy of that judgment in our storage could only ever be wrong in the
 // direction that matters: silently declining to email somebody whose address
 // started working again. This exists to be *shown to a person*.
 

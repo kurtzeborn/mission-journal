@@ -185,7 +185,7 @@ export async function recordClaimEmailSent({ store, slug, emailTo, now = () => n
  * Everything returned here is visible to whoever holds the link, so it is
  * limited to what the recipient needs in order to believe the page: whose
  * letters these are, how many are waiting, and a few subject lines they may
- * recognise. Not the letters themselves, and never the addresses the claim
+ * recognize. Not the letters themselves, and never the addresses the claim
  * email was sent to.
  */
 export async function describeClaim({ store, tables, token, key, now = () => new Date() }) {
@@ -242,7 +242,7 @@ export async function describeClaim({ store, tables, token, key, now = () => new
  * it would strand somebody who closed the tab at the wrong moment.
  *
  * Nothing about the letters is returned. The pending description exists to let
- * a recipient recognise mail they were not expecting; this recipient asked for
+ * a recipient recognize mail they were not expecting; this recipient asked for
  * the link and needs no convincing, so the safest payload is the smallest one.
  *
  * Two facts are returned that the pending description has no use for, because
@@ -710,7 +710,7 @@ async function redeemMissionaryGrant({ store, tables, token, key, email, display
     // involved, has the strongest claim to what they are called.
     //
     // So the form shows a verified missionary the current name, prefilled, and
-    // an edit is honoured. Submitting the prefilled value writes nothing,
+    // an edit is honored. Submitting the prefilled value writes nothing,
     // because it is not a change. An emptied box is ignored rather than read as
     // "erase the name": nothing on the page offers clearing as an action, so a
     // blank arriving here is far likelier to be a stray keystroke than an

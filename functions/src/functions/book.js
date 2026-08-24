@@ -44,7 +44,7 @@ const forThePage = (status) => ({
     // Whether there is any point showing an order button. Not a fact about
     // this build at all, but the page has to learn it somewhere, and the
     // alternative -- a button whose only possible answer is "printing is not
-    // switched on yet" -- is a control that exists to apologise.
+    // switched on yet" -- is a control that exists to apologize.
     printing: Boolean(setting('PEECHO_API_KEY')),
     // The message from a failed build, which is written by us and says things
     // like "there are no letters to print yet". Shown rather than swallowed:
@@ -170,7 +170,7 @@ export const review = (args) => handOver({ ...args, pick: proofName, rendition: 
  *
  * The palette comes down the wire rather than being written into the page,
  * because the hexes are also what gets drawn into the PDF and two copies of a
- * colour is one copy too many. It costs a few hundred bytes on a page that is
+ * color is one copy too many. It costs a few hundred bytes on a page that is
  * already fetching a book status.
  *
  * The name and the mission come with it so the page can show what the cover
@@ -189,14 +189,14 @@ export async function cover({ request, context, store }) {
         // The same fallback the book uses when nobody has named the archive.
         title: profile.displayName || gated.slug,
         mission: profile.mission ?? '',
-        cloths: Object.entries(CLOTHS).map(([name, colours]) => ({ name, ...colours }))
+        cloths: Object.entries(CLOTHS).map(([name, colors]) => ({ name, ...colors }))
     });
 }
 
 /**
  * Choose one.
  *
- * Saved on its own rather than sent with the request to print, so a colour
+ * Saved on its own rather than sent with the request to print, so a color
  * survives being chosen and then thought better of before the button is
  * pressed -- and so the next book, a year later, is bound like the first.
  */

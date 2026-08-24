@@ -92,7 +92,7 @@ describe('what a refused first letter leaves behind', () => {
     test('the row is kept exactly as long as the message it names', async () => {
         // Both doors out of a rejection re-read `inbox/{ulid}.raw`, which the
         // account expires after thirty days. A row that outlived it would be
-        // an offer of help that cannot be honoured.
+        // an offer of help that cannot be honored.
         const store = memoryStore();
         await forward(store, 'outlook-web-inline');
 
@@ -292,7 +292,7 @@ describe('the operator bypass', () => {
     });
 
     test('and it cannot invent an original that was never there', async () => {
-        // `no-recoverable-original` is not a judgement call an operator can
+        // `no-recoverable-original` is not a judgment call an operator can
         // overrule. There is no letter to hold.
         const extracted = await extractOriginal(await raw('outlook-web-attached'));
         const verdict = classify({

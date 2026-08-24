@@ -234,7 +234,7 @@
 
         // Prefixed differently from the rest, because the generic word for a
         // rejected request is "Refused" and on a picture that reads as a
-        // judgement about what is in it. The only 415 an owner can provoke is
+        // judgment about what is in it. The only 415 an owner can provoke is
         // a file this site cannot decode.
         if (response.status === 415) {
             const detail = await response.json().catch(() => null);
@@ -268,7 +268,7 @@
     // colliding and retrying.
     //
     // One reload, at the end. That is the whole point of collecting the
-    // removals rather than sending each as it is clicked -- the old behaviour
+    // removals rather than sending each as it is clicked -- the old behavior
     // reloaded on every one, which cannot be done from inside an edit without
     // throwing the edit away.
     async function savePost(postId, changes, dropPhotos) {
@@ -676,7 +676,7 @@
         const principal = await readPrincipal();
         if (!principal) return;
 
-        // An unrecognised provider still gets the address, just without a mark.
+        // An unrecognized provider still gets the address, just without a mark.
         const provider = PROVIDER_ICONS[principal.identityProvider];
         if (provider) {
             document.getElementById('account-icon').classList.add('fa-brands', provider.glyph);

@@ -12,7 +12,7 @@
 // every deep link and dumped people on the home page instead of the letter
 // they followed a link to.
 //
-// The query string is still honoured, because app.js sends people here that
+// The query string is still honored, because app.js sends people here that
 // way when a session expires mid-visit and the address bar is already correct.
 (function () {
     'use strict';

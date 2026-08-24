@@ -494,7 +494,7 @@ test('an oversized message is refused before the parser sees it', async () => {
 
 // --- accepted recipient domains --------------------------------------------
 //
-// Defence in depth behind Cloudflare's routing. The tests that matter most
+// Defense in depth behind Cloudflare's routing. The tests that matter most
 // here are the ones asserting it stays out of the way: this check guards
 // against a hypothetical second domain, and it sits in front of every real
 // letter, so being wrong in the cautious direction costs mail.

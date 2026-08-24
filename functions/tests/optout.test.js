@@ -180,7 +180,7 @@ describe('an owner cannot overrule it', () => {
 
     test('it holds across archives, not just the one that caused it', async () => {
         // Saying "stop emailing me" is not saying "stop emailing me about
-        // Elder Example". A per-archive opt-out would be a way of honouring
+        // Elder Example". A per-archive opt-out would be a way of honoring
         // the request technically while defeating it.
         const store = await site([member(OWNER, ROLE.owner)]);
         const mailer = recorder();

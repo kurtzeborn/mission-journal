@@ -1,18 +1,18 @@
 // What the outside of the book looks like.
 //
-// Two decisions and no more: a cloth colour, and optionally a photograph
+// Two decisions and no more: a cloth color, and optionally a photograph
 // across the top of the front board. That is a deliberately small menu. A
-// full colour picker produces covers nobody would choose twice, a font
+// full color picker produces covers nobody would choose twice, a font
 // choice produces a book that does not match its own insides, and every
 // additional control is another thing to explain on a page somebody visits
 // once in two years.
 //
-// **Colours are named, not sent.** The browser posts `navy`, never `#223349`,
+// **Colors are named, not sent.** The browser posts `navy`, never `#223349`,
 // and the palette below is the only place the hexes exist. Three reasons, in
-// increasing order of importance: the ink and the quiet grey that read
+// increasing order of importance: the ink and the quiet gray that read
 // against each cloth are chosen here rather than guessed by the page; a
 // stored name still means something after the palette is retuned, where a
-// stored hex freezes a colour we may have decided was wrong; and a value that
+// stored hex freezes a color we may have decided was wrong; and a value that
 // reaches a PDF drawing call cannot be arbitrary text from a request.
 //
 // **The choice lives on the profile.** It is a fact about the archive rather
@@ -82,14 +82,14 @@ export function coverOf(profile = {}) {
  *
  * Refuses rather than corrects, unlike `coverOf` above, and the difference is
  * who is talking. A stored document that has drifted should still print; a
- * request that names a colour we do not have is a page out of step with the
+ * request that names a color we do not have is a page out of step with the
  * server, and silently printing a different cover to the one somebody chose
  * is worse than telling them.
  *
  * @returns {{error: string} | {cover: {cloth: string, picture: string}}}
  */
 export function chooseCover({ cloth, picture }) {
-    if (!CLOTHS[cloth]) return { error: 'that is not one of the cover colours' };
+    if (!CLOTHS[cloth]) return { error: 'that is not one of the cover colors' };
 
     const wanted = String(picture ?? '').trim();
     if (wanted && wanted !== OWN_PICTURE && !PHOTO_ID.test(wanted)) {
@@ -104,10 +104,10 @@ export function chooseCover({ cloth, picture }) {
  *
  * A read-modify-write of the profile under its own ETag, exactly as a rename
  * is, because two owners share a site and the other one may be editing the
- * name while this one picks a colour.
+ * name while this one picks a color.
  *
  * The `sites` row is left alone. It indexes the name and the start date for
- * the lists; what colour a book is bound in is nobody's index.
+ * the lists; what color a book is bound in is nobody's index.
  *
  * @returns {Promise<{error: string} | {cover: object}>}
  */

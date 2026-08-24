@@ -199,13 +199,13 @@
     // --- the cover ---------------------------------------------------------
     //
     // Saved on its own as soon as it is chosen rather than sent along with the
-    // request to print. Two reasons: an owner who picks a colour and then
-    // wanders off has still chosen a colour, and the next book -- a year
+    // request to print. Two reasons: an owner who picks a color and then
+    // wanders off has still chosen a color, and the next book -- a year
     // later, from a different device -- is bound like the first without
     // anybody having to remember what they did.
 
     // Filled from the server, because the hexes are also what gets drawn into
-    // the PDF and one copy of a colour is the most any colour should have.
+    // the PDF and one copy of a color is the most any color should have.
     let cloths = [];
     let chosen = { cloth: '', picture: '' };
     let archive = null;
@@ -217,7 +217,7 @@
      * Redraw the little board on the left.
      *
      * Not a rendering of the PDF and not trying to be. The proportions, the
-     * colours and where the picture sits are right; the type is the browser's.
+     * colors and where the picture sits are right; the type is the browser's.
      */
     function paint() {
         const cloth = cloths.find((entry) => entry.name === chosen.cloth) ?? cloths[0];
@@ -402,7 +402,7 @@
             button.dataset.cloth = cloth.name;
             button.style.background = cloth.paper;
             // The only name any of these has. A swatch with no label is a
-            // colour a screen reader cannot describe.
+            // color a screen reader cannot describe.
             button.setAttribute('aria-label', cloth.name);
             button.addEventListener('click', () => keep({ ...chosen, cloth: cloth.name }));
             row.appendChild(button);

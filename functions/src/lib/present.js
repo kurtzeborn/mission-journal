@@ -66,7 +66,7 @@ const pick = (post, fields) => {
 // The stamp is fixed-width out of `rfc3339InOwnOffset` -- YYYY-MM-DDTHH:MM:SS,
 // seconds always emitted -- so a byte comparison of the first 19 characters is
 // chronological. Sliced explicitly rather than relying on the offset sorting
-// after the stamp, which is what made the old behaviour accidental: a stamp
+// after the stamp, which is what made the old behavior accidental: a stamp
 // that ever lost its seconds would have silently reordered the archive.
 const stamp = (post) => String(post.originalDate ?? '').slice(0, 19);
 

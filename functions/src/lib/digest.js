@@ -44,7 +44,7 @@ import { digestDue, everyUser, markDigested } from './users.js';
 
 const SIGNATURE = 'Pday Letters';
 
-// Long enough to recognise a letter, short enough that nobody reads the
+// Long enough to recognize a letter, short enough that nobody reads the
 // digest instead of the archive. The second half matters more: the point of
 // this message is to get somebody to the letters, and a digest that contains
 // the letters is a digest that replaces them.

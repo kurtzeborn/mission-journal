@@ -197,7 +197,7 @@ describe('putting an archive back', () => {
         );
     });
 
-    test('and the appointment with the eraser is cancelled', async () => {
+    test('and the appointment with the eraser is canceled', async () => {
         // Not cancelling it would restore the archive and destroy it anyway on
         // day thirty, which is the worst of both.
         const store = await deleted();

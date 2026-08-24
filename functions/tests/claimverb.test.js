@@ -295,7 +295,7 @@ describe('the header block reader', () => {
         // The whole safety argument is that this reader can replace the parser
         // for the one header the decision rests on. If the two disagree, the
         // claim path is deciding from something the rest of the system does not
-        // recognise.
+        // recognize.
         const { extractOriginal } = await import('../src/lib/extract.js');
         const bytes = await raw('direct-missionary');
         const parsed = (await extractOriginal(bytes)).headers.filter(
@@ -523,7 +523,7 @@ describe('the description of a missionary grant', () => {
 
     test('never names the site on the pending path', async () => {
         // The pending link goes to whoever a missionary happened to write to.
-        // They are told a count and some subjects so they can recognise the
+        // They are told a count and some subjects so they can recognize the
         // mail; the archive has no name yet and there is nothing to prefill.
         const store = memoryStore();
         store.seed('01TEST0000000000000000000', await raw('direct-missionary'));

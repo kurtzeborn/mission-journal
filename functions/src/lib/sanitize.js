@@ -129,7 +129,7 @@ const PROBE_LENGTH = 50;
 // alone in a block unless somebody meant a line to be there.
 //
 // **But only once the letter has started.** Outlook for Android opens every
-// message with three of them above its own advertisement, and honouring those
+// message with three of them above its own advertisement, and honoring those
 // would put three blank lines at the top of every forward -- a visible
 // regression on the path almost every letter takes, traded for a fix on the
 // rare one. A break before any text has appeared is separating nothing.

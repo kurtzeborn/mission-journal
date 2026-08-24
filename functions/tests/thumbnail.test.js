@@ -4,7 +4,7 @@
 // is unusual here and is the point: the whole risk in `thumbnail.js` is that
 // it draws a *different* cover to the one in the book, and no amount of
 // checking that sharp was asked politely would catch that. So the tests read
-// the colour back out of the image and ask whether it is the cloth that was
+// the color back out of the image and ask whether it is the cloth that was
 // chosen.
 
 import { test, describe } from 'node:test';
@@ -47,8 +47,8 @@ describe('a picture of the cover', () => {
             const jpeg = await coverImage({ title: 'Elder Example', profile: PROFILE, cover: { cloth: name } });
 
             // JPEG is lossy, so this asks whether the corner is near the
-            // chosen colour rather than exactly it -- a wrong cloth would be
-            // a different colour entirely, not a few values out.
+            // chosen color rather than exactly it -- a wrong cloth would be
+            // a different color entirely, not a few values out.
             const want = CLOTHS[name].paper;
             const got = await cornerOf(jpeg);
             const apart = [1, 3, 5].reduce(
@@ -61,7 +61,7 @@ describe('a picture of the cover', () => {
         }
     });
 
-    test('a cover with no colour chosen is bound like the book is', async () => {
+    test('a cover with no color chosen is bound like the book is', async () => {
         const jpeg = await coverImage({ title: 'Elder Example', profile: PROFILE, cover: {} });
 
         // `clothOf` falls back for both, so neither can be given a default

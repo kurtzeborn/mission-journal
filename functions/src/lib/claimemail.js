@@ -7,7 +7,7 @@
 //
 // Nothing sends this yet. Phase 8 wires it to Cloudflare Email Service, where
 // it will go out as a reply to an arriving letter so that it threads into a
-// conversation the recipient already recognises.
+// conversation the recipient already recognizes.
 //
 // The hard constraints, which survive any rewrite:
 //

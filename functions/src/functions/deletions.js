@@ -19,7 +19,7 @@
 // is a thirty-day window in which the letters have not been destroyed yet, and
 // somebody who is sorry can ask. A silent safety net, with a door only an
 // operator can open. The mistake it is for is somebody deleting the wrong
-// archive and realising an hour later, and the recovery path for it is a
+// archive and realizing an hour later, and the recovery path for it is a
 // conversation, not a button.
 
 import { app } from '@azure/functions';

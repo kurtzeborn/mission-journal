@@ -47,7 +47,7 @@ export function repairCp1252(value) {
 // `localPartOf` splits on the *last* @, so the slug came out as
 // `isaac.backman@missionary.org<mailto:isaac.backman` -- a missionary nobody
 // had a site for, which is why a letter from a known one was refused as an
-// unrecognised bootstrap.
+// unrecognized bootstrap.
 //
 // So: take the bracketed text when there is some, drop any scheme, and then
 // pick out something actually shaped like an address rather than trusting
@@ -91,7 +91,7 @@ function toBytes(content) {
 // original some 2,700 bytes: every CRLF the wire carried arrives as a bare LF.
 // No signature verdict changes, because relaxed canonicalization normalises
 // line endings before hashing either way, but what gets stored should be what
-// was sent. Only ever applied to bytes already recognised as a message, where
+// was sent. Only ever applied to bytes already recognized as a message, where
 // CRLF is the wire form — never to an arbitrary binary attachment.
 function restoreCrlf(bytes) {
     const out = Buffer.alloc(bytes.length * 2);

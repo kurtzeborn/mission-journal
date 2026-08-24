@@ -3,7 +3,7 @@
 // Search is the only feature here that runs on somebody else's copy of the
 // data -- the downloaded zip searches with no backend at all -- and it is the
 // one people reach for when they already know what they want and cannot find
-// it. The interesting behaviour is not "does MiniSearch work" but what happens
+// it. The interesting behavior is not "does MiniSearch work" but what happens
 // around it: which letters are hidden, which words are marked, what opens, and
 // whether emptying the box puts the page back the way it was.
 
@@ -189,7 +189,7 @@ describe('stepping between matches', () => {
 
         view.click(view.$$('.search__step').at(-1));
         assert.equal(toggle.getAttribute('aria-expanded'), 'true');
-        // Centred rather than scrolled to the top, because the search bar is
+        // Centered rather than scrolled to the top, because the search bar is
         // sticky and a hit at the top of the viewport lands underneath it.
         // Read field by field: the options object was made inside the page's
         // own realm, so it is not deep-equal to one made out here.

@@ -40,7 +40,7 @@ const PDFDocument = require('pdfkit');
 const INCH = 72;
 
 // US Letter hardcover, 8.5"x11". Not a preference -- it is the only portrait
-// trim on Peecho's hardcover list that an American reader would recognise.
+// trim on Peecho's hardcover list that an American reader would recognize.
 // They bind A5, A4, Letter, and two squares, and nothing else; the 8"x10"
 // this file was first written against is not among them and never was, which
 // is what comes of choosing a trim before choosing a printer.
@@ -189,7 +189,7 @@ const FLOAT_GUTTER = 12;
 // Characters of letter left after a picture, counted up to the next picture
 // or the end. Below this there is not enough text to wrap and the float stops
 // paying for itself -- three lines beside a photograph and then a mile of
-// white -- so the picture is centred on its own instead.
+// white -- so the picture is centered on its own instead.
 //
 // The site uses 250 against a wider column. The threshold has to rise as the
 // column narrows, because the same number of characters makes more lines.
@@ -364,7 +364,7 @@ function stampProof(doc) {
     doc.font('semibold').fontSize(PROOF.size).fillColor(PROOF.ink).fillOpacity(PROOF.opacity);
 
     // Started half a page to the left and given twice the page's width, so
-    // that centring the line centres it on the page rather than on the part
+    // that centering the line centers it on the page rather than on the part
     // of the rotated axis that happens to fall inside the sheet.
     for (const row of PROOF.rows) {
         doc.text(PROOF.text, -PAGE.width / 2, PAGE.height * row, {
@@ -1049,7 +1049,7 @@ function setAlbum(doc, { photos, textPages, images, state }) {
 function setLeaf(doc, { photos, images, usable }) {
     const rows = albumPlan(photos, { height: usable });
 
-    // Centred both ways. Vertically because an arrangement can still come up
+    // Centered both ways. Vertically because an arrangement can still come up
     // short of the page -- six pictures of the same shape tile it almost
     // exactly, four rarely do -- and pushed to the top that reads as a page
     // that ran out. Horizontally because a band scaled down to make the stack
@@ -1163,7 +1163,7 @@ function setBlock(doc, { block, state }) {
  * how orientation is read, will not match. A face half again as wide as it
  * should be is the worst thing a photo book can do, and losing a strip off an
  * edge is close to the least, so the trade goes that way every time. pdfkit's
- * `cover` scales to fill and centres but does not clip what hangs over, so
+ * `cover` scales to fill and centers but does not clip what hangs over, so
  * the clip is drawn here.
  */
 function drawImage(doc, { bytes, x, y, width, height }) {
@@ -1276,7 +1276,7 @@ function textAfter(blocks, from) {
 }
 
 /**
- * The title, the mission and the dates, centred in a box.
+ * The title, the mission and the dates, centered in a box.
  *
  * Drawn twice -- once on the cover and once on the title page a few leaves
  * behind it -- because that is what books do, and from one function because
@@ -1285,7 +1285,7 @@ function textAfter(blocks, from) {
  * larger type and have the rest follow.
  *
  * The two inks are arguments rather than the file's constants because the
- * cover may be any colour in the palette and the title page is always on
+ * cover may be any color in the palette and the title page is always on
  * paper. Nothing here decides which pair it is given; it only uses them
  * consistently, so a dark cloth gets pale type throughout rather than a pale
  * name over a black date.
@@ -1295,7 +1295,7 @@ function setNameplate(doc, { title, profile, x, width, size, rule = false, ink =
     doc.text(title, x, doc.y, { width, align: 'center' });
 
     // A hairline under the name, on the cover only. It costs nothing, and it
-    // is the difference between a name floating in a field of colour and a
+    // is the difference between a name floating in a field of color and a
     // name that has been set on something.
     if (rule) {
         const span = width * 0.34;
@@ -1370,7 +1370,7 @@ function coverSize(doc, { title, width, most = 58, least = 30 }) {
  * generates both. A cover here is a page of the same size as every other,
  * drawn first.
  *
- * Centred rather than mirrored, because a cover has no gutter to lean away
+ * Centered rather than mirrored, because a cover has no gutter to lean away
  * from -- it is one wrapped sheet of card, not a leaf of the block.
  *
  * Set large. A cover is read across a room, off a shelf, or in a thumbnail on
@@ -1653,7 +1653,7 @@ const freshState = (madeAt, proof) => ({
  * `cover` is the owner's choice of cloth and, when they made one, the bytes
  * of the picture for the front board -- already fetched, because where that
  * picture lives is a question about storage rather than about typesetting.
- * The measuring pass is given the colour but not the picture, which is safe
+ * The measuring pass is given the color but not the picture, which is safe
  * for the one reason worth stating: a cover is exactly one page whatever is
  * printed on it, so nothing behind it moves.
  *

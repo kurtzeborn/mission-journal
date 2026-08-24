@@ -202,7 +202,7 @@
         // Said above the table as well as being derivable from the top row,
         // because it is the one fact somebody comes here for and reading it
         // out of a sorted table means trusting the sort. The same slot carries
-        // the failures above, which is why the class moves: centred in a box
+        // the failures above, which is why the class moves: centered in a box
         // is right for "nothing loaded" and wrong for a sentence with a table
         // under it.
         const since = ago(body.lastReceivedAt);

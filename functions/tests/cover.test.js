@@ -17,7 +17,7 @@ const wrote = (store, slug) =>
     JSON.parse(store.blobs.get(`config/${slug}/profile.json`).bytes.toString('utf8'));
 
 describe('what a cover is bound in', () => {
-    it('gives every colour an ink that is not the same colour', () => {
+    it('gives every color an ink that is not the same color', () => {
         for (const [name, cloth] of Object.entries(CLOTHS)) {
             assert.notEqual(cloth.paper, cloth.ink, name);
             assert.match(cloth.paper, /^#[0-9a-f]{6}$/, name);
@@ -38,7 +38,7 @@ describe('what a cover is bound in', () => {
 
     it('falls back rather than refusing when a stored choice has drifted', () => {
         // Read from a file, so it may have been written by a version of this
-        // service that had a colour we have since dropped. Printing the
+        // service that had a color we have since dropped. Printing the
         // default is a book; refusing is a support request.
         assert.deepEqual(coverOf({ cover: { cloth: 'chartreuse', picture: 'nonsense' } }), {
             cloth: DEFAULT_CLOTH,
@@ -55,13 +55,13 @@ describe('what a cover is bound in', () => {
 });
 
 describe('choosing a cover', () => {
-    it('takes a colour and a photograph from the archive', () => {
+    it('takes a color and a photograph from the archive', () => {
         assert.deepEqual(chooseCover({ cloth: 'forest', picture: 'p_0123456789ab' }), {
             cover: { cloth: 'forest', picture: 'p_0123456789ab' }
         });
     });
 
-    it('takes a colour on its own', () => {
+    it('takes a color on its own', () => {
         assert.deepEqual(chooseCover({ cloth: 'linen', picture: '' }), {
             cover: { cloth: 'linen', picture: '' }
         });
@@ -73,9 +73,9 @@ describe('choosing a cover', () => {
         });
     });
 
-    it('refuses a colour we do not have', () => {
+    it('refuses a color we do not have', () => {
         // Unlike the reader above, which forgives. A request that names a
-        // colour the page does not know about is a page out of step with the
+        // color the page does not know about is a page out of step with the
         // server, and quietly printing something else is worse than saying so.
         assert.ok(chooseCover({ cloth: '#ff00ff', picture: '' }).error);
     });

@@ -17,7 +17,7 @@
 //
 //   **The opt-out is global, not per archive.** Somebody who says "stop
 //   emailing me" has not said "stop emailing me about Elder Example". Making
-//   them repeat it once per family would be a way of technically honouring a
+//   them repeat it once per family would be a way of technically honoring a
 //   request while defeating it.
 //
 //   **The address is inside the signature.** The endpoint never takes anybody's

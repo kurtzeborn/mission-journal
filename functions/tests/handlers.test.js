@@ -368,7 +368,7 @@ describe('the book handlers', () => {
         assert.ok(response.jsonBody.cloths.every((entry) => entry.name && entry.paper));
     });
 
-    test('a colour is saved without disturbing the name', async () => {
+    test('a color is saved without disturbing the name', async () => {
         const store = printable();
 
         const saved = await chooseTheCover({
@@ -384,7 +384,7 @@ describe('the book handlers', () => {
         assert.equal(read.jsonBody.title, 'Elder Example');
     });
 
-    test('a colour nobody offered is refused', async () => {
+    test('a color nobody offered is refused', async () => {
         const response = await chooseTheCover({
             request: asOwner({ body: { cloth: 'rebeccapurple', picture: '' } }),
             context: silent,

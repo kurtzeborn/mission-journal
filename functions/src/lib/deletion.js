@@ -6,7 +6,7 @@
 // load-bearing. A "permanent" button that is not permanent is a lie; a
 // literally-instant hard delete would mean turning off the soft-delete and
 // versioning that protect the one part of this service that cannot be rebuilt,
-// in order to honour a misclick.
+// in order to honor a misclick.
 //
 // **Access is revoked by deleting `acl.json`, not by setting a flag.**
 //

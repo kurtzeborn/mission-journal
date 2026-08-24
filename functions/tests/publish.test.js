@@ -172,7 +172,7 @@ describe('building the book', () => {
         // The mark is the difference, and it is the only difference that is
         // safe to assert on here -- these letters carry no photographs, so
         // the resolution the proof also drops changes nothing about the
-        // bytes. `ExtGState` is the wash of grey it is written in, and the
+        // bytes. `ExtGState` is the wash of gray it is written in, and the
         // print file has no transparency in it anywhere.
         assert.ok(proof.bytes.toString('latin1').includes('/ExtGState'));
         assert.ok(!print.bytes.toString('latin1').includes('/ExtGState'));

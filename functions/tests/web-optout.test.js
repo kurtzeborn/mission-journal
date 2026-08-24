@@ -1,6 +1,6 @@
 // The page that makes it stop.
 //
-// The behaviour under test is mostly a refusal to act: the page must not
+// The behavior under test is mostly a refusal to act: the page must not
 // suppress anybody merely by being loaded, because the things that load a
 // mailed link before its recipient does are numerous, automated, and not the
 // person the message was for.

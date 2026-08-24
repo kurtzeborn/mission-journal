@@ -1,7 +1,7 @@
 // The endpoint behind the email settings page.
 //
 // Two things it must get right, and neither is the reading and writing. It
-// must refuse an unrecognised value instead of quietly turning it into "off"
+// must refuse an unrecognized value instead of quietly turning it into "off"
 // -- the safe-default rule that governs everything else here is exactly wrong
 // when the client is trying to set something -- and it must report an
 // unsubscribe separately from a preference, because they are different
@@ -82,7 +82,7 @@ describe('changing it', () => {
         }
     });
 
-    test('an unrecognised value is refused rather than silently made off', async () => {
+    test('an unrecognized value is refused rather than silently made off', async () => {
         // The safe default belongs on the read side. Here it would mean a
         // typo in a client switching somebody's mail off and reporting
         // success.

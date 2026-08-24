@@ -27,7 +27,7 @@ const config = { authservId: 'mx.cloudflare.net', missionaryDomains: ['missionar
 // A fully-qualified name ends in a dot and is the same domain without it.
 // There were two `domainOf` implementations for a while, one of which stripped
 // it and one of which did not, so a trailing dot decided whether a missionary
-// was recognised depending on which module happened to ask.
+// was recognized depending on which module happened to ask.
 test('a trailing dot does not change which domain an address is on', () => {
     assert.equal(domainOf('elder.smith@missionary.org.'), 'missionary.org');
     assert.equal(domainOf('elder.smith@MISSIONARY.ORG'), 'missionary.org');

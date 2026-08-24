@@ -16,7 +16,7 @@
 // cost of deleting something too early is unrecoverable.
 //
 // Blob soft-delete is enabled on the account with a thirty-day window, so a
-// mistake here is recoverable for a month. That is a backstop, not a licence.
+// mistake here is recoverable for a month. That is a backstop, not a license.
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

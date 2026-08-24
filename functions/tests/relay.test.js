@@ -79,7 +79,7 @@ describe('the link that asks', () => {
 
     test('a claim link cannot be spent here', () => {
         // Purpose is inside the signature. Without the check, any token this
-        // service has ever issued would double as a licence to mail a
+        // service has ever issued would double as a license to mail a
         // missionary.
         const token = issueClaimToken({
             slug: SLUG,

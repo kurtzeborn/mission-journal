@@ -139,20 +139,20 @@ describe('what the cloud is made of', () => {
 });
 
 describe('what the reader asks the library for', () => {
-    test('colour is left to the stylesheet, so hover and focus are one rule', () => {
+    test('color is left to the stylesheet, so hover and focus are one rule', () => {
         const options = opened().record.wordcloud.at(-1);
 
         assert.equal(options.color, null);
         assert.match(options.classes('rain', 4), /^cloud__word cloud__word--\d$/);
     });
 
-    test('a word is not all one colour, and not a different one each time', () => {
+    test('a word is not all one color, and not a different one each time', () => {
         const first = opened();
         const tones = first.$$('.cloud__word').map((word) => word.className.split(' ')[1]);
 
         assert.ok(new Set(tones).size > 1, 'expected more than one tone in the cloud');
 
-        // Off the word, not off where it landed, so repacking cannot recolour it.
+        // Off the word, not off where it landed, so repacking cannot recolor it.
         const again = opened().$$('.cloud__word').map((word) => word.className.split(' ')[1]);
 
         assert.deepEqual(again, tones);

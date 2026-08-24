@@ -96,7 +96,7 @@ describe('the seal', () => {
         assert.equal(result.reason, 'sealer-not-trusted');
     });
 
-    test('the trusted list is what is honoured, not the default', async () => {
+    test('the trusted list is what is honored, not the default', async () => {
         const result = await verifyArcSeal(
             { chain: [entry('microsoft.com')] },
             { resolver: noNetwork, trustedSealers: ['google.com'] }

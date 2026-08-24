@@ -536,7 +536,7 @@ window.Reader = (function () {
     //
     // The archive this was built for runs to two dozen letters of a thousand
     // words each, and rendered flat it is a single unbroken column several
-    // metres long -- you cannot see what is in it, and you cannot get to
+    // meters long -- you cannot see what is in it, and you cannot get to
     // October without scrolling past September. Collapsed, the whole mission
     // fits on one screen as a list of dates and subjects, which is the view
     // people actually asked for.
@@ -738,11 +738,11 @@ window.Reader = (function () {
         // The <input> is the thing that opens the file picker -- a browser
         // will not open one from script without a real click on a real file
         // input -- so it is present and hidden rather than replaced by the
-        // button. `accept` is a hint the picker uses to grey out documents;
+        // button. `accept` is a hint the picker uses to gray out documents;
         // the format allowlist that matters is on the server. The extensions
         // are spelled out beside `image/*` because Windows resolves that
         // wildcard through its registry, which has never heard of any of
-        // them, and would otherwise grey out a phone's own photographs.
+        // them, and would otherwise gray out a phone's own photographs.
         const add = button('Add pictures');
         const picker = document.createElement('input');
         picker.type = 'file';
@@ -824,7 +824,7 @@ window.Reader = (function () {
             if (!drop) return;
             dropped.add(drop.dataset.photo);
             // The tile goes rather than dimming. The row is what the letter
-            // will look like once this is saved, and a picture greyed out in
+            // will look like once this is saved, and a picture grayed out in
             // place is a question -- is it going, is it broken -- where an
             // absence is an answer. Cancel puts it back.
             drop.closest('li').hidden = true;
@@ -1105,10 +1105,10 @@ window.Reader = (function () {
     }
 
     // How many tones the stylesheet defines. Six is enough that a word rarely
-    // sits next to its own colour and few enough that they still read as a set.
+    // sits next to its own color and few enough that they still read as a set.
     const TONES = 6;
 
-    // Off the word rather than off its position, so a word keeps its colour when
+    // Off the word rather than off its position, so a word keeps its color when
     // a resize repacks the cloud and lands it somewhere else entirely.
     function toneOf(word) {
         let hash = 0;
@@ -1122,7 +1122,7 @@ window.Reader = (function () {
     // The library packs the words; everything the reader touches is still ours.
     // In DOM mode it emits a span per word, and each item on the list can carry
     // the attributes that span is given -- so the words come out of it already
-    // labelled, focusable and carrying the word they stand for.
+    // labeled, focusable and carrying the word they stand for.
     function draw(view) {
         if (!view.words.length) return;
 
@@ -1143,7 +1143,7 @@ window.Reader = (function () {
             weightFactor: weight,
             fontFamily: getComputedStyle(view.box).fontFamily,
             // Left to the stylesheet, so hover, focus and any future dark mode
-            // are one rule rather than sixty inline colours.
+            // are one rule rather than sixty inline colors.
             color: null,
             classes: (word) => `cloud__word cloud__word--${toneOf(word)}`,
             // The step the packing works in. Finer than this and laying out

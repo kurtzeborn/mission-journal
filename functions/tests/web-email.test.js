@@ -38,7 +38,7 @@ describe('showing somebody what they chose', () => {
     });
 
     test('an address that pressed unsubscribe is told why nothing arrives', async () => {
-        // Otherwise the page offers a choice it cannot honour and says
+        // Otherwise the page offers a choice it cannot honor and says
         // nothing about the statement standing above it.
         const { view } = await open(
             loaded({ email: 'grandma@example.com', digestFrequency: 'monthly', suppressed: true })

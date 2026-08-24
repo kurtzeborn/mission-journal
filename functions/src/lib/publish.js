@@ -195,7 +195,7 @@ async function tell({ store, tables, mailer, baseUrl, status, log = console, now
     if (!mailer || !tables || !to) return { status: 'skipped' };
 
     try {
-        // Honoured even though this message answers a request its recipient
+        // Honored even though this message answers a request its recipient
         // made minutes ago. Somebody who has told us to stop writing to them
         // has told us that, and "but you asked" is the reasoning behind every
         // piece of mail nobody wants.

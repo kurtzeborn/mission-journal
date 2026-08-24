@@ -79,7 +79,7 @@ const lower = (email) => String(email ?? '').trim().toLowerCase();
  *
  * Short on purpose, and the shortness is the feature: one sentence of why, one
  * instruction, one link. It names the person who asked twice -- once to act
- * on, once to refuse on -- because a missionary who does not recognise the
+ * on, once to refuse on -- because a missionary who does not recognize the
  * name should be able to stop here, and they can only do that if we say who it
  * is before we say what to do.
  *

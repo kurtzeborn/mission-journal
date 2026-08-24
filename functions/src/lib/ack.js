@@ -15,7 +15,7 @@
 // **One per person per archive per day, however many letters they send.** The
 // gate is the point: the scenario this has to survive is a family finding the
 // service and forwarding two years of letters in one sitting, which is a
-// behaviour the pipeline was explicitly built to welcome. A hundred receipts
+// behavior the pipeline was explicitly built to welcome. A hundred receipts
 // for that is not a courtesy, it is what the recipient's mail provider will
 // reasonably conclude is an attack. So the message says the archive has the
 // letters rather than counting them, which is both truer and cheaper than
@@ -127,7 +127,7 @@ export async function acknowledgeForward({
     // Checked even though this is a reply. An opt-out here is unusual and
     // specific -- somebody who forwards letters and does not want to be
     // thanked for it -- and it is exactly the kind of request that is easy to
-    // honour and inexcusable to lose.
+    // honor and inexcusable to lose.
     if (await optedOut({ tables, email: recipient })) {
         log.info?.('ack: recipient has opted out, staying quiet', { slug });
         return { status: 'optedout' };
