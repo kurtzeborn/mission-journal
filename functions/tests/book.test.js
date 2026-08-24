@@ -13,10 +13,13 @@ import {
     albumSpread,
     albumTarget,
     buildInterior,
+    byMonth,
     contentsPages,
+    contentsSheets,
     dateLine,
     inReadingOrder,
     mirror,
+    monthLabel,
     photoBox,
     printPhoto,
     reserve
@@ -124,15 +127,63 @@ describe('which way the gutter faces', () => {
 });
 
 describe('how much room the contents need', () => {
+    const over = (count, { from = 1, each = 1 } = {}) =>
+        byMonth(
+            Array.from({ length: count }, (_, n) => ({
+                subject: `Letter ${n}`,
+                originalDate: `2026-${String(from + Math.floor(n / each)).padStart(2, '0')}-0${(n % 9) + 1}`
+            }))
+        );
+
     it('takes a leaf even for a mission of one letter', () => {
-        assert.equal(contentsPages(0), 1);
-        assert.equal(contentsPages(1), 1);
+        assert.equal(contentsPages([]), 1);
+        assert.equal(contentsPages(over(1)), 1);
+    });
+
+    it('gives a two-year mission a couple of leaves', () => {
+        // Forty letters over ten months, which is what the archives look like.
+        assert.equal(contentsPages(over(40, { each: 4 })), 2);
     });
 
     it('grows a leaf at a time', () => {
-        assert.equal(contentsPages(32), 1);
-        assert.equal(contentsPages(33), 2);
-        assert.equal(contentsPages(120), 4);
+        assert.ok(contentsPages(over(400, { each: 20 })) > contentsPages(over(100, { each: 20 })));
+    });
+
+    it('keeps a month whole on one leaf', () => {
+        // A heading at the foot of a leaf, or a run of subjects at the top of
+        // one with nothing above them saying what month they are, both read as
+        // faults. Neither happens while a month still fits on a leaf.
+        for (const count of [40, 61, 80, 111]) {
+            for (const sheet of contentsSheets(over(count, { each: 3 }))) {
+                assert.notEqual(sheet.at(-1).kind, 'month', `a month ended a sheet of ${count}`);
+                assert.equal(sheet[0].kind, 'month', `a sheet of ${count} began mid-month`);
+            }
+        }
+    });
+});
+
+describe('gathering the letters into months', () => {
+    it('names a month the way somebody would say it', () => {
+        assert.equal(monthLabel({ originalDate: '2026-08-03T12:00:00Z' }), 'August 2026');
+    });
+
+    it('keeps a letter with no date rather than dropping it', () => {
+        assert.equal(monthLabel({}), 'Undated');
+        assert.equal(byMonth([{ subject: 'Lost' }])[0].letters.length, 1);
+    });
+
+    it('runs the months in the order of the book, across a change of year', () => {
+        const months = byMonth([
+            { subject: 'a', originalDate: '2025-12-01' },
+            { subject: 'b', originalDate: '2025-12-28' },
+            { subject: 'c', originalDate: '2026-01-04' }
+        ]);
+
+        assert.deepEqual(
+            months.map((month) => month.label),
+            ['December 2025', 'January 2026']
+        );
+        assert.equal(months[0].letters.length, 2);
     });
 });
 
@@ -818,7 +869,6 @@ describe('the word cloud in the front of the book', () => {
         ]);
         const [, result] = await Promise.all([readPdf(stream), done]);
 
-        assert.equal(contentsPages(2), 1);
         assert.equal(result.opens[0].page, 4);
     });
 

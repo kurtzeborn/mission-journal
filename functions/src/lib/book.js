@@ -107,11 +107,22 @@ const PHOTO_MAX_HEIGHT = 0.62;
 // Exported for the thumbnail, which bands its picture the same way.
 export const PLATE_HEIGHT = PAGE.height * 0.52;
 
-// Contents entries per page, used to reserve the right number of leaves
-// before anything is set. Deliberately a constant rather than something
-// measured: the reservation has to be identical in both passes, and a value
-// derived from the first pass would move in the second.
-const CONTENTS_PER_PAGE = 32;
+// The contents page, in points. Every one of these is a constant rather than
+// something measured, because the reservation has to come out identical in
+// both passes and a height derived from the first pass would move in the
+// second.
+const CONTENTS = {
+    top: MARGIN.top + 10,
+    // The word "Contents" and the air under it, on the first sheet only.
+    title: 36,
+    // A month and its folio.
+    month: 19,
+    // One letter's subject beneath it.
+    letter: 12,
+    // Air above a month that is not the first thing on its sheet.
+    gap: 11,
+    indent: 16
+};
 
 // The fewest sheets a hardcover can be bound from, counting the two covers,
 // and it has to be an even number besides. Both are Peecho's rules rather
@@ -254,12 +265,94 @@ export const coverDate = (stamp) => {
 export const inReadingOrder = (posts) => [...posts].reverse();
 
 /**
- * How many pages the contents will occupy.
+ * The month a letter belongs to, as a reader would name it.
+ *
+ * Letters that predate the date field -- there are a handful -- are gathered
+ * under one heading rather than dropped, because a contents page that quietly
+ * omits three letters is worse than one with an awkward heading in it.
+ */
+export const monthLabel = (post) => {
+    const stamp = String(post.originalDate ?? '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(stamp)) return 'Undated';
+
+    const [year, month] = stamp.split('-').map(Number);
+    const at = new Date(Date.UTC(year, month - 1, 1));
+    if (Number.isNaN(at.getTime())) return 'Undated';
+
+    return at.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+};
+
+/**
+ * Gather the letters into the months they were written in.
+ *
+ * The posts arrive in reading order, so a month is a run rather than a bucket
+ * -- which is what keeps the contents in the order of the book even when a
+ * mission spans a change of year.
+ *
+ * @returns {{label: string, letters: {subject: string, page: number}[]}[]}
+ */
+export function byMonth(posts) {
+    const months = [];
+
+    for (const post of posts) {
+        const label = monthLabel(post);
+        if (months.at(-1)?.label !== label) months.push({ label, letters: [] });
+        months.at(-1).letters.push({ subject: post.subject || 'Untitled', page: 0 });
+    }
+
+    return months;
+}
+
+/**
+ * Deal the contents out over as many leaves as it takes.
  *
  * Exported because both passes need the same answer, and a number this
  * load-bearing should be derived in one place rather than counted twice.
+ *
+ * A month is kept whole on one leaf whenever it will fit on one, so that a
+ * heading is never stranded at a foot and a run of subjects never arrives at
+ * the top of a leaf with nothing above it saying what month they belong to.
+ *
+ * @returns {{kind: string, label: string, letters: object[], letter: object, y: number}[][]}
  */
-export const contentsPages = (count) => Math.max(1, Math.ceil(count / CONTENTS_PER_PAGE));
+export function contentsSheets(months) {
+    const sheets = [[]];
+    let y = CONTENTS.top + CONTENTS.title;
+
+    const turn = () => {
+        sheets.push([]);
+        y = CONTENTS.top;
+    };
+
+    for (const month of months) {
+        const block = CONTENTS.month + CONTENTS.letter * month.letters.length;
+        const gap = sheets.at(-1).length ? CONTENTS.gap : 0;
+
+        // A month longer than a whole leaf has to break somewhere; it asks for
+        // its heading and one line, and takes the break further down instead.
+        const leaf = TEXT_BOTTOM - CONTENTS.top;
+        const wants = block <= leaf ? block : CONTENTS.month + CONTENTS.letter;
+
+        if (gap && y + gap + wants > TEXT_BOTTOM) turn();
+        else y += gap;
+
+        sheets.at(-1).push({ kind: 'month', label: month.label, letters: month.letters, y });
+        y += CONTENTS.month;
+
+        for (const letter of month.letters) {
+            if (y + CONTENTS.letter > TEXT_BOTTOM) turn();
+            sheets.at(-1).push({ kind: 'letter', letter, y });
+            y += CONTENTS.letter;
+        }
+    }
+
+    return sheets;
+}
+
+/**
+ * How many pages the contents will occupy.
+ */
+export const contentsPages = (months) => contentsSheets(months).length;
 
 /**
  * How far a page's contents slide to mirror the gutter.
@@ -1497,54 +1590,56 @@ function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
     }
 }
 
-function setContents(doc, { entries, state }) {
-    const sheets = contentsPages(entries.length);
+/**
+ * The contents, a month at a time.
+ *
+ * Forty letters listed one to a line with a page number each is an index, not
+ * a contents page -- it reads as a spreadsheet and gives no sense of the shape
+ * of the two years it covers. The months are the chapters. They carry the
+ * folios, because a month is what somebody looking for a letter actually
+ * remembers; the subjects sit under their month in small type as a reminder of
+ * what is in it, and are found by turning a few leaves rather than by number.
+ */
+function setContents(doc, { months, state }) {
     state.indent = 0;
 
-    for (let sheet = 0; sheet < sheets; sheet += 1) {
+    for (const [index, sheet] of contentsSheets(months).entries()) {
         doc.addPage();
 
-        doc.y = MARGIN.top + 10;
-
-        if (sheet === 0) {
+        if (index === 0) {
             doc.font('semibold').fontSize(17).fillColor(BLACK);
-            doc.text('Contents', LEFT, doc.y, { width: COLUMN });
-            doc.moveDown(0.9);
+            doc.text('Contents', LEFT, CONTENTS.top, { width: COLUMN, lineBreak: false });
         }
 
-        const slice = entries.slice(sheet * CONTENTS_PER_PAGE, (sheet + 1) * CONTENTS_PER_PAGE);
+        for (const row of sheet) {
+            if (row.kind === 'month') {
+                doc.font('semibold').fontSize(11.5).fillColor(BLACK);
+                doc.text(row.label, LEFT, row.y, { width: COLUMN - 30, lineBreak: false });
 
-        for (const entry of slice) {
-            // Every cell of the row is drawn at the same `y` and the cursor
-            // is advanced by hand afterwards, because three columns that each
-            // moved the cursor would stack instead of lining up.
-            const y = doc.y;
+                // Blank during the measuring pass, when no letter has a page
+                // number yet. The row still occupies its line, which is all
+                // the reservation needs it to do.
+                const page = row.letters[0]?.page;
+                doc.font('regular').fontSize(11.5).fillColor(QUIET);
+                doc.text(page ? String(page) : '', LEFT, row.y, {
+                    width: COLUMN,
+                    align: 'right',
+                    lineBreak: false
+                });
 
-            doc.font('regular').fontSize(10.5).fillColor(QUIET);
-            doc.text(entry.date, LEFT, y, { width: 66, lineBreak: false });
+                continue;
+            }
 
             // Truncated rather than wrapped. A subject long enough to wrap
-            // would push the rest of the page down, and the number of rows
-            // per page is what the reservation above was computed from.
-            doc.fillColor(BLACK);
-            doc.text(entry.subject, LEFT + 74, y, {
-                width: COLUMN - 74 - 30,
+            // would push the rest of the leaf down, and the heights the
+            // reservation was computed from are one line apiece.
+            doc.font('regular').fontSize(8.5).fillColor(QUIET);
+            doc.text(row.letter.subject, LEFT + CONTENTS.indent, row.y, {
+                width: COLUMN - CONTENTS.indent,
                 lineBreak: false,
                 ellipsis: true,
-                height: 14
+                height: 11
             });
-
-            // Blank during the measuring pass, when no letter has a page
-            // number yet. The row still occupies its line, which is all the
-            // reservation needs it to do.
-            doc.fillColor(QUIET);
-            doc.text(entry.page ? String(entry.page) : '', LEFT, y, {
-                width: COLUMN,
-                align: 'right',
-                lineBreak: false
-            });
-
-            doc.y = y + 15.5;
         }
     }
 }
@@ -1626,11 +1721,11 @@ function setCloud(doc, { words, state }) {
  *
  * @returns {Promise<Map<string, number>>} post id to the folio it opened on
  */
-async function setBook(doc, { slug, posts, profile, title, entries, words, imagesFor, cloth, picture, least, state }) {
+async function setBook(doc, { slug, posts, profile, title, months, words, imagesFor, cloth, picture, least, state }) {
     setFrontCover(doc, { title, profile, cloth, picture, state });
     setTitlePage(doc, { title, slug, profile, madeAt: state.madeAt, state });
     setCloud(doc, { words, state });
-    setContents(doc, { entries, state });
+    setContents(doc, { months, state });
 
     state.furniture = true;
     const starts = new Map();
@@ -1775,11 +1870,11 @@ export function buildInterior({
     const title = profile.displayName || slug;
     const cloth = clothOf(cover.cloth);
 
-    const entries = ordered.map((post) => ({
-        date: shortDate(post),
-        subject: post.subject || 'Untitled',
-        page: 0
-    }));
+    // Grouped once and handed to both passes. The letter objects inside are
+    // the same objects both times, which is how the folios collected by the
+    // measuring pass reach the contents page the second pass actually draws.
+    const months = byMonth(ordered);
+    const entries = months.flatMap((month) => month.letters);
 
     // Counted once and handed to both passes. Not because it is expensive --
     // it is a walk over text already in memory -- but because the two passes
@@ -1805,7 +1900,7 @@ export function buildInterior({
             posts: ordered,
             profile,
             title,
-            entries,
+            months,
             words,
             imagesFor: () => NO_IMAGES,
             cloth,
@@ -1846,7 +1941,7 @@ export function buildInterior({
             posts: ordered,
             profile,
             title,
-            entries,
+            months,
             words,
             cloth,
             picture,
