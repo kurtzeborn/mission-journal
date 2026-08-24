@@ -42,7 +42,7 @@ describe('the questions page holds together', () => {
             .map((m) => m[1].replace(/<[^>]*>/g, '').trim())
             // The contents list uses h3 for its topic groups, which are
             // labels rather than questions and are not linked to.
-            .filter((text) => !['General', 'Setting up', 'Access', 'Privacy', 'Printing'].includes(text));
+            .filter((text) => !['General', 'Setting up', 'Reading', 'Access', 'Privacy', 'Printing'].includes(text));
 
         assert.deepEqual(unnamed, []);
     });
