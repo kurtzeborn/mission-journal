@@ -129,6 +129,10 @@ Three of the credentials in the table live outside Key Vault, so none of this se
 
   **The Cloudflare Email Sending settings page misreports the policy** — it claimed `p=reject` while DNS said `p=none`. Read DNS, never that page.
 
+  **2026-08-24 — the first batch after the change was clean.** Five records across four receivers (Microsoft Enterprise, Outlook.com, Google, Yahoo): DKIM pass, SPF pass, disposition `none`, every source IP Cloudflare's. Every record carried both Cloudflare's own third-party signature and the aligned `pdayletters.com` one, selector `cf-bounce`. All four still report `policy_published: p=none`, because their windows are 22–23 August and the change landed on the 23rd — expected, not a regression. **No forwarded mail in the batch at all**, so it is no evidence either way for `p=reject`; that step still waits on months whose forwards keep DKIM.
+
+  **Reports are moving to [Cloudflare DMARC Management](https://developers.cloudflare.com/dmarc-management/)** — free, dashboard rather than inbox, and it keeps the evidence trail that `p=reject` has to be earned on, which deleting `rua=` would throw away. It appends its own `rua=` to the existing record rather than replacing it, so ours comes out afterwards. Two cautions: it also wants to manage the **SPF** record and cannot do that safely when a CNAME in the zone points at an external domain, so let it touch DMARC only; and per the paragraph above, verify the result from DNS rather than from the panel.
+
 ### Quarterly
 
 - **`npm audit`.** Permanently red on `mailauth`'s transitive advisories, which were [measured as unreachable](plan.md#phase-8--outbound-mail-and-preferences). That is the hazard: a permanently red audit is one a real advisory gets scrolled past in. Either add an allowlist so the output means something again, or accept that this check requires reading rather than glancing.
