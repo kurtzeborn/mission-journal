@@ -837,7 +837,7 @@ This is why **pending-site claim emails count as replies, not as self-originated
 
 ### Notification preferences
 
-**Partly built.** The global opt-out shipped in Phase 9 and `digestFrequency` shipped in Phase 10, with a page at `/email` to change it. `postAckEmails` and `dedupeAckEmails` are not built and are deliberately not stored — an unused column would repeat the `alternateSenders` mistake described elsewhere in this plan.
+**Built, minus two flags that were decided against.** The global opt-out shipped in Phase 9 and `digestFrequency` shipped in Phase 10, with a page at `/email` offering weekly, monthly or never. `postAckEmails` and `dedupeAckEmails` are deliberately not stored — an unused column would repeat the `alternateSenders` mistake described elsewhere in this plan. The rest of this section is the reasoning that produced that shape, kept because it is why the page asks one question instead of three.
 
 Per-user (not per-missionary) preferences for outbound emails the service generates. Stored as columns on the user's row in the `users` Azure Table — same row that holds identity metadata (display name, auth provider, first-seen timestamp) so all per-user state lives in one place. Additional preferences are just additional columns.
 
@@ -1173,7 +1173,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Acknowledgement email on a successful forward~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [x] ~~Suppression is visible to owners on the people page~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
 - [x] ~~Store `Message-ID` so acks thread~~ — [Phase 8](#phase-8--outbound-mail-and-preferences)
-- [ ] Per-user notification preferences page — [Phase 8](#phase-8--outbound-mail-and-preferences) *(`digestFrequency` shipped at `/email`; the two ack flags are not built)*
+- [x] ~~Per-user notification preferences page~~ — [Phase 8](#phase-8--outbound-mail-and-preferences) *(weekly, monthly or never at `/email`; the two ack flags were [decided against](#notification-preferences), not left undone)*
 - [x] Monthly digest of new letters — [Phase 10](#phase-10--new-letter-notifications)
 - [x] ~~Text messages~~ — cut, see [Text messages](#text-messages--not-doing-this)
 
