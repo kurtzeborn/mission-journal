@@ -123,7 +123,11 @@ Three of the credentials in the table live outside Key Vault, so none of this se
 ### Monthly
 
 - **Outbound send volume.** 3,000 messages a month are included, then $0.35/1,000. Sends to verified destinations are free and do not count. A runaway loop is a cost problem before it is a deliverability problem.
-- **DMARC aggregate reports** for `pdayletters.com`. The policy is `p=none` with `rua=` reporting; the point of `none` is to gather evidence before tightening. **Moving to `p=quarantine` and then `p=reject` is an outstanding task, not a permanent state** — and note that the Cloudflare Email Sending settings page *misreports* the policy as `p=reject` already. Read DNS, never that page.
+- **DMARC aggregate reports** for `pdayletters.com`. **Moved to `p=quarantine; pct=100; ri=604800` on 2026-08-23**, after the reports through August showed a single source — Cloudflare — signing and passing on every message. `ri` asks for weekly aggregates rather than daily; it is advisory, so some providers will keep sending daily anyway.
+
+  **`p=reject` is the remaining step, and the evidence for it is the forwarding case.** A Comcast report on 2026-08-23 recorded one of our letters forwarded by somebody's Gmail: the envelope was then `gmail.com`, so SPF no longer aligned and was scored a fail, and only the surviving `pdayletters.com` DKIM signature carried it through. Under `reject` that difference is a grandparent's forward arriving or vanishing without trace. So the thing to look for each month is not *are there failures* — forwards will always show an SPF fail — but **is DKIM passing on every record**. A run of clean months earns `reject`; a single DKIM failure from a forward does not.
+
+  **The Cloudflare Email Sending settings page misreports the policy** — it claimed `p=reject` while DNS said `p=none`. Read DNS, never that page.
 
 ### Quarterly
 
