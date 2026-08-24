@@ -208,6 +208,58 @@ describe('stepping between matches', () => {
         assert.equal(event.defaultPrevented, true);
         assert.match(view.$('.search__position').textContent, /^1 of 3 matches in /);
     });
+
+    test('down steps forward from the search bar without touching the mouse', () => {
+        const view = archive();
+        view.search('rain');
+
+        view.key(view.elements.searchInput, 'ArrowDown');
+        assert.match(view.$('.search__position').textContent, /^1 of 3 matches in /);
+
+        view.key(view.elements.searchInput, 'ArrowDown');
+        assert.match(view.$('.search__position').textContent, /^2 of 3 matches in /);
+    });
+
+    test('up steps back, and back from a fresh search is the last match', () => {
+        const view = archive();
+        view.search('rain');
+
+        view.key(view.elements.searchInput, 'ArrowUp');
+        assert.match(view.$('.search__position').textContent, /^3 of 3 matches in /);
+
+        view.key(view.elements.searchInput, 'ArrowUp');
+        assert.match(view.$('.search__position').textContent, /^2 of 3 matches in /);
+    });
+
+    test('the arrows stop the caret and the page moving instead', () => {
+        const view = archive();
+        view.search('rain');
+
+        const event = new view.window.KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true
+        });
+        view.elements.searchInput.dispatchEvent(event);
+
+        assert.equal(event.defaultPrevented, true);
+    });
+
+    test('the arrows leave the page alone when nothing matched', () => {
+        // Otherwise a search with no answers would swallow the key that
+        // scrolls, which reads as the page having frozen.
+        const view = archive();
+        view.search('zeppelin');
+
+        const event = new view.window.KeyboardEvent('keydown', {
+            key: 'ArrowDown',
+            bubbles: true,
+            cancelable: true
+        });
+        view.elements.searchInput.dispatchEvent(event);
+
+        assert.equal(event.defaultPrevented, false);
+    });
 });
 
 describe('the shape of the search bar', () => {
@@ -236,6 +288,41 @@ describe('the shape of the search bar', () => {
 
         assert.equal(view.elements.searchInput.value, '');
         assert.deepEqual(shown(view), POSTS.map((post) => post.id));
+    });
+
+    test('escape works from wherever the reader happens to be reading', () => {
+        // The point of the key. By the time somebody wants out of a search
+        // they are usually well down the page on a match, and scrolling back
+        // to the box to press Escape in it is the errand Escape saves.
+        const view = archive();
+        view.search('Antigua');
+
+        view.key(view.$('.post'), 'Escape');
+
+        assert.equal(view.elements.searchInput.value, '');
+        assert.deepEqual(shown(view), POSTS.map((post) => post.id));
+    });
+
+    test('escape hands focus back to the page', () => {
+        const view = archive();
+        view.elements.searchInput.focus();
+        view.search('Antigua');
+
+        view.key(view.elements.searchInput, 'Escape');
+
+        assert.notEqual(view.document.activeElement, view.elements.searchInput);
+    });
+
+    test('escape closes a dialog without also wiping the search behind it', () => {
+        // A photograph opened from a search hit is the ordinary case, and
+        // coming back out of it should land the reader on the hit they left.
+        const view = archive();
+        view.search('Antigua');
+
+        view.document.body.insertAdjacentHTML('beforeend', '<dialog open></dialog>');
+        view.key(view.document.querySelector('dialog[open]'), 'Escape');
+
+        assert.equal(view.elements.searchInput.value, 'Antigua');
     });
 });
 

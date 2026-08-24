@@ -1734,8 +1734,43 @@ window.Reader = (function () {
             searchInput.focus();
         });
 
-        searchInput.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') clearSearch();
+        // Escape leaves searching altogether rather than only emptying the
+        // box: the query goes, the marks go, the months fold back to where
+        // they were, and the field gives up focus.
+        //
+        // Bound to the document because by the time a reader wants out they
+        // are usually a long way down the page looking at a match, and having
+        // to scroll back to the box to press Escape in it is precisely what
+        // Escape is for. Anything with its own use for the key keeps it: a
+        // dialog closes, an edit in progress is discarded, and neither of
+        // those should also wipe the search behind it.
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || event.defaultPrevented) return;
+            if (!searchInput.value) return;
+            if (document.querySelector('dialog[open]')) return;
+
+            const focused = document.activeElement;
+            const elsewhere =
+                focused &&
+                focused !== searchInput &&
+                (focused.isContentEditable || focused.matches('input, textarea, select'));
+            if (elsewhere) return;
+
+            clearSearch();
+            searchInput.blur();
+        });
+
+        // Up and down walk the matches, exactly as the two buttons do, so the
+        // reader who has just typed can step through the answers without
+        // going back to the mouse. Bound to the form rather than the document:
+        // arrow keys scroll the page, and a reader who is not in the search
+        // bar means them to.
+        searchForm.addEventListener('keydown', (event) => {
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+            if (!marks.length) return;
+
+            event.preventDefault();
+            goTo(event.key === 'ArrowDown' ? at + 1 : at < 0 ? -1 : at - 1);
         });
 
         // `at` is -1 until the reader steps for the first time, and stepping
