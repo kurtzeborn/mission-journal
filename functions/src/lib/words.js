@@ -12,9 +12,12 @@
 // load an ES module over that scheme at all. So it cannot import this, and
 // nothing here can import it. What holds the two together is
 // `functions/tests/words.test.js`, which reads `web/reader.js` off disk and
-// fails if either the stopword list or the tokenizer has drifted from what is
-// below. That test is the only reason this arrangement is safe; do not delete
-// it because it looks like it is testing a comment.
+// fails if any of this has drifted from what is below. That test is the only
+// reason this arrangement is safe; do not delete it because it looks like it
+// is testing a comment.
+//
+// The packing is *not* copied. That is wordcloud2's, and the book runs the
+// same vendored copy of it the browser does -- see `cloud.js`.
 
 // The words that are in every letter because they are in every sentence.
 // Deliberately shorter than a proper stopword list -- these are somebody's
@@ -90,142 +93,43 @@ export function countWords(texts, { most = MOST } = {}) {
 }
 
 /**
- * Where each word sits on the page, packed outwards from the middle.
+ * Point size for a count, logarithmic and tied to the box.
  *
- * A word cloud is a rectangle-packing problem with no good exact answer, and
- * every implementation solves it the same greedy way: take the biggest word
- * first, walk a spiral out from the center, and drop it at the first place it
- * does not touch anything already placed. The reader gets this from
- * wordcloud2, which needs a canvas to do it; a PDF has no canvas and no DOM,
- * so it is done here instead.
+ * Copied from the reader's `scale`, and it has to stay copied: a book set on a
+ * different curve to the screen would put a different word in the middle. A
+ * word that came up four times as often is not four times as interesting, and
+ * on a linear scale one runaway word flattens the other fifty-nine into a
+ * single illegible size.
  *
- * **Nothing rotates.** wordcloud2 turns three words in ten on their side,
- * which is right for a panel somebody is looking at and wrong for a page
- * somebody is reading -- a book that has to be turned sideways to be read is
- * a book that gets closed. Losing the vertical words costs some of the dense
- * interlocking look and buys a page that works at arm's length.
- *
- * Deterministic, with no randomness anywhere: the same tally packs the same
- * way every time. That is not tidiness. The book is set twice and only the
- * second one is kept, so a layout that differed between the passes would put
- * the cloud in a different place than the pass that measured it.
- *
- * @param {[string, number][]} words commonest first
- * @param {object} options
- * @param {number} options.width the box, in points
- * @param {number} options.height
- * @param {(text: string, size: number) => number} options.measure how wide a word sets
- * @param {(count: number) => number} options.size point size for a count
- * @param {number} [options.gap] clear space kept around each word
- * @param {number} [options.fill] share of the box the words' own area should cover
- * @returns {{word: string, count: number, size: number, x: number, y: number, width: number, height: number}[]}
+ * @param {[string, number][]} words
+ * @param {{width: number, height: number}} box in points
+ * @returns {(count: number) => number}
  */
-export function packCloud(words, { width, height, measure, size, gap = 3, fill = 0.46 }) {
-    const placed = [];
-    const midX = width / 2;
-    const midY = height / 2;
+export function cloudScale(words, box) {
+    const counts = words.map(([, n]) => n);
+    const most = Math.max(...counts);
+    const least = Math.min(...counts);
 
-    // The spiral's step, in points. Fine enough that the gaps between words
-    // are not visibly quantised, coarse enough that sixty words settle in a
-    // few thousand tries rather than a few hundred thousand.
-    const STEP = 4;
+    const top = Math.max(20, Math.min(box.width, box.height) * 0.19);
+    const floor = Math.max(11, top * 0.24);
 
-    // An Archimedean spiral, stretched to the proportions of the box. Words
-    // are far wider than they are tall, so a round spiral packs a disc and
-    // leaves the corners of the page empty; stretching it spreads them over
-    // the whole rectangle instead.
-    const stretch = width / height;
-    const radius = (turn) => turn * 2.4;
-
-    // The furthest out worth looking. Measured in the unstretched circle, so
-    // it is the box's own half-diagonal once the stretch is undone -- past
-    // that there is nowhere left that was not already tried.
-    const reach = Math.hypot(width / stretch, height) / 2;
-
-    const points = fitSizes(words, { width, height, measure, size, fill });
-
-    const clashes = (box) =>
-        placed.some(
-            (other) =>
-                box.x < other.x + other.width + gap &&
-                other.x < box.x + box.width + gap &&
-                box.y < other.y + other.height + gap &&
-                other.y < box.y + box.height + gap
-        );
-
-    for (const [word, count] of words) {
-        const at = points(count);
-        const box = { width: measure(word, at), height: at };
-
-        // A word wider than the page can never be placed and would otherwise
-        // burn the whole spiral finding that out.
-        if (box.width > width || box.height > height) continue;
-
-        // Walked by angle, with the radius growing as it turns. The arc a
-        // fixed angular step covers gets longer the further out it is, so the
-        // step is scaled by the radius to keep the sampling even -- without
-        // that, the middle is searched densely and the outside in jumps wide
-        // enough to skip gaps a word would have fitted.
-        for (let turn = 0; radius(turn) <= reach; turn += STEP / Math.max(radius(turn), STEP)) {
-            const r = radius(turn);
-            const x = midX + r * stretch * Math.cos(turn) - box.width / 2;
-            const y = midY + r * Math.sin(turn) - box.height / 2;
-
-            // Inside the box entirely. Half a word hanging off the edge is
-            // worse than a word that did not make it in.
-            if (x < 0 || y < 0 || x + box.width > width || y + box.height > height) continue;
-
-            const candidate = { ...box, x, y };
-            if (clashes(candidate)) continue;
-
-            placed.push({ word, count, size: at, ...candidate });
-            break;
-        }
-    }
-
-    return placed;
+    return (n) => {
+        if (most <= least) return (top + floor) / 2;
+        const step = (Math.log(n) - Math.log(least)) / (Math.log(most) - Math.log(least));
+        return floor + step * (top - floor);
+    };
 }
 
-/**
- * The point sizes, scaled so the words fill the page they were given.
- *
- * The sizes handed in are a *shape* -- which word is larger than which, and by
- * how much -- rather than a fit. Nothing about a tally knows how big the page
- * is, and the same sixty words could as easily be asked to fill a postcard.
- * Packed at their nominal sizes they came out as a small tight knot adrift in
- * a lot of white paper, which was the first version of this page and read as a
- * printing fault rather than as a design.
- *
- * So the whole set is scaled by one factor, chosen from area. A word's area
- * grows with the square of its point size, so the factor that turns the words'
- * total area into the wanted share of the box is the square root of the ratio
- * between them -- one pass over the list, no searching, and the relative sizes
- * survive untouched because every word is scaled by the same number.
- *
- * `fill` is well under one because the words are packed as rectangles and set
- * as letterforms: the space above an "o" and either side of an "l" is inside
- * the box and empty on the page. Somewhere near a half looks full without
- * looking crowded.
- */
-function fitSizes(words, { width, height, measure, size, fill }) {
-    let ink = 0;
-    for (const [word, count] of words) {
-        const at = size(count);
-        ink += measure(word, at) * at;
+// How many tones the cloud is drawn in, and which one a word gets. Off the
+// word rather than off its position, so the same word is the same color on the
+// page as it is on the screen. Both numbers are the reader's.
+export const TONES = 6;
+
+export function toneOf(word) {
+    let hash = 0;
+    for (let i = 0; i < word.length; i += 1) {
+        hash = (hash * 31 + word.charCodeAt(i)) % 100003;
     }
 
-    if (ink <= 0) return size;
-
-    let scale = Math.sqrt((width * height * fill) / ink);
-
-    // Nothing may end up wider than the page. Width is linear in point size,
-    // so the worst offender's overhang is exactly the factor to come back by
-    // and one pass settles it.
-    let worst = 1;
-    for (const [word, count] of words) {
-        worst = Math.max(worst, measure(word, size(count) * scale) / width);
-    }
-
-    scale /= worst;
-    return (count) => size(count) * scale;
+    return hash % TONES;
 }

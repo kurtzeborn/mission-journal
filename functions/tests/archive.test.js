@@ -216,7 +216,8 @@ describe('the packaged reader is the site reader', () => {
         [join(repo, 'web', 'reader.js'), join(assets, 'reader.js')],
         [join(repo, 'web', 'styles.css'), join(assets, 'styles.css')],
         [join(repo, 'web', 'logo.png'), join(assets, 'logo.png')],
-        [join(repo, 'web', 'vendor', 'minisearch.js'), join(assets, 'minisearch.js')]
+        [join(repo, 'web', 'vendor', 'minisearch.js'), join(assets, 'minisearch.js')],
+        [join(repo, 'web', 'vendor', 'wordcloud2.js'), join(assets, 'wordcloud2.js')]
     ];
 
     for (const [source, copy] of shared) {

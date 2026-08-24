@@ -31,7 +31,8 @@ import sharp from 'sharp';
 import { flowBody, inlinePhotoIds } from './bookflow.js';
 import { clothOf } from './cover.js';
 import { fillLine, segments } from './typeset.js';
-import { countWords, packCloud } from './words.js';
+import { layoutCloud } from './cloud.js';
+import { countWords, cloudScale, toneOf } from './words.js';
 
 // pdfkit publishes no ESM entry point, so it comes in through require the way
 // yazl does in archive.js.
@@ -146,15 +147,14 @@ const aspectOf = (photo) =>
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 
-// The word cloud on the back of the title page. The largest size is what one
-// word can be without crowding the fifty-nine behind it; the smallest is the
-// point below which a word set among much larger ones stops being read at
-// all. `CLOUD_PALE` is the grey the rarest word is printed in -- light enough
-// to recede, dark enough to survive a press that is not being careful.
-const CLOUD_TOP = 34;
-const CLOUD_FLOOR = 9.5;
-const CLOUD_PALE = 0x9a;
-const CLOUD_INK = 0x1a;
+// The word cloud on the back of the title page. These are the reader's own six
+// tones, lifted from `web/styles.css`, so a word is the same color in the book
+// as it is on the screen -- which is the whole point of the page. They are
+// pastels pulled toward the ink rather than true pastels: the smallest word on
+// the page is eleven points, and anything pale enough to look like sugar at
+// that size cannot be read. Peecho prints the interior in RGB at 300 dpi, so
+// color here costs nothing the photographs were not already costing.
+const CLOUD_TONES = ['#2f5d50', '#3a5c72', '#5a4a72', '#7b4a5c', '#8a5a3c', '#6b6234'];
 
 // Below this the page is left blank instead. A dozen words do not pack into
 // anything that reads as a cloud -- they land as a dozen words scattered over
@@ -1581,30 +1581,33 @@ function setCloud(doc, { words, state }) {
     if (words.length < CLOUD_LEAST) return;
 
     const box = { width: COLUMN, height: TEXT_BOTTOM - MARGIN.top - 34 };
-    const weight = cloudScale(words);
+    const placed = layoutCloud(words, { ...box, size: cloudScale(words, box) });
 
-    // Set once, outside the packing, because `measure` below is called some
-    // thousands of times and each call would otherwise re-resolve the face.
-    doc.font('semibold');
-
-    const placed = packCloud(words, {
-        width: box.width,
-        height: box.height,
-        size: weight.size,
-        measure: (word, size) => doc.fontSize(size).widthOfString(word)
-    });
+    doc.font('regular');
 
     for (const item of placed) {
-        doc.fontSize(item.size).fillColor(weight.ink(item.count));
+        // wordcloud2 reports a word as a box with a rotation about a point
+        // four tenths of the way down it -- the same origin the browser turns
+        // the span about, which is what makes a rotated word look centered on
+        // the space it was given rather than hinged off its own top corner.
+        const pivotX = LEFT + item.x + item.width / 2;
+        const pivotY = MARGIN.top + item.y + item.height * 0.4;
 
-        // A point of slack on the width. `widthOfString` and the width the
-        // text call then consumes agree to within rounding, and a string that
-        // lands a hundredth of a point over its box wraps to a second line
-        // that is drawn on top of whatever was packed beneath it.
-        doc.text(item.word, LEFT + item.x, MARGIN.top + item.y, {
-            width: item.width + 1,
-            lineBreak: false
+        doc.save();
+        doc.translate(pivotX, pivotY);
+        if (item.turn) doc.rotate(item.turn);
+
+        doc.fontSize(item.size).fillColor(CLOUD_TONES[toneOf(item.word)]);
+
+        // The library fills its own canvas on the middle baseline, half a point
+        // size below where the box starts; matching that is what keeps the type
+        // sitting where the packing thought it would.
+        doc.text(item.word, -item.width / 2, -item.height * 0.4 + item.size * 0.5, {
+            lineBreak: false,
+            baseline: 'middle'
         });
+
+        doc.restore();
     }
 
     doc.font('italic').fontSize(9.5).fillColor(QUIET);
@@ -1613,36 +1616,6 @@ function setCloud(doc, { words, state }) {
         align: 'center',
         lineBreak: false
     });
-}
-
-/**
- * Point size and ink for a word, from how often it was written.
- *
- * Logarithmic, as on screen and for the same reason: a word that came up four
- * times as often is not four times as interesting, and on a linear scale one
- * runaway word flattens the other fifty-nine into a single illegible size.
- *
- * The ink follows the same curve as the size, which the screen version does
- * not do -- there the colors are arbitrary and only there to separate one word
- * from its neighbour. On paper there is one ink, so the only way a small word
- * can recede is to be paler, and a page of sixty words all in text black reads
- * as a mistake rather than as a cloud.
- */
-function cloudScale(words) {
-    const counts = words.map(([, n]) => n);
-    const most = Math.max(...counts);
-    const least = Math.min(...counts);
-
-    const step = (n) =>
-        most <= least ? 0.5 : (Math.log(n) - Math.log(least)) / (Math.log(most) - Math.log(least));
-
-    return {
-        size: (n) => CLOUD_FLOOR + step(n) * (CLOUD_TOP - CLOUD_FLOOR),
-        ink: (n) => {
-            const value = Math.round(CLOUD_PALE - step(n) * (CLOUD_PALE - CLOUD_INK));
-            return [value, value, value];
-        }
-    };
 }
 
 /**
