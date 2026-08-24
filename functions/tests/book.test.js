@@ -226,41 +226,25 @@ describe('preparing a photograph for the press', () => {
 
 describe('how many leaves the album gets', () => {
     it('gives a letter with nothing attached no album at all', () => {
-        assert.equal(albumPageCount(0, { textPages: 1 }), 0);
+        assert.equal(albumPageCount(0), 0);
     });
 
     it('never crowds more than six onto a page', () => {
         for (let count = 1; count <= 40; count += 1) {
-            for (const textPages of [1, 2, 3]) {
-                const pages = albumPageCount(count, { textPages });
-                for (const leaf of albumSpread(range(count), { pages })) {
-                    assert.ok(leaf.length <= 6, `${count} over ${pages} put ${leaf.length} on a leaf`);
-                }
+            const pages = albumPageCount(count);
+            for (const leaf of albumSpread(range(count), { pages })) {
+                assert.ok(leaf.length <= 6, `${count} over ${pages} put ${leaf.length} on a leaf`);
             }
         }
     });
 
-    it('spreads the pictures out to save the next letter a blank leaf', () => {
-        // Six pictures fit one page, but after a two-page letter that would
-        // come to three and cost a blank. Two pages of three costs nothing
-        // and prints them larger.
-        assert.equal(albumPageCount(6, { textPages: 1 }), 1);
-        assert.equal(albumPageCount(6, { textPages: 2 }), 2);
-    });
-
-    it('comes out even whenever there is a spread that can', () => {
-        for (let count = 4; count <= 40; count += 1) {
-            for (const textPages of [1, 2, 3, 4]) {
-                const pages = albumPageCount(count, { textPages });
-                assert.equal((textPages + pages) % 2, 0, `${count} after ${textPages} needed a blank`);
-            }
-        }
-    });
-
-    it('accepts a blank rather than putting one picture on a page', () => {
-        // Two pictures cannot be spread over two pages without leaving one
-        // alone, so after a two-page letter the blank leaf is the lesser evil.
-        assert.equal(albumPageCount(2, { textPages: 2 }), 1);
+    it('spends no more leaves than the pictures need', () => {
+        // Only chapters pad now, so a looser spread buys nothing and costs a
+        // sheet. Six fit a page; the seventh is what asks for a second.
+        assert.equal(albumPageCount(6), 1);
+        assert.equal(albumPageCount(7), 2);
+        assert.equal(albumPageCount(12), 2);
+        assert.equal(albumPageCount(13), 3);
     });
 
     it('deals every picture out once, in order', () => {
@@ -547,11 +531,12 @@ describe('setting a whole book', () => {
         assert.match(bytes.toString('latin1'), /https:\/\/example\.org\/chapel/);
     });
 
-    it('opens every letter on a left-hand page', async () => {
-        // Which is what puts a one-page letter's photographs on the leaf
-        // facing it. It also has to survive the front matter: the title page
-        // and the word cloud are there partly to land the first letter
-        // correctly.
+    it('opens the first letter of a month on a left-hand page', async () => {
+        // The chapter opening takes the recto, which drops the letter behind
+        // it onto the verso -- so a one-page letter still has its photographs
+        // on the leaf facing it. Every letter in this fixture is the first of
+        // its month. It also has to survive the front matter, which is partly
+        // what the title page and the word cloud are placed around.
         const { stream, done } = build();
         const [, result] = await Promise.all([readPdf(stream), done]);
 
@@ -560,10 +545,10 @@ describe('setting a whole book', () => {
         }
     });
 
-    it('opens every letter on a left-hand page however many photographs it carries', async () => {
-        // The padding is what makes this hold, and padding is only needed
-        // when a letter and its album come to an odd number of pages -- so it
-        // takes an album to exercise at all.
+    it('still lands the month on a left-hand page however many photographs it carries', async () => {
+        // An album of an odd length is what used to force the padding, so it
+        // takes one to exercise the parity at all. Now the chapter opening
+        // absorbs it instead.
         const { stream, done } = build({
             posts: posts.map((entry, index) => ({
                 ...entry,
@@ -579,6 +564,25 @@ describe('setting a whole book', () => {
         for (const opened of result.opens) {
             assert.equal(opened.page % 2, 0, `${opened.id} opened on page ${opened.page}`);
         }
+    });
+
+    it('starts each later letter of a month on the very next page', async () => {
+        // Four one-page letters in one month. Bringing every letter round
+        // onto a verso used to put a blank leaf between each pair of them;
+        // only the chapter pads now, so they run straight on.
+        const { stream, done } = build({
+            posts: [
+                post('d', '2026-01-25', 'Week four'),
+                post('c', '2026-01-18', 'Week three'),
+                post('b', '2026-01-11', 'Week two'),
+                post('a', '2026-01-04', 'Week one')
+            ]
+        });
+        const [, result] = await Promise.all([readPdf(stream), done]);
+
+        const folios = result.opens.map((opened) => opened.page);
+        assert.equal(folios[0] % 2, 0, `the month opened on page ${folios[0]}`);
+        assert.deepEqual(folios, [0, 1, 2, 3].map((n) => folios[0] + n));
     });
 
     it('never puts two letters on the same page', async () => {
@@ -857,19 +861,19 @@ describe('the word cloud in the front of the book', () => {
     const sizes = (bytes) =>
         new Set([...drawnIn(bytes).matchAll(/\/F\d+ ([\d.]+) Tf/g)].map((match) => match[1]));
 
-    it('costs the book no paper at all', async () => {
-        // The cloud takes the title page's verso, which was already being
-        // printed for the imprint. A leaf of its own would have cost two --
-        // itself, and the blank the flipped parity would force before the
-        // first letter -- so this is the whole argument for where it went.
-        // Title 1, cloud 2, one page of contents 3, first letter 4.
+    it('takes a leaf that was going to be printed anyway', async () => {
+        // The cloud sits on the title page's verso, which was always being
+        // printed for the imprint, so it costs no sheet of its own. What it
+        // does do is flip the parity of the front matter, and a chapter has
+        // to open on a recto: title 1, cloud 2, one page of contents 3, a
+        // blank 4, the chapter opening 5, the first letter 6.
         const { stream, done } = build([
             wordy('a', '2026-01-04', 'Week one'),
             wordy('b', '2026-02-08', 'Week six')
         ]);
         const [, result] = await Promise.all([readPdf(stream), done]);
 
-        assert.equal(result.opens[0].page, 4);
+        assert.equal(result.opens[0].page, 6);
     });
 
     it('sets the words at a whole range of sizes', async () => {
@@ -885,12 +889,12 @@ describe('the word cloud in the front of the book', () => {
     it('leaves the leaf blank rather than printing three words large', async () => {
         // An archive of two short letters has no cloud in it, and a handful of
         // words blown up to fill a page looks like a mistake rather than like
-        // a summary. The leaf still gets printed, because the imprint's verso
-        // is where the parity comes from.
+        // a summary. The leaf still gets printed, because it is the back of
+        // the title page and everything after it is placed from there.
         const thin = build([post('a', '2026-01-04', 'Week one')]);
         const [thinBytes, result] = await Promise.all([readPdf(thin.stream), thin.done]);
 
-        assert.equal(result.opens[0].page, 4);
+        assert.equal(result.opens[0].page, 6);
         assert.ok(sizes(thinBytes).size < 20, 'something was set on the blank leaf');
     });
 });

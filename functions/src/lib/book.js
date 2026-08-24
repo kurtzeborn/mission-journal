@@ -146,7 +146,6 @@ const COVERS = 2;
 const ALBUM_GAP = 10;
 const ALBUM_MIN_ROW = 84;
 const ALBUM_MOST = 6;
-const ALBUM_LEAST = 2;
 
 // Four by three when nothing was recorded. Ingest measures every photograph it
 // stores, so this is for the handful that predate it -- and a picture with no
@@ -289,15 +288,19 @@ export const monthLabel = (post) => {
  * -- which is what keeps the contents in the order of the book even when a
  * mission spans a change of year.
  *
- * @returns {{label: string, letters: {subject: string, page: number}[]}[]}
+ * Each letter keeps hold of the post it came from, because this grouping is
+ * what the printing walks: months are chapters and the letters inside one are
+ * set in the order the month lists them.
+ *
+ * @returns {{label: string, page: number, letters: {subject: string, page: number, post: object}[]}[]}
  */
 export function byMonth(posts) {
     const months = [];
 
     for (const post of posts) {
         const label = monthLabel(post);
-        if (months.at(-1)?.label !== label) months.push({ label, letters: [] });
-        months.at(-1).letters.push({ subject: post.subject || 'Untitled', page: 0 });
+        if (months.at(-1)?.label !== label) months.push({ label, page: 0, letters: [] });
+        months.at(-1).letters.push({ subject: post.subject || 'Untitled', page: 0, post });
     }
 
     return months;
@@ -313,7 +316,7 @@ export function byMonth(posts) {
  * heading is never stranded at a foot and a run of subjects never arrives at
  * the top of a leaf with nothing above it saying what month they belong to.
  *
- * @returns {{kind: string, label: string, letters: object[], letter: object, y: number}[][]}
+ * @returns {{kind: string, month: object, label: string, page: number, letter: object, y: number}[][]}
  */
 export function contentsSheets(months) {
     const sheets = [[]];
@@ -336,7 +339,7 @@ export function contentsSheets(months) {
         if (gap && y + gap + wants > TEXT_BOTTOM) turn();
         else y += gap;
 
-        sheets.at(-1).push({ kind: 'month', label: month.label, letters: month.letters, y });
+        sheets.at(-1).push({ kind: 'month', month, label: month.label, page: month.page, y });
         y += CONTENTS.month;
 
         for (const letter of month.letters) {
@@ -577,14 +580,14 @@ function openBook({ title, state }) {
         // is a printing error rather than a feature, and a folio on the
         // contents would number pages that are not yet the book.
         //
-        // Neither does a page left blank to bring the next letter round onto
-        // a left-hand page. A blank leaf with a page number on it reads as a
+        // Neither does a page left blank to bring the next chapter round onto
+        // a right-hand page. A blank leaf with a page number on it reads as a
         // page whose contents failed to print.
         if (state.furniture && !state.blank) {
             // A chapter opening takes the folio but not the running head. The
             // head answers "where am I" on a page that has already told you,
-            // in nineteen-point type an inch below it -- so on this one page
-            // it is noise, and every printed book leaves it off.
+            // in large type an inch below it -- so on this one page it is
+            // noise, and every printed book leaves it off.
             if (!state.opening) {
                 doc.font('italic').fontSize(9.5).fillColor(QUIET);
                 doc.text(recto ? state.head : title, LEFT, MARGIN.top - 30, {
@@ -936,33 +939,20 @@ export function albumPlan(photos, { height, width = COLUMN, gap = ALBUM_GAP }) {
 /**
  * How many leaves to give a letter's album.
  *
- * Two jobs at once. The first is restraint: past half a dozen pictures a page
- * stops being a plate and starts being a contact sheet, and these are
- * photographs somebody's family sent from the other side of the world.
+ * Restraint, and nothing else: past half a dozen pictures a page stops being
+ * a plate and starts being a contact sheet, and these are photographs
+ * somebody's family sent from the other side of the world.
  *
- * The second is parity. Every letter opens on a verso, so a letter whose text
- * and album come to an odd number of pages forces a blank leaf before the
- * next one -- and across a hundred letters that is fifty sheets of nothing
- * that the reader pays the printer for. Spreading the same pictures over one
- * more page costs no paper at all, because the paper was going to be spent
- * either way, and it makes the pictures bigger into the bargain. So the
- * smallest legal spread that comes out even wins.
- *
- * When no legal spread is even -- two photographs after a two-page letter,
- * say -- the tightest one is used and the blank leaf is accepted. There is
- * nowhere else for the page to come from.
+ * It used to answer a second question as well. While every letter padded
+ * round onto a verso, a letter whose text and album came to an odd number of
+ * pages forced a blank leaf, and spreading the same pictures over one more
+ * page absorbed it for free. Only chapters pad now, so the tightest spread is
+ * simply the right one and nothing is bought by loosening it.
  */
-export function albumPageCount(count, { textPages = 1 } = {}) {
+export function albumPageCount(count) {
     if (count < 1) return 0;
 
-    const least = Math.ceil(count / ALBUM_MOST);
-    const most = Math.max(least, Math.floor(count / ALBUM_LEAST));
-
-    for (let pages = least; pages <= most; pages += 1) {
-        if ((textPages + pages) % 2 === 0) return pages;
-    }
-
-    return least;
+    return Math.ceil(count / ALBUM_MOST);
 }
 
 /**
@@ -985,16 +975,15 @@ export function albumSpread(photos, { pages }) {
 }
 
 /**
- * Bring the next page round onto a left-hand one.
+ * Bring the next page round onto a right-hand one.
  *
- * Every letter opens on a verso so that a letter short enough to fit a single
- * page has its own photographs facing it across the spread -- which is most
- * of them. The cost is a blank leaf whenever a letter and its album come to
- * an odd number of pages, and that cost is real: it is paper, and the reader
- * pays the printer for it.
+ * Every chapter opens on a recto, which is where a reader turning through a
+ * book looks for the start of something and where every printed book puts it.
+ * The cost is a blank leaf whenever a month comes to an odd number of pages,
+ * and it is paid once per month rather than once per letter.
  */
-function padToVerso(doc, state) {
-    if ((state.page + 1) % 2 === 0) return;
+function padToRecto(doc, state) {
+    if ((state.page + 1) % 2 === 1) return;
 
     state.blank = true;
     doc.addPage();
@@ -1034,7 +1023,47 @@ function padToPrinter(doc, state, least) {
 }
 
 /**
- * Set one letter, opening on a left-hand page.
+ * A chapter opening: the month, alone on a right-hand page.
+ *
+ * The months are the chapters, so they get what a chapter gets. It is also
+ * what makes the rest of the pagination cheap: with a recto reserved here,
+ * the first letter of the month falls on the verso behind it and so still has
+ * its photographs facing it across the spread, and every letter after it can
+ * simply start on the next page. Padding each letter round onto a verso
+ * instead bought that spread for all of them at a blank leaf apiece, which
+ * over a two-year mission is a couple of dozen sheets of nothing.
+ *
+ * @returns {number} the folio the chapter opened on
+ */
+function setMonth(doc, { month, state }) {
+    padToRecto(doc, state);
+
+    state.head = month.label;
+    state.opening = true;
+    state.indent = 0;
+    doc.addPage();
+
+    const opened = state.page;
+
+    doc.font('semibold').fontSize(30).fillColor(BLACK);
+    doc.text(month.label, LEFT, MARGIN.top + PAGE.height * 0.22, { width: COLUMN, lineBreak: false });
+
+    const count = month.letters.length;
+    doc.font('italic').fontSize(11).fillColor(QUIET);
+    doc.text(count === 1 ? 'One letter' : `${count} letters`, LEFT, doc.y + 10, {
+        width: COLUMN,
+        lineBreak: false
+    });
+
+    return opened;
+}
+
+/**
+ * Set one letter, starting a page.
+ *
+ * The next page, whichever side it falls on: the chapter opening above has
+ * already bought the month its recto, and skipping again per letter would
+ * only buy blank paper.
  *
  * `images` is a map of photo id to JPEG buffer, and is empty for the whole of
  * the measuring pass. Nothing else differs between the passes, which is the
@@ -1043,8 +1072,6 @@ function padToPrinter(doc, state, least) {
  * @returns {number} the page the letter opened on
  */
 function setLetter(doc, { post, slug, images, state }) {
-    padToVerso(doc, state);
-
     // All three set before the page is added, because the handler draws the
     // furniture and places the text box the moment it is, and cannot be told
     // any of this afterwards.
@@ -1055,9 +1082,9 @@ function setLetter(doc, { post, slug, images, state }) {
 
     const opened = state.page;
 
-    // A chapter opening drops below the top margin. It is the oldest signal
-    // in book typography that something has started, and it costs an inch of
-    // a page that was starting anyway.
+    // A letter drops below the top margin. It is the oldest signal in book
+    // typography that something has started, and it costs an inch of a page
+    // that was starting anyway.
     doc.y = MARGIN.top + 40;
 
     doc.font('semibold').fontSize(19).fillColor(BLACK);
@@ -1120,7 +1147,6 @@ function setLetter(doc, { post, slug, images, state }) {
     // dropping them would lose pictures the family sent.
     setAlbum(doc, {
         photos: (post.photos ?? []).filter((photo) => !placed.has(photo.id)),
-        textPages: state.page - opened + 1,
         images,
         state
     });
@@ -1132,17 +1158,18 @@ function setLetter(doc, { post, slug, images, state }) {
  * The photographs a letter carried but never mentioned, given their own page.
  *
  * Starts a page rather than continuing under the text, which is what makes
- * the spread work: a letter that fits one page is on the left and its
- * pictures are on the right, facing it. A longer letter still gets its album,
- * just further along.
+ * the spread work for the letter that opens a month: it lands on the verso
+ * behind the chapter opening, so a letter that fits one page has its pictures
+ * on the right, facing it. A longer letter still gets its album, just
+ * further along.
  */
-function setAlbum(doc, { photos, textPages, images, state }) {
+function setAlbum(doc, { photos, images, state }) {
     if (!photos.length) return;
 
     setBox(doc, state, 0);
 
     const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
-    const pages = albumPageCount(photos.length, { textPages });
+    const pages = albumPageCount(photos.length);
 
     for (const leaf of albumSpread(photos, { pages })) {
         doc.addPage();
@@ -1616,12 +1643,11 @@ function setContents(doc, { months, state }) {
                 doc.font('semibold').fontSize(11.5).fillColor(BLACK);
                 doc.text(row.label, LEFT, row.y, { width: COLUMN - 30, lineBreak: false });
 
-                // Blank during the measuring pass, when no letter has a page
+                // Blank during the measuring pass, when no chapter has a page
                 // number yet. The row still occupies its line, which is all
                 // the reservation needs it to do.
-                const page = row.letters[0]?.page;
                 doc.font('regular').fontSize(11.5).fillColor(QUIET);
-                doc.text(page ? String(page) : '', LEFT, row.y, {
+                doc.text(row.page ? String(row.page) : '', LEFT, row.y, {
                     width: COLUMN,
                     align: 'right',
                     lineBreak: false
@@ -1655,12 +1681,13 @@ function setContents(doc, { months, state }) {
  * whole book turned out to be about before a word of it is read.
  *
  * **Here rather than anywhere else because this leaf already existed.** The
- * front matter has to end on a right-hand page so that the first letter opens
- * on a left-hand one, which meant the title page's verso was always going to
- * be printed and until now carried nothing but the imprint. Putting the cloud
- * on a leaf of its own would have cost two sheets rather than none: its own,
- * and the blank one that the shifted parity would then force before the first
- * letter. The imprint moved to the foot of the title page instead.
+ * title page is a recto, so its verso was always going to be printed and
+ * until now carried nothing but the imprint. It is not quite free -- one more
+ * leaf of front matter flips its parity, and a chapter has to open on a
+ * recto, so depending on how many leaves the contents runs to this can push a
+ * blank in ahead of the first month. A leaf of its own would have cost that
+ * same blank and a whole sheet besides. The imprint moved to the foot of the
+ * title page instead.
  *
  * Nothing here is clickable and nothing is searchable, which is most of what
  * the screen version is for. What survives the move to paper is the part
@@ -1670,9 +1697,9 @@ function setCloud(doc, { words, state }) {
     state.indent = 0;
     doc.addPage();
 
-    // An archive with almost nothing in it yet. The leaf stays -- the parity
-    // above depends on it -- and a blank verso facing the contents is what a
-    // book does anyway.
+    // An archive with almost nothing in it yet. The leaf stays -- it is the
+    // back of the title page and would be printed regardless -- and a blank
+    // verso facing the contents is what a book does anyway.
     if (words.length < CLOUD_LEAST) return;
 
     const box = { width: COLUMN, height: TEXT_BOTTOM - MARGIN.top - 34 };
@@ -1719,9 +1746,10 @@ function setCloud(doc, { words, state }) {
  * Both passes call this and differ only in what `photosFor` hands back, which
  * is the invariant the contents page rests on -- see the header.
  *
- * @returns {Promise<Map<string, number>>} post id to the folio it opened on
+ * @returns {Promise<{starts: Map<string, number>, chapters: number[]}>} where each
+ * letter and each month opened
  */
-async function setBook(doc, { slug, posts, profile, title, months, words, imagesFor, cloth, picture, least, state }) {
+async function setBook(doc, { slug, profile, title, months, words, imagesFor, cloth, picture, least, state }) {
     setFrontCover(doc, { title, profile, cloth, picture, state });
     setTitlePage(doc, { title, slug, profile, madeAt: state.madeAt, state });
     setCloud(doc, { words, state });
@@ -1729,16 +1757,21 @@ async function setBook(doc, { slug, posts, profile, title, months, words, images
 
     state.furniture = true;
     const starts = new Map();
+    const chapters = [];
 
-    for (const post of posts) {
-        starts.set(post.id, setLetter(doc, { post, slug, images: await imagesFor(post), state }));
+    for (const month of months) {
+        chapters.push(setMonth(doc, { month, state }));
+
+        for (const { post } of month.letters) {
+            starts.set(post.id, setLetter(doc, { post, slug, images: await imagesFor(post), state }));
+        }
     }
 
     state.furniture = false;
     padToPrinter(doc, state, least);
     setBackCover(doc, { slug, cloth, state });
 
-    return starts;
+    return { starts, chapters };
 }
 
 const NO_IMAGES = new Map();
@@ -1897,7 +1930,6 @@ export function buildInterior({
 
         const starts = await setBook(draft, {
             slug,
-            posts: ordered,
             profile,
             title,
             months,
@@ -1917,10 +1949,11 @@ export function buildInterior({
     const doc = openBook({ title, state });
 
     const done = (async () => {
-        const starts = await measured;
+        const { starts, chapters } = await measured;
         for (let index = 0; index < ordered.length; index += 1) {
             entries[index].page = starts.get(ordered[index].id) ?? 0;
         }
+        for (const [index, month] of months.entries()) month.page = chapters[index] ?? 0;
 
         // The one picture in the book that is fetched up front, because it is
         // the one the very first drawing call needs. A cover that will not
@@ -1936,9 +1969,8 @@ export function buildInterior({
             }
         }
 
-        const printed = await setBook(doc, {
+        const { starts: printed } = await setBook(doc, {
             slug,
-            posts: ordered,
             profile,
             title,
             months,
