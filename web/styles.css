@@ -1876,6 +1876,11 @@ h3:target {
     flex-wrap: wrap;
     gap: 1.5rem;
     margin: 1rem 0 0;
+    /* Without this the board stretches to whatever height the choices beside
+       it happen to be, which overrides its aspect-ratio and makes picking a
+       picture -- the thing that opens the tallest panel -- distort the
+       preview most. */
+    align-items: flex-start;
 }
 
 /* US Letter, which is what the book is. The proportions matter more than the
