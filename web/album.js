@@ -206,7 +206,7 @@ window.Album = (function () {
             // Re-sorted around the picture on screen rather than back to the
             // start, because the reader is looking at something and asking for
             // the rest of the album to be arranged differently around it.
-            const at = reel.frames[reel.swiper?.activeIndex ?? 0]?.id;
+            const at = frameOn(reel)?.id;
             const playing = reel.swiper?.autoplay?.running ?? true;
 
             teardown(reel);
@@ -218,7 +218,7 @@ window.Album = (function () {
         });
 
         goTo.addEventListener('click', () => {
-            const frame = reel.frames[reel.swiper?.activeIndex ?? 0];
+            const frame = frameOn(reel);
             if (!frame) return;
             dialog.close();
             reel.reveal?.(frame.post.id);
@@ -241,7 +241,11 @@ window.Album = (function () {
         view.stripWrapper.replaceChildren();
     }
 
-    function slideFor(frame) {
+    // How many card faces the stylesheet paints, cycled through by position so
+    // the fan behind the top card is never two of the same colour.
+    const TINTS = 6;
+
+    function slideFor(frame, index) {
         const img = document.createElement('img');
         img.src = frame.src;
         img.alt = '';
@@ -257,8 +261,11 @@ window.Album = (function () {
         zoom.className = 'swiper-zoom-container';
         zoom.append(img);
 
+        // The colour is set here rather than with nth-child, because looping
+        // moves slide elements about and a card would change colour as the
+        // deck came round again.
         const slide = document.createElement('div');
-        slide.className = 'swiper-slide';
+        slide.className = `swiper-slide reel__card reel__card--${index % TINTS}`;
         slide.append(zoom);
 
         return slide;
@@ -278,8 +285,13 @@ window.Album = (function () {
         return slide;
     }
 
+    // `realIndex`, not `activeIndex`. Looping shuffles the slide elements
+    // round the wrapper as the deck comes back on itself, and only the real
+    // index still lines up with the list the slides were built from.
+    const frameOn = (view) => view.frames[view.swiper?.realIndex ?? 0];
+
     function describe(view) {
-        const frame = view.frames[view.swiper?.activeIndex ?? 0];
+        const frame = frameOn(view);
         if (!frame) return;
 
         const date = Reader.formatDate(frame.post.originalDate);
@@ -323,6 +335,10 @@ window.Album = (function () {
             effect: 'cards',
             cardsEffect: { perSlideOffset: 9, perSlideRotate: 2, slideShadows: true },
             grabCursor: true,
+            // Round and round rather than stopping at the end. A deck has no
+            // last card, and it means the slideshow left running never stops
+            // of its own accord.
+            loop: true,
             lazyPreloadPrevNext: 1,
             navigation: { prevEl: view.controls.previous, nextEl: view.controls.next },
             // A fraction rather than bullets. An archive runs to hundreds of
