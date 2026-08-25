@@ -635,9 +635,15 @@ button:focus-visible {
 .toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
+    gap: 0.5rem;
     margin-top: 1.25rem;
+}
+
+/* Expand all is built last, and it sits over on the right above the Expand
+   buttons it works on. Everything before it opens a window over the archive
+   rather than rearranging it, so those group together at the other end. */
+.toolbar > :last-child {
+    margin-left: auto;
 }
 
 .post__body {

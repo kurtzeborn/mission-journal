@@ -121,9 +121,19 @@ window.Album = (function () {
         goTo.className = 'button button--quiet button--compact reel__goto';
         goTo.textContent = 'Go to this letter';
 
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'button button--quiet button--compact reel__play';
+        play.textContent = 'Play';
+        play.addEventListener('click', () => {
+            const autoplay = reel.swiper?.autoplay;
+            if (!autoplay) return;
+            autoplay.running ? autoplay.stop() : autoplay.start();
+        });
+
         const foot = document.createElement('div');
         foot.className = 'reel__foot';
-        foot.append(caption, goTo);
+        foot.append(caption, play, goTo);
 
         dialog.addEventListener('keydown', (event) => {
             if (event.key === 'Escape') dialog.close();
@@ -137,7 +147,7 @@ window.Album = (function () {
         document.body.append(dialog);
 
         reel = {
-            dialog, stage, wrapper, caption, goTo,
+            dialog, stage, wrapper, caption, goTo, play,
             controls: { previous, next, counter },
             swiper: null, frames: [], reveal: null
         };
@@ -237,8 +247,17 @@ window.Album = (function () {
             pagination: { el: view.controls.counter, type: 'fraction' },
             keyboard: { enabled: true },
             zoom: { maxRatio: 4 },
+            // Configured but not started -- see the stop() below. Interaction
+            // does not cancel it, because reaching for the arrow to skip one
+            // picture is not a request to end the slideshow.
+            autoplay: { delay: 4000, disableOnInteraction: false },
             on: {
                 slideChange: () => describe(view),
+                autoplayStart: () => { view.play.textContent = 'Pause'; },
+                // Also fires on its own at the last picture, which is the
+                // reason the label is driven from the event rather than set
+                // beside the call that started it.
+                autoplayStop: () => { view.play.textContent = 'Play'; },
                 // Tap the picture to zoom, tap the dark around it to leave --
                 // which is what the lightbox this replaces did, and what every
                 // other viewer does.
@@ -249,6 +268,7 @@ window.Album = (function () {
             }
         });
 
+        view.swiper.autoplay.stop();
         describe(view);
     }
 
