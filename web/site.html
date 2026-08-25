@@ -7,6 +7,9 @@
     <title>Pday Letters</title>
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="/styles.css">
+    <!-- Not part of styles.css, which is copied into the downloaded archive.
+         The album is the website's alone. -->
+    <link rel="stylesheet" href="/album.css">
     <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
     <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
 </head>
@@ -199,6 +202,9 @@
     <script src="/vendor/wordcloud2.js"></script>
     <script src="/confirm.js"></script>
     <script src="/reader.js"></script>
+    <!-- Swiper is not loaded here. album.js fetches it on first open, because
+         it is bigger than everything above put together. -->
+    <script src="/album.js"></script>
     <script src="/app.js"></script>
 </body>
 

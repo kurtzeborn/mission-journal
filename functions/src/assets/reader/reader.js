@@ -190,6 +190,17 @@ window.Reader = (function () {
         view.dialog.showModal();
     }
 
+    // Set by `mount` when the page was given an album, which can do everything
+    // the dialog above does and also zoom, swipe on to the next picture, and
+    // say which letter this one came from. The downloaded archive is given no
+    // album and falls through to the dialog.
+    let albumAt = null;
+
+    function viewPhoto(id, src, alt) {
+        if (id && albumAt) albumAt(id);
+        else openLightbox(src, alt);
+    }
+
     // --- inline photos ----------------------------------------------------
     //
     // A photo the missionary pasted into the letter arrives as a plain <img>
@@ -265,6 +276,7 @@ window.Reader = (function () {
             frame.type = 'button';
             frame.className = PHOTO_FRAME;
             frame.dataset.large = photoSrc(ref.id, 'large');
+            frame.dataset.photoId = ref.id;
 
             // The label is for assistive technology only -- sighted readers
             // get the zoom cursor, and a caption printed over every picture in
@@ -437,7 +449,7 @@ window.Reader = (function () {
             if (body.getAttribute('contenteditable') === 'true') return;
             const frame = event.target.closest?.(`.${PHOTO_FRAME}`);
             if (!frame) return;
-            openLightbox(frame.dataset.large, frame.querySelector('img')?.alt ?? '');
+            viewPhoto(frame.dataset.photoId, frame.dataset.large, frame.querySelector('img')?.alt ?? '');
         });
 
         return body;
@@ -471,6 +483,7 @@ window.Reader = (function () {
             const item = document.createElement('li');
             const link = document.createElement('a');
             link.href = photoSrc(photo.id, 'large');
+            link.dataset.photoId = photo.id;
             // An anchor whose only content is an image with empty alt text has
             // no accessible name at all. Same words as the inline frames use.
             link.setAttribute('aria-label', 'View larger');
@@ -523,7 +536,7 @@ window.Reader = (function () {
             const link = event.target.closest?.('a');
             if (!link || !album.contains(link)) return;
             event.preventDefault();
-            openLightbox(link.href, '');
+            viewPhoto(link.dataset.photoId, link.href, '');
         });
 
         return album;
@@ -1398,11 +1411,17 @@ window.Reader = (function () {
         const wanted = views.get(id);
         if (!wanted) return;
 
-        // Re-folded rather than left as the newest letter found them, so that
-        // arriving on one letter leaves exactly one month open: its own.
+        revealPost(views, groups, wanted);
+    }
+
+    // Fold the archive down to one letter and put it on screen. Two things
+    // arrive pointed at a single letter rather than at the archive -- a link
+    // from a digest email, and the album -- and both want the page left in the
+    // same state afterwards: exactly one month open, and it is this one's.
+    function revealPost(views, groups, wanted, scroll = {}) {
         for (const group of groups) setFolded(group, views.size > FOLD_ABOVE);
         for (const view of views.values()) setExpanded(view, view === wanted);
-        wanted.item.scrollIntoView();
+        wanted.item.scrollIntoView(scroll);
     }
 
     // --- marking the words themselves -------------------------------------
@@ -1814,8 +1833,11 @@ window.Reader = (function () {
      * @param {object} options.elements    the page's list, state and search nodes
      * @param {object|null} [options.admin] owner controls, when the caller has
      *   somewhere to send them. Absent in the downloaded archive.
+     * @param {object|null} [options.album] a slideshow over every photo in the
+     *   archive. Absent in the downloaded archive, which has no video in it and
+     *   should not carry a library this size for the half that is left.
      */
-    function mount({ posts, photoSrc, elements, admin = null, help = null }) {
+    function mount({ posts, photoSrc, elements, admin = null, help = null, album = null }) {
         const { list, state } = elements;
 
         if (!posts.length) {
@@ -1855,6 +1877,20 @@ window.Reader = (function () {
 
         const search = setUpSearch(posts, views, groups, elements);
 
+        // Handed the id and left to find the view, so the album holds no
+        // reference to anything on the page.
+        const openAlbum = (at) => album.open({
+            posts,
+            photoSrc,
+            at,
+            reveal(id) {
+                const view = views.get(id);
+                if (view) revealPost(views, groups, view, { behavior: 'smooth' });
+            }
+        });
+
+        if (album) albumAt = openAlbum;
+
         // One control for the whole list, built here for the same reason the
         // search stepper is: there are two page templates hosting this file
         // and only one of this. It earns its place on the archives that are
@@ -1890,6 +1926,19 @@ window.Reader = (function () {
             cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
 
             toolbar.append(cloudButton, all);
+
+            // Beside the word cloud rather than beside Expand all: both open a
+            // window over the archive instead of rearranging it.
+            if (album && posts.some((post) => post.photos?.length)) {
+                const photos = document.createElement('button');
+                photos.type = 'button';
+                photos.className = 'button button--quiet button--compact';
+                photos.textContent = 'Photos';
+                photos.addEventListener('click', () => openAlbum());
+
+                toolbar.prepend(photos);
+            }
+
             list.parentNode.insertBefore(toolbar, list);
         }
 

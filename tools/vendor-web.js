@@ -45,6 +45,17 @@ const NOTES = {
         'The package is UMD and puts WordCloud on the global, which is all a plain',
         'script tag needs. It ships no built file, so this is its source, which is what',
         'the published package intends -- the repository builds nothing else.'
+    ],
+    'swiper-bundle.min.js': [
+        'The bundle rather than the core, and minified rather than not. Swiper splits',
+        'into a couple of dozen optional modules -- navigation, pagination, zoom,',
+        'thumbs, keyboard -- and picking a subset means an import list a bundler is',
+        'supposed to tree-shake. There is no bundler here, so the choice is the whole',
+        'thing or nothing, and the whole thing unminified is 414K.',
+        '',
+        'It is UMD and puts Swiper on the global. Loaded on demand by album.js rather',
+        'than by a script tag, because it is larger than everything else this site',
+        'serves put together and most readers never open the album.'
     ]
 };
 
@@ -53,6 +64,12 @@ const COPIES = [
     { package: 'minisearch', from: 'LICENSE.txt', to: 'LICENSE-minisearch.txt' },
     { package: 'wordcloud', from: 'src/wordcloud2.js', to: 'wordcloud2.js', header: true, license: 'LICENSE-wordcloud2.txt' },
     { package: 'wordcloud', from: 'LICENSE', to: 'LICENSE-wordcloud2.txt' },
+
+    // No header on the stylesheet: it is minified into one line, and a comment
+    // prepended to it would be the only thing anyone ever saw of the file.
+    { package: 'swiper', from: 'swiper-bundle.min.js', to: 'swiper-bundle.min.js', header: true, license: 'LICENSE-swiper.txt' },
+    { package: 'swiper', from: 'swiper-bundle.min.css', to: 'swiper-bundle.min.css' },
+    { package: 'swiper', from: 'LICENSE', to: 'LICENSE-swiper.txt' },
 
     // Two stylesheets and one font out of a package that ships six families.
     // Only the brands are used -- the rest of the site's icons are drawn as

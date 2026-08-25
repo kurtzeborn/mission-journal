@@ -553,6 +553,9 @@
             photoSrc,
             elements,
             admin,
+            // Off the window rather than a bare global, because unlike Reader
+            // this one is genuinely optional -- the archive draws without it.
+            album: window.Album ?? null,
             help: { href: '/faq#forward-did-nothing', address: 'post@pdayletters.com' }
         });
     }
