@@ -15,6 +15,7 @@ The organising principle: **a task nobody is reminded of is a task that fails si
 | Due | Credential | Lives in | Breaks, if it lapses |
 |---|---|---|---|
 | **2027-08-01** | `CLOUDFLARE_API_TOKEN` | GitHub Actions secret | Worker deploys fail — loudly, in CI |
+| **2027-08-01** | `INBOX_SAS`, `QUEUE_SAS` | Cloudflare Worker secrets | **All inbound mail, silently.** Every letter becomes an SMTP retry loop, then a bounce |
 | **2027-08-31** | `cloudflare-api-token` | Key Vault `mj-kv-utfe5uagkbz7q` | **All outbound mail, silently.** Claim and invite emails simply stop arriving |
 | **2028-08-04** | `aad-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Microsoft sign-in, silently — Google keeps working |
 
@@ -68,6 +69,28 @@ Every rotation is the same two moves: reissue at the provider, then store in *on
    ```
 3. **Test by re-running the Worker deploy workflow.** This one fails loudly, so a green run is the whole check.
 
+#### `INBOX_SAS` and `QUEUE_SAS` — the Worker's storage credentials
+
+**The date belongs to the stored access policies, not to the tokens.** `worker-write` on the `inbox` container and `worker-add` on the `ingest` queue are what expire; a token signed against a lapsed policy is lapsed too, so reissuing without touching the policies achieves nothing.
+
+**This is the only rotation with an outage in the middle of it.** Deleting a policy revokes the live token that instant, and the Worker is the front door — do all three steps in one sitting.
+
+1. Delete both policies, which clears the old dates:
+   ```powershell
+   $key = az storage account keys list --account-name mjstutfe5uagkbz7q `
+       --resource-group mission-journal --query '[0].value' --output tsv
+   az storage container policy delete --container-name inbox --name worker-write `
+       --account-name mjstutfe5uagkbz7q --account-key $key
+   az storage queue policy delete --queue-name ingest --name worker-add `
+       --account-name mjstutfe5uagkbz7q --account-key $key
+   ```
+2. Run `infra/mint-worker-sas.ps1`. It recreates both policies a year out and prints the two query strings; it deliberately *reuses* a policy that still exists, which is why step 1 comes first. Store them:
+   ```powershell
+   npx wrangler secret put INBOX_SAS
+   npx wrangler secret put QUEUE_SAS
+   ```
+3. **Prove it works** by mailing `probe@pdayletters.com` and watching the letter land. Nothing else will tell you: a failed write makes the Worker throw a `4xx`, and the sending server hides that behind retries for hours.
+
 ### What never rotates
 
 - **`claim-token-key`** — ours, not a provider's, so nothing forces a date. Rotating it **invalidates every outstanding claim link**, including ones sitting unread in a missionary's inbox with days left on a 60-day window. That makes it a user-visible event, not maintenance. The right cadence is *never, unless compromised*. Recorded here so a future tidying pass does not rotate it for symmetry.
@@ -80,7 +103,7 @@ Every rotation is the same two moves: reissue at the provider, then store in *on
 
 **Shipped 2026-08-11.** Key Vault raises `SecretNearExpiry` 30 days ahead; an Event Grid system topic on the vault routes that and `SecretExpired` to a `MonitorAlert` at Sev2, which mails `scott@kurtzeborn.org`. All of it is in `infra/main.bicep`, gated on the `alertEmail` parameter.
 
-**It only covers the two Key Vault secrets.** The GitHub-held deploy token is invisible to it — that one needs the calendar entry.
+**It only covers the two Key Vault secrets.** The GitHub-held deploy token and the Worker's two SAS tokens are invisible to it — those need the calendar entry.
 
 **The notification deliberately does not go through our own mailer.** Every message this service sends uses `cloudflare-api-token`, one of the secrets being watched. An alert about that token expiring, sent with that token, would fail exactly when it mattered. Azure Monitor's email path shares nothing with the system it reports on.
 
@@ -96,7 +119,7 @@ Three things worth remembering about the mechanism:
 
 **Met.** Every dated credential now falls in **August** — 2027-08-01, 2027-08-31 and 2028-08-04 — so rotation arrives in one season rather than three times a year unannounced. Nothing further is planned here; the table above is the schedule.
 
-Three of the credentials in the table live outside Key Vault, so the alert does not see them: both GitHub Actions secrets and the registrar. Because `exp` is advisory, a secret holding nothing but a note could carry the GitHub deploy token's real date and surface in the same alert. **Considered during the alignment pass and not done** — it is a trick rather than a design, and now that everything falls in one August the calendar entry it would replace only has to fire once.
+Several of the credentials live outside Key Vault, so the alert does not see them: the GitHub Actions secrets, the Worker's two SAS tokens, and the registrar. Because `exp` is advisory, a secret holding nothing but a note could carry the GitHub deploy token's real date and surface in the same alert. **Considered during the alignment pass and not done** — it is a trick rather than a design, and now that everything falls in one August the calendar entry it would replace only has to fire once.
 
 ---
 
