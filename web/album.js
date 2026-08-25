@@ -194,7 +194,7 @@ window.Album = (function () {
         document.body.append(dialog);
 
         reel = {
-            dialog, stage, wrapper, strip, stripWrapper, caption, goTo, play, picker,
+            dialog, stage, wrapper, strip, stripWrapper, caption, goTo, play, picker, title,
             controls: { previous, next, counter },
             swiper: null, thumbs: null, frames: [], reveal: null, source: null
         };
@@ -383,6 +383,13 @@ window.Album = (function () {
         const view = ensureReel();
         view.source = { posts, photoSrc };
         view.reveal = reveal;
+
+        // Whose photographs these are, taken off the page rather than passed
+        // in: `reader.js` also runs in the downloaded archive, which has no
+        // album, and threading a website-only label through it to get here
+        // would put the coupling in the wrong file.
+        const name = document.getElementById('site-title')?.textContent?.trim();
+        view.title.textContent = name || 'Photos';
 
         // Shown before Swiper measures: a slide inside a closed dialog has no
         // width, and every position it works out would be zero.
