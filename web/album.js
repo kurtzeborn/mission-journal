@@ -53,17 +53,44 @@ window.Album = (function () {
         return ready;
     }
 
-    // Newest first, matching the list behind it. A photo album read forwards is
-    // arguably the better story, but a reader who opens this from a letter and
-    // then swipes should move through the archive in the direction the page
-    // has already taught them.
-    function framesOf(posts, photoSrc) {
+    const ORDERS = [
+        ['oldest', 'Oldest first'],
+        ['newest', 'Newest first'],
+        ['random', 'Random order']
+    ];
+
+    // Oldest first, unlike the list behind it, which runs newest first because
+    // a reader checking for a new letter wants the top of the page. Nobody
+    // opens an album to see whether anything arrived; they open it to look
+    // through, and looking through goes forwards.
+    //
+    // Kept between openings so the choice sticks for the visit, and not
+    // remembered any longer than that.
+    let order = 'oldest';
+
+    function framesOf(posts, photoSrc, how) {
+        // Posts arrive newest first. Reversing whole letters rather than the
+        // finished list keeps the pictures inside one letter in the order they
+        // were written around.
+        const ordered = how === 'newest' ? posts : [...posts].reverse();
         const frames = [];
 
-        for (const post of posts) {
+        for (const post of ordered) {
             for (const photo of post.photos ?? []) {
-                frames.push({ id: photo.id, post, src: photoSrc(photo.id, 'large') });
+                frames.push({
+                    id: photo.id,
+                    post,
+                    src: photoSrc(photo.id, 'large'),
+                    thumb: photoSrc(photo.id, 'thumb')
+                });
             }
+        }
+
+        if (how !== 'random') return frames;
+
+        for (let i = frames.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [frames[i], frames[j]] = [frames[j], frames[i]];
         }
 
         return frames;
@@ -90,9 +117,22 @@ window.Album = (function () {
         close.textContent = '\u00d7';
         close.addEventListener('click', () => dialog.close());
 
+        const picker = document.createElement('select');
+        picker.className = 'reel__order';
+        picker.setAttribute('aria-label', 'Order the photographs');
+
+        for (const [value, label] of ORDERS) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            picker.append(option);
+        }
+
+        picker.value = order;
+
         const head = document.createElement('div');
         head.className = 'reel__head';
-        head.append(title, close);
+        head.append(title, picker, close);
 
         const wrapper = document.createElement('div');
         wrapper.className = 'swiper-wrapper';
@@ -109,6 +149,13 @@ window.Album = (function () {
         const stage = document.createElement('div');
         stage.className = 'swiper reel__stage';
         stage.append(wrapper, previous, next, counter);
+
+        const stripWrapper = document.createElement('div');
+        stripWrapper.className = 'swiper-wrapper';
+
+        const strip = document.createElement('div');
+        strip.className = 'swiper reel__strip';
+        strip.append(stripWrapper);
 
         // The caption is one element updated on each slide rather than one per
         // slide, because it holds a button and a thousand-photo archive should
@@ -142,15 +189,30 @@ window.Album = (function () {
         // Swiper fills the dialog, so a click on the dark gutter is reported
         // against the slide rather than the dialog and the usual test for a
         // backdrop click never fires. Handled from Swiper's own click event
-        // instead, in `open`.
-        dialog.append(head, stage, foot);
+        // instead, in `build`.
+        dialog.append(head, stage, strip, foot);
         document.body.append(dialog);
 
         reel = {
-            dialog, stage, wrapper, caption, goTo, play,
+            dialog, stage, wrapper, strip, stripWrapper, caption, goTo, play, picker,
             controls: { previous, next, counter },
-            swiper: null, frames: [], reveal: null
+            swiper: null, thumbs: null, frames: [], reveal: null, source: null
         };
+
+        picker.addEventListener('change', () => {
+            order = picker.value;
+            if (!reel.source) return;
+
+            // Re-sorted around the picture on screen rather than back to the
+            // start, because the reader is looking at something and asking for
+            // the rest of the album to be arranged differently around it.
+            const at = reel.frames[reel.swiper?.activeIndex ?? 0]?.id;
+            const playing = reel.swiper?.autoplay?.running ?? false;
+
+            teardown(reel);
+            build(reel, at);
+            if (playing) reel.swiper.autoplay.start();
+        });
 
         goTo.addEventListener('click', () => {
             const frame = reel.frames[reel.swiper?.activeIndex ?? 0];
@@ -162,13 +224,18 @@ window.Album = (function () {
         // Destroyed on close rather than kept: an owner can add pictures to a
         // letter while the page is open, and rebuilding is cheaper than
         // working out what changed.
-        dialog.addEventListener('close', () => {
-            reel.swiper?.destroy(true, true);
-            reel.swiper = null;
-            reel.wrapper.replaceChildren();
-        });
+        dialog.addEventListener('close', () => teardown(reel));
 
         return reel;
+    }
+
+    function teardown(view) {
+        view.swiper?.destroy(true, true);
+        view.thumbs?.destroy(true, true);
+        view.swiper = null;
+        view.thumbs = null;
+        view.wrapper.replaceChildren();
+        view.stripWrapper.replaceChildren();
     }
 
     function slideFor(frame) {
@@ -194,6 +261,20 @@ window.Album = (function () {
         return slide;
     }
 
+    function thumbFor(frame) {
+        const img = document.createElement('img');
+        img.src = frame.thumb;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+
+        const slide = document.createElement('div');
+        slide.className = 'swiper-slide';
+        slide.append(img);
+
+        return slide;
+    }
+
     function describe(view) {
         const frame = view.frames[view.swiper?.activeIndex ?? 0];
         if (!frame) return;
@@ -204,37 +285,32 @@ window.Album = (function () {
     }
 
     /**
-     * Open the album, optionally at one particular picture.
+     * Fill the dialog and start Swiper, at whichever picture is named.
      *
-     * @param {object} options
-     * @param {Array} options.posts        the presented posts, newest first
-     * @param {Function} options.photoSrc  (photoId, size) => url
-     * @param {Function} options.reveal    hand a post id back to the page
-     * @param {string} [options.at]        a photo id to start on
+     * Called on open and again whenever the order changes, which is why it
+     * takes a photo id rather than an index -- an index means nothing once the
+     * album has been re-sorted underneath it.
      */
-    async function open({ posts, photoSrc, reveal, at }) {
-        const frames = framesOf(posts, photoSrc);
-        if (!frames.length) return;
+    function build(view, at) {
+        const { posts, photoSrc } = view.source;
 
-        try {
-            await loadSwiper();
-        } catch {
-            // Nothing to say and nowhere to say it. The pictures are all still
-            // in the letters, which is where this reader came from.
-            return;
-        }
+        view.frames = framesOf(posts, photoSrc, order);
+        view.wrapper.replaceChildren(...view.frames.map(slideFor));
+        view.stripWrapper.replaceChildren(...view.frames.map(thumbFor));
 
-        const view = ensureReel();
-        view.frames = frames;
-        view.reveal = reveal;
+        const start = at ? view.frames.findIndex((frame) => frame.id === at) : 0;
 
-        view.wrapper.replaceChildren(...frames.map(slideFor));
-
-        // Shown before Swiper measures: a slide inside a closed dialog has no
-        // width, and every position it works out would be zero.
-        view.dialog.showModal();
-
-        const start = at ? frames.findIndex((frame) => frame.id === at) : 0;
+        // Built first, because the slider below is handed this one as an
+        // option and Swiper wants the instance, not a selector to find later.
+        view.thumbs = new Swiper(view.strip, {
+            slidesPerView: 'auto',
+            spaceBetween: 8,
+            freeMode: true,
+            slideToClickedSlide: true,
+            // What tells the strip which thumbnail is the current one, so the
+            // stylesheet has something to mark.
+            watchSlidesProgress: true
+        });
 
         view.swiper = new Swiper(view.stage, {
             initialSlide: Math.max(start, 0),
@@ -245,6 +321,7 @@ window.Album = (function () {
             // photographs and a row of hundreds of dots says nothing; "34 / 212"
             // says both where you are and how much there is.
             pagination: { el: view.controls.counter, type: 'fraction' },
+            thumbs: { swiper: view.thumbs },
             keyboard: { enabled: true },
             zoom: { maxRatio: 4 },
             // Configured but not started -- see the stop() below. Interaction
@@ -270,6 +347,37 @@ window.Album = (function () {
 
         view.swiper.autoplay.stop();
         describe(view);
+    }
+
+    /**
+     * Open the album, optionally at one particular picture.
+     *
+     * @param {object} options
+     * @param {Array} options.posts        the presented posts, newest first
+     * @param {Function} options.photoSrc  (photoId, size) => url
+     * @param {Function} options.reveal    hand a post id back to the page
+     * @param {string} [options.at]        a photo id to start on
+     */
+    async function open({ posts, photoSrc, reveal, at }) {
+        if (!posts.some((post) => post.photos?.length)) return;
+
+        try {
+            await loadSwiper();
+        } catch {
+            // Nothing to say and nowhere to say it. The pictures are all still
+            // in the letters, which is where this reader came from.
+            return;
+        }
+
+        const view = ensureReel();
+        view.source = { posts, photoSrc };
+        view.reveal = reveal;
+
+        // Shown before Swiper measures: a slide inside a closed dialog has no
+        // width, and every position it works out would be zero.
+        view.dialog.showModal();
+
+        build(view, at);
     }
 
     return { open };
