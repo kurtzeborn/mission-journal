@@ -317,7 +317,12 @@ window.Album = (function () {
 
         view.swiper = new Swiper(view.stage, {
             initialSlide: Math.max(start, 0),
-            spaceBetween: 24,
+            // A deck rather than a strip. The pictures came in an envelope one
+            // at a time, and a stack of them with the next one showing at the
+            // edge is closer to how they were looked at than a filmstrip is.
+            effect: 'cards',
+            cardsEffect: { perSlideOffset: 9, perSlideRotate: 2, slideShadows: true },
+            grabCursor: true,
             lazyPreloadPrevNext: 1,
             navigation: { prevEl: view.controls.previous, nextEl: view.controls.next },
             // A fraction rather than bullets. An archive runs to hundreds of

@@ -103,17 +103,28 @@
 /* Swiper measures this box and positions every slide against it, so it needs a
    height it did not get from its contents. `min-height: 0` is the flex item
    half of the same thing: without it the stage refuses to shrink below the
-   natural height of the tallest photograph and pushes the caption off screen. */
+   natural height of the tallest photograph and pushes the caption off screen.
+
+   Narrower than the dialog, because the cards effect fans the slides behind
+   the top one and rotates them a couple of degrees -- given the full width of
+   a desktop screen, those two degrees throw the corners a long way out. */
 .reel__stage {
     flex: 1 1 auto;
     min-height: 0;
-    width: 100%;
+    width: min(92vw, 46rem);
+    margin: 0 auto;
 }
 
+/* The card face. Contained photographs do not fill their card, and without a
+   surface under them the deck is a stack of nothing with pictures floating in
+   front of it. */
 .reel__stage .swiper-slide {
     display: flex;
     align-items: center;
     justify-content: center;
+    background: #0c0a09;
+    border-radius: 0.5rem;
+    overflow: hidden;
 }
 
 /* Contained rather than cropped. A photograph in an album is being looked at
