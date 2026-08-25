@@ -245,14 +245,15 @@ window.Album = (function () {
     // the fan behind the top card is never two of the same colour.
     const TINTS = 6;
 
+    // How far either side of the picture on screen is fetched. See `preload`.
+    const NEAR = 2;
+
     function slideFor(frame, index) {
+        // No src yet, and no `loading="lazy"` either -- `preload` decides when
+        // this one is fetched, for the reason written there.
         const img = document.createElement('img');
-        img.src = frame.src;
+        img.dataset.src = frame.src;
         img.alt = '';
-        // Native lazy loading rather than a library's. Swiper puts every slide
-        // in the document, so `lazyPreloadPrevNext` below is what decides how
-        // far ahead the browser is allowed to run.
-        img.loading = 'lazy';
         img.decoding = 'async';
 
         // The wrapper is not decoration: Swiper's zoom scales this element, and
@@ -263,9 +264,11 @@ window.Album = (function () {
 
         // The colour is set here rather than with nth-child, because looping
         // moves slide elements about and a card would change colour as the
-        // deck came round again.
+        // deck came round again. `frame` is on the element for the same
+        // reason: once they have moved, position no longer says which is which.
         const slide = document.createElement('div');
         slide.className = `swiper-slide reel__card reel__card--${index % TINTS}`;
+        slide.dataset.frame = index;
         slide.append(zoom);
 
         return slide;
@@ -297,6 +300,35 @@ window.Album = (function () {
         const date = Reader.formatDate(frame.post.originalDate);
         const subject = frame.post.subject || 'Untitled';
         view.caption.textContent = date ? `${subject} \u2014 ${date}` : subject;
+    }
+
+    /**
+     * Fetch the photographs near the one on screen, and nothing else.
+     *
+     * `loading="lazy"` does not work here, which is not obvious: the cards
+     * effect translates every slide back on top of the active one, so as far
+     * as the browser is concerned the whole album is already on screen and
+     * there is nothing left to defer. Measured over forty slides, the plain
+     * slide effect fetched three pictures on opening and cards fetched all
+     * forty -- a whole archive down the wire to look at one photograph.
+     *
+     * The thumbnails below are left to the browser, because the strip really
+     * does scroll and the ones off the end really are outside the viewport.
+     */
+    function preload(view) {
+        if (!view.swiper) return;
+
+        const total = view.frames.length;
+        const active = view.swiper.realIndex;
+
+        for (const slide of view.wrapper.children) {
+            const img = slide.querySelector('img');
+            if (!img || img.src) continue;
+
+            // The deck loops, so the last card is a neighbour of the first.
+            const apart = Math.abs(Number(slide.dataset.frame) - active);
+            if (Math.min(apart, total - apart) <= NEAR) img.src = img.dataset.src;
+        }
     }
 
     /**
@@ -339,7 +371,6 @@ window.Album = (function () {
             // last card, and it means the slideshow left running never stops
             // of its own accord.
             loop: true,
-            lazyPreloadPrevNext: 1,
             navigation: { prevEl: view.controls.previous, nextEl: view.controls.next },
             // A fraction rather than bullets. An archive runs to hundreds of
             // photographs and a row of hundreds of dots says nothing; "34 / 212"
@@ -353,7 +384,10 @@ window.Album = (function () {
             // request to end the slideshow.
             autoplay: { delay: 4000, disableOnInteraction: false },
             on: {
-                slideChange: () => describe(view),
+                slideChange: () => {
+                    describe(view);
+                    preload(view);
+                },
                 autoplayStart: () => { view.play.textContent = 'Pause'; },
                 // Also fires on its own at the last picture, which is the
                 // reason the label is driven from the event rather than set
@@ -379,6 +413,7 @@ window.Album = (function () {
         });
 
         describe(view);
+        preload(view);
     }
 
     /**
