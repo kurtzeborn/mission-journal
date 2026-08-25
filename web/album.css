@@ -153,6 +153,17 @@
     color: #f5f5f4;
 }
 
+/* Keyed off the pointer rather than the width: a narrow desktop window still
+   has a mouse to aim with, and a tablet held in two hands does not. Where the
+   gesture is the photograph itself, an arrow sitting on top of it is one more
+   thing between the reader and the picture. */
+@media (hover: none) and (pointer: coarse) {
+    .reel__stage .swiper-button-prev,
+    .reel__stage .swiper-button-next {
+        display: none;
+    }
+}
+
 .reel__stage .swiper-pagination {
     color: #d6d3d1;
     font-family: system-ui, sans-serif;
