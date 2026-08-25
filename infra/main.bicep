@@ -332,6 +332,9 @@ var tableNames = [
   // rejection is otherwise invisible to everyone except the person it happened
   // to, who has been told only that it did not work.
   'rejections'
+  // One row per sign-in identity, holding the last address it used. Derived,
+  // and the repair is somebody signing in again.
+  'identities'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [

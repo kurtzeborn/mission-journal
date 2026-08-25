@@ -38,3 +38,18 @@ export function readPrincipal(header) {
         userId: parsed.userId ?? null
     };
 }
+
+/**
+ * The stable handle for one sign-in, or null when the provider gave us none.
+ *
+ * The provider is part of the key rather than decoration. Static Web Apps
+ * mints `userId` per identity provider, so the same human signing in through
+ * Google and through Microsoft is two identities and must not collide into
+ * one. See identity.js for what is done with it.
+ */
+export function identityKey(principal) {
+    const provider = String(principal?.provider ?? '').trim().toLowerCase();
+    const userId = String(principal?.userId ?? '').trim().toLowerCase();
+    if (!provider || !userId) return null;
+    return `${provider}:${userId}`;
+}

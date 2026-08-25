@@ -1,8 +1,9 @@
 import { app } from '@azure/functions';
-import { tableStore } from '../lib/clients.js';
+import { blobStore, tableStore } from '../lib/clients.js';
 import { hardened } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { membershipsFor } from '../lib/memberships.js';
+import { reconcileIdentity } from '../lib/identity.js';
 import { clearDelivery } from '../lib/delivery.js';
 
 // Which archives does the person signed in right now belong to?
@@ -19,7 +20,7 @@ import { clearDelivery } from '../lib/delivery.js';
 // The store is an argument rather than module state so that this is reachable
 // from a test; the wrapper below is the only part that knows where a real one
 // comes from.
-export async function memberships({ request, tables }) {
+export async function memberships({ request, store, tables }) {
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     if (!principal) {
         return { status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
@@ -41,6 +42,11 @@ export async function memberships({ request, tables }) {
         clearDelivery({ tables, emails: [principal.email] })
     ]);
 
+    // After, not alongside: on a first sign-in this stamps the identity onto
+    // the ACLs the list above just named, and on a changed address it moves
+    // them -- so it needs that list, and its own answer supersedes it.
+    const reconciled = await reconcileIdentity({ store, tables, principal, sites: memberships });
+
     return {
         status: 200,
         headers: hardened({
@@ -50,11 +56,15 @@ export async function memberships({ request, tables }) {
             // list sends a removed reader back to a site that will refuse them.
             'Cache-Control': 'private, no-store'
         }),
-        jsonBody: { memberships }
+        jsonBody: {
+            memberships: reconciled.status === 'renamed'
+                ? await membershipsFor({ tables, email: principal.email })
+                : memberships
+        }
     };
 }
 
-const handler = (request) => memberships({ request, tables: tableStore() });
+const handler = (request) => memberships({ request, store: blobStore(), tables: tableStore() });
 
 app.http('memberships', {
     authLevel: 'anonymous',

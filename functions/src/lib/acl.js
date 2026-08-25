@@ -7,6 +7,7 @@
 
 import { validSlug } from './paths.js';
 import { isOperator } from './operators.js';
+import { identityKey } from './principal.js';
 
 /**
  * @returns {Array|null} the members array, or null when the site has no ACL
@@ -53,9 +54,14 @@ export async function resolveAccess({ store, slug, principal, env }) {
 
     const members = await readAcl(store, slug);
 
-    // Keyed on `email`, matching what seed-config.ps1 writes and what ingest
-    // checks forwarding rights against.
-    const member = members?.find((m) => m.email?.toLowerCase() === email);
+    // Two keys, tried in that order. `identity` is `provider:userId` and is
+    // stamped on the first time somebody signs in; `email` is what an owner
+    // typed and what seed-config.ps1 writes. The address keeps working even
+    // once an identity is bound -- see identity.js for why that trade is the
+    // right way round for a family's guest list.
+    const key = identityKey(principal);
+    const member = (key && members?.find((m) => m.identity === key)) ??
+        members?.find((m) => m.email?.toLowerCase() === email);
 
     // An unrecognized role is not treated as a reader. Roles reach this file
     // from a hand-edited JSON file, and quietly upgrading a typo into read

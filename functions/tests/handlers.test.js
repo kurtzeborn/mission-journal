@@ -41,9 +41,9 @@ const silent = { info() {}, warn() {}, error() {}, log() {} };
 // the way the platform builds it -- `userDetails` and all -- because a test
 // that handed the handler an already-correct object would assert nothing about
 // the field the handler actually has to read.
-function principalHeader({ userDetails, identityProvider = 'aad' }) {
+function principalHeader({ userDetails, identityProvider = 'aad', userId = 'abc123' }) {
     return Buffer.from(
-        JSON.stringify({ identityProvider, userId: 'abc123', userDetails, userRoles: [] }),
+        JSON.stringify({ identityProvider, userId, userDetails, userRoles: [] }),
         'utf8'
     ).toString('base64');
 }
@@ -215,6 +215,7 @@ describe('the memberships handler', () => {
 
         const response = await memberships({
             request: request({ principal: { userDetails: 'Parent@Example.COM' } }),
+            store,
             tables: store
         });
 
@@ -231,7 +232,7 @@ describe('the memberships handler', () => {
 
     test('a caller with no session is refused', async () => {
         const store = memoryStore();
-        const response = await memberships({ request: request(), tables: store });
+        const response = await memberships({ request: request(), store, tables: store });
 
         assert.equal(response.status, 401);
     });
@@ -245,10 +246,38 @@ describe('the memberships handler', () => {
 
         await memberships({
             request: request({ principal: { userDetails: 'Parent@Example.COM' } }),
+            store,
             tables: store
         });
 
         assert.equal(await store.getEntity(TABLES.deliveries, 'delivery', deliveryKey('parent@example.com')), null);
+    });
+
+    test('and binds their sign-in to the archives they own', async () => {
+        // The other half of the same hook. Nothing else on the API knows the
+        // moment somebody has just proved who they are, so if the identity is
+        // not stamped here it is never stamped at all.
+        const { store, token } = await readySite();
+        const principal = {
+            userDetails: 'Parent@Example.COM',
+            identityProvider: 'aad',
+            userId: 'oid-42'
+        };
+
+        await redeem({
+            request: request({ principal, body: { token } }),
+            context: silent,
+            store,
+            tables: store,
+            key: KEY
+        });
+
+        await memberships({ request: request({ principal }), store, tables: store });
+
+        const acl = JSON.parse(
+            (await store.readBlob('config', `${SLUG}/acl.json`)).bytes.toString('utf8')
+        );
+        assert.equal(acl.members[0].identity, 'aad:oid-42');
     });
 });
 

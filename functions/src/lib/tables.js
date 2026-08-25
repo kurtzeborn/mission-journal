@@ -5,7 +5,8 @@
 // left here is the part that can only be checked by running it against real
 // storage.
 //
-// Two tables, both of which are *derived indexes and never the authority*:
+// Every table here is a *derived index and never the authority*. The two that
+// set the pattern:
 //
 //   `memberships`  PartitionKey = lowercased email, RowKey = slug
 //   `users`        PartitionKey = lowercased email, RowKey = 'profile'
@@ -16,6 +17,8 @@
 // to* -- which a blob layout cannot answer without scanning every ACL in the
 // account. Nothing may ever grant access from a membership row: if the two
 // disagree, the ACL wins and the row is the thing that is wrong.
+//
+// The rest are documented where they are named below.
 
 import { TableClient, odata } from '@azure/data-tables';
 import { DefaultAzureCredential } from '@azure/identity';
@@ -60,7 +63,13 @@ export const TABLES = {
     // keeps nothing but the inbox blob, which nothing reads, and a log line,
     // which nobody is watching. Without this the person it happened to is the
     // only one who knows. See rejections.js.
-    rejections: 'rejections'
+    rejections: 'rejections',
+    // PartitionKey = 'identity', RowKey = SHA-256 of `provider:userId`. The
+    // last address we saw this sign-in use, and the only thing that can tell
+    // us an address has *changed* rather than that a stranger has arrived.
+    // Derived, and the recovery is a sign-in: an empty table simply re-binds
+    // everyone the next time they visit. See identity.js.
+    identities: 'identities'
 };
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {
