@@ -20,6 +20,11 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The home-screen icon, and a separate file from logo.png rather than a second reference to it because iOS fills transparency instead of honouring it -- the logo is a quarter transparent, so pointing at it directly puts the envelope on a black square. Generated from logo.png: composited onto the paper colour and inset, the inset because the artwork bleeds to the top and bottom edges and iOS masks a rounded square over whatever it is given. Regenerate it if the logo ever changes.",
+      "route": "/apple-touch-icon.png",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/login.html",
       "allowedRoles": ["anonymous", "authenticated"]
     },
