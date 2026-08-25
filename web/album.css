@@ -57,14 +57,16 @@
     border: 1px solid #57534e;
     border-radius: var(--radius);
     cursor: pointer;
+    /* The dropdown itself is drawn by the operating system rather than by the
+       rules below, and this is the only way to tell it which way round the
+       page is. Without it the list comes up light, and the options nobody has
+       highlighted are near-black on near-black. */
+    color-scheme: dark;
 }
 
-/* The list the browser drops down is drawn by the operating system, which will
-   not inherit any of the above -- so the options are set back to a light
-   scheme rather than left as pale text on whatever the OS chooses. */
 .reel__order option {
-    color: initial;
-    background: initial;
+    color: #f5f5f4;
+    background-color: #292524;
 }
 
 .reel__order:focus-visible {
@@ -205,11 +207,22 @@
     background: #ffffff;
 }
 
+/* The countdown to the next photograph, drawn as a fill across the button that
+   stops it. A bar of its own would be one more thing in a footer whose job is
+   to stay out of the way, and the button is already where you look when you
+   want to know what the slideshow is about to do.
+
+   Painted as a background image rather than a pseudo-element so it sits behind
+   the label without the label needing a wrapper to be lifted above it. */
 .reel__play {
     flex: none;
     margin-left: auto;
+    min-width: 4.5rem;
     color: #f5f5f4;
-    background: none;
+    background-color: transparent;
+    background-image: linear-gradient(#44403c, #44403c);
+    background-repeat: no-repeat;
+    background-size: calc(var(--fill, 0) * 100%) 100%;
     border-color: #57534e;
 }
 

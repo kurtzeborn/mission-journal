@@ -207,11 +207,14 @@ window.Album = (function () {
             // start, because the reader is looking at something and asking for
             // the rest of the album to be arranged differently around it.
             const at = reel.frames[reel.swiper?.activeIndex ?? 0]?.id;
-            const playing = reel.swiper?.autoplay?.running ?? false;
+            const playing = reel.swiper?.autoplay?.running ?? true;
 
             teardown(reel);
             build(reel, at);
-            if (playing) reel.swiper.autoplay.start();
+
+            // A rebuilt slideshow starts itself. Somebody who had stopped it
+            // asked for a different order, not for it to start running again.
+            if (!playing) reel.swiper.autoplay.stop();
         });
 
         goTo.addEventListener('click', () => {
@@ -324,9 +327,9 @@ window.Album = (function () {
             thumbs: { swiper: view.thumbs },
             keyboard: { enabled: true },
             zoom: { maxRatio: 4 },
-            // Configured but not started -- see the stop() below. Interaction
-            // does not cancel it, because reaching for the arrow to skip one
-            // picture is not a request to end the slideshow.
+            // Running from the moment it opens. Interaction does not cancel
+            // it, because reaching for the arrow to skip one picture is not a
+            // request to end the slideshow.
             autoplay: { delay: 4000, disableOnInteraction: false },
             on: {
                 slideChange: () => describe(view),
@@ -334,7 +337,16 @@ window.Album = (function () {
                 // Also fires on its own at the last picture, which is the
                 // reason the label is driven from the event rather than set
                 // beside the call that started it.
-                autoplayStop: () => { view.play.textContent = 'Play'; },
+                autoplayStop: () => {
+                    view.play.textContent = 'Play';
+                    view.play.style.setProperty('--fill', 0);
+                },
+                // Swiper counts the delay down a frame at a time and reports
+                // what is left as 1 down to 0. Turned round, that is how far
+                // the fill across the button has got.
+                autoplayTimeLeft: (swiper, left, remaining) => {
+                    view.play.style.setProperty('--fill', 1 - remaining);
+                },
                 // Tap the picture to zoom, tap the dark around it to leave --
                 // which is what the lightbox this replaces did, and what every
                 // other viewer does.
@@ -345,7 +357,6 @@ window.Album = (function () {
             }
         });
 
-        view.swiper.autoplay.stop();
         describe(view);
     }
 
