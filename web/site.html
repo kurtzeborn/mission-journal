@@ -69,17 +69,11 @@
                                 outside the browser, which would put this
                                 archive's sign-in behind a separate cookie jar.
 
-                                The wording differs by platform because the
-                                whole value here is naming the right button.
-                                app.js picks one and shows the entry, on a
-                                touch screen only.
+                                app.js shows the entry, on a touch screen only,
+                                and opens the dialog below the letters.
                             -->
                             <li id="install" hidden>
-                                <button type="button" class="menu__act" id="install-open" aria-expanded="false" aria-controls="install-how">Add to home screen</button>
-                                <div class="menu__how" id="install-how" hidden>
-                                    <p id="install-ios" hidden>Tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
-                                    <p id="install-other" hidden>Open your browser&rsquo;s menu, then tap <strong>Add to Home screen</strong>.</p>
-                                </div>
+                                <button type="button" class="menu__act" id="install-open">Add to home screen&hellip;</button>
                             </li>
                         </ul>
                     </div>
@@ -216,6 +210,53 @@
 
         <ol id="posts" class="posts"></ol>
     </main>
+
+    <!--
+        How to put this archive on a home screen.
+
+        A dialog rather than a panel inside the menu: these are directions to
+        be followed on the phone that is showing them, and a menu closes the
+        moment anything else is touched.
+
+        The wording is per browser because that is the whole of what this can
+        offer. The menu is in a different corner and the entry is called
+        something different in each -- Edge says "Add to phone" and Chrome says
+        "Install and create shortcut" -- and a confident direction to a button
+        that is not there is worse than no help at all. Anything unrecognised
+        gets the last list, which names the labels instead of the route.
+    -->
+    <dialog class="steps" id="install-dialog" aria-labelledby="install-title">
+        <h2 class="steps__title" id="install-title">Add to your home screen</h2>
+
+        <ol class="steps__list" id="install-ios" hidden>
+            <li>Tap <strong>Share</strong> &mdash; the square with an arrow coming out of the top.</li>
+            <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+            <li>Tap <strong>Add</strong>.</li>
+        </ol>
+
+        <ol class="steps__list" id="install-edge" hidden>
+            <li>Tap the menu &mdash; the three lines, bottom right.</li>
+            <li>Tap <strong>Add to phone</strong>.</li>
+            <li>Name the shortcut, then either let Android place it or drag it where you want it.</li>
+        </ol>
+
+        <ol class="steps__list" id="install-chrome" hidden>
+            <li>Tap the menu &mdash; the three dots, top right.</li>
+            <li>Tap <strong>Install and create shortcut</strong>.</li>
+            <li>Name the shortcut, then either let Android place it or drag it where you want it.</li>
+        </ol>
+
+        <ol class="steps__list" id="install-other" hidden>
+            <li>Open your browser&rsquo;s menu.</li>
+            <li>Look for <strong>Add to phone</strong>, <strong>Install</strong>, or <strong>Add to Home screen</strong>.</li>
+        </ol>
+
+        <p class="steps__note">The icon opens this archive, not the front page.</p>
+
+        <form method="dialog" class="steps__close">
+            <button type="submit" class="button">Close</button>
+        </form>
+    </dialog>
 
     <!--
         Classic scripts, not modules. The same reader has to run from a file://

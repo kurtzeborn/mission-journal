@@ -505,12 +505,16 @@ describe('the masthead menu', () => {
 
 // Putting the archive on a phone's home screen.
 //
-// The entry is directions and nothing else, because there is nothing to call:
-// Safari has no install API, and the browsers that do have one only offer it
-// to a site whose manifest launches it outside the browser -- which for an
-// archive behind a sign-in would mean a separate cookie jar and an OAuth round
-// trip that leaves it. So the tests are all about who is shown which sentence,
-// which is the entire feature.
+// The entry opens directions and nothing else, because there is nothing to
+// call: Safari has no install API, and the browsers that do have one only
+// offer it to a site whose manifest launches it outside the browser -- which
+// for an archive behind a sign-in would mean a separate cookie jar and an
+// OAuth round trip that leaves it.
+//
+// So the tests are about who is shown which list, and that is not a detail:
+// the menu is in a different corner in each browser and the entry is called
+// something different -- "Add to phone" in Edge, "Install and create shortcut"
+// in Chrome -- so directions to the wrong button are worse than none.
 describe('adding the archive to a home screen', () => {
     const on = (device) =>
         archive({
@@ -522,20 +526,31 @@ describe('adding the archive to a home screen', () => {
             }
         });
 
-    test('names the Share sheet on an iPhone', async () => {
+    const shown = (view) =>
+        ['install-ios', 'install-edge', 'install-chrome', 'install-other']
+            .filter((id) => view.el(id).hidden === false);
+
+    test('sends an iPhone to the Share sheet', async () => {
         const view = await on('iphone');
 
         assert.equal(view.el('install').hidden, false);
-        assert.equal(view.el('install-ios').hidden, false);
-        assert.equal(view.el('install-other').hidden, true);
+        assert.deepEqual(shown(view), ['install-ios']);
     });
 
-    test('names the browser menu everywhere else that can tap', async () => {
-        const view = await on('android');
+    test('names the entry Edge actually has', async () => {
+        assert.deepEqual(shown(await on('android-edge')), ['install-edge']);
+    });
 
-        assert.equal(view.el('install').hidden, false);
-        assert.equal(view.el('install-other').hidden, false);
-        assert.equal(view.el('install-ios').hidden, true);
+    test('names the different entry Chrome actually has', async () => {
+        // Edge says `Chrome/` in its user agent as well, so this passing and
+        // the one above passing are not the same fact.
+        assert.deepEqual(shown(await on('android-chrome')), ['install-chrome']);
+    });
+
+    test('does not guess at a browser it does not know', async () => {
+        // Samsung Internet also says `Chrome/`, and its menu is somewhere else
+        // again. The labels are named instead of a route.
+        assert.deepEqual(shown(await on('android-samsung')), ['install-other']);
     });
 
     test('is not offered on a desktop, where the gesture does not exist', async () => {
@@ -551,23 +566,32 @@ describe('adding the archive to a home screen', () => {
         assert.equal((await on('android-added')).el('install').hidden, true);
     });
 
-    test('the steps stay folded until they are asked for', async () => {
+    test('opens the dialog, and closes the menu behind it', async () => {
         const view = await on('iphone');
+        view.el('menu').open = true;
 
-        assert.equal(view.el('install-how').hidden, true);
-        assert.equal(view.el('install-open').getAttribute('aria-expanded'), 'false');
+        await view.el('install-open').dispatch('click');
+
+        assert.equal(view.el('install-dialog').open, true);
+        assert.equal(view.el('menu').open, false);
     });
 
-    test('opens and closes on the entry, and says which it is', async () => {
+    test('closes on a click in the dark area around it', async () => {
         const view = await on('iphone');
-
         await view.el('install-open').dispatch('click');
-        assert.equal(view.el('install-how').hidden, false);
-        assert.equal(view.el('install-open').getAttribute('aria-expanded'), 'true');
 
+        await view.el('install-dialog').dispatch('click', { target: view.el('install-dialog') });
+
+        assert.equal(view.el('install-dialog').open, false);
+    });
+
+    test('stays open when the click was on the directions', async () => {
+        const view = await on('iphone');
         await view.el('install-open').dispatch('click');
-        assert.equal(view.el('install-how').hidden, true);
-        assert.equal(view.el('install-open').getAttribute('aria-expanded'), 'false');
+
+        await view.el('install-dialog').dispatch('click', { target: view.el('install-ios') });
+
+        assert.equal(view.el('install-dialog').open, true);
     });
 
     test('is not offered to somebody the archive refused', async () => {

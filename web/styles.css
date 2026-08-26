@@ -344,9 +344,9 @@ a {
     background: rgb(0 0 0 / 4%);
 }
 
-/* An entry in the list that opens something in place instead of going
-   somewhere, so it has to be a button and then has to be talked back into
-   looking like the links either side of it. */
+/* An entry in the list that opens something instead of going somewhere, so it
+   has to be a button and then has to be talked back into looking like the
+   links either side of it. */
 .menu__act {
     display: block;
     width: 100%;
@@ -365,15 +365,53 @@ a {
     background: rgb(0 0 0 / 4%);
 }
 
-.menu__how {
-    padding: 0 0.85rem 0.6rem;
+/* --- putting the archive on a home screen --- */
+
+/* The same box as the question dialog, because it is the same kind of
+   interruption; it is only wider by the width of a numbered list. */
+.steps {
+    width: min(26rem, 92vw);
+    margin: auto;
+    padding: 1.25rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    border-radius: var(--radius);
+    font-family: system-ui, sans-serif;
+}
+
+.steps::backdrop {
+    background: rgba(28, 25, 23, 0.6);
+}
+
+.steps__title {
+    margin: 0 0 0.75rem;
+    font-size: 1.05rem;
+}
+
+.steps__list {
+    margin: 0;
+    padding-left: 1.35rem;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.steps__list li + li {
+    margin-top: 0.5rem;
+}
+
+/* The one thing here that is about this site rather than about the phone, and
+   the question somebody is most likely to have got wrong. */
+.steps__note {
+    margin: 1rem 0 0;
     font-size: 0.8rem;
-    line-height: 1.45;
     color: var(--ink-soft);
 }
 
-.menu__how p {
-    margin: 0;
+.steps__close {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 1.25rem;
 }
 
 /* Visible focus everywhere. Removing it is not an option for this audience. */

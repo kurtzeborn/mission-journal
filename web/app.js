@@ -381,11 +381,31 @@
     const onHomeScreen = () =>
         navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
 
+    /** Which set of directions this browser needs. */
+    function stepsFor(agent) {
+        // iOS first, and by feature: `standalone` exists there and nowhere
+        // else. Every browser on the platform is the same engine behind the
+        // same Share sheet, so one answer covers all of them -- and it has to
+        // come first, because Chrome and Edge on iOS both name themselves in
+        // the user agent below.
+        if ('standalone' in navigator || /iphone|ipad|ipod/i.test(agent)) return 'install-ios';
+
+        // Every Android browser worth naming says `Chrome/` somewhere in its
+        // user agent, so the specific ones are asked first and the generic
+        // test is what is left over. Samsung and the rest fall through to the
+        // list that names labels rather than a route, because their menus are
+        // in a third place again and guessing is the failure to avoid.
+        if (/EdgA\//.test(agent)) return 'install-edge';
+        if (/SamsungBrowser|OPR\/|Firefox\//.test(agent)) return 'install-other';
+        if (/Chrome\//.test(agent)) return 'install-chrome';
+        return 'install-other';
+    }
+
     function offerInstall() {
         const install = document.getElementById('install');
         const button = document.getElementById('install-open');
-        const how = document.getElementById('install-how');
-        if (!install || !button || !how) return;
+        const dialog = document.getElementById('install-dialog');
+        if (!install || !button || !dialog) return;
 
         // A phone or a tablet only. On a desktop this names a gesture that is
         // not there, and the install those browsers do offer is a different
@@ -393,17 +413,19 @@
         if (!matchMedia('(hover: none) and (pointer: coarse)').matches) return;
         if (onHomeScreen()) return;
 
-        // `standalone` exists on iOS and nowhere else, which makes it the right
-        // thing to test: it picks out exactly the browsers where the Share
-        // sheet is the only way in. The user-agent check is for the ones built
-        // on the same engine that do not expose it.
-        const shareSheet = 'standalone' in navigator || /iphone|ipad|ipod/i.test(navigator.userAgent);
-        const steps = document.getElementById(shareSheet ? 'install-ios' : 'install-other');
-        if (steps) steps.hidden = false;
+        document.getElementById(stepsFor(navigator.userAgent)).hidden = false;
 
         button.addEventListener('click', () => {
-            how.hidden = !how.hidden;
-            button.setAttribute('aria-expanded', String(!how.hidden));
+            // The menu would otherwise sit open behind the dialog and still be
+            // there when it closes.
+            document.getElementById('menu').open = false;
+            dialog.showModal();
+        });
+
+        // Clicking the dark area closes it, as it does on the archive's other
+        // dialogs. A click on the backdrop is reported as a click on the box.
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) dialog.close();
         });
 
         install.hidden = false;
