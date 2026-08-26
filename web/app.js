@@ -367,6 +367,48 @@
         return null;
     }
 
+    // --- add to home screen ------------------------------------------------
+    //
+    // Directions, because there is nothing to call. Safari has no install API,
+    // and the browsers that do have one only offer it to a site whose manifest
+    // launches it outside the browser -- which for an archive behind a sign-in
+    // means a separate cookie jar and an OAuth round trip that leaves it.
+    // Naming the right button is the whole of what this can do, and most
+    // people do not know the button is there.
+
+    // `standalone` is Safari's answer and the media query is everybody else's.
+    // Neither browser understands the other's question.
+    const onHomeScreen = () =>
+        navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
+    function offerInstall() {
+        const install = document.getElementById('install');
+        const button = document.getElementById('install-open');
+        const how = document.getElementById('install-how');
+        if (!install || !button || !how) return;
+
+        // A phone or a tablet only. On a desktop this names a gesture that is
+        // not there, and the install those browsers do offer is a different
+        // thing reached a different way.
+        if (!matchMedia('(hover: none) and (pointer: coarse)').matches) return;
+        if (onHomeScreen()) return;
+
+        // `standalone` exists on iOS and nowhere else, which makes it the right
+        // thing to test: it picks out exactly the browsers where the Share
+        // sheet is the only way in. The user-agent check is for the ones built
+        // on the same engine that do not expose it.
+        const shareSheet = 'standalone' in navigator || /iphone|ipad|ipod/i.test(navigator.userAgent);
+        const steps = document.getElementById(shareSheet ? 'install-ios' : 'install-other');
+        if (steps) steps.hidden = false;
+
+        button.addEventListener('click', () => {
+            how.hidden = !how.hidden;
+            button.setAttribute('aria-expanded', String(!how.hidden));
+        });
+
+        install.hidden = false;
+    }
+
     async function load() {
         if (!slug) {
             show('No archive was named in this address.');
@@ -430,6 +472,8 @@
             download.href = `/api/download/${encodeURIComponent(payload.slug)}/letters.zip`;
             download.hidden = false;
         }
+
+        offerInstall();
 
         // The group these live in, which stays down on the refusal page: there
         // is no archive there for any of them to act on.

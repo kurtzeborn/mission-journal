@@ -15,8 +15,8 @@ import { fetching, page, run, settled } from './web-dom.js';
 
 const SLUG = 'elder.example';
 
-async function archive({ answer, path = `/${SLUG}/` }) {
-    const view = page({ html: 'site.html', path });
+async function archive({ answer, path = `/${SLUG}/`, device }) {
+    const view = page({ html: 'site.html', path, device });
     // The reader itself is not under test here; only what happens instead of
     // it when the letters never arrive.
     view.context.Reader = { mount() {} };
@@ -500,6 +500,86 @@ describe('the masthead menu', () => {
         await view.elsewhere('click', view.el('menu'));
 
         assert.equal(view.el('menu').open, true);
+    });
+});
+
+// Putting the archive on a phone's home screen.
+//
+// The entry is directions and nothing else, because there is nothing to call:
+// Safari has no install API, and the browsers that do have one only offer it
+// to a site whose manifest launches it outside the browser -- which for an
+// archive behind a sign-in would mean a separate cookie jar and an OAuth round
+// trip that leaves it. So the tests are all about who is shown which sentence,
+// which is the entire feature.
+describe('adding the archive to a home screen', () => {
+    const on = (device) =>
+        archive({
+            device,
+            answer: async (url) => {
+                if (url === '/.auth/me') return signedIn('gran@example.com');
+                if (url === '/api/memberships') return { status: 200, body: { memberships: [] } };
+                return { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } };
+            }
+        });
+
+    test('names the Share sheet on an iPhone', async () => {
+        const view = await on('iphone');
+
+        assert.equal(view.el('install').hidden, false);
+        assert.equal(view.el('install-ios').hidden, false);
+        assert.equal(view.el('install-other').hidden, true);
+    });
+
+    test('names the browser menu everywhere else that can tap', async () => {
+        const view = await on('android');
+
+        assert.equal(view.el('install').hidden, false);
+        assert.equal(view.el('install-other').hidden, false);
+        assert.equal(view.el('install-ios').hidden, true);
+    });
+
+    test('is not offered on a desktop, where the gesture does not exist', async () => {
+        const view = await on('desktop');
+
+        assert.equal(view.el('install').hidden, true);
+    });
+
+    test('is not offered to somebody who arrived through the icon', async () => {
+        // Both halves, because the two families of browser answer different
+        // questions and neither understands the other's.
+        assert.equal((await on('iphone-added')).el('install').hidden, true);
+        assert.equal((await on('android-added')).el('install').hidden, true);
+    });
+
+    test('the steps stay folded until they are asked for', async () => {
+        const view = await on('iphone');
+
+        assert.equal(view.el('install-how').hidden, true);
+        assert.equal(view.el('install-open').getAttribute('aria-expanded'), 'false');
+    });
+
+    test('opens and closes on the entry, and says which it is', async () => {
+        const view = await on('iphone');
+
+        await view.el('install-open').dispatch('click');
+        assert.equal(view.el('install-how').hidden, false);
+        assert.equal(view.el('install-open').getAttribute('aria-expanded'), 'true');
+
+        await view.el('install-open').dispatch('click');
+        assert.equal(view.el('install-how').hidden, true);
+        assert.equal(view.el('install-open').getAttribute('aria-expanded'), 'false');
+    });
+
+    test('is not offered to somebody the archive refused', async () => {
+        // There is no archive there to put on a home screen, and the icon
+        // would open the same refusal.
+        const view = await archive({
+            device: 'iphone',
+            answer: async (url) =>
+                url === '/.auth/me' ? signedIn('other@example.com') : { status: 404, body: {} }
+        });
+
+        assert.equal(view.el('install').hidden, true);
     });
 });
 

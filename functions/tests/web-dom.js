@@ -158,13 +158,35 @@ function markup(file) {
 }
 
 /**
+ * The hardware a page is being read on.
+ *
+ * Only a couple of decisions are made from this rather than from the data, and
+ * they are the ones that cannot be inferred from anything else: whether the
+ * reader can tap, and whether they are already looking at the page through a
+ * home-screen icon. `desktop` is the default because it is the answer that
+ * turns those branches off, so every test written before this existed still
+ * describes the page it described then.
+ *
+ * `standalone` is Safari's and is simply absent elsewhere -- its absence is
+ * how a page tells iOS from everything else, so the ones that are not iOS must
+ * not carry it at all.
+ */
+const DEVICES = {
+    desktop: { coarse: false, agent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    iphone: { coarse: true, standalone: false, agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+    android: { coarse: true, agent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)' },
+    'iphone-added': { coarse: true, standalone: true, agent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' },
+    'android-added': { coarse: true, installed: true, agent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8)' }
+};
+
+/**
  * A page, built from the file the browser would load.
  *
  * Asking for an element the markup does not have throws rather than returning
  * null, because that failure -- a script reaching for an id the HTML lost in a
  * rename -- is a real bug and should be loud.
  */
-export function page({ html, path = '/', hash = '' }) {
+export function page({ html, path = '/', hash = '', device = 'desktop' }) {
     const { ids, sections, source } = markup(html);
 
     const elements = new Map();
@@ -253,6 +275,23 @@ export function page({ html, path = '/', hash = '' }) {
         confirmed: true,
         console
     };
+
+    const hardware = DEVICES[device];
+    if (!hardware) throw new Error(`no device called "${device}"`);
+
+    context.navigator = { userAgent: hardware.agent };
+    if ('standalone' in hardware) context.navigator.standalone = hardware.standalone;
+
+    // Only the queries the pages actually ask. An unrecognised one answers no,
+    // which is the safe way round: a page that starts asking something new gets
+    // the plain behaviour here rather than a silent pass.
+    context.matchMedia = (query) => ({
+        matches: query.includes('pointer: coarse')
+            ? hardware.coarse === true
+            : query.includes('display-mode: standalone')
+                ? hardware.installed === true
+                : false
+    });
 
     context.window = context;
     // The site's own dialog, stubbed to the answer a test asked for. It draws

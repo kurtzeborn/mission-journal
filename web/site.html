@@ -60,6 +60,27 @@
                             <li><a id="settings" href="#" hidden>Settings</a></li>
                             <li><a id="book" href="#" hidden>Make a book</a></li>
                             <li><a id="download" href="#" hidden>Download the letters</a></li>
+                            <!--
+                                Directions rather than a button that does it.
+                                Safari has no install API and never has, so on
+                                the phones most of these families carry there is
+                                nothing to call; and the browsers that do have
+                                one only offer it to a site that launches
+                                outside the browser, which would put this
+                                archive's sign-in behind a separate cookie jar.
+
+                                The wording differs by platform because the
+                                whole value here is naming the right button.
+                                app.js picks one and shows the entry, on a
+                                touch screen only.
+                            -->
+                            <li id="install" hidden>
+                                <button type="button" class="menu__act" id="install-open" aria-expanded="false" aria-controls="install-how">Add to home screen</button>
+                                <div class="menu__how" id="install-how" hidden>
+                                    <p id="install-ios" hidden>Tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
+                                    <p id="install-other" hidden>Open your browser&rsquo;s menu, then tap <strong>Add to Home screen</strong>.</p>
+                                </div>
+                            </li>
                         </ul>
                     </div>
                     <!--
