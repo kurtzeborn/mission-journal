@@ -126,6 +126,12 @@ window.Reader = (function () {
     // at all and an album thumbnail navigated away from the archive to a bare
     // image URL, leaving the reader to find their way back.
     //
+    // Every photo click lands here, on the website as well as in the zip. The
+    // slideshow is a different question -- "show me the photographs" rather
+    // than "show me this one bigger" -- and is reached from its own button and
+    // nowhere else, so that tapping a picture in a letter does not sweep the
+    // letter away.
+    //
     // A real <dialog> rather than a div pretending to be one. It gets focus
     // trapping, Escape, inertness of the page behind it and a backdrop for
     // free, all of which are tedious and easy to get subtly wrong by hand, and
@@ -188,17 +194,6 @@ window.Reader = (function () {
         view.image.src = src;
         view.image.alt = alt ?? '';
         view.dialog.showModal();
-    }
-
-    // Set by `mount` when the page was given an album, which can do everything
-    // the dialog above does and also zoom, swipe on to the next picture, and
-    // say which letter this one came from. The downloaded archive is given no
-    // album and falls through to the dialog.
-    let albumAt = null;
-
-    function viewPhoto(id, src, alt) {
-        if (id && albumAt) albumAt(id);
-        else openLightbox(src, alt);
     }
 
     // --- inline photos ----------------------------------------------------
@@ -276,7 +271,6 @@ window.Reader = (function () {
             frame.type = 'button';
             frame.className = PHOTO_FRAME;
             frame.dataset.large = photoSrc(ref.id, 'large');
-            frame.dataset.photoId = ref.id;
 
             // The label is for assistive technology only -- sighted readers
             // get the zoom cursor, and a caption printed over every picture in
@@ -449,7 +443,7 @@ window.Reader = (function () {
             if (body.getAttribute('contenteditable') === 'true') return;
             const frame = event.target.closest?.(`.${PHOTO_FRAME}`);
             if (!frame) return;
-            viewPhoto(frame.dataset.photoId, frame.dataset.large, frame.querySelector('img')?.alt ?? '');
+            openLightbox(frame.dataset.large, frame.querySelector('img')?.alt ?? '');
         });
 
         return body;
@@ -483,7 +477,6 @@ window.Reader = (function () {
             const item = document.createElement('li');
             const link = document.createElement('a');
             link.href = photoSrc(photo.id, 'large');
-            link.dataset.photoId = photo.id;
             // An anchor whose only content is an image with empty alt text has
             // no accessible name at all. Same words as the inline frames use.
             link.setAttribute('aria-label', 'View larger');
@@ -536,7 +529,7 @@ window.Reader = (function () {
             const link = event.target.closest?.('a');
             if (!link || !album.contains(link)) return;
             event.preventDefault();
-            viewPhoto(link.dataset.photoId, link.href, '');
+            openLightbox(link.href, '');
         });
 
         return album;
@@ -1877,20 +1870,6 @@ window.Reader = (function () {
 
         const search = setUpSearch(posts, views, groups, elements);
 
-        // Handed the id and left to find the view, so the album holds no
-        // reference to anything on the page.
-        const openAlbum = (at) => album.open({
-            posts,
-            photoSrc,
-            at,
-            reveal(id) {
-                const view = views.get(id);
-                if (view) revealPost(views, groups, view, { behavior: 'smooth' });
-            }
-        });
-
-        if (album) albumAt = openAlbum;
-
         // One control for the whole list, built here for the same reason the
         // search stepper is: there are two page templates hosting this file
         // and only one of this. It earns its place on the archives that are
@@ -1933,8 +1912,17 @@ window.Reader = (function () {
                 const photos = document.createElement('button');
                 photos.type = 'button';
                 photos.className = 'button button--quiet button--compact';
-                photos.textContent = 'Photos';
-                photos.addEventListener('click', () => openAlbum());
+                photos.textContent = 'Photo Album';
+                // Handed an id and left to find the view, so the album holds
+                // no reference to anything on the page.
+                photos.addEventListener('click', () => album.open({
+                    posts,
+                    photoSrc,
+                    reveal(id) {
+                        const view = views.get(id);
+                        if (view) revealPost(views, groups, view, { behavior: 'smooth' });
+                    }
+                }));
 
                 toolbar.prepend(photos);
             }

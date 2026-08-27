@@ -1,9 +1,14 @@
 // Every photo in the archive, as one slideshow.
 //
-// The website only. The downloaded zip is not given this file and falls back
-// to the reader's own lightbox, which shows one picture at a time -- the album
-// is where video will live, video is not going in the download, and the bundle
-// this leans on is larger than everything else the site serves put together.
+// The website only, and only from the Photo Album button. Clicking a picture
+// in a letter opens the reader's own lightbox instead, here as well as in the
+// zip: enlarging the photograph in front of you is a different request from
+// asking to see all of them, and answering the first with the second sweeps
+// the letter out from under the reader.
+//
+// The downloaded zip is not given this file at all -- the album is where video
+// will live, video is not going in the download, and the bundle this leans on
+// is larger than everything else the site serves put together.
 //
 // The archive is a list of dates. The word cloud is a view of the same letters
 // by what is in them; this is a view of them by what was photographed. Both

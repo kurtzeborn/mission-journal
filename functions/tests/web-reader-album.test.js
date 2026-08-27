@@ -3,9 +3,8 @@
 // The album itself is a Swiper in a dialog and the website's alone -- there is
 // no test for it here, because what it does is measure elements and animate
 // them, and jsdom has neither. What can be tested is everything on this side of
-// the handover: whether the button appears, which of the two viewers a photo
-// click goes to, and what the archive looks like once the album hands a letter
-// back.
+// the handover: whether the button appears, that nothing else reaches the
+// album, and what the archive looks like once the album hands a letter back.
 //
 // The stub stands exactly where the real one does. `mount` is given an object
 // with an `open`, and that is the whole of the contract.
@@ -43,7 +42,7 @@ describe('getting to the album', () => {
     test('its button sits with the word cloud, not with Expand all', () => {
         // Both of these open a window over the archive. Expand all rearranges
         // the archive itself and stays at the other end of the row.
-        assert.deepEqual(labels(archive()), ['Photos', 'Word cloud', 'Expand all']);
+        assert.deepEqual(labels(archive()), ['Photo Album', 'Word cloud', 'Expand all']);
     });
 
     test('the downloaded archive is given no album and offers no button', () => {
@@ -58,7 +57,7 @@ describe('getting to the album', () => {
 
     test('opening it from the toolbar starts at the beginning', () => {
         const view = archive();
-        view.click(view.button('Photos'));
+        view.click(view.button('Photo Album'));
 
         assert.equal(view.album.opened.length, 1);
         assert.equal(view.album.opened[0].at, undefined);
@@ -67,23 +66,28 @@ describe('getting to the album', () => {
 });
 
 describe('clicking a photograph', () => {
-    test('a picture inside a letter opens the album on that picture', () => {
+    // The button is the only way in. A reader who taps a picture is asking to
+    // see that picture bigger, and used to get the whole archive as a
+    // slideshow instead, which took the letter they were reading away.
+    test('a picture inside a letter opens the lightbox, not the album', () => {
         const view = archive();
         view.click(view.$('.photo'));
 
-        assert.equal(view.album.opened.at(-1)?.at, PICTURE);
+        assert.equal(view.enlarged(), photoSrc(PICTURE, 'large'));
+        assert.equal(view.album.opened.length, 0);
     });
 
     test('a thumbnail under a letter does too', () => {
         const view = archive();
         view.click(view.$('.album a'));
 
-        assert.equal(view.album.opened.at(-1)?.at, LOOSE);
+        assert.equal(view.enlarged()?.endsWith(photoSrc(LOOSE, 'large')), true);
+        assert.equal(view.album.opened.length, 0);
     });
 
-    test('and the old lightbox is left for the archive that has no album', () => {
-        // The zip ships one picture at a time and no Swiper. This is the only
-        // thing keeping that path alive now that the site has left it.
+    test('and the archive with no album behaves exactly the same', () => {
+        // The zip ships the lightbox and no Swiper. Both sides now take the
+        // same path, which is the point -- one behaviour to keep working.
         const view = archive({ withAlbum: false });
         view.click(view.$('.photo'));
 
@@ -94,7 +98,7 @@ describe('clicking a photograph', () => {
 describe('being handed back a letter', () => {
     test('the archive folds down to that one and scrolls to it', () => {
         const view = archive();
-        view.click(view.button('Photos'));
+        view.click(view.button('Photo Album'));
 
         const { posts, reveal } = view.album.opened[0];
         reveal(posts[1].id);
@@ -106,7 +110,7 @@ describe('being handed back a letter', () => {
 
     test('a letter it does not recognise leaves the page alone', () => {
         const view = archive();
-        view.click(view.button('Photos'));
+        view.click(view.button('Photo Album'));
 
         const before = view.$$('.post__panel').map((panel) => panel.hidden);
         view.album.opened[0].reveal('2019-01-01-XXXX');
