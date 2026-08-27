@@ -396,7 +396,7 @@
         }
 
         const failed = await explain(response);
-        if (failed) return { failed };
+        if (failed) return { failed, status: response.status };
 
         return { body: await response.json().catch(() => ({})) };
     }
@@ -416,17 +416,33 @@
             return 'Your browser blocked the Google Photos window. Allow pop-ups for this site and try again.';
         }
 
-        say('Choose your pictures in the Google Photos window…');
+        // Google's picker opens on a flat grid of recents and offers no way to browse albums; only search reaches them.
+        say('Choose your pictures in the Google Photos window. It opens on your recent pictures; search an album name to reach older ones.');
 
         let wait = 3000;
         let picked = null;
+        let began = false;
         const deadline = Date.now() + GIVE_UP_MS;
 
         while (Date.now() < deadline) {
             await pause(wait);
 
-            const { failed, body } = await askGoogle('session');
-            if (failed) return failed;
+            const { failed, status, body } = await askGoogle('session');
+
+            // Nothing to ask about yet is not the same as nothing left to ask
+            // about. The session only exists once the owner is through the
+            // consent screen and Google has sent them back, which takes far
+            // longer than the first poll -- and until then the server has no
+            // cookie to read and can only say 410. So that answer means "not
+            // started" until the session has been seen once, and "over" after.
+            if (failed) {
+                if (status !== 410 || began) return failed;
+                if (chooser.closed) return 'Nothing was picked, so nothing was added.';
+                wait = 3000;
+                continue;
+            }
+
+            began = true;
 
             if (body.ready) {
                 picked = body;

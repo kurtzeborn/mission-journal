@@ -163,6 +163,21 @@ describe('setting out', () => {
         assert.equal(state.payload.who, MUM);
     });
 
+    // A cookie from the previous attempt stays valid for the hour, and the
+    // page cannot tell one session from another -- so it would poll the dead
+    // one to the end of its patience while the live pick went unnoticed.
+    test('and whatever the last attempt left behind is thrown away', async () => {
+        const store = await seeded();
+        const response = await startGoogle({
+            request: request({ query: { slug: SLUG, postId: POST } }),
+            context: silent,
+            store
+        });
+
+        assert.match(response.headers['Set-Cookie'], /^mj_gphotos=;/);
+        assert.match(response.headers['Set-Cookie'], /Max-Age=0/);
+    });
+
     // Asked before the consent screen rather than only after it. Sending
     // somebody to grant access for an archive they cannot write to teaches
     // them the consent means nothing.

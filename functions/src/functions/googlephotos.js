@@ -170,7 +170,15 @@ export async function startGoogle({ request, context, store }) {
     // This is the only point in the flow where a signed-in owner is provable,
     // so who they are is sealed in and carried the rest of the way.
     const state = seal({ slug, postId, who: gated.principal.email }, key, STATE_SECONDS);
-    return away(consentUrl({ clientId, redirectUri: redirectUri(), state }));
+
+    // Any cookie still on the browser belongs to the run before this one, and
+    // it stays valid for the hour. Left alone, the page would poll that dead
+    // session all the way through this pick and never see the new one become
+    // ready, so the run is started from nothing rather than from whatever the
+    // last attempt left behind.
+    return away(consentUrl({ clientId, redirectUri: redirectUri(), state }), {
+        'Set-Cookie': clearCookie()
+    });
 }
 
 // --- step two: the way back -----------------------------------------------
