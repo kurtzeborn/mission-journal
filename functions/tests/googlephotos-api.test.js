@@ -20,7 +20,7 @@ import {
     returnGoogle,
     startGoogle
 } from '../src/functions/googlephotos.js';
-import { seal } from '../src/lib/googlephotos.js';
+import { seal, unseal } from '../src/lib/googlephotos.js';
 import { memoryStore } from './memory-store.js';
 import { ROLE } from '../src/lib/acl.js';
 
@@ -137,7 +137,7 @@ test.after(() => {
 const cookieFor = (payload) => `mj_gphotos=${seal(payload, KEY, 600)}`;
 
 const session = (over = {}) =>
-    cookieFor({ slug: SLUG, postId: POST, sessionId: 'sess-1', token: 'tok', ...over });
+    cookieFor({ slug: SLUG, postId: POST, who: MUM, sessionId: 'sess-1', token: 'tok', ...over });
 
 describe('setting out', () => {
     test('an owner is sent to Google with the archive sealed into the state', async () => {
@@ -153,7 +153,14 @@ describe('setting out', () => {
         const url = new URL(response.headers.Location);
         assert.equal(url.origin + url.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
         assert.match(url.searchParams.get('scope'), /photospicker/);
-        assert.ok(url.searchParams.get('state'));
+
+        // This is the only leg where a signed-in owner is provable, so the
+        // state has to carry everything the open callback cannot re-establish.
+        const state = unseal(url.searchParams.get('state'), KEY);
+        assert.equal(state.valid, true);
+        assert.equal(state.payload.slug, SLUG);
+        assert.equal(state.payload.postId, POST);
+        assert.equal(state.payload.who, MUM);
     });
 
     // Asked before the consent screen rather than only after it. Sending
@@ -201,19 +208,25 @@ describe('coming back', () => {
         }
     };
 
-    const returning = (store, over = {}) =>
+    const returning = (over = {}) =>
         withGoogle(routes, () =>
             returnGoogle({
                 request: request({
-                    query: { code: 'one-time', state: seal({ slug: SLUG, postId: POST }, KEY, 600), ...over }
+                    // No principal at all, which is how this leg really
+                    // arrives: a redirect from Google carries no site session.
+                    as: over.as ?? null,
+                    query: {
+                        code: 'one-time',
+                        state: seal({ slug: SLUG, postId: POST, who: MUM }, KEY, 600),
+                        ...over.query
+                    }
                 }),
-                context: silent,
-                store
+                context: silent
             })
         );
 
     test('the owner is handed on to the picker with the session in a cookie', async () => {
-        const response = await returning(await seeded());
+        const response = await returning();
 
         assert.equal(response.status, 302);
         assert.equal(response.headers.Location, 'https://photos.google.com/pick/xyz/autoclose');
@@ -228,24 +241,38 @@ describe('coming back', () => {
         assert.match(cookie, /Path=\/api\/photos\/google/);
     });
 
-    // The signature says the request came from us. It does not say the person
-    // holding it is still entitled to the archive it names -- and the trip
-    // through Google is exactly where that could have changed.
-    test('the ownership question is asked again on the way back', async () => {
-        const store = await seeded();
-        store.acl(SLUG, [{ email: GRAN, role: ROLE.reader }]);
+    // Signed in or not makes no difference here, which is the point: Static
+    // Web Apps challenging this route strips the query string, so the code
+    // never arrives and the leg has to work without a session.
+    test('and gets there without being signed in to the site at all', async () => {
+        const cookie = (await returning()).headers['Set-Cookie'];
+        const opened = unseal(cookie.split(';')[0].replace('mj_gphotos=', ''), KEY);
 
-        const response = await returning(store, {});
-
-        assert.equal(response.status, 403);
-        assert.equal(response.headers['Set-Cookie'], undefined);
+        assert.equal(opened.valid, true);
+        assert.equal(opened.payload.who, MUM);
+        assert.equal(opened.payload.sessionId, 'sess-1');
     });
 
     test('a state that was not signed here is refused', async () => {
         const response = await returnGoogle({
-            request: request({ query: { code: 'x', state: seal({ slug: SLUG }, 'other-key', 600) } }),
-            context: silent,
-            store: await seeded()
+            request: request({
+                as: null,
+                query: { code: 'x', state: seal({ slug: SLUG, who: MUM }, 'other-key', 600) }
+            }),
+            context: silent
+        });
+
+        assert.equal(response.status, 400);
+        assert.equal(response.headers['Set-Cookie'], undefined);
+    });
+
+    test('and so is one that has gone stale', async () => {
+        const response = await returnGoogle({
+            request: request({
+                as: null,
+                query: { code: 'x', state: seal({ slug: SLUG, who: MUM }, KEY, -1) }
+            }),
+            context: silent
         });
 
         assert.equal(response.status, 400);
@@ -253,9 +280,8 @@ describe('coming back', () => {
 
     test('and pressing Cancel on Google says so rather than failing', async () => {
         const response = await returnGoogle({
-            request: request({ query: { error: 'access_denied' } }),
-            context: silent,
-            store: await seeded()
+            request: request({ as: null, query: { error: 'access_denied' } }),
+            context: silent
         });
 
         assert.equal(response.status, 200);
@@ -405,6 +431,25 @@ describe('importing one picture', () => {
         const store = await seeded();
         const response = await importing(store, {
             cookie: session({ slug: 'someone.else' }),
+            bytes: await picture()
+        });
+
+        assert.equal(response.status, 409);
+    });
+
+    // The check that pays for the open callback. Two owners of the same
+    // archive are both allowed to write to it, so the slug test above would
+    // let one of them spend the other's consent; this one will not.
+    test('and one owner cannot spend another owner\'s consent', async () => {
+        const store = await seeded();
+        store.acl(SLUG, [
+            { email: MUM, role: ROLE.owner },
+            { email: GRAN, role: ROLE.owner }
+        ]);
+
+        const response = await importing(store, {
+            as: GRAN,
+            cookie: session({ who: MUM }),
             bytes: await picture()
         });
 

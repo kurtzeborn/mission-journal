@@ -18,6 +18,17 @@
 // anywhere in the service. And no refresh token is requested, so consent is
 // asked for every time -- an extra tap on the second import, in exchange for a
 // service that cannot be made to fetch somebody's photographs tomorrow.
+//
+// `return` is the one route here that the site's own sign-in does not guard,
+// and it cannot be: the browser arrives on it as a redirect from Google, and
+// Static Web Apps answers an unauthenticated call to `/api` by sending the
+// browser to the login page and then bouncing it back with the query string
+// stripped -- which discards the authorisation code the redirect existed to
+// deliver. So the callback is opened, and its authority comes from the sealed
+// state instead: minted at `start`, where a live owner was proven, and naming
+// both the archive and the person. Nothing is written on that leg. The import
+// still demands a real owner session, and now also demands that it belong to
+// the same person who began the consent.
 
 import { app } from '@azure/functions';
 import { blobStore, signingKey } from '../lib/clients.js';
@@ -156,13 +167,15 @@ export async function startGoogle({ request, context, store }) {
     const gated = await ownerOnly(wearing(request, slug), context, store);
     if (gated.denied) return said(403, 'You cannot add pictures to that archive.');
 
-    const state = seal({ slug, postId }, key, STATE_SECONDS);
+    // This is the only point in the flow where a signed-in owner is provable,
+    // so who they are is sealed in and carried the rest of the way.
+    const state = seal({ slug, postId, who: gated.principal.email }, key, STATE_SECONDS);
     return away(consentUrl({ clientId, redirectUri: redirectUri(), state }));
 }
 
 // --- step two: the way back -----------------------------------------------
 
-export async function returnGoogle({ request, context, store }) {
+export async function returnGoogle({ request, context }) {
     const clientId = setting('GOOGLE_CLIENT_ID');
     const clientSecret = setting('GOOGLE_CLIENT_SECRET');
     const key = signingKey('googlephotos', context);
@@ -174,16 +187,13 @@ export async function returnGoogle({ request, context, store }) {
     // failure does, and is not one.
     if (request.query.get('error')) return said(200, 'Nothing was added. You can close this window.');
 
+    // The whole of this leg's authority. Fifteen minutes old at most, signed
+    // with a key only this service holds, and naming the archive, the letter
+    // and the owner that were checked before the browser ever left.
     const opened = unseal(request.query.get('state'), key);
     if (!opened.valid) return said(400, 'That link has expired. Try again from the letter.');
 
-    const { slug, postId } = opened.payload;
-
-    // Asked a second time, on the far side of a trip through somebody else's
-    // website. The signature says the request came from us; it does not say
-    // the person holding it is still entitled to the archive it names.
-    const gated = await ownerOnly(wearing(request, slug), context, store);
-    if (gated.denied) return said(403, 'You cannot add pictures to that archive.');
+    const { slug, postId, who } = opened.payload;
 
     const code = String(request.query.get('code') ?? '');
     if (!code) return said(400, 'Google did not say which pictures you meant.');
@@ -201,7 +211,7 @@ export async function returnGoogle({ request, context, store }) {
     }
 
     const sealed = seal(
-        { slug, postId, sessionId: session.id, token: token.token },
+        { slug, postId, who, sessionId: session.id, token: token.token },
         key,
         Math.min(token.seconds, ENVELOPE_SECONDS)
     );
@@ -277,6 +287,14 @@ export async function importGoogle({ request, context, store }) {
         return problem(409, 'that Google Photos session belongs to another archive');
     }
 
+    // The ownership question the open callback could not ask, asked here where
+    // there is a real session to ask it of: this cookie may only be spent by
+    // the person whose consent minted it, not by anyone who happens to hold it
+    // and own the archive.
+    if (session.who !== gated.principal.email) {
+        return problem(409, 'that Google Photos session belongs to somebody else');
+    }
+
     const body = await request.json().catch(() => ({}));
     const wanted = String(body?.mediaItemId ?? '');
     if (!wanted) return problem(400, 'no picture was named');
@@ -340,7 +358,7 @@ app.http('googlePhotosReturn', {
     authLevel: 'anonymous',
     methods: ['GET'],
     route: 'photos/google/return',
-    handler: (request, context) => returnGoogle({ request, context, store: blobStore() })
+    handler: (request, context) => returnGoogle({ request, context })
 });
 
 app.http('googlePhotosPoll', {

@@ -236,6 +236,12 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "Google handing the owner back after they consented to the photo picker. This cannot be authenticated: the browser arrives as a redirect from accounts.google.com, and challenging it sends the browser to the sign-in page and then returns it here with the query string gone -- taking the authorisation code with it, which is the only thing the redirect was carrying. Anonymous is not a relaxation. The leg writes nothing, and its authority is a signed state minted moments earlier where a live owner was proven, naming the archive, the letter and the person; the import that follows demands a real owner session that matches it.",
+      "route": "/api/photos/google/return",
+      "methods": ["GET"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/api/*",
       "allowedRoles": ["authenticated"]
     },
