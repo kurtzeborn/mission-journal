@@ -758,6 +758,12 @@ window.Reader = (function () {
         picker.setAttribute('aria-hidden', 'true');
         picker.tabIndex = -1;
 
+        // The same picture, chosen somewhere else. Offered only when the page
+        // handed one in -- the downloaded archive has no owner bar at all, and
+        // a site whose Google credentials are not configured hands in nothing,
+        // so a button that could only ever fail is never drawn.
+        const fromGoogle = admin.addFromGoogle ? button('Add from Google Photos') : null;
+
         // Offered only on a letter somebody has actually changed. On an
         // untouched one it would re-render the post into exactly what it
         // already says -- a fourth button, on every letter, for a no-op.
@@ -815,6 +821,7 @@ window.Reader = (function () {
 
         const showEditing = (editing) => {
             for (const el of [hide, edit, remove, add]) el.hidden = editing;
+            if (fromGoogle) fromGoogle.hidden = editing;
             if (revert) revert.hidden = editing;
             for (const el of [save, cancel]) el.hidden = !editing;
             for (const el of drops) el.hidden = !editing;
@@ -942,6 +949,18 @@ window.Reader = (function () {
             run(`Adding pictures${many}…`, () => admin.addPhotos(post.id, files));
         });
 
+        // Not wrapped in `run`, which sets the status line once and then waits
+        // for an answer. This one takes minutes and spends them in three
+        // distinct states -- waiting on the owner, then counting pictures --
+        // so it is handed the status line and says where it has got to.
+        fromGoogle?.addEventListener('click', async () => {
+            status.textContent = 'Opening Google Photos…';
+            const said = await admin.addFromGoogle(post.id, (text) => {
+                status.textContent = text;
+            });
+            status.textContent = said ?? '';
+        });
+
         // Awaited, because the answer now comes from a dialog drawn on the
         // page rather than from the browser stopping the world.
         remove.addEventListener('click', async () => {
@@ -1004,6 +1023,7 @@ window.Reader = (function () {
 
         showEditing(false);
         bar.append(hide, edit, remove, add, picker);
+        if (fromGoogle) bar.append(fromGoogle);
         if (revert) bar.append(revert);
         bar.append(save, cancel, status, note);
         return bar;

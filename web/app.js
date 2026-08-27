@@ -367,6 +367,122 @@
         return null;
     }
 
+    // --- the same pictures, from Google Photos -----------------------------
+    //
+    // The owner leaves the site in the middle of this and comes back, so what
+    // is written here is mostly waiting: open a window, watch for the server
+    // to say the picking is finished, then run the same one-at-a-time import
+    // loop `addPhotos` runs, against the photographs Google was told to hand
+    // over instead of files off a disk.
+    //
+    // Nothing about Google is spoken to from here. Every call below is to this
+    // site, which holds the token for the few minutes this takes and does the
+    // fetching itself -- so the page needs no third-party script, the content
+    // security policy stays exactly as strict as it was, and a picture that
+    // cannot be read is refused by the same code that refuses an upload.
+
+    const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    // Long enough for somebody to be interrupted mid-pick and come back to it,
+    // and short enough that a forgotten window does not poll all afternoon.
+    const GIVE_UP_MS = 10 * 60 * 1000;
+
+    async function askGoogle(path, init) {
+        let response;
+        try {
+            response = await fetch(`/api/photos/google/${path}`, { redirect: 'manual', ...init });
+        } catch {
+            return { failed: 'Could not reach the server. Nothing was added.' };
+        }
+
+        const failed = await explain(response);
+        if (failed) return { failed };
+
+        return { body: await response.json().catch(() => ({})) };
+    }
+
+    async function addFromGoogle(postId, say) {
+        // Opened here and not one line later. A window opened after an `await`
+        // is not attributable to the click that asked for it, and every
+        // browser blocks it without telling the page -- so the very first
+        // thing this function does, before anything can yield, is open it.
+        const chooser = window.open(
+            `/api/photos/google/start?slug=${encodeURIComponent(slug)}&postId=${encodeURIComponent(postId)}`,
+            'google-photos',
+            'width=560,height=720'
+        );
+
+        if (!chooser) {
+            return 'Your browser blocked the Google Photos window. Allow pop-ups for this site and try again.';
+        }
+
+        say('Choose your pictures in the Google Photos window…');
+
+        let wait = 3000;
+        let picked = null;
+        const deadline = Date.now() + GIVE_UP_MS;
+
+        while (Date.now() < deadline) {
+            await pause(wait);
+
+            const { failed, body } = await askGoogle('session');
+            if (failed) return failed;
+
+            if (body.ready) {
+                picked = body;
+                break;
+            }
+
+            // Google sends a recommended interval with every answer and it is
+            // followed rather than second-guessed, floored at a second so a
+            // malformed one cannot turn this into a spin.
+            wait = Math.max(1000, (Number(body.pollSeconds) || 3) * 1000);
+        }
+
+        if (!picked) {
+            await askGoogle('session', { method: 'DELETE' });
+            return 'Nothing was picked, so nothing was added.';
+        }
+
+        const items = picked.items ?? [];
+        if (!items.length) {
+            await askGoogle('session', { method: 'DELETE' });
+            return picked.skipped
+                ? 'Only videos were picked, and this site cannot hold those yet. Nothing was added.'
+                : 'Nothing was picked, so nothing was added.';
+        }
+
+        let done = 0;
+        for (const item of items) {
+            say(`Adding pictures (${done + 1} of ${items.length})…`);
+
+            const { failed } = await askGoogle(
+                `import/${encodeURIComponent(slug)}/${encodeURIComponent(postId)}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mediaItemId: item.id })
+                }
+            );
+
+            // The same ruling as `addPhotos`: the first failure stops the run,
+            // and if any got through the page is reloaded so the owner can see
+            // which, rather than being told a number and left to guess.
+            if (failed) {
+                await askGoogle('session', { method: 'DELETE' });
+                if (!done) return failed;
+                window.location.reload();
+                return null;
+            }
+
+            done += 1;
+        }
+
+        await askGoogle('session', { method: 'DELETE' });
+        window.location.reload();
+        return null;
+    }
+
     // --- add to home screen ------------------------------------------------
     //
     // Directions, because there is nothing to call. Safari has no install API,
@@ -586,6 +702,7 @@
                       remove: (postId) => send('DELETE', postId),
                       restore: (postId) => send('POST', postId, null, '/restore'),
                       addPhotos,
+                      addFromGoogle,
                       confirmDelete: (post) =>
                           Confirm.ask({
                               question: `Remove "${post.subject || 'Untitled'}" from the site?`,

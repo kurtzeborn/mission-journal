@@ -940,6 +940,26 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'PUBLIC_BASE_URL'
           value: publicBaseUrl
         }
+        // The same Google application the sign-in uses, borrowed for a second
+        // purpose: an owner picking photographs out of their own Google Photos
+        // library. One registration rather than two because it is one consent
+        // screen to the person looking at it, and because the verification
+        // Google requires for the Photos scope attaches to the application
+        // rather than to the scope.
+        //
+        // Duplicated from the Static Web App's settings above rather than
+        // shared. These are two resources with two identities, the Functions
+        // host is the only one that performs the token exchange, and a setting
+        // read by whichever happened to have it would be worse than a setting
+        // written twice.
+        {
+          name: 'GOOGLE_CLIENT_ID'
+          value: googleClientId
+        }
+        {
+          name: 'GOOGLE_CLIENT_SECRET'
+          value: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${googleClientSecretName}/)'
+        }
         // The printer. The two keys are references rather than values for the
         // same reason the claim key is; the base and the offering id are not
         // secret and are inert without them.

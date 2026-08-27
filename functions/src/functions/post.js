@@ -30,7 +30,7 @@ const ok = (body) => ({
 });
 
 // The read gate plus the one extra question these endpoints ask.
-async function ownerOnly(request, context, store = blobStore()) {
+export async function ownerOnly(request, context, store = blobStore()) {
     const result = await gate({ store, request, log: context });
     if (result.denied) return result;
 
@@ -235,7 +235,71 @@ async function restore(request, context) {
 // it never saw, and enforcing it would break the ordinary case of adding two
 // pictures in a row -- the first one moves the ETag the second was holding.
 const TOO_MANY = 'this letter already has as many added pictures as it can hold';
-const MAX_ADDED = 24;
+export const MAX_ADDED = 24;
+
+/**
+ * Put one picture on one letter.
+ *
+ * Split out from the handler below because there are two ways in now -- a file
+ * off the owner's disk and a file they picked out of Google Photos -- and only
+ * the first half differs. Everything from "are these bytes a photograph" on is
+ * the same work, and having it twice is how the two would drift apart.
+ *
+ * Takes the posts the gate already loaded rather than reading them again, and
+ * answers with a response rather than a result, because every caller's next
+ * line is `return`.
+ */
+export async function attachPhoto({ store, context, slug, postId, posts, bytes, via }) {
+    // Both of these are refusals, and refusing before spending a transcode on
+    // bytes that cannot be stored is the whole reason to look.
+    const existing = (posts ?? []).find((post) => post.id === postId);
+    if (!existing) return problem(404, 'no such post');
+    if ((existing.photos ?? []).filter((photo) => photo.addedAt).length >= MAX_ADDED) {
+        return problem(409, TOO_MANY);
+    }
+
+    // Before `commitPosts`, never inside it: its `mutate` is called
+    // synchronously and may be called more than once, so a transcode in there
+    // would return a promise the error check would sail straight past.
+    const stored = await storePhoto({ store, slug, bytes });
+    if (!stored) return problem(415, 'that picture could not be read');
+
+    const photo = { ...stored, addedAt: new Date().toISOString() };
+    let added = false;
+
+    const outcome = await commitPosts({
+        store,
+        slug,
+        log: context,
+        mutate: (all) => {
+            const index = all.findIndex((post) => post.id === postId);
+            if (index < 0) return { error: 'not found' };
+
+            const photos = all[index].photos ?? [];
+            // The id is the hash of the bytes, so adding a picture the letter
+            // already carries is a no-op rather than a duplicate -- and that
+            // covers the double-click as well as the honest mistake.
+            if (photos.some((entry) => entry.id === photo.id)) return { posts: all };
+
+            if (photos.filter((entry) => entry.addedAt).length >= MAX_ADDED) {
+                return { error: TOO_MANY };
+            }
+
+            added = true;
+            const next = [...all];
+            next[index] = { ...next[index], photos: [...photos, photo] };
+            return { posts: next };
+        }
+    });
+
+    if (outcome.error) {
+        if (outcome.error === 'not found') return problem(404, 'no such post');
+        return problem(409, outcome.error);
+    }
+
+    context.log('post.photoAdded', { slug, postId, photo: photo.id, added, via });
+    return ok({ id: postId, photo: photo.id, added });
+}
 
 export async function addPhoto({ request, context, store }) {
     const gated = await ownerOnly(request, context, store);
@@ -257,56 +321,15 @@ export async function addPhoto({ request, context, store }) {
         return problem(413, 'that picture is too large to add');
     }
 
-    // Read from the copy the gate already loaded. Both of these are refusals,
-    // and refusing before spending a transcode on bytes that cannot be stored
-    // is the whole reason to look.
-    const existing = (gated.posts ?? []).find((post) => post.id === postId);
-    if (!existing) return problem(404, 'no such post');
-    if ((existing.photos ?? []).filter((photo) => photo.addedAt).length >= MAX_ADDED) {
-        return problem(409, TOO_MANY);
-    }
-
-    // Before `commitPosts`, never inside it: its `mutate` is called
-    // synchronously and may be called more than once, so a transcode in there
-    // would return a promise the error check would sail straight past.
-    const stored = await storePhoto({ store, slug: gated.slug, bytes });
-    if (!stored) return problem(415, 'that picture could not be read');
-
-    const photo = { ...stored, addedAt: new Date().toISOString() };
-    let added = false;
-
-    const outcome = await commitPosts({
+    return attachPhoto({
         store,
+        context,
         slug: gated.slug,
-        log: context,
-        mutate: (posts) => {
-            const index = posts.findIndex((post) => post.id === postId);
-            if (index < 0) return { error: 'not found' };
-
-            const photos = posts[index].photos ?? [];
-            // The id is the hash of the bytes, so adding a picture the letter
-            // already carries is a no-op rather than a duplicate -- and that
-            // covers the double-click as well as the honest mistake.
-            if (photos.some((entry) => entry.id === photo.id)) return { posts };
-
-            if (photos.filter((entry) => entry.addedAt).length >= MAX_ADDED) {
-                return { error: TOO_MANY };
-            }
-
-            added = true;
-            const next = [...posts];
-            next[index] = { ...next[index], photos: [...photos, photo] };
-            return { posts: next };
-        }
+        postId,
+        posts: gated.posts,
+        bytes,
+        via: 'upload'
     });
-
-    if (outcome.error) {
-        if (outcome.error === 'not found') return problem(404, 'no such post');
-        return problem(409, outcome.error);
-    }
-
-    context.log('post.photoAdded', { slug: gated.slug, postId, photo: photo.id, added });
-    return ok({ id: postId, photo: photo.id, added });
 }
 
 // Taking one back out.
