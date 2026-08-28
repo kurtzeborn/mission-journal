@@ -86,6 +86,11 @@ function stubs(window, record) {
     };
 }
 
+// What a button is called. An owner's controls are a glyph plus an accessible
+// name rather than words in the element, so asking for the name finds those and
+// the ones still set in text alike.
+const named = (el) => el.getAttribute('aria-label') ?? el.textContent;
+
 /**
  * A loaded archive page with `Reader` on it, ready to mount.
  *
@@ -139,11 +144,10 @@ export function page({ url = 'https://pdayletters.com/isaac.backman' } = {}) {
         bodies: () => $$('.post__body').map((body) => body.innerHTML),
 
         /** A button by the words on it, anywhere on the page. */
-        button: (label) =>
-            $$('button').find((el) => el.textContent === label && !el.hidden),
+        button: (label) => $$('button').find((el) => named(el) === label && !el.hidden),
 
         /** Every button with these words, hidden ones included. */
-        buttons: (label) => $$('button').filter((el) => el.textContent === label),
+        buttons: (label) => $$('button').filter((el) => named(el) === label),
 
         /** Fire a click that bubbles, which is what the delegated handlers need. */
         click(node, init = {}) {

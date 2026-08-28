@@ -402,10 +402,30 @@
     }
 
     async function addFromGoogle(postId, say) {
-        // Opened here and not one line later. A window opened after an `await`
-        // is not attributable to the click that asked for it, and every
-        // browser blocks it without telling the page -- so the very first
-        // thing this function does, before anything can yield, is open it.
+        // Google asks that the reason for a permission be put in front of the
+        // owner before it is requested rather than explained afterwards, and
+        // this is the only place that can happen -- the next line leaves for
+        // Google's consent screen.
+        const ready = await Confirm.ask({
+            question: 'Add pictures from Google Photos?',
+            detail:
+                'Google will ask you to let Pday Letters see the pictures you pick. That ' +
+                'permission is used for one thing: fetching the pictures you choose and ' +
+                'putting them on this letter. The rest of your Google Photos library is ' +
+                'never sent to us, and the permission is thrown away once the pictures ' +
+                'are in.',
+            action: 'Continue',
+            tone: 'calm',
+            remember: 'mj.explained.google-photos'
+        });
+        if (!ready) return '';
+
+        // Opened here and not one line later. A window opened long after the
+        // click that asked for it is blocked without the page being told, so
+        // nothing that waits on the network may come first. The dialog above
+        // is not that: its Continue is itself a click, and the answer arrives
+        // in the task the browser queues the instant it is pressed, while the
+        // permission that click carries is still good for seconds yet.
         const chooser = window.open(
             `/api/photos/google/start?slug=${encodeURIComponent(slug)}&postId=${encodeURIComponent(postId)}`,
             'google-photos',

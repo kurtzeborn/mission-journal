@@ -71,13 +71,16 @@ const COPIES = [
     { package: 'swiper', from: 'swiper-bundle.min.css', to: 'swiper-bundle.min.css' },
     { package: 'swiper', from: 'LICENSE', to: 'LICENSE-swiper.txt' },
 
-    // Two stylesheets and one font out of a package that ships six families.
-    // Only the brands are used -- the rest of the site's icons are drawn as
-    // inline SVG -- and shipping the other five webfonts would be a megabyte of
-    // glyphs nothing references.
+    // Two families out of the six the package ships. Brands are the provider
+    // logos on the sign-in buttons; solid is the owner's controls on a letter.
+    // The other four webfonts would be a megabyte of glyphs nothing references.
+    // Each family is a stylesheet and a font: the glyph names live in
+    // fontawesome.min.css, the faces that draw them do not.
     { package: '@fortawesome/fontawesome-free', from: 'css/fontawesome.min.css', to: 'fontawesome/css/fontawesome.min.css' },
     { package: '@fortawesome/fontawesome-free', from: 'css/brands.min.css', to: 'fontawesome/css/brands.min.css' },
+    { package: '@fortawesome/fontawesome-free', from: 'css/solid.min.css', to: 'fontawesome/css/solid.min.css' },
     { package: '@fortawesome/fontawesome-free', from: 'webfonts/fa-brands-400.woff2', to: 'fontawesome/webfonts/fa-brands-400.woff2' },
+    { package: '@fortawesome/fontawesome-free', from: 'webfonts/fa-solid-900.woff2', to: 'fontawesome/webfonts/fa-solid-900.woff2' },
     { package: '@fortawesome/fontawesome-free', from: 'LICENSE.txt', to: 'fontawesome/LICENSE.txt' }
 ];
 

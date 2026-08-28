@@ -255,7 +255,11 @@ describe('pictures an owner adds', () => {
     const ADDED = { id: 'a2', addedAt: '2026-08-05T10:00:00.000Z' };
 
     /** The archive as an owner sees it, with the calls recorded. */
-    function owner({ photos = [{ id: 'a1' }, ADDED], patch = async () => undefined } = {}) {
+    function owner({
+        photos = [{ id: 'a1' }, ADDED],
+        patch = async () => undefined,
+        google = null
+    } = {}) {
         const calls = [];
         const view = page();
 
@@ -275,7 +279,16 @@ describe('pictures an owner adds', () => {
                 addPhotos: (id, files) => {
                     calls.push({ verb: 'add', id, names: [...files].map((file) => file.name) });
                     return undefined;
-                }
+                },
+                // Left out altogether unless a test asks for it: its absence is
+                // what the reader reads to decide whether there is a second
+                // source worth drawing a menu for.
+                ...(google && {
+                    addFromGoogle: (id, say) => {
+                        calls.push({ verb: 'google', id });
+                        return google(id, say);
+                    }
+                })
             }
         });
 
@@ -400,7 +413,7 @@ describe('pictures an owner adds', () => {
     test('choosing files hands them over and says how many', async () => {
         const { view, calls } = owner();
 
-        view.click(view.button('Add pictures'));
+        view.click(view.button('Add photos'));
         const picker = choose(view, ['antigua.jpg', 'lake.jpg']);
         await settled();
 
@@ -427,6 +440,56 @@ describe('pictures an owner adds', () => {
 
         view.click(view.button('Edit'));
 
-        assert.equal(view.buttons('Add pictures')[0].hidden, true);
+        assert.equal(view.buttons('Add photos')[0].hidden, true);
+    });
+
+    test('one source stays a plain button', () => {
+        const { view } = owner();
+
+        assert.equal(view.$('.admin__menu'), null);
+        assert.equal(view.button('Add photos').className, 'admin__button');
+    });
+
+    test('two sources go behind one menu rather than two buttons', () => {
+        const { view } = owner({ google: async () => undefined });
+
+        // The trigger is the menu's summary, so no button answers to the name.
+        assert.equal(view.button('Add photos'), undefined);
+        assert.equal(view.$('.admin__trigger').textContent, 'Add photos');
+        assert.deepEqual(
+            view.$$('.admin__item').map((el) => el.textContent),
+            ['Google Photos', 'This device']
+        );
+    });
+
+    test('the device entry shuts the menu and opens the file picker', async () => {
+        const { view, calls } = owner({ google: async () => undefined });
+
+        view.$('.admin__menu').open = true;
+        view.click(view.button('This device'));
+        choose(view, ['antigua.jpg']);
+        await settled();
+
+        assert.equal(view.$('.admin__menu').open, false);
+        assert.deepEqual(calls, [
+            { verb: 'add', id: '2026-03-25-9CRE', names: ['antigua.jpg'] }
+        ]);
+    });
+
+    test('the Google entry hands over and reports what came back', async () => {
+        const { view, calls } = owner({
+            google: async () => 'Nothing was picked, so nothing was added.'
+        });
+
+        view.$('.admin__menu').open = true;
+        view.click(view.button('Google Photos'));
+        await settled();
+
+        assert.equal(view.$('.admin__menu').open, false);
+        assert.deepEqual(calls, [{ verb: 'google', id: '2026-03-25-9CRE' }]);
+        assert.equal(
+            view.$('.admin__status').textContent,
+            'Nothing was picked, so nothing was added.'
+        );
     });
 });

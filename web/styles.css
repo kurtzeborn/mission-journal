@@ -1194,12 +1194,38 @@ button:focus-visible {
     border-color: var(--accent);
 }
 
-/* Red, because every question asked through this dialog is about something
+/* Red, because most questions asked through this dialog are about something
    that will not come back. The same red as the archive's own delete. */
 .ask__button--go {
     color: #fff;
     background: #9b2226;
     border-color: #9b2226;
+}
+
+/* Not all of them are, though. A question that only explains what is about to
+   happen is a step towards something the owner asked for, and a red button on
+   it would read as a warning about their own choice. */
+.ask__button--calm {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+/* At the far end of the row, away from the buttons: it is a preference rather
+   than an answer, and it must not be catchable by a thumb reaching for Cancel. */
+.ask__again {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-right: auto;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+    cursor: pointer;
+}
+
+.ask__box {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--accent);
 }
 
 /* A letter that is out of view, seen by an owner.
@@ -1884,6 +1910,18 @@ h3:target {
     outline-offset: 1px;
 }
 
+/* A glyph where the words were, so the padding that set a label has to go or
+   the button keeps the width of a word it no longer shows. Square, because
+   nothing in it wants to be wider than it is tall. */
+.admin__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    padding: 0;
+    font-size: 0.95rem;
+}
+
 .admin__status {
     font-size: 0.85rem;
     color: var(--ink-soft);
@@ -1903,6 +1941,73 @@ h3:target {
     color: #fff;
     background: var(--accent);
     border-color: var(--accent);
+}
+
+/* Where a picture comes from. Positioned, unlike the account menu, because the
+   owner bar is a wrapping row and the panel has to hang under this button
+   rather than under whichever end of the row it happens to be nearest. */
+.admin__menu {
+    position: relative;
+}
+
+.admin__trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    /* Chrome and Safari draw a disclosure triangle that would sit inside
+       something styled as a button. */
+    list-style: none;
+}
+
+.admin__trigger::-webkit-details-marker {
+    display: none;
+}
+
+.admin__trigger::after {
+    content: '';
+    flex: none;
+    width: 0.4em;
+    height: 0.4em;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-0.15em) rotate(45deg);
+}
+
+.admin__menu[open] .admin__trigger::after {
+    transform: translateY(0.1em) rotate(-135deg);
+}
+
+.admin__panel {
+    position: absolute;
+    left: 0;
+    z-index: 20;
+    margin: 0.35rem 0 0;
+    padding: 0.15rem 0;
+    min-width: 11rem;
+    list-style: none;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgb(0 0 0 / 12%);
+}
+
+.admin__item {
+    display: block;
+    width: 100%;
+    /* A tap target, not a line of prose. */
+    padding: 0.55rem 0.85rem;
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    color: var(--ink);
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+
+.admin__item:hover,
+.admin__item:focus-visible {
+    background: rgb(0 0 0 / 4%);
 }
 
 /* The subject stands in for the heading while editing, so it is set in the

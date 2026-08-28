@@ -713,6 +713,23 @@ window.Reader = (function () {
             return el;
         };
 
+        // A control with a glyph where its words were. The words themselves do
+        // not go anywhere -- they stay as the name a screen reader reads out
+        // and as the tooltip a pointer brings up -- so what is lost is only the
+        // room five labels took up in a row that has to wrap on a phone.
+        const icon = (label, glyph, extra) => {
+            const el = button('', extra ? `admin__icon ${extra}` : 'admin__icon');
+            el.title = label;
+            el.setAttribute('aria-label', label);
+
+            const mark = document.createElement('i');
+            mark.className = `fa-solid ${glyph}`;
+            mark.setAttribute('aria-hidden', 'true');
+
+            el.append(mark);
+            return el;
+        };
+
         // A successful action reloads the page, so anything this puts on screen
         // is a failure the owner needs to read.
         const run = async (working, action) => {
@@ -720,11 +737,15 @@ window.Reader = (function () {
             status.textContent = (await action()) ?? '';
         };
 
-        const hide = button(post.hidden ? 'Unhide' : 'Hide');
-        const edit = button('Edit');
-        const remove = button('Delete');
-        const save = button('Save', 'admin__button--primary');
-        const cancel = button('Cancel');
+        // Hiding and unhiding are one button and want two glyphs: a bar across
+        // the letter for taking it out of view, an open eye for putting it
+        // back. One glyph for both would say what state the letter is in
+        // without saying which way the button moves it.
+        const hide = post.hidden ? icon('Unhide', 'fa-eye') : icon('Hide', 'fa-ban');
+        const edit = icon('Edit', 'fa-pencil');
+        const remove = icon('Delete', 'fa-trash');
+        const save = icon('Save', 'fa-check', 'admin__button--primary');
+        const cancel = icon('Cancel', 'fa-xmark');
 
         // Adding pictures.
         //
@@ -749,7 +770,7 @@ window.Reader = (function () {
         // are spelled out beside `image/*` because Windows resolves that
         // wildcard through its registry, which has never heard of any of
         // them, and would otherwise gray out a phone's own photographs.
-        const add = button('Add pictures');
+        const add = button('Add photos');
         const picker = document.createElement('input');
         picker.type = 'file';
         picker.accept = 'image/*,.heic,.heif,.webp,.avif';
@@ -758,16 +779,60 @@ window.Reader = (function () {
         picker.setAttribute('aria-hidden', 'true');
         picker.tabIndex = -1;
 
-        // The same picture, chosen somewhere else. Offered only when the page
-        // handed one in -- the downloaded archive has no owner bar at all, and
-        // a site whose Google credentials are not configured hands in nothing,
-        // so a button that could only ever fail is never drawn.
-        const fromGoogle = admin.addFromGoogle ? button('Add from Google Photos') : null;
+        // Two places a picture can come from, behind one button, because to an
+        // owner they are one errand -- side by side in the bar they read as two
+        // separate features and crowd the row on a phone.
+        //
+        // The menu is built only when the page handed the Google call in. The
+        // downloaded archive has no owner bar at all, and a site whose Google
+        // credentials are not configured hands in nothing, so an entry that
+        // could only ever fail is never offered -- and with one source left
+        // there is nothing to choose between, so the plain button stands and
+        // goes straight to the files.
+        //
+        // A <details> because the toggling, the keyboard handling and the
+        // expanded state a screen reader announces come with the element. What
+        // does not come with it is closing on a click elsewhere, which is
+        // handled once for the whole page.
+        const source = admin.addFromGoogle ? document.createElement('details') : null;
+        let fromGoogle = null;
+        let fromDevice = null;
+
+        if (source) {
+            source.className = 'admin__menu';
+
+            const trigger = document.createElement('summary');
+            trigger.className = 'admin__button admin__trigger';
+            trigger.textContent = 'Add photos';
+
+            const list = document.createElement('ul');
+            list.className = 'admin__panel';
+
+            const entry = (label) => {
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'admin__item';
+                item.textContent = label;
+
+                const row = document.createElement('li');
+                row.append(item);
+                list.append(row);
+                return item;
+            };
+
+            // "This device" rather than naming one. The same owners use this
+            // from a phone and from a desk, and the file picker it opens is the
+            // camera roll on one and a folder on the other.
+            fromGoogle = entry('Google Photos');
+            fromDevice = entry('This device');
+
+            source.append(trigger, list);
+        }
 
         // Offered only on a letter somebody has actually changed. On an
         // untouched one it would re-render the post into exactly what it
         // already says -- a fourth button, on every letter, for a no-op.
-        const revert = post.editedAt ? button('Restore original') : null;
+        const revert = post.editedAt ? icon('Restore original', 'fa-clock-rotate-left') : null;
 
         // Written on every edit and, until now, readable only by opening the
         // blob. It is not there to police owners, who are trusted; it is there
@@ -820,8 +885,7 @@ window.Reader = (function () {
         const dropped = new Set();
 
         const showEditing = (editing) => {
-            for (const el of [hide, edit, remove, add]) el.hidden = editing;
-            if (fromGoogle) fromGoogle.hidden = editing;
+            for (const el of [hide, edit, remove, source ?? add]) el.hidden = editing;
             if (revert) revert.hidden = editing;
             for (const el of [save, cancel]) el.hidden = !editing;
             for (const el of drops) el.hidden = !editing;
@@ -937,6 +1001,11 @@ window.Reader = (function () {
         save.addEventListener('click', commit);
 
         add.addEventListener('click', () => picker.click());
+        fromDevice?.addEventListener('click', () => {
+            source.open = false;
+            picker.click();
+        });
+
         picker.addEventListener('change', () => {
             const files = [...picker.files];
             // Cleared straight away so choosing the same file twice still
@@ -954,6 +1023,7 @@ window.Reader = (function () {
         // distinct states -- waiting on the owner, then counting pictures --
         // so it is handed the status line and says where it has got to.
         fromGoogle?.addEventListener('click', async () => {
+            source.open = false;
             status.textContent = 'Opening Google Photos…';
             const said = await admin.addFromGoogle(post.id, (text) => {
                 status.textContent = text;
@@ -1022,8 +1092,7 @@ window.Reader = (function () {
         });
 
         showEditing(false);
-        bar.append(hide, edit, remove, add, picker);
-        if (fromGoogle) bar.append(fromGoogle);
+        bar.append(hide, edit, remove, source ?? add, picker);
         if (revert) bar.append(revert);
         bar.append(save, cancel, status, note);
         return bar;
@@ -1877,6 +1946,16 @@ window.Reader = (function () {
         for (const post of posts) {
             views.set(post.id, renderPost(post, photoSrc, admin));
         }
+
+        // A <details> stays open until its own summary is clicked again, which
+        // for a menu means carrying it down the page. One listener for the
+        // whole reader rather than one per letter: an archive runs to hundreds
+        // of them and every one draws a bar.
+        document.addEventListener('click', (event) => {
+            for (const menu of document.querySelectorAll('.admin__menu[open]')) {
+                if (!menu.contains(event.target)) menu.open = false;
+            }
+        });
 
         // Either puts every letter into a month and the months into the list,
         // or hands back nothing and leaves the letters to go in flat.
