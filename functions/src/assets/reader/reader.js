@@ -700,7 +700,7 @@ window.Reader = (function () {
         // reads as decoration until somebody hovers one of them.
         const label = document.createElement('span');
         label.className = 'admin__label';
-        label.textContent = 'Owner controls:';
+        label.textContent = 'Owner tools:';
 
         // One status line for everything an owner does to this letter. Two of
         // them -- one above the pictures and one below -- would be a message
