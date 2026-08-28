@@ -196,7 +196,10 @@ describe('what a letter says about itself', () => {
         assert.equal(view.$('.post__held'), null);
     });
 
-    test('a letter that links to an album outside the archive says so', () => {
+    // The flag is still recorded on the post. It is evidence for a decision
+    // about fetching these albums, not something a reader is told: the link it
+    // describes is already there in the letter, spelled out as a link.
+    test('a linked album is recorded without being announced', () => {
         const view = page();
         view.mount({
             posts: [
@@ -206,7 +209,7 @@ describe('what a letter says about itself', () => {
             ]
         });
 
-        assert.equal(view.$('.post__panel .note').textContent, 'This letter links to a shared photo album.');
+        assert.equal(view.$('.post__panel .note'), null);
     });
 
     test('a letter that never rendered still shows its words', () => {

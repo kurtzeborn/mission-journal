@@ -828,9 +828,10 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
   // delete anything. The erase timer -- and only the erase timer -- asks for
   // the user-assigned one by client ID.
   //
-  // Attaching a second identity makes managed-identity selection ambiguous for
-  // any code that does not name one, which is why every identity-based
-  // connection above already names the system-assigned identity explicitly.
+  // Attaching a second identity does not disturb that. The host's storage
+  // connections below name no credential, and a bare connection resolves to
+  // the system-assigned identity for as long as one is attached -- so the only
+  // code that has to name an identity is the code that wants the other one.
   identity: {
     type: 'SystemAssigned, UserAssigned'
     userAssignedIdentities: {
@@ -1075,9 +1076,9 @@ resource workerQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
 //
 // It is attached to the function app above, alongside the system-assigned
 // identity that everything else runs as. The two are told apart by the client
-// ID in `PURGE_IDENTITY_CLIENT_ID` -- which is also why every identity-based
-// connection in that app names its identity explicitly: with two attached,
-// nothing may be left to guess.
+// ID in `PURGE_IDENTITY_CLIENT_ID`, which the erase timer is alone in reading.
+// Everything else names no credential at all and so keeps running as the
+// system-assigned identity.
 // ---------------------------------------------------------------------------
 
 resource purgeIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {

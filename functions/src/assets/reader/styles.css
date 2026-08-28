@@ -1879,14 +1879,17 @@ h3:target {
    docs/plan.md); this is the smallest treatment that makes the moderation
    endpoints usable without pretending to be the final design. */
 
+.admin__area {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed var(--rule);
+}
+
 .admin {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
-    margin-top: 1rem;
-    padding-top: 0.75rem;
-    border-top: 1px dashed var(--rule);
 }
 
 .admin__button {
@@ -1922,16 +1925,24 @@ h3:target {
     font-size: 0.95rem;
 }
 
+/* Whose buttons these are. Worth the words because the controls themselves no
+   longer carry any until they are hovered. */
+.admin__label {
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+}
+
 .admin__status {
     font-size: 0.85rem;
     color: var(--ink-soft);
 }
 
-/* Who last changed the letter. Pushed to the far end of the bar because it is
-   a fact to be looked up rather than a control to be used, and it must not sit
-   where a button is about to appear. */
+/* Above the controls and hard left. It is a sentence to be read rather than a
+   control to be used, and sharing the row put it wherever the buttons happened
+   to leave room -- which on a phone was underneath them. */
 .admin__note {
-    margin-left: auto;
+    display: block;
+    margin-bottom: 0.5rem;
     font-size: 0.8rem;
     font-style: italic;
     color: var(--ink-soft);

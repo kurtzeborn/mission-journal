@@ -647,13 +647,6 @@ window.Reader = (function () {
         const album = renderAlbum(post, photoSrc, admin);
         if (album) panel.append(album);
 
-        if (post.linkedPhotoServices?.length) {
-            const note = document.createElement('p');
-            note.className = 'note';
-            note.textContent = 'This letter links to a shared photo album.';
-            panel.append(note);
-        }
-
         // Assembled before the owner controls are built, because those insert
         // the subject field next to the heading and `insertAdjacentElement`
         // needs the heading to already have a parent to insert alongside.
@@ -695,8 +688,19 @@ window.Reader = (function () {
     function renderAdmin(post, admin, view) {
         const { subject: heading, body, photoSrc, album } = view;
 
+        // Wraps the row so that the rule separating the letter from its
+        // controls sits above everything owner-only, the edited note included.
+        const area = document.createElement('div');
+        area.className = 'admin__area';
+
         const bar = document.createElement('div');
         bar.className = 'admin';
+
+        // The row is five glyphs and a menu once the labels come off, which
+        // reads as decoration until somebody hovers one of them.
+        const label = document.createElement('span');
+        label.className = 'admin__label';
+        label.textContent = 'Owner controls:';
 
         // One status line for everything an owner does to this letter. Two of
         // them -- one above the pictures and one below -- would be a message
@@ -1092,10 +1096,15 @@ window.Reader = (function () {
         });
 
         showEditing(false);
-        bar.append(hide, edit, remove, source ?? add, picker);
+        bar.append(label, hide, edit, remove, source ?? add, picker);
         if (revert) bar.append(revert);
-        bar.append(save, cancel, status, note);
-        return bar;
+        bar.append(save, cancel, status);
+
+        // Left off entirely on an unedited letter rather than left empty, so
+        // the row has nothing above it to make room for.
+        if (note.textContent) area.append(note);
+        area.append(bar);
+        return area;
     }
 
     // The body is HTML by the time it reaches us. Parsed with the template

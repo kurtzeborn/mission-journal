@@ -386,6 +386,6 @@ describe('who last changed the letter', () => {
     test('an untouched letter says nothing at all', () => {
         const { view } = owner();
 
-        assert.equal(view.$('.admin__note').textContent, '');
+        assert.equal(view.$('.admin__note'), null);
     });
 });
