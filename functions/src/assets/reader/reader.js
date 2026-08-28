@@ -1096,9 +1096,11 @@ window.Reader = (function () {
         });
 
         showEditing(false);
-        bar.append(label, hide, edit, remove, source ?? add, picker);
+        // Add photos goes last so the glyphs stay one unbroken run: it is the
+        // only control that kept its words, and in the middle it split them.
+        bar.append(label, hide, edit, remove);
         if (revert) bar.append(revert);
-        bar.append(save, cancel, status);
+        bar.append(save, cancel, source ?? add, picker, status);
 
         // Left off entirely on an unedited letter rather than left empty, so
         // the row has nothing above it to make room for.
