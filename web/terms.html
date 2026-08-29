@@ -28,7 +28,7 @@
              splitting them guarantees only one of them gets read. /privacy
              serves this page too, so it still has a URL of its own. -->
         <p class="lede">
-            Last updated 22 August 2026. This one page covers both the terms of use and the
+            Last updated 29 August 2026. This one page covers both the terms of use and the
             privacy notice, because they answer the same question and you should only have to
             read one thing.
         </p>
@@ -66,6 +66,7 @@
                 <li><a href="#google-photos">Pictures from Google Photos</a></li>
                 <li><a href="#operators">Who can see an archive</a></li>
                 <li><a href="#other-companies">Other companies involved</a></li>
+                <li><a href="#how-we-protect">How we protect what we hold</a></li>
                 <li><a href="#how-long">How long we keep things</a></li>
                 <li><a href="#your-choices">Your choices</a></li>
                 <li><a href="#children">Children</a></li>
@@ -271,6 +272,46 @@
         <p>
             These companies act for us or, in Peecho's case, for you as the buyer. None of them is
             given anybody's letters to use for their own purposes.
+        </p>
+
+        <h3 id="how-we-protect">How we protect what we hold</h3>
+        <ul>
+            <li>
+                <strong>Encrypted on the way here.</strong> Every connection to this site, and
+                every connection between the site and the storage behind it, is HTTPS over TLS 1.2
+                or better. Nothing is served over plain HTTP.
+            </li>
+            <li>
+                <strong>Encrypted where it sits.</strong> Everything we keep is encrypted at rest
+                by Microsoft Azure &mdash; the original emails, the readable letters, and every
+                photograph.
+            </li>
+            <li>
+                <strong>Nothing is reachable by guessing a URL.</strong> Anonymous access to our
+                storage is switched off, so there is no address that hands out a letter to whoever
+                types it. Every request for a letter or a photograph goes through one gate that
+                works out who you are and whether you are on that archive's guest list before it
+                reads a single byte.
+            </li>
+            <li>
+                <strong>There is no password for us to lose.</strong> The service proves who it is
+                to its own storage with an identity Azure issues and rotates, so there is no key
+                sitting in a configuration file. The identity it runs as from hour to hour cannot
+                permanently delete anything; erasing is the one job given to a second identity,
+                held apart for that purpose.
+            </li>
+            <li>
+                <strong>The Google Photos permission never lands in our database.</strong> It
+                stays in your own browser, for at most an hour, in a cookie that scripts cannot
+                read and that only travels over HTTPS. It is signed with a key only this service
+                holds, so nobody can forge one and point it at somebody else's archive. It is
+                never renewed.
+            </li>
+        </ul>
+        <p>
+            None of this makes a service impossible to break into, and we would rather say so than
+            pretend otherwise. If we ever find that letters have been exposed, we will tell the
+            people whose letters they are.
         </p>
 
         <h3 id="how-long">How long we keep things</h3>
