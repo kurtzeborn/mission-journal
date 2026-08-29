@@ -1699,6 +1699,48 @@ h3:target {
     color: var(--ink-soft);
 }
 
+/* The wait for the first letters is a cold start and runs to several seconds,
+   which is long enough that an unmoving line reads as a page that has stopped
+   rather than one still working.
+
+   The dots hang off the end of the text rather than sitting in it, because the
+   line is centred and a run of dots that grows and shrinks in the flow would
+   rock the whole sentence from side to side. Every code path that has
+   something to say replaces the message wholesale, which takes this span with
+   it -- so there is nothing to switch off when the waiting ends. */
+.waiting {
+    position: relative;
+}
+
+.waiting::after {
+    position: absolute;
+    left: 100%;
+    /* Doubles as the fallback. A browser that will not animate `content` keeps
+       this and the line reads exactly as it did before. */
+    content: '\2026';
+    animation: waiting 1.2s steps(1) infinite;
+}
+
+@keyframes waiting {
+    0% {
+        content: '.';
+    }
+
+    33% {
+        content: '..';
+    }
+
+    66% {
+        content: '...';
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .waiting::after {
+        animation: none;
+    }
+}
+
 /* Shown instead of the letters when the archive refuses. Deliberately not
    styled as an error -- the overwhelmingly likely cause is signing in with the
    wrong one of several accounts, which is a wrong turn rather than a fault. */
