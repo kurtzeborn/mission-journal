@@ -258,6 +258,7 @@ describe('pictures an owner adds', () => {
     function owner({
         photos = [{ id: 'a1' }, ADDED],
         patch = async () => undefined,
+        add = async () => undefined,
         google = null
     } = {}) {
         const calls = [];
@@ -276,9 +277,9 @@ describe('pictures an owner adds', () => {
                 restore: async () => undefined,
                 confirmDelete: () => true,
                 confirmRestore: () => true,
-                addPhotos: (id, files) => {
+                addPhotos: (id, files, say) => {
                     calls.push({ verb: 'add', id, names: [...files].map((file) => file.name) });
-                    return undefined;
+                    return add(id, files, say);
                 },
                 // Left out altogether unless a test asks for it: its absence is
                 // what the reader reads to decide whether there is a second
@@ -491,5 +492,70 @@ describe('pictures an owner adds', () => {
             view.$('.admin__status').textContent,
             'Nothing was picked, so nothing was added.'
         );
+    });
+
+    test('an upload still running says so in dots the page animates', async () => {
+        let said;
+        const { view } = owner({
+            add: async (id, files, say) => {
+                say('Adding pictures (2 of 3)…');
+                said = view.$('.admin__status .waiting')?.textContent;
+            }
+        });
+
+        view.click(view.button('Add photos'));
+        choose(view, ['antigua.jpg', 'lake.jpg', 'ridge.jpg']);
+        await settled();
+
+        // The ellipsis comes off the text because the stylesheet draws those
+        // dots itself; leaving it in would show four of them.
+        assert.equal(said, 'Adding pictures (2 of 3)');
+
+        // And what is left at the end is an ordinary sentence that holds still.
+        assert.equal(view.$('.admin__status .waiting'), null);
+    });
+
+    test('a count ticking over does not restart the dots', async () => {
+        let first;
+        let last;
+        const { view } = owner({
+            add: async (id, files, say) => {
+                say('Adding pictures (1 of 2)…');
+                first = view.$('.admin__status .waiting');
+                say('Adding pictures (2 of 2)…');
+                last = view.$('.admin__status .waiting');
+            }
+        });
+
+        view.click(view.button('Add photos'));
+        choose(view, ['antigua.jpg', 'lake.jpg']);
+        await settled();
+
+        // Rebuilding the span each time would send the animation back to one
+        // dot on every picture, which is a stutter rather than a rhythm.
+        assert.equal(first, last);
+        assert.equal(last.textContent, 'Adding pictures (2 of 2)');
+    });
+
+    test('a message that has finished is left as plain text', async () => {
+        const { view } = owner({
+            google: async (id, say) => {
+                // The one message in this flow that is an instruction rather
+                // than a report of work in progress.
+                say('Choose your pictures in the Google Photos window.');
+                return undefined;
+            }
+        });
+
+        view.$('.admin__menu').open = true;
+        view.click(view.button('Google Photos'));
+
+        assert.equal(view.$('.admin__status .waiting'), null);
+        assert.equal(
+            view.$('.admin__status').textContent,
+            'Choose your pictures in the Google Photos window.'
+        );
+
+        await settled();
     });
 });

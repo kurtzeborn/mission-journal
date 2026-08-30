@@ -734,11 +734,36 @@ window.Reader = (function () {
             return el;
         };
 
+        // A message ending in an ellipsis is one that has not finished yet,
+        // and those are the ones worth animating: the dots come off the text
+        // and the stylesheet draws them instead. Anything else has stopped
+        // happening and is a sentence to be read, so it stays still.
+        const say = (text) => {
+            if (!text.endsWith('…')) {
+                status.textContent = text;
+                return;
+            }
+
+            // Kept rather than rebuilt, so a count ticking over from one
+            // picture to the next does not restart the dots each time.
+            let dots = status.querySelector('.waiting');
+            if (!dots) {
+                dots = document.createElement('span');
+                dots.className = 'waiting';
+                status.textContent = '';
+                status.append(dots);
+            }
+
+            dots.textContent = text.slice(0, -1);
+        };
+
         // A successful action reloads the page, so anything this puts on screen
-        // is a failure the owner needs to read.
+        // is a failure the owner needs to read. The action is handed `say` as
+        // well, for the ones long enough to have something worth reporting
+        // before they are done.
         const run = async (working, action) => {
-            status.textContent = working;
-            status.textContent = (await action()) ?? '';
+            say(working);
+            say((await action(say)) ?? '');
         };
 
         // Hiding and unhiding are one button and want two glyphs: a bar across
@@ -1018,21 +1043,15 @@ window.Reader = (function () {
             picker.value = '';
             if (!files.length) return;
 
-            const many = files.length > 1 ? ` (${files.length})` : '';
-            run(`Adding pictures${many}…`, () => admin.addPhotos(post.id, files));
+            run('Adding pictures…', (say) => admin.addPhotos(post.id, files, say));
         });
 
-        // Not wrapped in `run`, which sets the status line once and then waits
-        // for an answer. This one takes minutes and spends them in three
-        // distinct states -- waiting on the owner, then counting pictures --
-        // so it is handed the status line and says where it has got to.
-        fromGoogle?.addEventListener('click', async () => {
+        // Handed the status line for the same reason the upload above is: it
+        // takes minutes and spends them in distinct states -- waiting on the
+        // owner in Google's window, then counting pictures in.
+        fromGoogle?.addEventListener('click', () => {
             source.open = false;
-            status.textContent = 'Opening Google Photos…';
-            const said = await admin.addFromGoogle(post.id, (text) => {
-                status.textContent = text;
-            });
-            status.textContent = said ?? '';
+            run('Opening Google Photos…', (say) => admin.addFromGoogle(post.id, say));
         });
 
         // Awaited, because the answer now comes from a dialog drawn on the

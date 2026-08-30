@@ -244,6 +244,19 @@
         return null;
     }
 
+    // Every owner action ends in a full reload, and a reload lands the owner
+    // back at the top of an archive that can run to hundreds of letters --
+    // a long way from the letter they were working on.
+    //
+    // Naming that letter in the fragment first brings the page back open at it.
+    // This is the route a digest link already takes, so there is no second
+    // mechanism to keep working; `replaceState` rather than assignment because
+    // a reload is not somewhere anyone should be able to press Back into.
+    function reloadAt(postId) {
+        if (postId) history.replaceState(null, '', `#panel-${encodeURIComponent(postId)}`);
+        window.location.reload();
+    }
+
     // The wire half of `send`, without the assumption that the body is JSON or
     // that the page has a version to defend. Pictures are sent as raw bytes,
     // and adding two in a row would fail on the second if it carried the ETag
@@ -264,7 +277,10 @@
 
         // Re-reading is what keeps the page honest: the server decides what a
         // letter now says, including what its sanitizer removed from an edit.
-        if (reload) window.location.reload();
+        //
+        // A DELETE with nothing after the post id is the letter itself going,
+        // and that is the one action with no letter left to come back to.
+        if (reload) reloadAt(method === 'DELETE' && !suffix ? null : postId);
         return null;
     }
 
@@ -307,7 +323,7 @@
             }
         }
 
-        window.location.reload();
+        reloadAt(postId);
         return null;
     }
 
@@ -340,10 +356,12 @@
     // throw away the rest of the selection. The first failure stops the run
     // and is reported with what did get through, since "three of five" is the
     // only honest thing to say and the owner needs to know which to retry.
-    async function addPhotos(postId, files) {
+    async function addPhotos(postId, files, say) {
         let done = 0;
 
         for (const file of files) {
+            say(`Adding pictures (${done + 1} of ${files.length})…`);
+
             const failed = await call(
                 'POST',
                 postId,
@@ -357,13 +375,13 @@
 
             if (failed) {
                 if (!done) return failed;
-                window.location.reload();
+                reloadAt(postId);
                 return null;
             }
             done += 1;
         }
 
-        window.location.reload();
+        reloadAt(postId);
         return null;
     }
 
@@ -507,7 +525,7 @@
             if (failed) {
                 await askGoogle('session', { method: 'DELETE' });
                 if (!done) return failed;
-                window.location.reload();
+                reloadAt(postId);
                 return null;
             }
 
@@ -515,7 +533,7 @@
         }
 
         await askGoogle('session', { method: 'DELETE' });
-        window.location.reload();
+        reloadAt(postId);
         return null;
     }
 
