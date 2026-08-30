@@ -766,6 +766,13 @@ window.Reader = (function () {
             say((await action(say)) ?? '');
         };
 
+        // An action that reloaded the page can leave a sentence behind for it,
+        // which is the only way a run of uploads gets to report the ones that
+        // did not land -- by the time it knows, the page that asked is gone.
+        // Already a finished sentence, so `say` holds it still.
+        const carried = admin.notice?.(post.id);
+        if (carried) say(carried);
+
         // Hiding and unhiding are one button and want two glyphs: a bar across
         // the letter for taking it out of view, an open eye for putting it
         // back. One glyph for both would say what state the letter is in

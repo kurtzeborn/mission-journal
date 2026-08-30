@@ -259,7 +259,8 @@ describe('pictures an owner adds', () => {
         photos = [{ id: 'a1' }, ADDED],
         patch = async () => undefined,
         add = async () => undefined,
-        google = null
+        google = null,
+        notice = null
     } = {}) {
         const calls = [];
         const view = page();
@@ -288,6 +289,14 @@ describe('pictures an owner adds', () => {
                     addFromGoogle: (id, say) => {
                         calls.push({ verb: 'google', id });
                         return google(id, say);
+                    }
+                }),
+                // Also optional, and for a different reason: the archive in
+                // the downloaded zip has no page to have reloaded.
+                ...(notice && {
+                    notice: (id) => {
+                        calls.push({ verb: 'notice', id });
+                        return notice(id);
                     }
                 })
             }
@@ -557,5 +566,25 @@ describe('pictures an owner adds', () => {
         );
 
         await settled();
+    });
+
+    test('a sentence left by the last reload is on the letter it names', () => {
+        const said = 'Added 3 of 5 pictures, then stopped. That picture is too big.';
+        const { view, calls } = owner({ notice: () => said });
+
+        // The letter asks about itself and nothing else, so a run that stopped
+        // on one letter cannot post its report against another.
+        assert.deepEqual(calls, [{ verb: 'notice', id: '2026-03-25-9CRE' }]);
+        assert.equal(view.$('.admin__status').textContent, said);
+
+        // A report, not a progress message: it does not end in an ellipsis and
+        // so gets none of the animated dots.
+        assert.equal(view.$('.admin__status .waiting'), null);
+    });
+
+    test('nothing left behind leaves the line empty', () => {
+        const { view } = owner({ notice: () => null });
+
+        assert.equal(view.$('.admin__status').textContent, '');
     });
 });

@@ -8,12 +8,6 @@ Nothing here blocks anything. That is exactly why it needs writing down.
 
 ## Defects
 
-### A partial upload failure says nothing
-
-`addPhotos` in [web/app.js](../web/app.js) stops on the first failure. If nothing had landed yet it returns the reason and the owner reads it; if anything *had* landed it reloads the page instead, and the reason goes with it. So an owner who chose five pictures and got three sees three, is told nothing, and has no way to know which two to try again.
-
-Both [the plan](plan.md#owners-can-add-pictures-to-a-post) and the comment above the function say it reports what got through. Neither has ever been true. The fix is to carry the count and the reason across the reload, or not to reload on that branch.
-
 ### A comment names the wrong table
 
 The comment above `.deletions--dense` in [web/styles.css](../web/styles.css) describes "the arrivals table", one row per archive, growing without bound. `arrivals` is one row per *letter* and has been swept nightly since the `sweep` timer landed. The rules under that comment style the operator page's last-received view, which is the table actually described. One word.
@@ -28,7 +22,7 @@ The comment above `.deletions--dense` in [web/styles.css](../web/styles.css) des
 
 ### `web/app.js` has no tests
 
-[web/reader.js](../web/reader.js) runs under jsdom against the real page in `functions/tests/reader-dom.js`. `app.js` has no harness at all, so the owner's entire request layer — the reload-and-return-to-the-letter behaviour, the upload loop, the sentences that explain a refusal — is verified only by driving it by hand. It is also the file most likely to be edited while thinking about something else.
+[web/reader.js](../web/reader.js) runs under jsdom against the real page in `functions/tests/reader-dom.js`. `app.js` has no harness at all, so the owner's entire request layer — the reload-and-return-to-the-letter behaviour, the upload loop, the notice stashed across a reload, the sentences that explain a refusal — is verified only by driving it by hand. It is also the file most likely to be edited while thinking about something else.
 
 ### Nobody has read the site with a screen reader
 
