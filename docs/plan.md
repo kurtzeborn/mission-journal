@@ -569,6 +569,8 @@ Missionaries with more photos than an email will carry link a shared album inste
 
 **What is built instead is detection, which is cheap and generates the missing evidence.** Ingest flags a published post whose body links `photos.app.goo.gl`, `drive.google.com`, or a bare `photos.google.com` album, and records which. That is already the same signal that identifies an oversized send stripped of its photos, so it costs one regex and earns a real answer to *how often does this happen, and to which service* — the input this decision actually lacks.
 
+**The Picker turned out to be the answer, once the question changed.** Everything above asks how the *service* can reach an album, and that is still impossible. An *owner* is a different asker — a consented human sitting in front of a browser, which is exactly what the Picker requires and exactly what unattended ingest can never be. See [Adding pictures from Google Photos](#adding-pictures-from-google-photos). It does not repair a link that has already rotted, since the album has to still exist, so the guidance below remains the cheaper fix and the detection above remains how we learn how often it is needed.
+
 **The cheapest fix is not code at all.** Onboarding text should ask for photos attached to the email rather than linked, because attachments are archived permanently and links are not. Gmail's Drive-insert dialog even offers **"send as attachment"**, which converts a link into a real attachment we already handle perfectly. One sentence of guidance solves this at the source for most people.
 
 **Scraping the public share page is rejected.** The `photos.app.goo.gl` URL resolves without authentication, so it is technically reachable — but it is automated access outside the API and against Google's terms, it rests on markup that can change without notice, and it is an indefensible way for a service built around careful handling of other families' data to obtain that data.
@@ -1032,7 +1034,7 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
 
 ### Journal Publish
 
-**Not built.** Last feature to be built, after everything else is stable. See [Phase 11](#phase-11--journal-publish).
+**Built, and waiting on a real order.** See [Phase 11](#phase-11--journal-publish) for what shipped and what closes the phase.
 
 Assemble a physical hardcover photo book from a missionary's journal — all posts, in chronological order, with the photos — and route the print order to a photo-book print-on-demand provider.
 
@@ -1496,7 +1498,7 @@ Shipped since, and previously listed here as outstanding:
     - **It fires on the honest overrun too, and that is intended.** A real family who hit the cap have had letters refused. Nothing is destroyed — the raw message keeps its 30-day life in `inbox/` — but somebody has to re-enqueue them, and nobody can do that without being told.
     - **`has`, not `==`.** The Node worker decorates trace messages in ways that have changed between host versions, and an alert that silently stops matching is worse than no alert: it looks like everything is fine.
     - **Muted for six hours after it fires.** A loop emits this line on every message, and an action group that mails on each one buries the first — the only one that had to be read.
-  - **`arrivals` rows still have no sweep.** They accumulate one per letter, forever.
+  - **`arrivals` rows are swept nightly**, thirty days back, by the `sweep` timer. A row is a tally mark with a date on it and nothing counts one past midnight, so the honest cutoff is a day; thirty is chosen to match the `inbox/` lifecycle rule, so that for any raw message still on disk there is a record of the day it landed and what landed with it. That is what answers *did the cap fire, or did the letters never arrive*.
 - **Sending limits start low and rise with reputation.** Total outbound message size is 5 MiB against 25 MiB inbound, which matters if an ack ever quotes a letter back.
 - ~~**Outbound mail must carry a display name.**~~ **Shipped 2026-08-05.** `from` takes an ordinary RFC 5322 phrase — `Pday Letters <address>` — passed straight through to Cloudflare's REST body. The name lives in a `mailFrom()` helper rather than in the address constants, because those constants are also *identity* and something may one day compare an incoming recipient against them. The tests pin the literal string a mail client parses.
 - **The sending identity is split, and `post@` is no longer used for system mail.** Mail *to* `post@` becomes a post, so sending *from* it inverts that contract at the moment a person is most likely to hit reply: a missionary answering the claim email with "what is this?" would have the reply published to their own archive. `no-reply@` would trade one silent failure for another.
@@ -1659,7 +1661,7 @@ What did not ship alongside them is any automated test over the result. Every it
 Two things not to lose when this is reworked:
 
 - **The offline archive shares `web/reader.js` verbatim** — the byte-equality test in the suite exists to keep the downloaded copy from drifting. That means what is added here has to *load* offline: no ES modules, no `fetch` on the path that draws a letter. It does not mean every feature has to be as good there, and it does not mean no dependency. See [the zip is a lesser experience](#phase-5--offline-archive-export).
-- **The owner controls added alongside the moderation API are provisional** and were built to be replaced. They render only when `mount()` is given an `admin` object, so the archive never draws them. The edit control has since been [rebuilt to edit the letter in place](#the-editor-edits-the-letter-not-its-markup); the surrounding layout has not.
+- **The owner controls added alongside the moderation API are provisional** and were built to be replaced. They render only when `mount()` is given an `admin` object, so the archive never draws them. The edit control has since been [rebuilt to edit the letter in place](#the-editor-edits-the-letter-not-its-markup), and the bar around it with it: labelled buttons became icons carrying a tooltip and an accessible name, which is what lets a row of owner actions, the edit note and a status line sit together on a phone. The icons are Font Awesome served from `/vendor/`, so nothing here reaches a third party while somebody is reading.
 
 A sort-order bug was reported here and then withdrawn — the letters are chronological, newest first, and that was confirmed against the live data independently. See the note on offset-fragile date comparison under [Phase 6](#phase-6--direct-ingest) before that phase lands.
 
@@ -1678,7 +1680,7 @@ Two things had to be built rather than inherited from the browser, both because 
 - **The formatting shortcuts are bound explicitly.** The intent was to offer no toolbar and rely on Ctrl/Cmd+B, I and U, which every browser is supposed to handle inside `contenteditable`. Tested against a real letter, the chords produced nothing at all — the keystroke arrived and no editing command ran. `document.execCommand` itself worked fine when called directly, so the binding, not the command, was missing. They are now bound in the reader. That also pins down the *result*: browsers that do handle these have historically emitted `<span style="font-weight:bold">` rather than `<b>`, and the sanitizer strips `style`, so the owner would have pressed the key, seen bold text, saved, and got plain text back with nothing to explain it. `styleWithCSS` is turned off for the same reason.
 - **Clicking a photo selects it.** By default a click near an image only places the caret beside it, so pressing Delete does nothing and the owner is left prodding at a picture that will not go away. The reader now selects the image node on click, which is what the pointer cursor promises.
 
-**Save still reloads the page, deliberately.** Editing in place means the result is already on screen, so this looks removable — but the server is the thing that decides what the letter finally contains, and its answer can differ from what was typed. More importantly the page holds the `ETag` it loaded, which is what stops one owner's save from silently overwriting another's; after a successful write that value is stale, and a second edit in the same session would be rejected as a conflict. The reload refreshes both. Removing it means reading the new `ETag` and the sanitized body out of the response instead, which is worth doing and is not free.
+**Save still reloads the page, deliberately.** Editing in place means the result is already on screen, so this looks removable — but the server is the thing that decides what the letter finally contains, and its answer can differ from what was typed. More importantly the page holds the `ETag` it loaded, which is what stops one owner's save from silently overwriting another's; after a successful write that value is stale, and a second edit in the same session would be rejected as a conflict. The reload refreshes both. Removing it means reading the new `ETag` and the sanitized body out of the response instead, which is worth doing and is not free. **It returns to the letter rather than the top of the archive** — see [waiting](#waiting-and-coming-back-where-you-were).
 
 What the browser produces was checked against the server end to end: a real letter was edited in place — bold, italic and underline applied by shortcut, a photo deleted, the subject changed — and the exact bytes the page sent were run through `applyEdit`. Both remaining photos, all three formatting tags and the album link survived, no empty blocks were left, `bodyText` was dropped, and a second save changed nothing. The photos matter most: the page displays them through whatever URL its host uses — a relative path in the downloaded archive, `/api/photo/...` on the site — so the editor keeps the stored URL on each image and puts it back before sending. Reading the displayed markup back directly would work on the website today and delete every picture in a letter the day it stopped matching, because the sanitizer drops an `<img>` whose `src` it does not recognize.
 
@@ -1694,7 +1696,7 @@ Raised after the reader backlog was cleared. Deliberately not phases: none of th
 
 ### Word cloud
 
-**Built.** A `Word cloud` button sits in the archive toolbar opposite `Expand all`; it opens a modal holding the sixty commonest words, packed by wordcloud2.js, and picking one runs the search.
+**Built.** A `Word cloud` button sits in the archive toolbar beside `Expand all`; it opens a modal holding the sixty commonest words, packed by wordcloud2.js, and picking one runs the search.
 
 Show the words a missionary actually uses — the names, the places, the things that come up week after week — as a way into an archive that is otherwise only searchable by someone who already knows what to search for.
 
@@ -1718,7 +1720,7 @@ Two remaining questions were answered by using the thing: **stemming does not ea
 The bridge from Google Photos. A linked album stops working whenever it is deleted, moved, or its sharing changes, and there is nothing this service can do about that from the outside. The onboarding page now asks missionaries to attach photos rather than link them, but that does nothing for the letters already in the archive that link out. Letting an owner pull the photos down from the shared album and put them into the letter is what closes that gap — before the link rots rather than after.
 
 - **An uploaded photo goes through the same pipeline as an emailed one**, or it is not the same thing: EXIF stripped including GPS, re-encoded to WebP in both sizes, content-addressed under `rendered/{slug}/photos/`. It has to be indistinguishable from an attachment to everything downstream — the album, the offline export, the photo book. This is why the transcode-and-write pair was pulled out of the render loop into `storePhoto`: two callers doing it two ways is how they drift.
-- **The upload is raw bytes with a `Content-Type` header, one picture per request.** No multipart, because there is nothing to multi-part — there are no other fields, and parsing a format built for forms in order to carry one file would be the only place in the service that needed a body parser. Several pictures are several requests, each its own commit, and the page is reloaded once at the end. The first failure stops the run and says how many got through, because "three of five" is the only honest thing to say.
+- **The upload is raw bytes with a `Content-Type` header, one picture per request.** No multipart, because there is nothing to multi-part — there are no other fields, and parsing a format built for forms in order to carry one file would be the only place in the service that needed a body parser. Several pictures are several requests, each its own commit, and the page is reloaded once at the end. The first failure stops the run, and it should say how many got through, because "three of five" is the only honest thing to say — **it does not**, and that is [a logged gap](issues.md): a partial failure reloads with whatever landed, and says nothing.
 - **`addedAt` is the whole of the distinction.** One ISO timestamp on the photo entry, no email beside it: `photos` is projected verbatim to every reader by `present.js`, and adding a name there would publish which parent uploaded which picture to everyone in the family.
 - **They sit in the same album as the unreferenced attachments, at the end.** No separate grouping and no heading. `renderAlbum` already draws every photo the letter does not display inline, in array order, and appending puts these last for free — while a group of their own would draw a line through the letter's pictures on behalf of a distinction the reader has no use for.
 - **~~Half the sanitizer work is already done.~~ Not needed at all.** `keepPhotoPrefix` exists so an owner's *edit* can carry `/api/photo/{slug}/` URLs. An added picture never touches `bodyHtml`, which is exactly what makes it fall into the album, so the sanitizer never sees it.
@@ -1729,7 +1731,53 @@ The bridge from Google Photos. A linked album stops working whenever it is delet
 - **HEIC matters more here than in email.** It is already a defensive branch in the render path, justified there by being rare; a parent uploading straight from an iPhone makes it the expected case rather than the occasional one.
 - **[Restoring a post to its original](#restoring-the-original) discards them, and that is settled.** Restore re-renders from `raw/`, and a photo the owner added was never in `raw/` — so it is dropped by the same three lines that preserve it on an ordinary re-render, with no second stored state and no prompt. Asking whether to keep them was rejected on those grounds. The confirmation already said so out loud before any of this was built, so the answer could not quietly become whatever the code happened to do.
 
-Open: whether the same mechanism should let an owner replace a dead album *link* with the photos it used to point at, which is the actual story behind the request. Landing a photo at the caret in the editor is answered — it does not, and the album is where it goes.
+Landing a photo at the caret in the editor is answered — it does not, and the album is where it goes. **Pulling the pictures out of a linked album is answered too**, by the Picker below. What is still open is the last step of that story: nothing takes the dead link back out of the letter afterwards, so an owner who imports the photographs is left with a working album underneath a hyperlink that goes nowhere. Editing the body removes it by hand.
+
+### Adding pictures from Google Photos
+
+**Built.** `Add pictures` offers two sources — the device, and Google Photos. Choosing Google sends the owner to Google's own picking screen and brings back only what they selected, into the same endpoint the device upload uses.
+
+This is the remedy [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments) says the service cannot have, and the difference is entirely in who is asking. The Picker refuses service accounts and cannot be pointed at a share — but it does not need to be, because the owner doing the picking is usually the person whose album it is.
+
+- **The scope is `photospicker.mediaitems.readonly` and nothing else.** It grants sight of what the owner hands over in one session, not a view of a library. That is a better bargain than the shared-album scopes Google withdrew, and it is what makes the feature defensible rather than merely possible.
+- **No new credential and no new vendor.** It reuses `GOOGLE_CLIENT_ID` and the existing `google-client-secret` Key Vault reference, so the objection that ruled out a Drive integration — a Google Cloud project with an unattended service-account key in the vault — does not apply. There is no service account; the token is the owner's own.
+- **That token never reaches our storage.** It is sealed into an `HttpOnly; Secure; SameSite=Lax` cookie scoped to the callback path, lives an hour, and is never renewed. **Sealed means signed, not encrypted**, which is the honest description: the contents are the owner's session and the owner's archive, so there is nothing there to hide from them. What must not happen is somebody else *writing* one — pointing a session at an archive that is not theirs, or planting a token in another person's browser.
+- **It is a conversation rather than a call** — four round trips, minutes apart, with the owner off in another window in the middle. Every step is resumable from that envelope and nothing is held on the server between them.
+- **The cap is told to Google, not only enforced on the way back.** It matches the 24 in `post.js`, so somebody who selects their whole camera roll is stopped at the picking screen rather than after a long wait and a refusal.
+- **A picked photo is indistinguishable from an uploaded one downstream.** Same endpoint, same EXIF stripping, same renditions, same `addedAt`. It is a second way to reach `storePhoto`, not a second kind of photograph.
+- **Touching these APIs at all requires passing Google's OAuth verification review**, which is a real gate and the only one of its kind in the service.
+
+### The photo album
+
+**Built.** A `Photo Album` button in the archive toolbar opens every photograph in the archive as one slideshow, with the letter each came from named underneath and a way back into it.
+
+It is a third view of the same letters, alongside the list of dates and the [word cloud](#word-cloud) — by what was photographed, rather than by when it arrived or what it says. Like the cloud it opens over the top of the page rather than taking a place in it, which is why it does not reopen [the two experiments](#two-experiments-in-navigating-a-long-archive) closed below: nothing is added to the column those were rejected for lengthening.
+
+- **Distinct from the per-letter row** that [item 4](#reader-ui-backlog) built. That is the pictures in one letter, in the flow, and it stays. This is the whole archive and is reachable only from the toolbar.
+- **Clicking a picture inside a letter still opens the reader's own lightbox**, here and in the zip. Enlarging the photograph in front of you is a different request from asking to see all of them, and answering the first with the second sweeps the letter out from under the reader.
+- **Oldest first**, unlike the list behind it, which runs newest first because someone checking for a new letter wants the top of the page. Nobody opens an album to see whether anything arrived; they open it to look through, and looking through goes forwards. Newest-first and random are offered beside it.
+- **It is not in the downloaded zip**, which is a deliberate departure from the word cloud's *offline-if-free* rule — here it is not free. The bundle it leans on is larger than everything else the site serves put together, and video, if it ever lands, will live here. See [the zip is a lesser experience](#phase-5--offline-archive-export).
+- **Swiper does the sliding, the pinch-zoom, the arrows, the counter and the keyboard.** What is written here is the dialog around it, the caption, and the route back to the letter. It is fetched on first open rather than by a script tag in the page, because most readers never ask for it and the ones who do have already decided to wait for photographs.
+
+### The archive on a home screen
+
+**Built.** Every page carries a favicon and an `apple-touch-icon`, and a site offers *Add to your home screen* with instructions matched to the browser reading it.
+
+- **Instructions, not an installer.** There is no manifest and no service worker: this is a bookmark with an icon, and calling it an app would promise offline reading the site does not do. `beforeinstallprompt` and a full PWA were both considered and left.
+- **The wording is per browser because that is the whole of what this can offer.** The menu sits in a different corner and the entry has a different name in each — Edge says *Add to phone*, Chrome says *Install and create shortcut* — and a confident direction to a button that is not there is worse than no help at all. Anything unrecognised gets the labels to look for instead of a route.
+- **The icon opens that archive, not the front page**, and the dialog says so. A grandmother's shortcut should land on her grandson's letters.
+
+### Waiting, and coming back where you were
+
+**Built.** A message ending in an ellipsis animates its dots; anything else holds still.
+
+The first load of an archive is a cold start and runs to several seconds, which is long enough that an unmoving line reads as a page that has stopped rather than one still working. The same `.waiting` class covers the loading messages across the site and the owner's status line, so an action long enough to be worth reporting on reports — *Adding pictures (2 of 5)…* — instead of showing one fixed sentence throughout.
+
+- **The ellipsis is the signal**, so nothing needed a flag to say whether it was still happening. The one long instruction sentence in the Google Photos flow ends in a full stop and correctly stays still.
+- **The dots hang off the end of the text rather than sitting in it.** A run of dots that grows and shrinks in the flow rocks a centred line from side to side.
+- **The static content is the ellipsis itself**, so a browser that will not animate `content` renders exactly what it rendered before — which is also what `prefers-reduced-motion` is given.
+- **The span is kept rather than rebuilt between counts**, so a picture ticking over from one to the next does not restart the dots.
+- **Every owner action still reloads, and now names the letter first.** `#panel-{postId}` goes on the URL before the reload, so the page comes back open at the letter that just changed rather than at the top of an archive that may run to hundreds. It is the same fragment a digest email link uses, so there is no second mechanism to keep working. A delete is the exception, because there is no letter to come back to.
 
 ### Two experiments in navigating a long archive
 

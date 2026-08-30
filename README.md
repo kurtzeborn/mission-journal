@@ -14,3 +14,4 @@ A missionary BCCs one shared address on their weekly email home — or a family 
 - [docs/pitch.md](docs/pitch.md) — what the service does, in plain language.
 - [docs/plan.md](docs/plan.md) — full technical design.
 - [docs/todos.md](docs/todos.md) — maintenance, and everything that expires.
+- [docs/issues.md](docs/issues.md) — loose ends: small defects, gaps and unfinished edges.
