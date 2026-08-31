@@ -45,9 +45,6 @@ param inboxRetentionDays int = 30
 @description('Days before a staged export archive is deleted by lifecycle policy.')
 param exportRetentionDays int = 7
 
-@description('Days before a superseded deployment package version is deleted by lifecycle policy.')
-param packageVersionRetentionDays int = 7
-
 @description('Days before a superseded version of an archive blob is deleted by lifecycle policy.')
 param archiveVersionRetentionDays int = 30
 
@@ -169,6 +166,7 @@ param githubSubjectPrefix string = 'repo:kurtzeborn@22382549/mission-journal@131
 
 var suffix = uniqueString(resourceGroup().id)
 var storageName = toLower('${namePrefix}st${suffix}')
+var deployStorageName = toLower('${namePrefix}dep${suffix}')
 var keyVaultName = toLower('${namePrefix}-kv-${suffix}')
 var workspaceName = '${namePrefix}-log-${suffix}'
 var appInsightsName = '${namePrefix}-ai-${suffix}'
@@ -182,12 +180,12 @@ var storageQueueDataContributor = '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
 var storageTableDataContributor = '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 
-// The containers the Functions host keeps for itself: the deployment package,
+// The containers the Functions host keeps for itself on the archive account:
 // the lease blobs it coordinates with, and its own key material. Declared here
 // only so that a role assignment can be scoped to them -- see workerHostRoles.
-// The host creates them on its own if they are missing.
+// The host creates them on its own if they are missing. The deployment package
+// is deliberately not among them; see deployStorage.
 var hostContainerNames = [
-  'app-package'
   'azure-webjobs-hosts'
   'azure-webjobs-secrets'
 ]
@@ -372,8 +370,8 @@ resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-
   }
 ]
 
-// Four rules. The first two delete blobs that have served their purpose; the
-// last two delete superseded versions of blobs that are still very much in use.
+// Three rules. The first two delete blobs that have served their purpose; the
+// last deletes superseded versions of blobs that are still very much in use.
 //
 // The Worker writes every inbound message to the inbox container before
 // anything parses it. Once ingest has copied a message to raw/{slug}/, the
@@ -387,17 +385,10 @@ resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-
 // opened until the weekend.
 //
 // Versioning is on account-wide, so every overwrite anywhere retains a full
-// copy of the old bytes forever unless something expires them. Two places
-// overwrite often enough for that to compound. Flex Consumption republishes
-// `app-package/released-package.zip` on every deploy, and the app reads only
-// whichever version is current -- the site points at the container, not at a
-// version id, and a rollback is a redeploy rather than a revert, so nothing
-// reads an older one. `rendered/posts.json` holds every letter in an archive
-// in a single blob, so one edit to one letter rewrites the whole array.
-//
-// The two windows differ because the recovery stories differ. A bad package is
-// discovered within minutes by the smoke check in deploy-functions.yml. A bad
-// render might not be noticed until someone visits the site, so a month.
+// copy of the old bytes forever unless something expires them. `posts.json`
+// holds every letter in an archive in a single blob, so editing one letter
+// rewrites the whole array and retains the previous one entire. A month,
+// because a bad render might not be noticed until somebody visits the site.
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storage
   name: 'default'
@@ -469,30 +460,6 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05
           }
         }
         {
-          name: 'expire-package-versions'
-          enabled: true
-          type: 'Lifecycle'
-          definition: {
-            filters: {
-              blobTypes: [
-                'blockBlob'
-              ]
-              prefixMatch: [
-                'app-package/'
-              ]
-            }
-            // No baseBlob action on purpose: the current package is what the
-            // app runs from, and deleting it would take the site down.
-            actions: {
-              version: {
-                delete: {
-                  daysAfterCreationGreaterThan: packageVersionRetentionDays
-                }
-              }
-            }
-          }
-        }
-        {
           name: 'expire-archive-versions'
           enabled: true
           type: 'Lifecycle'
@@ -519,6 +486,66 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05
         }
       ]
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Deployment storage — deliberately not the archive account.
+//
+// Soft delete and versioning are blob service settings, so an account gets them
+// on every container or on none. The archive wants both: a letter removed by
+// accident should be recoverable, and for many families raw/ is the only copy
+// that exists. A deployment package wants neither. It is rebuilt from a git tag
+// in minutes, and retaining every superseded copy of a 36 MB zip republished
+// several times a day is how the archive account came to bill 6 GB to hold
+// 1.4 GB of letters. Two accounts is the only way to give each the policy it
+// actually wants.
+//
+// LRS rather than GRS for the same reason -- nothing here is a last surviving
+// copy -- and Hot because the host re-reads the whole package on every cold
+// start.
+// ---------------------------------------------------------------------------
+
+resource deployStorage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: deployStorageName
+  location: location
+  sku: {
+    name: 'Standard_LRS'
+  }
+  kind: 'StorageV2'
+  properties: {
+    accessTier: 'Hot'
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: true
+    minimumTlsVersion: 'TLS1_2'
+    supportsHttpsTrafficOnly: true
+    publicNetworkAccess: 'Enabled'
+    networkAcls: {
+      bypass: 'AzureServices'
+      defaultAction: 'Allow'
+    }
+  }
+}
+
+resource deployBlobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: deployStorage
+  name: 'default'
+  properties: {
+    isVersioningEnabled: false
+    deleteRetentionPolicy: {
+      enabled: false
+    }
+    containerDeleteRetentionPolicy: {
+      enabled: false
+    }
+  }
+}
+
+resource deployContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: deployBlobService
+  name: 'app-package'
+  properties: {
+    publicAccess: 'None'
   }
 }
 
@@ -918,7 +945,7 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
       deployment: {
         storage: {
           type: 'blobContainer'
-          value: '${storage.properties.primaryEndpoints.blob}${hostContainerNames[0]}'
+          value: '${deployStorage.properties.primaryEndpoints.blob}${deployContainer.name}'
           authentication: {
             type: 'SystemAssignedIdentity'
           }
@@ -1120,6 +1147,21 @@ resource workerHostRoles 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
     }
   }
 ]
+
+// Scoped to the container rather than the account, matching workerHostRoles:
+// the host needs to read and replace one blob, not enumerate an account.
+resource workerDeployRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: deployContainer
+  name: guid(deployStorage.id, workerApp.id, storageBlobDataOwner, deployContainer.name)
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      storageBlobDataOwner
+    )
+    principalId: workerApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
 
 resource workerQueueRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: storage
