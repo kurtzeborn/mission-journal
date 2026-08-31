@@ -51,6 +51,9 @@ param rawColdAfterDays int = 30
 @description('Days before a superseded version of an archive blob is deleted by lifecycle policy.')
 param archiveVersionRetentionDays int = 30
 
+@description('GB of telemetry the workspace will accept in a day before it stops ingesting.')
+param workspaceDailyQuotaGb int = 1
+
 @description('''
 Where operational alerts are mailed. Empty means no action group and no Event
 Grid subscription are created at all, which is the right default for a scratch
@@ -596,6 +599,19 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
       name: 'PerGB2018'
     }
     retentionInDays: 30
+    // A circuit breaker, not a budget. Ingestion is billed per GB with nothing
+    // stopping it, so a function that starts logging in a loop bills until
+    // someone notices -- and the way anyone would notice is the invoice.
+    //
+    // Deliberately set far above anything this service does. The busiest day in
+    // the month to 31 August 2026 ingested 20 MB and the median day 5 MB, so a
+    // gigabyte is roughly fifty times the worst real day. That headroom is the
+    // point: a cap that trips during a legitimate burst would discard the very
+    // telemetry needed to explain the burst, which is worse than the bill it
+    // saved.
+    workspaceCapping: {
+      dailyQuotaGb: workspaceDailyQuotaGb
+    }
   }
 }
 
@@ -992,6 +1008,12 @@ resource workerApp 'Microsoft.Web/sites@2023-12-01' = {
       }
       // Always-ready instances would forfeit the free grant on both executions
       // and GB-seconds, and nothing here is latency-sensitive.
+      //
+      // 40 looks generous for a service this small and it is not. Opening an
+      // album fires a photo request per picture at once, and each one holds an
+      // instance for up to a second and a half while it reads a blob; the month
+      // to 31 August 2026 peaked at 28 instances in a single minute serving 93
+      // photo calls. Lower this and albums queue. Measure before touching it.
       scaleAndConcurrency: {
         maximumInstanceCount: 40
         instanceMemoryMB: 2048
