@@ -45,6 +45,9 @@ param inboxRetentionDays int = 30
 @description('Days before a staged export archive is deleted by lifecycle policy.')
 param exportRetentionDays int = 7
 
+@description('Days before an original message in raw/ is moved to the Cold tier.')
+param rawColdAfterDays int = 30
+
 @description('Days before a superseded version of an archive blob is deleted by lifecycle policy.')
 param archiveVersionRetentionDays int = 30
 
@@ -370,8 +373,9 @@ resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-
   }
 ]
 
-// Three rules. The first two delete blobs that have served their purpose; the
-// last deletes superseded versions of blobs that are still very much in use.
+// Four rules. The first two delete blobs that have served their purpose, the
+// third deletes superseded versions of blobs still in use, and the last moves
+// the one part of the archive nobody reads onto cheaper storage.
 //
 // The Worker writes every inbound message to the inbox container before
 // anything parses it. Once ingest has copied a message to raw/{slug}/, the
@@ -479,6 +483,37 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05
               version: {
                 delete: {
                   daysAfterCreationGreaterThan: archiveVersionRetentionDays
+                }
+              }
+            }
+          }
+        }
+        {
+          name: 'cool-raw'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: {
+              blobTypes: [
+                'blockBlob'
+              ]
+              prefixMatch: [
+                'raw/'
+              ]
+            }
+            // `raw/` is the largest thing here and the least read. Nothing on
+            // a page view touches it: render reads a message once, minutes
+            // after it arrives, and after that only an owner restoring a letter
+            // to its original ever asks for it again. Cold stores it for a
+            // fifth of what Hot does and charges for retrieval instead, which
+            // is the right way round for bytes nobody fetches.
+            //
+            // A month, not immediately, so that the render queue is long done
+            // and a fresh letter is still cheap to re-render.
+            actions: {
+              baseBlob: {
+                tierToCold: {
+                  daysAfterModificationGreaterThan: rawColdAfterDays
                 }
               }
             }
