@@ -45,6 +45,12 @@ param inboxRetentionDays int = 30
 @description('Days before a staged export archive is deleted by lifecycle policy.')
 param exportRetentionDays int = 7
 
+@description('Days before a superseded deployment package version is deleted by lifecycle policy.')
+param packageVersionRetentionDays int = 7
+
+@description('Days before a superseded version of an archive blob is deleted by lifecycle policy.')
+param archiveVersionRetentionDays int = 30
+
 @description('''
 Where operational alerts are mailed. Empty means no action group and no Event
 Grid subscription are created at all, which is the right default for a scratch
@@ -362,7 +368,8 @@ resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-
   }
 ]
 
-// Two rules, both about data that has already served its purpose.
+// Four rules. The first two delete blobs that have served their purpose; the
+// last two delete superseded versions of blobs that are still very much in use.
 //
 // The Worker writes every inbound message to the inbox container before
 // anything parses it. Once ingest has copied a message to raw/{slug}/, the
@@ -374,6 +381,19 @@ resource queues 'Microsoft.Storage/storageAccounts/queueServices/queues@2023-05-
 // byte of it is rebuildable from `raw/`, so keeping one is pure duplicated
 // exposure once it has been fetched. A week is long enough for a link nobody
 // opened until the weekend.
+//
+// Versioning is on account-wide, so every overwrite anywhere retains a full
+// copy of the old bytes forever unless something expires them. Two places
+// overwrite often enough for that to compound. Flex Consumption republishes
+// `app-package/released-package.zip` on every deploy, and the app reads only
+// whichever version is current -- the site points at the container, not at a
+// version id, and a rollback is a redeploy rather than a revert, so nothing
+// reads an older one. `rendered/posts.json` holds every letter in an archive
+// in a single blob, so one edit to one letter rewrites the whole array.
+//
+// The two windows differ because the recovery stories differ. A bad package is
+// discovered within minutes by the smoke check in deploy-functions.yml. A bad
+// render might not be noticed until someone visits the site, so a month.
 resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
   parent: storage
   name: 'default'
@@ -439,6 +459,55 @@ resource lifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05
               version: {
                 delete: {
                   daysAfterCreationGreaterThan: exportRetentionDays
+                }
+              }
+            }
+          }
+        }
+        {
+          name: 'expire-package-versions'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: {
+              blobTypes: [
+                'blockBlob'
+              ]
+              prefixMatch: [
+                'app-package/'
+              ]
+            }
+            // No baseBlob action on purpose: the current package is what the
+            // app runs from, and deleting it would take the site down.
+            actions: {
+              version: {
+                delete: {
+                  daysAfterCreationGreaterThan: packageVersionRetentionDays
+                }
+              }
+            }
+          }
+        }
+        {
+          name: 'expire-archive-versions'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: {
+              blobTypes: [
+                'blockBlob'
+              ]
+              prefixMatch: [
+                'rendered/'
+                'raw/'
+                'books/'
+              ]
+            }
+            // Again no baseBlob action. These are the archive itself.
+            actions: {
+              version: {
+                delete: {
+                  daysAfterCreationGreaterThan: archiveVersionRetentionDays
                 }
               }
             }
