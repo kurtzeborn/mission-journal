@@ -205,7 +205,11 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
   kind: 'StorageV2'
   properties: {
-    accessTier: 'Cool'
+    // Hot despite this being an archive. Cool prices bytes at rest 40% lower
+    // but charges 2.5x for reads and adds a per-GB retrieval fee, and reads
+    // are two thirds of the bill here -- the Functions host alone re-reads its
+    // 55 MB package on every cold start. Cool only wins past roughly 55 GB.
+    accessTier: 'Hot'
     allowBlobPublicAccess: false
     allowSharedKeyAccess: true
     minimumTlsVersion: 'TLS1_2'
