@@ -72,7 +72,13 @@
 
         const who = document.createElement('span');
         who.className = 'people__who';
-        who.textContent = person.email;
+
+        // Its own element so the row can be dimmed without dimming the marker
+        // that says why: opacity on the parent is not something a child undoes.
+        const address = document.createElement('span');
+        address.className = 'people__address';
+        address.textContent = person.email;
+        who.appendChild(address);
 
         // Beside the name rather than out by the buttons, where it landed in a
         // different place on every row: the controls a row has decide how much
@@ -86,6 +92,19 @@
               : person.role;
         who.appendChild(document.createTextNode(' '));
         who.appendChild(what);
+
+        // Beside the address rather than on a line of its own. Three bad
+        // addresses in a list of thirty cost three extra lines to say one
+        // thing, and the sentence is still there on hover and to a reader.
+        if (person.delivery) {
+            const bad = document.createElement('span');
+            bad.className = 'people__undelivered';
+            bad.textContent = 'not delivering';
+            bad.setAttribute('title', UNDELIVERED);
+            bad.setAttribute('aria-label', UNDELIVERED);
+            who.appendChild(document.createTextNode(' '));
+            who.appendChild(bad);
+        }
 
         // The address the invitation was sent to, when the person signed in
         // with a different one. Without this the row is unidentifiable: an
@@ -168,7 +187,7 @@
                     await api(`/${encodeURIComponent(person.pending ? person.id : person.email)}`, {
                         method: 'DELETE'
                     });
-                }, trouble)
+                }, trouble, '\u00d7')
             );
         } else if (!person.pending) {
             const why = document.createElement('span');
@@ -183,17 +202,6 @@
 
         item.appendChild(controls);
         item.appendChild(trouble);
-
-        // Last, so it reads as a note under the whole row rather than as a
-        // failure of whichever button happens to sit above it. It is not put in
-        // `trouble`, which belongs to the buttons and is cleared on the next
-        // press -- this one is a standing fact about the address.
-        if (person.delivery) {
-            const undelivered = document.createElement('span');
-            undelivered.className = 'people__undelivered';
-            undelivered.textContent = UNDELIVERED;
-            item.appendChild(undelivered);
-        }
 
         return item;
     }
@@ -213,11 +221,19 @@
     //
     // `canceled` is the one string that reports nothing, because the person
     // who dismissed the confirmation already knows what they chose.
-    function button(label, action, trouble) {
+    function button(label, action, trouble, icon = '') {
         const el = document.createElement('button');
         el.type = 'button';
-        el.className = 'button button--quiet button--compact';
-        el.textContent = label;
+        el.className = icon
+            ? 'button button--quiet button--compact button--icon'
+            : 'button button--quiet button--compact';
+        el.textContent = icon || label;
+        // The glyph is decoration; the name is the label a screen reader and a
+        // long-press tooltip both read.
+        if (icon) {
+            el.setAttribute('aria-label', label);
+            el.setAttribute('title', label);
+        }
         el.addEventListener('click', async () => {
             el.disabled = true;
             if (trouble) trouble.hidden = true;
@@ -280,10 +296,24 @@
         const list = $('people');
         list.textContent = '';
 
-        for (const person of payload.members) list.appendChild(row(person));
+        // Owners above readers, alphabetical inside each. Thirty rows in
+        // whatever order they were added is a list nobody can find a name in,
+        // and the people who can change things are what an owner came to check.
+        const rank = (p) => (p.verifiedMissionary ? 0 : p.role === 'owner' ? 1 : 2);
+        const ordered = (people) =>
+            [...people].sort((a, b) => rank(a) - rank(b) || a.email.localeCompare(b.email));
+
+        for (const person of ordered(payload.members)) list.appendChild(row(person));
         // Invitations after members, and marked, because an invitation is an
         // offer rather than access and the difference has to be visible.
-        for (const invited of payload.invites) list.appendChild(row({ ...invited, pending: true }));
+        for (const invited of ordered(payload.invites)) list.appendChild(row({ ...invited, pending: true }));
+
+        // So a long list can be checked against a number rather than counted.
+        const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+        $('people-count').textContent = payload.invites.length
+            ? `${count(payload.members.length, 'person', 'people')}, ` +
+              `${count(payload.invites.length, 'invitation', 'invitations')} waiting`
+            : count(payload.members.length, 'person', 'people');
 
         state.hidden = true;
         $('everything').hidden = false;

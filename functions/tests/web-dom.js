@@ -357,12 +357,16 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
         },
         /** The rendered lines of a list, one string per child. */
         lines: (id) => document.getElementById(id).children.map((c) => c.textContent),
-        /** A descendant button by the words on it, for clicking. */
+        /** A descendant button by the words on it, or by the name it gives a screen reader. */
         button: (id, label) =>
             document
                 .getElementById(id)
                 .descendants()
-                .find((node) => node.tagName === 'button' && node.textContent === label),
+                .find(
+                    (node) =>
+                        node.tagName === 'button' &&
+                        (node.textContent === label || node.getAttribute('aria-label') === label)
+                ),
         /** A descendant link by the words on it, for reading its href. */
         link: (id, label) =>
             document

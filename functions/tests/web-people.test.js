@@ -262,6 +262,74 @@ describe('reading the list of who has access', () => {
         assert.equal(view.el('everything').hidden, true);
     });
 
+    test('the list says how many it is, so a long one can be checked', async () => {
+        const view = await people({
+            answer: listing({
+                members: [
+                    { email: 'a@example.com', role: 'owner', you: true },
+                    { email: 'b@example.com', role: 'reader', removable: true }
+                ],
+                invites: [{ id: 'x', email: 'later@example.com', role: 'reader' }]
+            })
+        });
+
+        assert.equal(view.text('people-count'), '2 people, 1 invitation waiting');
+    });
+
+    test('nobody invited, nothing said about invitations', async () => {
+        const view = await people({ answer: listing(OWNER_ONLY) });
+
+        assert.equal(view.text('people-count'), '1 person');
+    });
+
+    test('Remove is a glyph on screen and a word to a screen reader', async () => {
+        // The list has to survive thirty relatives, and "Remove" spelled out on
+        // every row is the widest thing in it. What must not shrink with it is
+        // the name the button answers to.
+        const view = await people({
+            answer: listing({
+                members: [{ email: 'gran@example.com', role: 'reader', removable: true }],
+                invites: []
+            })
+        });
+
+        const remove = view.button('people', 'Remove');
+        assert.equal(remove.textContent, '\u00d7');
+        assert.equal(remove.getAttribute('aria-label'), 'Remove');
+        assert.equal(remove.getAttribute('title'), 'Remove');
+    });
+
+    test('owners come before readers, and each group is alphabetical', async () => {
+        // Arrival order is unfindable once the list is long, and the people who
+        // can change things are what an owner opened the page to check.
+        const view = await people({
+            answer: listing({
+                members: [
+                    { email: 'zoe@example.com', role: 'reader', removable: true },
+                    { email: 'dad@example.com', role: 'owner', removable: true },
+                    { email: 'elder@example.com', role: 'owner', verifiedMissionary: true },
+                    { email: 'aunt@example.com', role: 'reader', removable: true }
+                ],
+                invites: [
+                    { id: 'b', email: 'second@example.com', role: 'reader' },
+                    { id: 'a', email: 'first@example.com', role: 'reader' }
+                ]
+            })
+        });
+
+        assert.deepEqual(
+            view.lines('people').map((line) => line.split(' ')[0]),
+            [
+                'elder@example.com',
+                'dad@example.com',
+                'aunt@example.com',
+                'zoe@example.com',
+                'first@example.com',
+                'second@example.com'
+            ]
+        );
+    });
+
     test('withdrawing an invitation asks first, and asks about the invitation', async () => {
         // Removing a member and withdrawing an offer read the same on screen
         // and are not the same act. The confirmation is the only place the
@@ -433,12 +501,24 @@ describe('showing that somebody is not getting their mail', () => {
 
     const classesOn = (view, i) => view.el('people').children[i].classList.added;
 
+    const markerIn = (view, i) =>
+        view
+            .el('people')
+            .children[i].descendants()
+            .find((child) => child.className === 'people__undelivered');
+
     test('the row is dimmed and says why, in words nobody has to look up', async () => {
         const view = await people({ answer: undeliverable('failed') });
 
         assert.ok(classesOn(view, 1).includes('people__row--undelivered'));
-        assert.match(view.lines('people')[1], /Mail is not reaching this address/);
-        assert.match(view.lines('people')[1], /Check the spelling/);
+
+        // Two words in the row, the sentence behind them. A sentence per bad
+        // address is a line per bad address in a list of thirty.
+        const marker = markerIn(view, 1);
+        assert.equal(marker.textContent, 'not delivering');
+        assert.match(marker.getAttribute('title'), /Mail is not reaching this address/);
+        assert.match(marker.getAttribute('title'), /Check the spelling/);
+        assert.equal(marker.getAttribute('aria-label'), marker.getAttribute('title'));
     });
 
     test('one sentence, whatever the provider called it', async () => {

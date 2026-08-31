@@ -27,9 +27,10 @@
         <div id="state" class="state"><span class="waiting">Loading</span></div>
 
         <section id="everything" hidden>
+            <p class="note people__count" id="people-count" role="status" aria-live="polite"></p>
             <ul class="people" id="people"></ul>
 
-            <h2>Invite someone</h2>
+            <h2>Invite friends &amp; family</h2>
             <form id="invite">
                 <p>
                     <label for="email">Their email addresses</label><br>
@@ -42,7 +43,7 @@
                     <textarea id="email" class="addresses" name="email" rows="4" autocomplete="off" required
                         placeholder="grandma@example.com, uncle.bob@example.com&#10;Aunt Kay &lt;kay@example.com&gt;"></textarea>
                 </p>
-                <p class="note">
+                <p class="note note--small">
                     One or many &mdash; separate them with commas or put each on its own line.
                     Pasting straight out of your contacts or an old email works; names around the
                     addresses are ignored.
@@ -55,11 +56,6 @@
                     </select>
                 </p>
                 <p><button class="button" type="submit" id="invite-submit">Send the invitations</button></p>
-                <p class="note">
-                    We email them a link. Nothing changes until they follow it, and the account they
-                    sign in with is the one that gets access &mdash; it does not have to be the
-                    address you type here.
-                </p>
                 <p class="note" id="invite-said" role="status" aria-live="polite"></p>
                 <ul class="note" id="invite-trouble" hidden></ul>
             </form>

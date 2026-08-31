@@ -12,10 +12,6 @@ Nothing here blocks anything. That is exactly why it needs writing down.
 
 The comment above `.deletions--dense` in [web/styles.css](../web/styles.css) describes "the arrivals table", one row per archive, growing without bound. `arrivals` is one row per *letter* and has been swept nightly since the `sweep` timer landed. The rules under that comment style the operator page's last-received view, which is the table actually described. One word.
 
-### A single-letter archive gets no toolbar
-
-[web/reader.js](../web/reader.js) builds the toolbar only when `posts.length > 1`, so Photo Album, Word cloud and Expand all appear and disappear together. That is right for Expand all and wrong for the album: a first letter carrying a dozen photographs has an album worth opening, and a family's very first visit is when it would matter most. Splitting the gate is a couple of lines.
-
 ---
 
 ## Gaps in verification

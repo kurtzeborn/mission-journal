@@ -1262,6 +1262,11 @@ button:focus-visible {
     font-size: 0.95rem;
 }
 
+/* For a note that explains a field rather than making a point of its own. */
+.note--small {
+    font-size: 0.8rem;
+}
+
 /* --- the mark beside a label --- */
 
 /* One question and its answer, where the answer is folded away until it is
@@ -1580,13 +1585,35 @@ h3:target {
     padding: 0;
 }
 
+/* Deliberately denser than the rest of the site. This is a list to scan rather
+   than prose to read, and at thirty relatives a full-size row puts the person
+   being looked for below the fold on a phone. */
 .people__row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 0;
+    gap: 0.4rem;
+    padding: 0.3rem 0;
+    font-size: 0.8rem;
     border-bottom: 1px solid var(--rule);
+}
+
+/* The controls come down with the row. Below the 34px the rest of the site
+   uses, which is the trade for the density -- acceptable only because Remove
+   asks before it does anything. */
+.people__row .button--compact {
+    min-height: 26px;
+    padding: 0.15rem 0.45rem;
+    font-size: 0.68rem;
+}
+
+/* Square, so the glyph sits in the middle of it rather than on a baseline. */
+.button--icon {
+    justify-content: center;
+    width: 26px;
+    padding: 0;
+    font-size: 1rem;
+    line-height: 1;
 }
 
 /* Takes the slack so the controls sit right, and wraps rather than truncating:
@@ -1610,7 +1637,7 @@ h3:target {
     border: 1px solid var(--rule);
     border-radius: 999px;
     font-family: system-ui, sans-serif;
-    font-size: 0.68rem;
+    font-size: 0.6rem;
     font-weight: 600;
     letter-spacing: 0.03em;
     color: var(--ink-soft);
@@ -1634,13 +1661,13 @@ h3:target {
    loudest thing in a row it is only explaining. */
 .people__aside {
     color: var(--ink-soft);
-    font-size: 0.85rem;
+    font-size: 0.72rem;
 }
 
 /* The address an invitation went to, under the identity that accepted it. */
 .people__was {
     color: var(--ink-soft);
-    font-size: 0.85rem;
+    font-size: 0.72rem;
 }
 
 .people__controls {
@@ -1664,19 +1691,31 @@ h3:target {
    here, still real, not currently working. The row keeps all its controls at
    full contrast -- Resend is very often the thing to press next, and dimming
    the remedy along with the problem would be the wrong half. */
-.people__row--undelivered .people__who,
+.people__row--undelivered .people__address,
+.people__row--undelivered .people__was,
 .people__row--undelivered .people__aside {
     opacity: 0.55;
 }
 
-/* Full-width for the same reason `.people__trouble` is, and warm rather than
-   red: nobody has done anything wrong, and an alarming color beside a
-   grandmother's address reads as an accusation. */
+/* Warm rather than red: nobody has done anything wrong, and an alarming color
+   beside a grandmother's address reads as an accusation. Two words in the row
+   instead of a sentence under it -- three bad addresses in a list of thirty
+   cost three extra lines to say one thing. The sentence is on the title. */
 .people__undelivered {
-    flex: 1 0 100%;
-    margin: 0;
-    font-size: 0.85rem;
+    font-size: 0.72rem;
     color: #8a5a12;
+    white-space: nowrap;
+    cursor: help;
+}
+
+/* Exempt from the dimming above: it is the one part of the row that is the point. */
+.people__row--undelivered .people__undelivered {
+    opacity: 1;
+}
+
+/* How many people this is, so a long list can be checked against a number. */
+.people__count {
+    margin: 0 0 0.5rem;
 }
 
 /* The address box on the people page. Wide and tall enough that a pasted

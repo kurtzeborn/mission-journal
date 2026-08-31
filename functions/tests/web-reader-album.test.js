@@ -55,6 +55,27 @@ describe('getting to the album', () => {
         assert.deepEqual(labels(view), ['Word cloud', 'Expand all']);
     });
 
+    test('one photograph in the whole archive is not an album', () => {
+        // It is the picture already on the page, so the button would open a
+        // window over the archive to show what the archive is showing.
+        const view = archive({
+            posts: [
+                letter('2026-03-25-9CRE', `${img(PICTURE)}${para(400, 'Antigua')}`, {
+                    photos: [{ id: PICTURE, width: 800, height: 600 }]
+                }),
+                POSTS[1]
+            ]
+        });
+
+        assert.deepEqual(labels(view), ['Word cloud', 'Expand all']);
+    });
+
+    test('a single letter carrying pictures still gets one', () => {
+        // Expand all and the word cloud have nothing to act on, so what
+        // appears is the album button by itself rather than no toolbar.
+        assert.deepEqual(labels(archive({ posts: [POSTS[0]] })), ['Photo Album']);
+    });
+
     test('opening it from the toolbar starts at the beginning', () => {
         const view = archive();
         view.click(view.button('Photo Album'));

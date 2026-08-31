@@ -2006,45 +2006,54 @@ window.Reader = (function () {
 
         const search = setUpSearch(posts, views, groups, elements);
 
+        const photoCount = posts.reduce((n, post) => n + (post.photos?.length ?? 0), 0);
+
         // One control for the whole list, built here for the same reason the
         // search stepper is: there are two page templates hosting this file
         // and only one of this. It earns its place on the archives that are
         // read rather than scanned -- somebody catching up on a month wants
         // all of it open and does not want to click eight times to get there.
-        if (posts.length > 1) {
+        const many = posts.length > 1;
+        const gallery = Boolean(album) && photoCount > 1;
+
+        if (many || gallery) {
             const toolbar = document.createElement('div');
             toolbar.className = 'toolbar';
 
-            const all = document.createElement('button');
-            all.type = 'button';
-            all.className = 'button button--quiet button--compact';
-            all.textContent = 'Expand all';
+            if (many) {
+                const all = document.createElement('button');
+                all.type = 'button';
+                all.className = 'button button--quiet button--compact';
+                all.textContent = 'Expand all';
 
-            all.addEventListener('click', () => {
-                const opening = all.textContent === 'Expand all';
-                // Folded first when shutting, because opening a letter
-                // unfolds its month and doing the two in the other order
-                // would undo half the work as it went.
-                for (const group of groups) setFolded(group, !opening);
-                for (const view of views.values()) setExpanded(view, opening);
-                all.textContent = opening ? 'Collapse all' : 'Expand all';
-            });
+                all.addEventListener('click', () => {
+                    const opening = all.textContent === 'Expand all';
+                    // Folded first when shutting, because opening a letter
+                    // unfolds its month and doing the two in the other order
+                    // would undo half the work as it went.
+                    for (const group of groups) setFolded(group, !opening);
+                    for (const view of views.values()) setExpanded(view, opening);
+                    all.textContent = opening ? 'Collapse all' : 'Expand all';
+                });
 
-            // The far end of the row from Expand all, which sits over on the
-            // right above the Expand buttons it works on. One rearranges the
-            // list in front of you and the other opens a window over the top
-            // of it, and a thumb reaching for one should not land on the other.
-            const cloudButton = document.createElement('button');
-            cloudButton.type = 'button';
-            cloudButton.className = 'button button--quiet button--compact';
-            cloudButton.textContent = 'Word cloud';
-            cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
+                // The far end of the row from Expand all, which sits over on the
+                // right above the Expand buttons it works on. One rearranges the
+                // list in front of you and the other opens a window over the top
+                // of it, and a thumb reaching for one should not land on the other.
+                const cloudButton = document.createElement('button');
+                cloudButton.type = 'button';
+                cloudButton.className = 'button button--quiet button--compact';
+                cloudButton.textContent = 'Word cloud';
+                cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
 
-            toolbar.append(cloudButton, all);
+                toolbar.append(cloudButton, all);
+            }
 
             // Beside the word cloud rather than beside Expand all: both open a
-            // window over the archive instead of rearranging it.
-            if (album && posts.some((post) => post.photos?.length)) {
+            // window over the archive instead of rearranging it. Counted across
+            // the archive rather than per letter, because one photograph is the
+            // one already on the page rather than an album worth opening.
+            if (gallery) {
                 const photos = document.createElement('button');
                 photos.type = 'button';
                 photos.className = 'button button--quiet button--compact';
