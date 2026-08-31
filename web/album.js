@@ -251,7 +251,10 @@ window.Album = (function () {
     const TINTS = 6;
 
     // How far either side of the picture on screen is fetched. See `preload`.
-    const NEAR = 2;
+    // One rather than two: the full-size rendition averages 358 KB, so each
+    // extra step of lookahead is most of a megabyte pulled down before anyone
+    // has asked to see it.
+    const NEAR = 1;
 
     function slideFor(frame, index) {
         // No src yet, and no `loading="lazy"` either -- `preload` decides when
@@ -337,6 +340,35 @@ window.Album = (function () {
     }
 
     /**
+     * Hold the slideshow until the picture it just moved to has arrived.
+     *
+     * Autoplay runs on a timer, so on a slow connection it moves on before the
+     * photograph it moved to has finished downloading -- and then does it
+     * again four seconds later. The deck ends up further ahead of the network
+     * the longer it runs, and the reader watches a stack of blank cards while
+     * a queue of images they have already gone past comes down the wire.
+     *
+     * `pause` rather than `stop`, because stopping is something the reader
+     * asked for: it fires `autoplayStop`, which relabels the button. Waiting is
+     * not a state the button should report.
+     */
+    function holdFor(view) {
+        const autoplay = view.swiper?.autoplay;
+        if (!autoplay?.running) return;
+
+        const img = view.swiper.slides[view.swiper.activeIndex]?.querySelector('img');
+        if (!img || img.complete) return;
+
+        autoplay.pause();
+
+        // Resumed on failure as well as success. A photograph that never
+        // arrives must not park the slideshow for good.
+        const go = () => autoplay.resume();
+        img.addEventListener('load', go, { once: true });
+        img.addEventListener('error', go, { once: true });
+    }
+
+    /**
      * Fill the dialog and start Swiper, at whichever picture is named.
      *
      * Called on open and again whenever the order changes, which is why it
@@ -392,6 +424,7 @@ window.Album = (function () {
                 slideChange: () => {
                     describe(view);
                     preload(view);
+                    holdFor(view);
                 },
                 autoplayStart: () => { view.play.textContent = 'Pause'; },
                 // Also fires on its own at the last picture, which is the
@@ -419,6 +452,7 @@ window.Album = (function () {
 
         describe(view);
         preload(view);
+        holdFor(view);
     }
 
     /**
