@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, test } from 'node:test';
 
 import {
     BOOKS,
@@ -59,23 +59,23 @@ const letters = [
 ];
 
 describe('what a site needs before it can be printed', () => {
-    it('refuses only over the name, which is the title of the book', () => {
+    test('refuses only over the name, which is the title of the book', () => {
         assert.deepEqual(missingForBook({ displayName: 'Elder Isaac Backman', mission: 'Chile Santiago' }), []);
         assert.deepEqual(missingForBook({ mission: 'Chile Santiago' }), ['displayName']);
     });
 
-    it('asks for a mission without insisting on one', () => {
+    test('asks for a mission without insisting on one', () => {
         assert.deepEqual(missingForBook({ displayName: 'Elder Isaac Backman' }), ['mission']);
     });
 
-    it('dates the cover from the letters when nobody has said otherwise', () => {
+    test('dates the cover from the letters when nobody has said otherwise', () => {
         const filled = coverProfile({ displayName: 'Elder Isaac Backman' }, letters);
 
         assert.equal(filled.startDate, '2026-01-04');
         assert.equal(filled.returnDate, '2026-03-15');
     });
 
-    it('leaves dates the owner did set alone', () => {
+    test('leaves dates the owner did set alone', () => {
         const filled = coverProfile(
             { displayName: 'Elder Isaac Backman', startDate: '2025-12-01', returnDate: '2027-12-01' },
             letters
@@ -87,7 +87,7 @@ describe('what a site needs before it can be printed', () => {
 });
 
 describe('asking for a book', () => {
-    it('records that one is being built before it asks for it to be built', async () => {
+    test('records that one is being built before it asks for it to be built', async () => {
         const store = seed(letters);
         const result = await requestBook({ store, slug: SLUG, principal: { userDetails: 'mum@example.com' }, log: quiet });
 
@@ -96,7 +96,7 @@ describe('asking for a book', () => {
         assert.deepEqual(store.queues.get('book'), [JSON.stringify({ slug: SLUG, id: result.id })]);
     });
 
-    it('will not print a site with no name on it', async () => {
+    test('will not print a site with no name on it', async () => {
         const store = seed(letters, { mission: 'Chile Santiago' });
         const result = await requestBook({ store, slug: SLUG, log: quiet });
 
@@ -105,7 +105,7 @@ describe('asking for a book', () => {
         assert.equal(store.queues.get('book'), undefined);
     });
 
-    it('hands back the build already running rather than starting a second', async () => {
+    test('hands back the build already running rather than starting a second', async () => {
         const store = seed(letters);
         const first = await requestBook({ store, slug: SLUG, log: quiet });
         const second = await requestBook({ store, slug: SLUG, log: quiet });
@@ -115,7 +115,7 @@ describe('asking for a book', () => {
         assert.equal(store.queues.get('book').length, 1);
     });
 
-    it('starts again once a build has been running far too long to still be running', async () => {
+    test('starts again once a build has been running far too long to still be running', async () => {
         const store = seed(letters);
         const first = await requestBook({ store, slug: SLUG, now: new Date('2026-06-01T00:00:00.000Z'), log: quiet });
         const second = await requestBook({ store, slug: SLUG, now: new Date('2026-06-01T02:00:00.000Z'), log: quiet });
@@ -124,7 +124,7 @@ describe('asking for a book', () => {
         assert.equal(store.queues.get('book').length, 2);
     });
 
-    it('names books so that the newest one sorts last', async () => {
+    test('names books so that the newest one sorts last', async () => {
         const store = seed(letters);
         const first = await requestBook({ store, slug: SLUG, now: new Date('2026-06-01T00:00:00.000Z'), log: quiet });
         const second = await requestBook({ store, slug: SLUG, now: new Date('2026-07-01T00:00:00.000Z'), log: quiet });
@@ -135,7 +135,7 @@ describe('asking for a book', () => {
 });
 
 describe('building the book', () => {
-    it('leaves a PDF, a manifest and a finished status behind', async () => {
+    test('leaves a PDF, a manifest and a finished status behind', async () => {
         const store = seed(letters);
         const { id } = await requestBook({ store, slug: SLUG, log: quiet });
 
@@ -157,7 +157,7 @@ describe('building the book', () => {
         );
     });
 
-    it('leaves a copy that can be shown to somebody as well as one that can be printed', async () => {
+    test('leaves a copy that can be shown to somebody as well as one that can be printed', async () => {
         const store = seed(letters);
         const { id } = await requestBook({ store, slug: SLUG, log: quiet });
 
@@ -178,7 +178,7 @@ describe('building the book', () => {
         assert.ok(!print.bytes.toString('latin1').includes('/ExtGState'));
     });
 
-    it('keeps a held letter out of a permanent object', async () => {
+    test('keeps a held letter out of a permanent object', async () => {
         const store = seed([...letters, post('d', '2026-04-01', 'Not for the family', { hidden: true })]);
         const { id } = await requestBook({ store, slug: SLUG, log: quiet });
 
@@ -191,7 +191,7 @@ describe('building the book', () => {
         );
     });
 
-    it('says why it could not build rather than failing silently', async () => {
+    test('says why it could not build rather than failing silently', async () => {
         const store = seed([]);
         const { id } = await requestBook({ store, slug: SLUG, log: quiet });
 
@@ -203,7 +203,7 @@ describe('building the book', () => {
         assert.match(status.error, /no letters/);
     });
 
-    it('gives up rather than waits when the build fails after the upload has started', { timeout: 20000 }, async () => {
+    test('gives up rather than waits when the build fails after the upload has started', { timeout: 20000 }, async () => {
         // A corrupt rendition record, which is the shape of every failure
         // that lands mid-book: by the time it is discovered the PDF stream
         // exists, storage is reading it, and most of the file has already
@@ -223,7 +223,7 @@ describe('building the book', () => {
         assert.equal(status.state, STATE.failed);
     });
 
-    it('does nothing at all when the site went away between the request and the build', async () => {
+    test('does nothing at all when the site went away between the request and the build', async () => {
         const store = seed(letters);
         const result = await runBook({ message: { slug: SLUG, id: 'never-asked-for' }, store, log: quiet });
 
@@ -231,7 +231,7 @@ describe('building the book', () => {
         assert.equal(store.blobs.has(`${BOOKS}/${bookName(SLUG, 'never-asked-for')}`), false);
     });
 
-    it('refuses a message it cannot act on', async () => {
+    test('refuses a message it cannot act on', async () => {
         const result = await runBook({ message: { slug: SLUG }, store: seed(letters), log: quiet });
 
         assert.equal(result.status, 'rejected');
@@ -263,7 +263,7 @@ describe('telling the owner the book is done', () => {
         });
     };
 
-    it('writes to whoever asked for it once the file exists', async () => {
+    test('writes to whoever asked for it once the file exists', async () => {
         const store = seed(letters);
         const mailer = recorder();
 
@@ -274,7 +274,7 @@ describe('telling the owner the book is done', () => {
         assert.match(mailer.sent[0].text, /24 pages/);
     });
 
-    it('sends them to the page rather than to the file', async () => {
+    test('sends them to the page rather than to the file', async () => {
         // Both renditions are handed out behind links that die in a quarter
         // of an hour, and mail is read hours later by definition. A PDF link
         // in here would be a broken link by the time anybody pressed it.
@@ -287,7 +287,7 @@ describe('telling the owner the book is done', () => {
         assert.doesNotMatch(mailer.sent[0].text, /\.pdf/);
     });
 
-    it('keeps the missionary out of the subject line, which is read on locked phones', async () => {
+    test('keeps the missionary out of the subject line, which is read on locked phones', async () => {
         const store = seed(letters);
         const mailer = recorder();
 
@@ -297,7 +297,7 @@ describe('telling the owner the book is done', () => {
         assert.match(mailer.sent[0].text, /Elder Isaac Backman/);
     });
 
-    it('says so when the build failed, and says what stopped it', async () => {
+    test('says so when the build failed, and says what stopped it', async () => {
         // The failure nobody is watching is the one worth sending. An owner
         // who closed the tab otherwise learns nothing at all, and silence is
         // indistinguishable from a book that is still being made.
@@ -311,7 +311,7 @@ describe('telling the owner the book is done', () => {
         assert.match(mailer.sent[0].text, /no letters/);
     });
 
-    it('stays quiet for somebody who has asked us to stop writing to them', async () => {
+    test('stays quiet for somebody who has asked us to stop writing to them', async () => {
         const store = seed(letters);
         const mailer = recorder();
         const token = issueOptOut({ email: OWNER, slug: SLUG, key: KEY });
@@ -323,7 +323,7 @@ describe('telling the owner the book is done', () => {
         assert.equal((await latestBook({ store, slug: SLUG })).state, STATE.ready);
     });
 
-    it('has nobody to write to when the request carried no address', async () => {
+    test('has nobody to write to when the request carried no address', async () => {
         const store = seed(letters);
         const mailer = recorder();
 
@@ -332,7 +332,7 @@ describe('telling the owner the book is done', () => {
         assert.equal(mailer.sent.length, 0);
     });
 
-    it('finishes the book anyway when the mail will not go', async () => {
+    test('finishes the book anyway when the mail will not go', async () => {
         // The bytes are already in storage and the status already says so.
         // A mail outage that threw here would be a queue retry, and a queue
         // retry is the whole book set again for the sake of a courtesy.
@@ -349,7 +349,7 @@ describe('telling the owner the book is done', () => {
         assert.equal((await latestBook({ store, slug: SLUG })).state, STATE.ready);
     });
 
-    it('says nothing at all when no mailer was wired up', async () => {
+    test('says nothing at all when no mailer was wired up', async () => {
         const store = seed(letters);
         const { id } = await requestBook({
             store,
@@ -363,7 +363,7 @@ describe('telling the owner the book is done', () => {
         assert.equal(result.status, 'built');
     });
 
-    it('writes down how the send went, where the owner can be shown it', async () => {
+    test('writes down how the send went, where the owner can be shown it', async () => {
         const store = seed(letters);
         const mailer = recorder('bounced');
 

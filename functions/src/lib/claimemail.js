@@ -1,12 +1,6 @@
 // The claim email.
 //
-// DRAFT COPY. The wording below is a placeholder written to be replaced --
-// it is here so that the shape of the message, the link, and the constraints
-// it has to satisfy are settled and testable before anyone argues about
-// sentences.
-//
-// Nothing sends this yet. Phase 8 wires it to Cloudflare Email Service, where
-// it will go out as a reply to an arriving letter so that it threads into a
+// Goes out as a reply to an arriving letter, so that it threads into a
 // conversation the recipient already recognizes.
 //
 // The hard constraints, which survive any rewrite:
@@ -41,8 +35,6 @@ const readableDate = (iso) =>
         day: 'numeric'
     });
 
-const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
-
 /**
  * @param {object} input
  * @param {string} input.baseUrl        e.g. https://pdayletters.com
@@ -54,19 +46,51 @@ const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
  */
 export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt, forwarded = false }) {
     const link = `${baseUrl.replace(/\/$/, '')}/claim#${token}`;
-    const count = plural(messageCount, 'letter', 'letters');
     const deadline = readableDate(expiresAt);
+    const single = messageCount === 1;
 
     // A variant rather than a separate function, unlike the `claim@` reply:
-    // everything after this first line is identical, because the situation is
-    // identical -- a pending site, a first-come link, a hold that expires. All
-    // that differs is whether the recipient already knows why they are hearing
-    // from us. A parent who forwarded a letter thirty seconds ago does; being
-    // told letters "have arrived" reads like a notice about someone else's
-    // mail.
+    // the situation is identical either way -- a pending site, a first-come
+    // link, a hold that expires. What differs is who is reading. A parent who
+    // forwarded a letter thirty seconds ago knows why they are hearing from us.
+    // The missionary is being told about mail they sent themselves, to the very
+    // address it was sent from, so the third person reads like a notice about
+    // somebody else's post.
     const opening = forwarded
-        ? `You forwarded ${messageCount === 1 ? 'a letter' : `${messageCount} letters`} from ${sender} to ${SIGNATURE}.`
-        : `${count} sent from ${sender} have arrived at ${SIGNATURE}.`;
+        ? `You forwarded ${single ? 'a letter' : `${messageCount} letters`} from ${sender} to ${SIGNATURE}.`
+        : `${single ? 'Your letter has' : `Your ${messageCount} letters have`} arrived at ${SIGNATURE}.`;
+
+    const held = single
+        ? [
+              'It is being held, not published. Nobody can read it, including us,',
+              'until someone sets up the archive and chooses who to share it with.'
+          ]
+        : [
+              'They are being held, not published. Nobody can read them, including us,',
+              'until someone sets up the archive and chooses who to share it with.'
+          ];
+
+    // Only the missionary hears this. A forwarder is already the person doing
+    // the setting up, and inviting them to pass it on would send them looking
+    // for somebody else to ask.
+    const handoff = [
+        'You can do that yourself, or forward this email to a parent, family',
+        "member or friend and they'll do it for you."
+    ];
+
+    // Both are told to use a personal account; only the missionary is told
+    // which account that rules out, because only they hold a mailbox with an
+    // expiry date on it.
+    const personal = forwarded
+        ? [
+              'Please use a personal account rather than a work or school one. This',
+              'archive is meant to outlast the job you have today.'
+          ]
+        : [
+              'Please use a personal account rather than your official missionary',
+              'one. That address stops working after you come home, and the archive',
+              'is meant to outlast it.'
+          ];
 
     // No name, no slug, no count. This line is visible without unlocking a
     // phone, and it is forwarded more often than the body is read.
@@ -75,16 +99,15 @@ export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt, fo
     const text = [
         opening,
         '',
-        'They are being held, not published. Nobody can read them, including us,',
-        'until someone sets up the archive and chooses who to share it with.',
+        ...held,
         '',
         'Set it up here:',
         link,
+        ...(forwarded ? [] : ['', ...handoff]),
         '',
-        `Please use a personal account rather than a work or school one. This`,
-        `archive is meant to outlast the job you have today.`,
+        ...personal,
         '',
-        `If nobody sets it up by ${deadline}, the letters stop being held.`,
+        `If nobody sets it up by ${deadline}, ${single ? 'the letter stops' : 'the letters stop'} being held.`,
         'Every new letter that arrives extends that date.',
         '',
         'If you were not expecting this, you can ignore it. The link only works',
@@ -96,12 +119,15 @@ export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt, fo
     const html = [
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
         forwarded
-            ? `<p>${escape(opening)}</p>`
-            : `<p>${escape(count)} sent from <strong>${escape(sender)}</strong> have arrived at ${SIGNATURE}.</p>`,
-        '<p>They are being held, not published. Nobody can read them, including us, until someone sets up the archive and chooses who to share it with.</p>',
+            ? `<p>You forwarded ${single ? 'a letter' : `${messageCount} letters`} from <strong>${escape(sender)}</strong> to ${SIGNATURE}.</p>`
+            : `<p>${escape(opening)}</p>`,
+        `<p>${held.join(' ')}</p>`,
         `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Set up the archive</a></p>`,
-        '<p>Please use a <strong>personal</strong> account rather than a work or school one. This archive is meant to outlast the job you have today.</p>',
-        `<p>If nobody sets it up by <strong>${escape(deadline)}</strong>, the letters stop being held. Every new letter that arrives extends that date.</p>`,
+        forwarded ? '' : `<p>${handoff.join(' ')}</p>`,
+        `<p>Please use a <strong>personal</strong> account rather than ${forwarded
+            ? 'a work or school one. This archive is meant to outlast the job you have today.'
+            : 'your official missionary one. That address stops working after you come home, and the archive is meant to outlast it.'}</p>`,
+        `<p>If nobody sets it up by <strong>${escape(deadline)}</strong>, ${single ? 'the letter stops' : 'the letters stop'} being held. Every new letter that arrives extends that date.</p>`,
         '<p>If you were not expecting this, you can ignore it. The link only works once, and only for whoever uses it first.</p>',
         `<p>&mdash; ${SIGNATURE}</p>`,
         '</div>'
@@ -119,8 +145,9 @@ export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt, fo
  * have proved who they are, so the link confers `verifiedMissionary` and the
  * "only works for whoever uses it first" warning would be actively wrong. And
  * the site may already have an owner — a parent running it perfectly happily —
- * in which case the one thing this must not imply is that anyone is being
- * displaced.
+ * so the reassurance leads and the rights follow: this link displaces nobody,
+ * and what the missionary chooses to do afterwards is a separate question they
+ * are told they have the standing to answer.
  *
  * The subject may say more than the pending one does, on the same reasoning
  * that governs it: that message goes to someone who has not asked for
@@ -144,15 +171,20 @@ export function missionaryClaimEmail({ baseUrl, token, expiresAt, alreadyOwned =
     // dies with the mailbox 60 days after they come home, and this is the last
     // moment anyone can act on that.
     const personal = [
-        'Use a personal Google or Microsoft account, not your missionary one.',
-        'Your missionary address stops working 60 days after you come home, and',
-        'the archive is meant to outlast it.'
+        'Use a personal Google or Microsoft account, not your official missionary',
+        'one. That address stops working 60 days after you come home, and the',
+        'archive is meant to outlast it.'
     ];
 
+    // "Nobody can remove you" is a promise `members.js` keeps: a
+    // `verifiedMissionary` owner cannot be removed or demoted by anyone, an
+    // operator included. Do not soften it here without changing it there.
     const situation = alreadyOwned
         ? [
-              'This site already has someone looking after it, and that does not',
-              'change. You will be added alongside them, not in place of them.'
+              'Your archive already has someone looking after it, and you are added',
+              'alongside them rather than in place of them. Once you are, nobody can',
+              'remove you. These are your letters and this is your archive: you can',
+              'add or remove other owners, and you can delete it outright.'
           ]
         : ['Following the link sets the archive up and makes you its owner.'];
 
@@ -164,7 +196,8 @@ export function missionaryClaimEmail({ baseUrl, token, expiresAt, alreadyOwned =
         '',
         ...personal,
         '',
-        `The link stops working on ${deadline}. Email ${'claim@pdayletters.com'} again for a new one.`,
+        `The link stops working on ${deadline}. Email claim@pdayletters.com`,
+        'again for a new one.',
         '',
         'If you did not ask for this, ignore it — the link does nothing until',
         'someone signs in with it.',
@@ -176,7 +209,7 @@ export function missionaryClaimEmail({ baseUrl, token, expiresAt, alreadyOwned =
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
         `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Open your archive</a></p>`,
         `<p>${escape(situation.join(' '))}</p>`,
-        `<p>Use a <strong>personal</strong> Google or Microsoft account, not your missionary one. Your missionary address stops working 60 days after you come home, and the archive is meant to outlast it.</p>`,
+        `<p>Use a <strong>personal</strong> Google or Microsoft account, not your official missionary one. That address stops working 60 days after you come home, and the archive is meant to outlast it.</p>`,
         `<p>The link stops working on <strong>${escape(deadline)}</strong>. Email claim@pdayletters.com again for a new one.</p>`,
         '<p>If you did not ask for this, ignore it &mdash; the link does nothing until someone signs in with it.</p>',
         `<p>&mdash; ${SIGNATURE}</p>`,

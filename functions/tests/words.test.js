@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { describe, it } from 'node:test';
+import { describe, test } from 'node:test';
 
 import { LINKS, NOISE, TONES, cloudScale, countWords, toneOf, wordsIn } from '../src/lib/words.js';
 
@@ -28,21 +28,21 @@ describe('keeping the printed cloud and the screen cloud the same cloud', () => 
     // the mission was mostly about, and the owner has no way to tell which of
     // the two is lying.
 
-    it('counts the same words as noise', () => {
+    test('counts the same words as noise', () => {
         const [, listed] = reader.match(/const NOISE = new Set\(\s*`([^`]*)`/) ?? [];
         assert.ok(listed, 'no stopword list found in web/reader.js');
 
         assert.deepEqual(new Set(listed.trim().split(/\s+/)), NOISE);
     });
 
-    it('throws away the same links', () => {
+    test('throws away the same links', () => {
         const [, written] = reader.match(/const LINKS = (\/.+\/[a-z]*);/) ?? [];
         assert.ok(written, 'no link pattern found in web/reader.js');
 
         assert.equal(written, String(LINKS));
     });
 
-    it('splits a passage into words the same way', () => {
+    test('splits a passage into words the same way', () => {
         const [, written] = reader.match(/const wordsIn = \(text\) =>([\s\S]*?);\r?\n/) ?? [];
         assert.ok(written, 'no tokenizer found in web/reader.js');
 
@@ -52,7 +52,7 @@ describe('keeping the printed cloud and the screen cloud the same cloud', () => 
         assert.equal(flatten(written), flatten(String(wordsIn).replace(/^\(text\) =>/, '')));
     });
 
-    it('sets a word at the same size', () => {
+    test('sets a word at the same size', () => {
         const theirs = liftedFrom(/function scale\(words, box\) \{[\s\S]*?\n {4}\}/, 'scale');
         const words = zipf(40);
 
@@ -66,7 +66,7 @@ describe('keeping the printed cloud and the screen cloud the same cloud', () => 
         }
     });
 
-    it('gives a word the same tone', () => {
+    test('gives a word the same tone', () => {
         const [, count] = reader.match(/const TONES = (\d+);/) ?? [];
         assert.equal(Number(count), TONES);
 
@@ -77,7 +77,7 @@ describe('keeping the printed cloud and the screen cloud the same cloud', () => 
 });
 
 describe('the countable words of a letter', () => {
-    it('drops the words that are in every sentence', () => {
+    test('drops the words that are in every sentence', () => {
         assert.deepEqual(wordsIn('We walked to the chapel and it was very cold'), [
             'walked',
             'chapel',
@@ -85,15 +85,15 @@ describe('the countable words of a letter', () => {
         ]);
     });
 
-    it('drops years, house numbers and two-letter scraps', () => {
+    test('drops years, house numbers and two-letter scraps', () => {
         assert.deepEqual(wordsIn('In 2026 we moved to 14 Rua do Sol'), ['moved', 'rua', 'sol']);
     });
 
-    it('folds an apostrophe away so a word is one word', () => {
+    test('folds an apostrophe away so a word is one word', () => {
         assert.deepEqual(wordsIn("We couldn\u2019t and we couldnt"), ['couldnt', 'couldnt']);
     });
 
-    it('refuses to count a pasted link as vocabulary', () => {
+    test('refuses to count a pasted link as vocabulary', () => {
         // The share ids are the reason this exists: split on punctuation they
         // come out as pronounceable runs, and an archive full of photo links
         // finds its commonest word is a fragment of a URL.
@@ -111,20 +111,20 @@ describe('tallying a whole archive', () => {
         'Transfer week again'
     ];
 
-    it('puts the commonest word first', () => {
+    test('puts the commonest word first', () => {
         assert.deepEqual(countWords(letters)[0], ['baptism', 3]);
     });
 
-    it('breaks a tie on the word, so the same archive always sets the same', () => {
+    test('breaks a tie on the word, so the same archive always sets the same', () => {
         const [first, second] = countWords(letters).filter(([, count]) => count === 2);
         assert.ok(first[0] < second[0], `${first[0]} came before ${second[0]}`);
     });
 
-    it('keeps only as many words as were asked for', () => {
+    test('keeps only as many words as were asked for', () => {
         assert.equal(countWords(letters, { most: 2 }).length, 2);
     });
 
-    it('survives a letter with nothing in it', () => {
+    test('survives a letter with nothing in it', () => {
         assert.deepEqual(countWords([undefined, '', '   ']), []);
     });
 });

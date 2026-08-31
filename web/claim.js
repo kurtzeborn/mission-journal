@@ -194,20 +194,20 @@ function renderReady(described, principal) {
     if (principal) {
         $('claim-form').hidden = false;
 
-        // A site that has been running for months already has a name, and
-        // asking for one from scratch invites an answer that quietly replaces
-        // it. Showing the current value turns the question into one that can be
-        // left alone -- and leaving it alone writes nothing, because the server
-        // compares what comes back against what it sent.
+        // A site that has been running for months already has a name, so the
+        // question is not asked -- the field keeps the current value and the
+        // server compares what comes back against what it sent, so submitting
+        // writes nothing. Settings is where a name gets corrected.
         if (described.displayName) {
             $('display-name').value = described.displayName;
-            $('display-name-label').textContent = 'The missionary is shown on the site as:';
+            $('display-name-block').hidden = true;
         }
 
         $('claim-submit').textContent = joining ? 'Get access' : 'Set up the archive';
         $('claim-as').textContent = missionary
             ? `You are signed in as ${principal}. This address will be added as an owner.`
-            : `You are signed in as ${principal}. This address will own the archive.`;    } else {
+            : `You are signed in as ${principal}. This address will own the archive.`;
+    } else {
         // Come back to this page after signing in. The token is already in
         // sessionStorage, so it does not need to survive the redirect itself.
         aimSignIn();
@@ -248,24 +248,10 @@ async function submit(event, token, described) {
 
     sessionStorage.removeItem(KEY);
 
-    const promoted = result.body.promoted ?? {};
-    const published = promoted.promoted ?? 0;
-
-    // A missionary joining a live archive has no backlog to publish, and "0
-    // letters have been published" describes a failure that did not happen.
-    if (published === 0) {
-        $('done-title').textContent = 'You are in';
-        $('done-summary').textContent =
-            'This archive is linked to your account now, and new letters will appear as they arrive.';
-    } else {
-        $('done-summary').textContent =
-            published === 1
-                ? 'One letter has been published, and new ones will appear as they arrive.'
-                : `${published} letters have been published, and new ones will appear as they arrive.`;
-    }
-
-    $('done-link').href = `/${result.body.slug}/`;
-    show('done');
+    // Straight into the archive, as the invitation page does. The page that
+    // stood here counted the letters it had just published and offered a link
+    // to them, and the archive says both of those things one click sooner.
+    location.href = `/${result.body.slug}/`;
 }
 
 async function start() {

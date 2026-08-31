@@ -167,7 +167,9 @@ describe('accepting', () => {
         // without the click.
         const view = await invitePage({ answer: server({ described: READY }) });
 
-        assert.ok(!view.sections.includes('done'));
+        // Against the markup, not `sections`: that is a list of elements, so
+        // asking it whether it contains a string was always going to be false.
+        assert.doesNotMatch(view.source, /id="done"/);
     });
 
     test('nobody is asked about email on the way in', async () => {

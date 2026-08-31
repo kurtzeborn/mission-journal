@@ -5,7 +5,7 @@
 // place every time, and it comes back somewhere on the paper.
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, test } from 'node:test';
 
 import { CLOUD, layoutCloud } from '../src/lib/cloud.js';
 import { cloudScale } from '../src/lib/words.js';
@@ -58,14 +58,14 @@ describe('laying the word cloud out for the press', () => {
     // lays the page out once and then asks it questions.
     const placed = lay(zipf(60));
 
-    it('finds room for every word', () => {
+    test('finds room for every word', () => {
         // Sixty words is what a mission's worth of letters comes to, and a
         // word that gets dropped is a word the reader can see on the site and
         // the owner cannot find in the book.
         assert.equal(placed.length, 60);
     });
 
-    it('keeps the words on the paper', () => {
+    test('keeps the words on the paper', () => {
         // Not to the point -- the reported box is padded around the letters
         // and the library only promises the ink is inside -- but nothing may
         // wander off toward the trim.
@@ -80,7 +80,7 @@ describe('laying the word cloud out for the press', () => {
         }
     });
 
-    it('fills the leaf rather than huddling in the middle', () => {
+    test('fills the leaf rather than huddling in the middle', () => {
         // The reason `ellipticity` is the one setting the book does not take
         // from the browser. Left at its default the cloud came out squashed to
         // a landscape blob with white bands above and below it.
@@ -90,14 +90,14 @@ describe('laying the word cloud out for the press', () => {
         assert.ok(at.bottom - at.top > PAGE.height * 0.8, 'the cloud left bands at the head and foot');
     });
 
-    it('sets the same archive the same way twice', () => {
+    test('sets the same archive the same way twice', () => {
         // The book is set in two passes -- one to count the pages, one to draw
         // them -- and an unseeded die would have the second pass disagree with
         // the first. It also means reprinting an archive gets the same object.
         assert.deepEqual(lay(zipf(20)), lay(zipf(20)));
     });
 
-    it('sets a word larger the more it was written', () => {
+    test('sets a word larger the more it was written', () => {
         // The reader's scale decides what a word asks for. The library is
         // allowed to give it less -- `shrinkToFit` takes a word down a size
         // when the only gap left is too small for it -- but never more, and a
@@ -115,7 +115,7 @@ describe('laying the word cloud out for the press', () => {
         assert.ok(Math.min(...top) > Math.max(...bottom) * 2, 'the cloud came out all one size');
     });
 
-    it('turns a word onto its side or leaves it alone', () => {
+    test('turns a word onto its side or leaves it alone', () => {
         const turned = placed.filter((item) => item.turn !== 0);
 
         for (const item of placed) {
@@ -127,11 +127,11 @@ describe('laying the word cloud out for the press', () => {
         assert.ok(turned.length > 6 && turned.length < 30, `${turned.length} of 60 were turned`);
     });
 
-    it('has nothing to draw for an archive with nothing in it', () => {
+    test('has nothing to draw for an archive with nothing in it', () => {
         assert.deepEqual(layoutCloud([], { ...PAGE, size: () => 12 }), []);
     });
 
-    it('asks the library for what the browser asks it for', () => {
+    test('asks the library for what the browser asks it for', () => {
         // The settings are copied from `web/reader.js`; this is here so that a
         // stray edit to one of them reads as a decision rather than a typo.
         assert.deepEqual(CLOUD, {

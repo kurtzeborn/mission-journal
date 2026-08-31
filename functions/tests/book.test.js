@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, test } from 'node:test';
 import { inflateSync } from 'node:zlib';
 
 import {
@@ -71,7 +71,7 @@ const range = (count) =>
     Array.from({ length: count }, (_, n) => ({ id: `p${n}`, width: 2400, height: 1600 }));
 
 describe('the order a book runs in', () => {
-    it('turns the newest-first payload back into a mission', () => {
+    test('turns the newest-first payload back into a mission', () => {
         const posts = [post('c', '2026-03-01', 'Third'), post('b', '2026-02-01', 'Second'), post('a', '2026-01-01', 'First')];
 
         assert.deepEqual(
@@ -80,7 +80,7 @@ describe('the order a book runs in', () => {
         );
     });
 
-    it('leaves the payload it was handed alone', () => {
+    test('leaves the payload it was handed alone', () => {
         const posts = [post('b', '2026-02-01', 'Second'), post('a', '2026-01-01', 'First')];
         inReadingOrder(posts);
 
@@ -92,35 +92,35 @@ describe('the order a book runs in', () => {
 });
 
 describe('the date over a letter', () => {
-    it('writes the day out in full', () => {
+    test('writes the day out in full', () => {
         assert.equal(dateLine({ originalDate: '2026-01-04T09:00:00.000Z' }), 'Sunday, January 4, 2026');
     });
 
-    it('reads the day in UTC rather than wherever the server is', () => {
+    test('reads the day in UTC rather than wherever the server is', () => {
         // An evening timestamp is the one that slips a day westward, which is
         // where every date-off-by-one in this codebase has come from.
         assert.equal(dateLine({ originalDate: '2026-01-04T23:30:00.000Z' }), 'Sunday, January 4, 2026');
     });
 
-    it('says nothing rather than something wrong when the date is missing', () => {
+    test('says nothing rather than something wrong when the date is missing', () => {
         assert.equal(dateLine({}), '');
         assert.equal(dateLine({ originalDate: 'sometime' }), '');
     });
 });
 
 describe('which way the gutter faces', () => {
-    it('leaves right-hand pages where they were set', () => {
+    test('leaves right-hand pages where they were set', () => {
         assert.equal(mirror(1), 0);
         assert.equal(mirror(7), 0);
     });
 
-    it('slides left-hand pages across by the difference between the margins', () => {
+    test('slides left-hand pages across by the difference between the margins', () => {
         const across = -(MARGIN.inside - MARGIN.outside);
         assert.equal(mirror(2), across);
         assert.equal(mirror(8), across);
     });
 
-    it('keeps the column the same width on both, which is what makes the shift legal', () => {
+    test('keeps the column the same width on both, which is what makes the shift legal', () => {
         assert.equal(COLUMN, PAGE.width - MARGIN.inside - MARGIN.outside);
         assert.ok(MARGIN.inside > MARGIN.outside);
     });
@@ -135,21 +135,21 @@ describe('how much room the contents need', () => {
             }))
         );
 
-    it('takes a leaf even for a mission of one letter', () => {
+    test('takes a leaf even for a mission of one letter', () => {
         assert.equal(contentsPages([]), 1);
         assert.equal(contentsPages(over(1)), 1);
     });
 
-    it('gives a two-year mission a couple of leaves', () => {
+    test('gives a two-year mission a couple of leaves', () => {
         // Forty letters over ten months, which is what the archives look like.
         assert.equal(contentsPages(over(40, { each: 4 })), 2);
     });
 
-    it('grows a leaf at a time', () => {
+    test('grows a leaf at a time', () => {
         assert.ok(contentsPages(over(400, { each: 20 })) > contentsPages(over(100, { each: 20 })));
     });
 
-    it('keeps a month whole on one leaf', () => {
+    test('keeps a month whole on one leaf', () => {
         // A heading at the foot of a leaf, or a run of subjects at the top of
         // one with nothing above them saying what month they are, both read as
         // faults. Neither happens while a month still fits on a leaf.
@@ -163,16 +163,16 @@ describe('how much room the contents need', () => {
 });
 
 describe('gathering the letters into months', () => {
-    it('names a month the way somebody would say it', () => {
+    test('names a month the way somebody would say it', () => {
         assert.equal(monthLabel({ originalDate: '2026-08-03T12:00:00Z' }), 'August 2026');
     });
 
-    it('keeps a letter with no date rather than dropping it', () => {
+    test('keeps a letter with no date rather than dropping it', () => {
         assert.equal(monthLabel({}), 'Undated');
         assert.equal(byMonth([{ subject: 'Lost' }])[0].letters.length, 1);
     });
 
-    it('runs the months in the order of the book, across a change of year', () => {
+    test('runs the months in the order of the book, across a change of year', () => {
         const months = byMonth([
             { subject: 'a', originalDate: '2025-12-01' },
             { subject: 'b', originalDate: '2025-12-28' },
@@ -188,13 +188,13 @@ describe('gathering the letters into months', () => {
 });
 
 describe('the rectangle a photograph gets', () => {
-    it('gives a landscape picture the whole column', () => {
+    test('gives a landscape picture the whole column', () => {
         const rect = photoBox({ width: 2400, height: 1600 });
         assert.equal(rect.width, COLUMN);
         assert.ok(Math.abs(rect.height - COLUMN * (1600 / 2400)) < 0.01);
     });
 
-    it('holds a portrait picture back so the text keeps its page', () => {
+    test('holds a portrait picture back so the text keeps its page', () => {
         const rect = photoBox({ width: 1800, height: 2400 });
         const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
 
@@ -204,19 +204,19 @@ describe('the rectangle a photograph gets', () => {
         assert.ok(Math.abs(rect.height / rect.width - 2400 / 1800) < 0.01);
     });
 
-    it('assumes a shape rather than dividing by zero when the size was never recorded', () => {
+    test('assumes a shape rather than dividing by zero when the size was never recorded', () => {
         const rect = photoBox({ width: 0, height: 0 });
         assert.ok(rect.width > 0 && rect.height > 0);
     });
 });
 
 describe('preparing a photograph for the press', () => {
-    it('says nothing was there rather than throwing', async () => {
+    test('says nothing was there rather than throwing', async () => {
         const store = memoryStore();
         assert.equal(await printPhoto({ store, slug: 'x', photoId: 'p1', widthPoints: 200 }), null);
     });
 
-    it('reads the rendition, never the original', async () => {
+    test('reads the rendition, never the original', async () => {
         const store = memoryStore();
         await store.writeBlob('raw', 'x/photos/p1.jpg', Buffer.from('original'));
 
@@ -225,11 +225,11 @@ describe('preparing a photograph for the press', () => {
 });
 
 describe('how many leaves the album gets', () => {
-    it('gives a letter with nothing attached no album at all', () => {
+    test('gives a letter with nothing attached no album at all', () => {
         assert.equal(albumPageCount(0), 0);
     });
 
-    it('never crowds more than six onto a page', () => {
+    test('never crowds more than six onto a page', () => {
         for (let count = 1; count <= 40; count += 1) {
             const pages = albumPageCount(count);
             for (const leaf of albumSpread(range(count), { pages })) {
@@ -238,7 +238,7 @@ describe('how many leaves the album gets', () => {
         }
     });
 
-    it('spends no more leaves than the pictures need', () => {
+    test('spends no more leaves than the pictures need', () => {
         // Only chapters pad now, so a looser spread buys nothing and costs a
         // sheet. Six fit a page; the seventh is what asks for a second.
         assert.equal(albumPageCount(6), 1);
@@ -247,14 +247,14 @@ describe('how many leaves the album gets', () => {
         assert.equal(albumPageCount(13), 3);
     });
 
-    it('deals every picture out once, in order', () => {
+    test('deals every picture out once, in order', () => {
         const photos = range(17);
         const dealt = albumSpread(photos, { pages: 4 }).flat();
 
         assert.deepEqual(dealt, photos);
     });
 
-    it('deals them out evenly', () => {
+    test('deals them out evenly', () => {
         const sizes = albumSpread(range(17), { pages: 4 }).map((leaf) => leaf.length);
 
         assert.equal(Math.max(...sizes) - Math.min(...sizes), 1);
@@ -267,7 +267,7 @@ describe('laying photographs out in an album', () => {
 
     const stacked = (rows) => rows.reduce((sum, row) => sum + row.height, 0) + 10 * (rows.length - 1);
 
-    it('fills the column exactly on every full row', () => {
+    test('fills the column exactly on every full row', () => {
         const rows = albumRows([wide, wide, wide, wide, wide, wide], { target: 120 });
 
         for (const row of rows.slice(0, -1)) {
@@ -278,21 +278,21 @@ describe('laying photographs out in an album', () => {
         }
     });
 
-    it('never stretches a lone leftover across the page', () => {
+    test('never stretches a lone leftover across the page', () => {
         const rows = albumRows([wide, wide, wide, tall], { target: 120 });
         const last = rows.at(-1);
 
         assert.ok(last.height <= 120);
     });
 
-    it('keeps every photograph, in the order they arrived', () => {
+    test('keeps every photograph, in the order they arrived', () => {
         const photos = [wide, tall, wide, wide, tall, wide, wide];
         const flat = albumRows(photos, { target: 110 }).flatMap((row) => row.photos);
 
         assert.deepEqual(flat, photos);
     });
 
-    it('makes the pictures as large as one page will take', () => {
+    test('makes the pictures as large as one page will take', () => {
         const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
         const photos = [wide, wide, wide, tall];
         const target = albumTarget(photos, { height: usable });
@@ -306,7 +306,7 @@ describe('laying photographs out in an album', () => {
         assert.ok(stacked(albumRows(photos, { target: target * 1.1 })) > usable);
     });
 
-    it('stops shrinking rather than turning a mission into contact sheets', () => {
+    test('stops shrinking rather than turning a mission into contact sheets', () => {
         const many = Array.from({ length: 60 }, () => wide);
         const target = albumTarget(many, { height: PAGE.height - MARGIN.top - MARGIN.bottom });
 
@@ -328,7 +328,7 @@ describe('filling a leaf that has nothing else on it', () => {
                 10 * (row.photos.length - 1)
         );
 
-    it('gives two photographs the page rather than a strip across the middle', () => {
+    test('gives two photographs the page rather than a strip across the middle', () => {
         // Packed to the column, two landscape pictures come out side by side
         // and a hand's width tall, marooned in eleven inches of paper. Set
         // one above the other they are four inches each and the leaf is
@@ -340,7 +340,7 @@ describe('filling a leaf that has nothing else on it', () => {
         assert.ok(Math.min(...rows.map((row) => row.height)) > 250);
     });
 
-    it('makes a page of two far larger than a page of six', () => {
+    test('makes a page of two far larger than a page of six', () => {
         // The same shape throughout, because that is the only way the
         // comparison means anything: a page of six upright pictures is taller
         // per row than a page of two flat ones and would win on height while
@@ -351,7 +351,7 @@ describe('filling a leaf that has nothing else on it', () => {
         assert.ok(Math.min(...two.map((row) => row.height)) > Math.max(...six.map((row) => row.height)) * 1.5);
     });
 
-    it('sets six photographs of a shape at one size rather than three', () => {
+    test('sets six photographs of a shape at one size rather than three', () => {
         // Judged on paper covered, a leaf of six comes out two small, two
         // large and two small, because one picture blown up pays for two
         // shrunk. Nobody arranging a page by hand has ever done that.
@@ -362,7 +362,7 @@ describe('filling a leaf that has nothing else on it', () => {
         assert.ok(Math.max(...heights) - Math.min(...heights) < 0.01);
     });
 
-    it('never runs past the column or off the foot of the page', () => {
+    test('never runs past the column or off the foot of the page', () => {
         for (let count = 1; count <= 6; count += 1) {
             const rows = albumPlan(leaf(count), { height: usable });
 
@@ -371,14 +371,14 @@ describe('filling a leaf that has nothing else on it', () => {
         }
     });
 
-    it('keeps every photograph, in the order they arrived', () => {
+    test('keeps every photograph, in the order they arrived', () => {
         const photos = leaf(5);
         const flat = albumPlan(photos, { height: usable }).flatMap((row) => row.photos);
 
         assert.deepEqual(flat, photos);
     });
 
-    it('has nothing to arrange when there are no photographs', () => {
+    test('has nothing to arrange when there are no photographs', () => {
         assert.deepEqual(albumPlan([], { height: usable }), []);
     });
 });
@@ -387,40 +387,40 @@ describe('the room a line has beside a picture', () => {
     const float = { side: 'left', top: 100, bottom: 200, width: 180 };
     const at = (y, over = {}) => reserve({ float, y, height: 16, ...over });
 
-    it('gives a line the whole column when nothing is floating', () => {
+    test('gives a line the whole column when nothing is floating', () => {
         assert.deepEqual(reserve({ float: null, y: 300, height: 16 }), { x: MARGIN.inside, width: COLUMN });
     });
 
-    it('pushes a line clear of a picture hanging on the left', () => {
+    test('pushes a line clear of a picture hanging on the left', () => {
         const band = at(120);
 
         assert.ok(band.x > MARGIN.inside, 'the line should start right of the picture');
         assert.equal(band.x + band.width, MARGIN.inside + COLUMN, 'and still end at the column edge');
     });
 
-    it('shortens a line beside a picture hanging on the right without moving it', () => {
+    test('shortens a line beside a picture hanging on the right without moving it', () => {
         const band = reserve({ float: { ...float, side: 'right' }, y: 120, height: 16 });
 
         assert.equal(band.x, MARGIN.inside);
         assert.ok(band.width < COLUMN);
     });
 
-    it('gives back the column once the line has cleared the picture', () => {
+    test('gives back the column once the line has cleared the picture', () => {
         assert.equal(at(200).width, COLUMN);
     });
 
-    it('keeps the column for a line that finishes above the picture', () => {
+    test('keeps the column for a line that finishes above the picture', () => {
         assert.equal(at(80).width, COLUMN);
     });
 
-    it('counts a line that only just overlaps as being beside it', () => {
+    test('counts a line that only just overlaps as being beside it', () => {
         // Ninety plus a line's leading reaches into the picture, so the line
         // is beside it even though most of the line is not. Anything laxer
         // and the first line of a wrap prints straight through the photograph.
         assert.ok(at(90).width < COLUMN);
     });
 
-    it('takes the indent of a list off the column as well', () => {
+    test('takes the indent of a list off the column as well', () => {
         assert.deepEqual(reserve({ float: null, y: 300, height: 16, indent: 18 }), {
             x: MARGIN.inside + 18,
             width: COLUMN - 18
@@ -445,14 +445,14 @@ describe('setting a whole book', () => {
             ...overrides
         });
 
-    it('produces a PDF', async () => {
+    test('produces a PDF', async () => {
         const { stream, done } = build();
         const [bytes] = await Promise.all([readPdf(stream), done]);
 
         assert.equal(bytes.subarray(0, 5).toString(), '%PDF-');
     });
 
-    it('hands the printer a page count it will accept', async () => {
+    test('hands the printer a page count it will accept', async () => {
         const { stream, done } = build();
         const [, result] = await Promise.all([readPdf(stream), done]);
 
@@ -465,7 +465,7 @@ describe('setting a whole book', () => {
         assert.equal(result.pages % 2, 0, `${result.pages} pages is odd`);
     });
 
-    it('counts the covers, because the printer does', async () => {
+    test('counts the covers, because the printer does', async () => {
         // The page total is what the spine is calculated from, so it has to
         // mean sheets of paper rather than leaves of the book -- and the only
         // way to know it is telling the truth is to count the pages in the
@@ -478,7 +478,7 @@ describe('setting a whole book', () => {
         assert.equal(written.length, result.pages);
     });
 
-    it('marks the reviewing copy without moving a single page of it', async () => {
+    test('marks the reviewing copy without moving a single page of it', async () => {
         // The whole claim the proof makes is that it is the book. If the mark
         // pushed anything about the layout around then approving the proof
         // would be approving a different object to the one that gets bound,
@@ -504,7 +504,7 @@ describe('setting a whole book', () => {
         assert.equal((plainBytes.toString('latin1').match(/\/ExtGState/g) ?? []).length, 0);
     });
 
-    it('sets a letter that carries a link, an underline and a strike', async () => {
+    test('sets a letter that carries a link, an underline and a strike', async () => {
         // Every one of these three used to take the whole book down. pdfkit
         // draws all of them from `options.textWidth`, which only its line
         // wrapper fills in and this book never uses, so each arrived at
@@ -531,7 +531,7 @@ describe('setting a whole book', () => {
         assert.match(bytes.toString('latin1'), /https:\/\/example\.org\/chapel/);
     });
 
-    it('opens the first letter of a month on a left-hand page', async () => {
+    test('opens the first letter of a month on a left-hand page', async () => {
         // The chapter opening takes the recto, which drops the letter behind
         // it onto the verso -- so a one-page letter still has its photographs
         // on the leaf facing it. Every letter in this fixture is the first of
@@ -545,7 +545,7 @@ describe('setting a whole book', () => {
         }
     });
 
-    it('still lands the month on a left-hand page however many photographs it carries', async () => {
+    test('still lands the month on a left-hand page however many photographs it carries', async () => {
         // An album of an odd length is what used to force the padding, so it
         // takes one to exercise the parity at all. Now the chapter opening
         // absorbs it instead.
@@ -566,7 +566,7 @@ describe('setting a whole book', () => {
         }
     });
 
-    it('starts each later letter of a month on the very next page', async () => {
+    test('starts each later letter of a month on the very next page', async () => {
         // Four one-page letters in one month. Bringing every letter round
         // onto a verso used to put a blank leaf between each pair of them;
         // only the chapter pads now, so they run straight on.
@@ -585,7 +585,7 @@ describe('setting a whole book', () => {
         assert.deepEqual(folios, [0, 1, 2, 3].map((n) => folios[0] + n));
     });
 
-    it('never puts two letters on the same page', async () => {
+    test('never puts two letters on the same page', async () => {
         const { stream, done } = build();
         const [, result] = await Promise.all([readPdf(stream), done]);
 
@@ -593,7 +593,7 @@ describe('setting a whole book', () => {
         assert.equal(seen.size, result.opens.length);
     });
 
-    it('runs the letter round a picture rather than under it', async () => {
+    test('runs the letter round a picture rather than under it', async () => {
         // The same letter twice, differing only in where its photograph sits.
         // With plenty of text after it the picture hangs in the margin and
         // the words fill the space beside it; with nothing after it there is
@@ -622,21 +622,21 @@ describe('setting a whole book', () => {
         assert.ok(wrapped < stacked, `wrapped ${wrapped}, stacked ${stacked}`);
     });
 
-    it('names the book on the file itself', async () => {
+    test('names the book on the file itself', async () => {
         const { stream, done } = build();
         const [bytes] = await Promise.all([readPdf(stream), done]);
 
         assert.match(bytes.toString('latin1'), /Elder Isaac Backman/);
     });
 
-    it('falls back to the slug when there is no display name', async () => {
+    test('falls back to the slug when there is no display name', async () => {
         const { stream, done } = build({ profile: {} });
         const [bytes] = await Promise.all([readPdf(stream), done]);
 
         assert.match(bytes.toString('latin1'), /isaac\.backman/);
     });
 
-    it('paginates identically whether or not the photographs are there', async () => {
+    test('paginates identically whether or not the photographs are there', async () => {
         // This is the invariant the contents page rests on. The measuring
         // pass fetches no bytes at all, so if a picture's presence changed
         // the layout by so much as a line, every page number printed in the
@@ -677,7 +677,7 @@ describe('setting a whole book', () => {
         assert.equal(printed.pages, blank.pages);
     });
 
-    it('finishes a book whose photograph cannot be read', async () => {
+    test('finishes a book whose photograph cannot be read', async () => {
         const store = memoryStore();
         await store.writeBlob('rendered', 'isaac.backman/photos/p1/large.webp', Buffer.from('not an image'));
 
@@ -698,7 +698,7 @@ describe('setting a whole book', () => {
         assert.equal(warned[0]?.event, 'book.photoFailed');
     });
 
-    it('leaves a photograph in its own proportions even when the recorded shape is wrong', async () => {
+    test('leaves a photograph in its own proportions even when the recorded shape is wrong', async () => {
         // Dimensions are recorded once, at ingest, and nothing reads the
         // rendition back to check them -- so a letter written before a fix to
         // how orientation was read still claims a shape its picture does not
@@ -756,7 +756,7 @@ describe('binding the book in a color', () => {
         )
     ];
 
-    it('paints both boards in the chosen cloth', async () => {
+    test('paints both boards in the chosen cloth', async () => {
         const { stream, done } = build({ cover: { cloth: 'navy' } });
         const [bytes] = await Promise.all([readPdf(stream), done]);
 
@@ -770,7 +770,7 @@ describe('binding the book in a color', () => {
         assert.ok(Math.abs(Number(blue) - 0x49 / 255) < 0.01);
     });
 
-    it('binds a book nobody has chosen a color for', async () => {
+    test('binds a book nobody has chosen a color for', async () => {
         const { stream, done } = build();
         const [bytes] = await Promise.all([readPdf(stream), done]);
 
@@ -779,7 +779,7 @@ describe('binding the book in a color', () => {
         assert.equal(boards(bytes).length, 2);
     });
 
-    it('prints a picture across the top of the front board', async () => {
+    test('prints a picture across the top of the front board', async () => {
         const { stream, done } = build({ cover: { cloth: 'linen', bytes: await pixels(1600, 1200) } });
         const [bytes] = await Promise.all([readPdf(stream), done]);
         const drawing = drawnIn(bytes);
@@ -799,7 +799,7 @@ describe('binding the book in a color', () => {
         assert.ok(Number(drawn[0][2]) >= PAGE.height * 0.52 - 0.5);
     });
 
-    it('does not move a single page by choosing a cover', async () => {
+    test('does not move a single page by choosing a cover', async () => {
         // The measuring pass is given the color but not the picture, and
         // this is the reason that is safe: a cover is one page whatever is
         // printed on it. If it ever stopped being one page, the contents
@@ -814,7 +814,7 @@ describe('binding the book in a color', () => {
         assert.deepEqual(second.opens, first.opens);
     });
 
-    it('still makes a book when the cover picture is unreadable', async () => {
+    test('still makes a book when the cover picture is unreadable', async () => {
         const warned = [];
         const { stream, done } = build({
             cover: { cloth: 'forest', bytes: Buffer.from('not an image') },
@@ -861,7 +861,7 @@ describe('the word cloud in the front of the book', () => {
     const sizes = (bytes) =>
         new Set([...drawnIn(bytes).matchAll(/\/F\d+ ([\d.]+) Tf/g)].map((match) => match[1]));
 
-    it('takes a leaf that was going to be printed anyway', async () => {
+    test('takes a leaf that was going to be printed anyway', async () => {
         // The cloud sits on the title page's verso, which was always being
         // printed for the imprint, so it costs no sheet of its own. What it
         // does do is flip the parity of the front matter, and a chapter has
@@ -876,7 +876,7 @@ describe('the word cloud in the front of the book', () => {
         assert.equal(result.opens[0].page, 6);
     });
 
-    it('sets the words at a whole range of sizes', async () => {
+    test('sets the words at a whole range of sizes', async () => {
         const { stream, done } = build([
             wordy('a', '2026-01-04', 'Week one'),
             wordy('b', '2026-02-08', 'Week six')
@@ -886,7 +886,7 @@ describe('the word cloud in the front of the book', () => {
         assert.ok(sizes(bytes).size > 20, `only ${sizes(bytes).size} sizes in the whole book`);
     });
 
-    it('leaves the leaf blank rather than printing three words large', async () => {
+    test('leaves the leaf blank rather than printing three words large', async () => {
         // An archive of two short letters has no cloud in it, and a handful of
         // words blown up to fill a page looks like a mistake rather than like
         // a summary. The leaf still gets printed, because it is the back of

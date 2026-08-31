@@ -28,14 +28,9 @@ const post = (overrides = {}) => ({
 const edit = (changes, target = post()) => applyEdit(target, changes, { editor: EDITOR, slug: SLUG });
 
 describe('what an owner may change', () => {
-    test('a field outside the allowlist is refused by name', () => {
-        const result = edit({ originalFrom: 'someone@else.com' });
-        assert.match(result.error, /not editable: originalFrom/);
-    });
-
-    test('the dedup fields are all refused, so a re-forward still matches', () => {
+    test('the dedup fields are all refused by name, so a re-forward still matches', () => {
         for (const field of ['originalFrom', 'originalDate', 'originalMessageId', 'bodyHead100']) {
-            assert.ok(edit({ [field]: 'x' }).error, `${field} must not be editable`);
+            assert.match(edit({ [field]: 'x' }).error, new RegExp(`not editable: ${field}`));
         }
     });
 
