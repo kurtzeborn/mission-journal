@@ -270,6 +270,15 @@ window.Album = (function () {
         zoom.className = 'swiper-zoom-container';
         zoom.append(img);
 
+        // Held under the card until the full-size photograph arrives. Outside
+        // the zoom container on purpose: Swiper pinches the first image it
+        // finds in there, and it has to find the sharp one.
+        const standin = document.createElement('img');
+        standin.className = 'reel__standin';
+        standin.dataset.src = frame.thumb;
+        standin.alt = '';
+        standin.decoding = 'async';
+
         // The colour is set here rather than with nth-child, because looping
         // moves slide elements about and a card would change colour as the
         // deck came round again. `frame` is on the element for the same
@@ -277,7 +286,7 @@ window.Album = (function () {
         const slide = document.createElement('div');
         slide.className = `swiper-slide reel__card reel__card--${index % TINTS}`;
         slide.dataset.frame = index;
-        slide.append(zoom);
+        slide.append(standin, zoom);
 
         return slide;
     }
@@ -330,12 +339,31 @@ window.Album = (function () {
         const active = view.swiper.realIndex;
 
         for (const slide of view.wrapper.children) {
-            const img = slide.querySelector('img');
-            if (!img || img.src) continue;
+            const img = slide.querySelector('.swiper-zoom-container img');
+            if (!img) continue;
 
             // The deck loops, so the last card is a neighbour of the first.
             const apart = Math.abs(Number(slide.dataset.frame) - active);
-            if (Math.min(apart, total - apart) <= NEAR) img.src = img.dataset.src;
+            const gap = Math.min(apart, total - apart);
+
+            // Set before `src`, which is the only time it counts. The picture
+            // being looked at outranks the one that might be looked at next --
+            // that ordering is free when there is bandwidth for both and is the
+            // whole game when there is not.
+            img.setAttribute('fetchpriority', gap === 0 ? 'high' : 'low');
+
+            if (gap > NEAR || img.src) continue;
+
+            // Fetched together, and the small one wins by a factor of eighteen.
+            // Dropped the moment the real photograph is decoded, so the two are
+            // never both on screen and nothing has to be stacked.
+            const standin = slide.querySelector('.reel__standin');
+            if (standin) {
+                standin.src = standin.dataset.src;
+                img.addEventListener('load', () => standin.remove(), { once: true });
+            }
+
+            img.src = img.dataset.src;
         }
     }
 
@@ -356,7 +384,7 @@ window.Album = (function () {
         const autoplay = view.swiper?.autoplay;
         if (!autoplay?.running) return;
 
-        const img = view.swiper.slides[view.swiper.activeIndex]?.querySelector('img');
+        const img = view.swiper.slides[view.swiper.activeIndex]?.querySelector('.swiper-zoom-container img');
         if (!img || img.complete) return;
 
         autoplay.pause();
