@@ -37,7 +37,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The federated credential's subject is pinned to `refs/heads/main`, so a
       # pull request cannot authenticate at all and this step fails by design
@@ -49,7 +49,7 @@ jobs:
 
       - name: Sign in to Azure
         if: github.event_name != 'pull_request'
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
