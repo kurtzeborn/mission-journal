@@ -16,12 +16,12 @@
     "Re-measure with:",
     "  node -e \"const {createRequire}=require('module');const r=createRequire(process.cwd()+'/x.js');r('mailauth/lib/dkim/verify');console.log(Object.keys(require.cache).filter(p=>/node_modules[\\\\/](nodemailer|undici)[\\\\/]/.test(p)))\""
   ],
-  "reviewed": "2026-08-05",
+  "reviewed": "2026-09-03",
   "acknowledged": {
     "1120795": "nodemailer — CRLF injection in List-* header comments. Not loaded; we never build or send a message with nodemailer.",
     "1120796": "nodemailer — jsonTransport bypasses disableFileAccess. Transport code is not loaded.",
     "1120797": "nodemailer — TLS validation in OAuth2 token fetch. No OAuth2, no SMTP.",
-    "1121191": "nodemailer — message-level raw option enables file read and SSRF. Requires calling sendMail; nothing does.",
+    "1158513": "nodemailer — message-level raw option enables file read and SSRF. Re-issued 2026-09 as a replacement for 1121191, same finding. Requires calling sendMail; nothing does — mail goes out over Cloudflare's REST API in src/lib/mail.js.",
 
     "1121187": "undici — SOCKS5 ProxyAgent TLS bypass. undici is not loaded on the dkim path.",
     "1121241": "undici — Set-Cookie percent-decoding header injection. Not loaded.",
