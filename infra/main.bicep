@@ -349,6 +349,11 @@ var tableNames = [
   // One row per sign-in identity, holding the last address it used. Derived,
   // and the repair is somebody signing in again.
   'identities'
+  // One row per person per archive per day they read it. What tells us whether
+  // a family is still visiting, which no count of letters shows. Holds a hashed
+  // address and nothing else, and is swept back to about a month. Derived: an
+  // empty table starts the history again from today.
+  'visits'
 ]
 
 resource tables 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = [

@@ -167,7 +167,7 @@ describe('the other table, which is every archive there is', () => {
 
     test('an archive that has never had a letter shows dashes, not blanks', async () => {
         // Rows written before arrivals were recorded have no date at all. An
-        // empty cell reads as a rendering fault. The last three are the counts,
+        // empty cell reads as a rendering fault. The last five are the counts,
         // which the stats call has not answered in this test at all.
         const view = await arriving({
             lastReceivedAt: '',
@@ -177,6 +177,8 @@ describe('the other table, which is every archive there is', () => {
         assert.deepEqual(cells(flowRows(view)[0]), [
             'elder.new',
             'live',
+            '\u2014',
+            '\u2014',
             '\u2014',
             '\u2014',
             '\u2014',
@@ -681,11 +683,19 @@ describe('putting one back', () => {
 });
 
 describe('how big the service is', () => {
-    const TOTALS = { archives: 2, letters: 12, hidden: 3, photos: 40, people: 7 };
+    const TOTALS = {
+        archives: 2,
+        letters: 12,
+        hidden: 3,
+        photos: 40,
+        people: 7,
+        daily: 2,
+        monthly: 6
+    };
 
     const COUNTED = [
-        { slug: 'elder.recent', people: 5, letters: 9, hidden: 3, photos: 31 },
-        { slug: 'sister.waiting', people: 2, letters: 3, hidden: 0, photos: 9 }
+        { slug: 'elder.recent', people: 5, letters: 9, hidden: 3, photos: 31, daily: 2, monthly: 4 },
+        { slug: 'sister.waiting', people: 2, letters: 3, hidden: 0, photos: 9, daily: 0, monthly: 2 }
     ];
 
     // Three routes now, and the stats one is deliberately last to answer: it
@@ -706,8 +716,19 @@ describe('how big the service is', () => {
             ['Archives', '2'],
             ['Letters', '12', '3 hidden'],
             ['Photographs', '40'],
-            ['People', '7', 'counted once each']
+            ['People', '7', 'counted once each'],
+            ['Reading today', '2'],
+            ['Reading this month', '6', 'past 30 days']
         ]);
+    });
+
+    test('people on the list and people reading are separate numbers', async () => {
+        // Seven have been given access and six have used it this month. The
+        // point of showing both is that the second one can fall.
+        const view = await manage({ answer: counting() });
+
+        assert.deepEqual(boxes(view)[3].slice(0, 2), ['People', '7']);
+        assert.deepEqual(boxes(view)[5].slice(0, 2), ['Reading this month', '6']);
     });
 
     test('nothing hidden anywhere, and the aside is not there at all', async () => {
@@ -719,13 +740,13 @@ describe('how big the service is', () => {
     test('the per-archive numbers land on the archive they belong to', async () => {
         const view = await manage({ answer: counting() });
 
-        // The last three cells of each arrivals row, in the order the header
+        // The last five cells of each arrivals row, in the order the header
         // names them.
         assert.deepEqual(
             view.el('flow-rows').children.map((row) => row.children.slice(5).map((c) => c.textContent)),
             [
-                ['9', '31', '5'],
-                ['3', '9', '2']
+                ['9', '31', '5', '2', '4'],
+                ['3', '9', '2', '0', '2']
             ]
         );
     });

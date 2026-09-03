@@ -22,9 +22,14 @@
 // number. Counting ACLs would be a second blob read per archive to arrive at
 // a total that then could not be de-duplicated -- a grandmother following two
 // missionaries is one person, and reading two ACLs cannot see that.
+//
+// **Who is on the list and who actually reads it are different questions**, so
+// `visits` is scanned too. Membership only ever grows; the number that can fall
+// is the one worth watching. See visits.js.
 
 import { TABLES } from './tables.js';
 import { allSiteActivity } from './sites.js';
+import { activeReaders } from './visits.js';
 
 // How many archives are read at once. Storage is not the constraint; the
 // Function's own socket pool is, and a hundred archives opened simultaneously
@@ -75,10 +80,14 @@ async function inBatches(items, size, job) {
  *
  * @returns {Promise<{totals: object, archives: Array<object>}>}
  */
-export async function serviceStats({ store, tables, log }) {
+export async function serviceStats({ store, tables, log, now }) {
     const sites = await allSiteActivity({ tables });
 
     const memberships = await tables.listEntities(TABLES.memberships);
+
+    // How many of those people actually came. Same de-duplication argument as
+    // the membership scan below, and the same answer: read once, group twice.
+    const reading = await activeReaders({ tables, now, log });
 
     // Slug -> people, and every address that belongs to anything. The distinct
     // set is the honest service-wide number: summing the per-archive counts
@@ -93,6 +102,8 @@ export async function serviceStats({ store, tables, log }) {
     const archives = await inBatches(sites, AT_ONCE, async (site) => ({
         slug: site.slug,
         people: peopleBySlug.get(site.slug) ?? 0,
+        daily: reading.bySlug.get(site.slug)?.daily ?? 0,
+        monthly: reading.bySlug.get(site.slug)?.monthly ?? 0,
         ...(await contentOf({ store, slug: site.slug, log }))
     }));
 
@@ -104,7 +115,11 @@ export async function serviceStats({ store, tables, log }) {
             letters: sum('letters'),
             hidden: sum('hidden'),
             photos: sum('photos'),
-            people: everyone.size
+            people: everyone.size,
+            // Not `sum('daily')`: somebody who opened two archives this morning
+            // is one person here and two there, and both readings are wanted.
+            daily: reading.totals.daily,
+            monthly: reading.totals.monthly
         },
         archives
     };

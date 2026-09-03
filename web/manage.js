@@ -143,9 +143,12 @@
         $('deletions').hidden = false;
     }
 
-    // Slug -> the three count cells in its arrivals row, so the stats call can
+    // Slug -> the count cells in its arrivals row, so the stats call can
     // fill them whenever it lands.
     const countCells = new Map();
+
+    // The order they appear in the row, and the order they are filled in.
+    const COUNTS = ['letters', 'photos', 'people', 'daily', 'monthly'];
 
     // The arrivals half. Drawn only after the deletions call has confirmed the
     // visitor, so a refused stranger never sees a table flash up behind the
@@ -168,7 +171,7 @@
             // independently, so position is not a key and a selector would be
             // one more thing to keep in step with the markup.
             const boxes = {};
-            for (const field of ['letters', 'photos', 'people']) {
+            for (const field of COUNTS) {
                 const box = cell(row, '\u2014');
                 box.className = 'count';
                 boxes[field] = box;
@@ -511,8 +514,8 @@
         drawWaiting(sites);
     }
 
-    // How big the service is. Four numbers, no controls, and the only part of
-    // this page that is only ever read.
+    // How big the service is, and how much of it is being read. No controls,
+    // and the only part of this page that is only ever looked at.
     function drawTally(totals) {
         const tally = $('tally');
         tally.replaceChildren();
@@ -524,7 +527,11 @@
             ['Archives', totals.archives, ''],
             ['Letters', totals.letters, totals.hidden ? `${totals.hidden} hidden` : ''],
             ['Photographs', totals.photos, ''],
-            ['People', totals.people, 'counted once each']
+            ['People', totals.people, 'counted once each'],
+            // Beside the membership figure on purpose. That number only ever
+            // grows; these two can fall, which is the whole reason to look.
+            ['Reading today', totals.daily, ''],
+            ['Reading this month', totals.monthly, 'past 30 days']
         ];
 
         for (const [label, value, aside] of boxes) {
@@ -566,7 +573,7 @@
         for (const archive of archives) {
             const boxes = countCells.get(archive.slug);
             if (!boxes) continue;
-            for (const field of ['letters', 'photos', 'people']) {
+            for (const field of COUNTS) {
                 boxes[field].textContent = Number(archive[field] ?? 0).toLocaleString();
             }
         }

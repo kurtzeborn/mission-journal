@@ -4,6 +4,7 @@ import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { deletionOf } from '../lib/deletion.js';
 import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
+import { recordVisit } from '../lib/visits.js';
 
 // The whole site in one response. A family archive is a few hundred letters at
 // most, so paging would add a moving part for no gain, and having the entire
@@ -11,6 +12,22 @@ import { presentPosts } from '../lib/present.js';
 async function handler(request, context) {
     const result = await gate({ store: blobStore(), request, log: context });
     if (result.denied) return result.denied;
+
+    // This route rather than photo.js or download.js, because it is fetched
+    // once per visit where those are fetched once per picture -- and above the
+    // 304 below, because somebody revalidating an open tab came back.
+    //
+    // Operators reading an archive they do not belong to are left out: the
+    // number is meant to say whether a family is still visiting, and counting
+    // ourselves in it is how a quiet archive looks busy.
+    if (!result.viaOperator) {
+        await recordVisit({
+            tables: tableStore(),
+            slug: result.slug,
+            email: result.principal?.email,
+            log: context
+        });
+    }
 
     // Before the ETag rather than after, and for the same reason as the site
     // row below: the answer changes the validator -- see contentEtag. Only an

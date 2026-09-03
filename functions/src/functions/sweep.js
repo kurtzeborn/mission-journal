@@ -10,15 +10,16 @@
 
 import { app } from '@azure/functions';
 import { tableStore } from '../lib/clients.js';
-import { sweepArrivals } from '../lib/sweep.js';
+import { sweepArrivals, sweepVisits } from '../lib/sweep.js';
 import { setting } from '../lib/settings.js';
 
 async function handler(timer, context) {
     // Opt-in, so forgetting it can only cause the sweep to run, never cause
     // it to quietly stop. Same reasoning as `PURGE_DRY_RUN`.
     const dryRun = setting('SWEEP_DRY_RUN', '') === 'true';
+    const tables = tableStore();
 
-    const result = await sweepArrivals({ tables: tableStore(), log: context, dryRun });
+    const result = await sweepArrivals({ tables, log: context, dryRun });
 
     context.log('sweep: cleared finished arrival rows', {
         scanned: result.scanned,
@@ -30,7 +31,20 @@ async function handler(timer, context) {
         pastDue: Boolean(timer?.isPastDue)
     });
 
-    return result;
+    // Sequential, and reported separately: they are two tables with two
+    // retention windows, and one of them failing should be legible as itself.
+    const visits = await sweepVisits({ tables, log: context, dryRun });
+
+    context.log('sweep: cleared visit rows nobody reports on', {
+        scanned: visits.scanned,
+        deleted: visits.deleted,
+        kept: visits.kept,
+        failed: visits.failed,
+        oldest: visits.oldest,
+        dryRun
+    });
+
+    return { arrivals: result, visits };
 }
 
 app.timer('sweep', {

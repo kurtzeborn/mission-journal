@@ -14,6 +14,7 @@ import { serviceStats } from '../src/lib/stats.js';
 import { stats } from '../src/functions/deletions.js';
 import { touchSiteActivity } from '../src/lib/sites.js';
 import { recordMembership } from '../src/lib/memberships.js';
+import { recordVisit } from '../src/lib/visits.js';
 import { ROLE } from '../src/lib/acl.js';
 
 const OPERATOR = 'scott@example.org';
@@ -58,7 +59,15 @@ describe('counting the service', () => {
 
         const { totals, archives } = await serviceStats({ store, tables: store, log: silent });
 
-        assert.deepEqual(totals, { archives: 2, letters: 3, hidden: 0, photos: 4, people: 3 });
+        assert.deepEqual(totals, {
+            archives: 2,
+            letters: 3,
+            hidden: 0,
+            photos: 4,
+            people: 3,
+            daily: 0,
+            monthly: 0
+        });
 
         const found = byId(archives);
         assert.deepEqual(found.get('elder.one'), {
@@ -66,7 +75,9 @@ describe('counting the service', () => {
             people: 2,
             letters: 2,
             hidden: 0,
-            photos: 4
+            photos: 4,
+            daily: 0,
+            monthly: 0
         });
         assert.equal(found.get('elder.two').letters, 1);
     });
@@ -107,7 +118,9 @@ describe('counting the service', () => {
             people: 0,
             letters: 0,
             hidden: 0,
-            photos: 0
+            photos: 0,
+            daily: 0,
+            monthly: 0
         });
     });
 
@@ -183,5 +196,42 @@ describe('the stats route', () => {
         const response = await ask(OPERATOR, memoryStore());
 
         assert.match(response.headers['Cache-Control'], /no-store/);
+    });
+});
+
+describe('how much of it is being read', () => {
+    const NOW = new Date('2026-08-16T12:00:00Z');
+    const back = (days) => new Date(NOW.getTime() - days * 86400000);
+
+    test('the reading numbers ride along with the size ones', async () => {
+        const store = memoryStore();
+        await archive(store, 'elder.one', [letter()]);
+        await archive(store, 'elder.two', [letter()]);
+
+        await recordVisit({ tables: store, slug: 'elder.one', email: 'gran@example.com', now: () => NOW });
+        await recordVisit({ tables: store, slug: 'elder.two', email: 'gran@example.com', now: () => NOW });
+        await recordVisit({ tables: store, slug: 'elder.one', email: 'mum@example.com', now: () => back(5) });
+
+        const { totals, archives } = await serviceStats({ store, tables: store, log: silent, now: () => NOW });
+        const found = byId(archives);
+
+        assert.deepEqual(
+            { daily: found.get('elder.one').daily, monthly: found.get('elder.one').monthly },
+            { daily: 1, monthly: 2 }
+        );
+        // One person read two archives today. The columns say one each and the
+        // total says one, which is the same argument as the people count.
+        assert.equal(totals.daily, 1);
+        assert.equal(totals.monthly, 2);
+    });
+
+    test('an archive nobody has opened reads as zero rather than nothing', async () => {
+        const store = memoryStore();
+        await archive(store, 'elder.quiet', [letter()]);
+
+        const { totals, archives } = await serviceStats({ store, tables: store, log: silent, now: () => NOW });
+
+        assert.deepEqual({ daily: archives[0].daily, monthly: archives[0].monthly }, { daily: 0, monthly: 0 });
+        assert.equal(totals.daily, 0);
     });
 });

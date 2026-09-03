@@ -69,7 +69,13 @@ export const TABLES = {
     // us an address has *changed* rather than that a stranger has arrived.
     // Derived, and the recovery is a sign-in: an empty table simply re-binds
     // everyone the next time they visit. See identity.js.
-    identities: 'identities'
+    identities: 'identities',
+    // PartitionKey = 'YYYY-MM-DD', RowKey = '{slug}|SHA-256 of the address'.
+    // One row per person per archive per day they read it, upserted, so the
+    // count is people rather than page loads. Holds no address and nothing
+    // about what was read. Derived, and losing it costs a month of history.
+    // See visits.js.
+    visits: 'visits'
 };
 
 export function createTableStore({ accountName, credential = new DefaultAzureCredential() }) {
