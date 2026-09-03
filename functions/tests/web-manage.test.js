@@ -167,13 +167,23 @@ describe('the other table, which is every archive there is', () => {
 
     test('an archive that has never had a letter shows dashes, not blanks', async () => {
         // Rows written before arrivals were recorded have no date at all. An
-        // empty cell reads as a rendering fault.
+        // empty cell reads as a rendering fault. The last three are the counts,
+        // which the stats call has not answered in this test at all.
         const view = await arriving({
             lastReceivedAt: '',
             archives: [{ slug: 'elder.new', name: '', state: 'live', lastPostAt: '', lastReceivedAt: '', held: 0 }]
         });
 
-        assert.deepEqual(cells(flowRows(view)[0]), ['elder.new', 'live', '\u2014', '\u2014', '\u2014']);
+        assert.deepEqual(cells(flowRows(view)[0]), [
+            'elder.new',
+            'live',
+            '\u2014',
+            '\u2014',
+            '\u2014',
+            '\u2014',
+            '\u2014',
+            '\u2014'
+        ]);
         assert.match(view.text('flow-state'), /No letters have arrived/i);
     });
 
@@ -199,7 +209,6 @@ describe('the other table, which is every archive there is', () => {
         // derived from the name, so the two said the same thing twice.
         const view = await arriving({ lastReceivedAt: '', archives: ARCHIVES });
 
-        assert.equal(cells(flowRows(view)[0]).length, 5);
         assert.equal(cells(flowRows(view)[0]).includes('Elder Recent'), false);
     });
 
@@ -668,5 +677,67 @@ describe('putting one back', () => {
             rows(view).map((row) => cells(row)[0]),
             ['sister.example']
         );
+    });
+});
+
+describe('how big the service is', () => {
+    const TOTALS = { archives: 2, letters: 12, hidden: 3, photos: 40, people: 7 };
+
+    const COUNTED = [
+        { slug: 'elder.recent', people: 5, letters: 9, hidden: 3, photos: 31 },
+        { slug: 'sister.waiting', people: 2, letters: 3, hidden: 0, photos: 9 }
+    ];
+
+    // Three routes now, and the stats one is deliberately last to answer: it
+    // costs a blob read per archive, and the arrivals table must not wait.
+    const counting = ({ totals = TOTALS, archives = COUNTED, ok = true } = {}) => async (url) => {
+        if (url.includes('manage/stats')) return ok ? { status: 200, body: { totals, archives } } : { status: 500, body: {} };
+        if (url.includes('last-received')) return { status: 200, body: { lastReceivedAt: ARCHIVES[0].lastReceivedAt, archives: ARCHIVES } };
+        return { status: 200, body: { deletions: [] } };
+    };
+
+    const boxes = (view) =>
+        view.el('tally').children.map((box) => box.children.map((child) => child.textContent));
+
+    test('four numbers, with the hidden letters said beside the total rather than instead of it', async () => {
+        const view = await manage({ answer: counting() });
+
+        assert.deepEqual(boxes(view), [
+            ['Archives', '2'],
+            ['Letters', '12', '3 hidden'],
+            ['Photographs', '40'],
+            ['People', '7', 'counted once each']
+        ]);
+    });
+
+    test('nothing hidden anywhere, and the aside is not there at all', async () => {
+        const view = await manage({ answer: counting({ totals: { ...TOTALS, hidden: 0 } }) });
+
+        assert.deepEqual(boxes(view)[1], ['Letters', '12']);
+    });
+
+    test('the per-archive numbers land on the archive they belong to', async () => {
+        const view = await manage({ answer: counting() });
+
+        // The last three cells of each arrivals row, in the order the header
+        // names them.
+        assert.deepEqual(
+            view.el('flow-rows').children.map((row) => row.children.slice(5).map((c) => c.textContent)),
+            [
+                ['9', '31', '5'],
+                ['3', '9', '2']
+            ]
+        );
+    });
+
+    test('a failed count leaves the arrivals table standing', async () => {
+        // The tally is a shape and the arrivals table is an alarm. Losing the
+        // first must never cost the second.
+        const view = await manage({ answer: counting({ ok: false }) });
+
+        assert.equal(view.el('tally').hidden, true);
+        assert.equal(view.text('tally-state'), 'Could not count the archives.');
+        assert.equal(view.el('flow').hidden, false);
+        assert.equal(view.el('flow-rows').children.length, 2);
     });
 });

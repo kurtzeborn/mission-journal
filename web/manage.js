@@ -143,12 +143,17 @@
         $('deletions').hidden = false;
     }
 
+    // Slug -> the three count cells in its arrivals row, so the stats call can
+    // fill them whenever it lands.
+    const countCells = new Map();
+
     // The arrivals half. Drawn only after the deletions call has confirmed the
     // visitor, so a refused stranger never sees a table flash up behind the
     // "nothing here" panel.
     function drawFlow(archives) {
         const rows = $('flow-rows');
         rows.replaceChildren();
+        countCells.clear();
 
         for (const archive of archives) {
             const row = document.createElement('tr');
@@ -157,6 +162,19 @@
             cell(row, archive.lastReceivedAt ? day(archive.lastReceivedAt) : '\u2014');
             cell(row, archive.lastPostAt ? day(archive.lastPostAt) : '\u2014');
             cell(row, waiting(archive));
+
+            // Filled by the stats route, which is still in flight. Held by
+            // reference rather than found again later: the two calls sort
+            // independently, so position is not a key and a selector would be
+            // one more thing to keep in step with the markup.
+            const boxes = {};
+            for (const field of ['letters', 'photos', 'people']) {
+                const box = cell(row, '\u2014');
+                box.className = 'count';
+                boxes[field] = box;
+            }
+            countCells.set(archive.slug, boxes);
+
             rows.appendChild(row);
         }
 
@@ -211,6 +229,7 @@
             : 'No letters have arrived yet.';
 
         drawFlow(archives);
+        if (counted) fillCounts(counted);
     }
 
     // The refusals half. Every row is somebody who tried to start an archive
@@ -492,6 +511,90 @@
         drawWaiting(sites);
     }
 
+    // How big the service is. Four numbers, no controls, and the only part of
+    // this page that is only ever read.
+    function drawTally(totals) {
+        const tally = $('tally');
+        tally.replaceChildren();
+
+        // Hidden letters are said as an aside on the letters figure rather
+        // than as a box of their own: it is a fact about that total, and a
+        // fifth box would give it equal weight with the size of the service.
+        const boxes = [
+            ['Archives', totals.archives, ''],
+            ['Letters', totals.letters, totals.hidden ? `${totals.hidden} hidden` : ''],
+            ['Photographs', totals.photos, ''],
+            ['People', totals.people, 'counted once each']
+        ];
+
+        for (const [label, value, aside] of boxes) {
+            const box = document.createElement('div');
+            box.className = 'tally__box';
+
+            const name = document.createElement('dt');
+            name.textContent = label;
+
+            const number = document.createElement('dd');
+            number.className = 'tally__number';
+            number.textContent = Number(value ?? 0).toLocaleString();
+
+            box.appendChild(name);
+            box.appendChild(number);
+
+            if (aside) {
+                const under = document.createElement('dd');
+                under.className = 'tally__aside';
+                under.textContent = aside;
+                box.appendChild(under);
+            }
+
+            tally.appendChild(box);
+        }
+
+        $('tally-state').hidden = true;
+        tally.hidden = false;
+    }
+
+    // What the stats call returned. Kept because the two calls race, and
+    // whichever finishes second is the one that puts the numbers in the table.
+    let counted = null;
+
+    // The per-archive numbers, dropped into whichever arrivals rows exist. A
+    // slug with no row is an archive the arrivals call did not return, which
+    // is not this function's problem to report.
+    function fillCounts(archives) {
+        for (const archive of archives) {
+            const boxes = countCells.get(archive.slug);
+            if (!boxes) continue;
+            for (const field of ['letters', 'photos', 'people']) {
+                boxes[field].textContent = Number(archive[field] ?? 0).toLocaleString();
+            }
+        }
+    }
+
+    async function loadStats() {
+        const where = $('tally-state');
+
+        let response;
+        try {
+            response = await fetch('/api/manage/stats', { cache: 'no-store' });
+        } catch {
+            where.textContent = 'Could not count the archives. Please try again.';
+            return;
+        }
+
+        if (!response.ok) {
+            where.textContent = 'Could not count the archives.';
+            return;
+        }
+
+        const body = await response.json();
+        drawTally(body.totals ?? {});
+
+        counted = Array.isArray(body.archives) ? body.archives : [];
+        fillCounts(counted);
+    }
+
     async function load() {
         let response;
         try {
@@ -523,6 +626,7 @@
         // is worth making the other wait for -- and the deletions call has
         // already settled the only question they share, which is whether the
         // page should be on screen at all.
+        loadStats();
         loadFlow();
         loadRefused();
         loadWaiting();

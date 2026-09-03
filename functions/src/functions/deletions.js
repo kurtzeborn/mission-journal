@@ -27,6 +27,7 @@ import { blobStore, tableStore } from '../lib/clients.js';
 import { jsonResponse as json, operatorGate } from '../lib/api.js';
 import { pendingDeletions, restoreSite } from '../lib/deletion.js';
 import { serviceFlow } from '../lib/flow.js';
+import { serviceStats } from '../lib/stats.js';
 import { validSlug } from '../lib/paths.js';
 
 const account = () => process.env.STORAGE_ACCOUNT_NAME;
@@ -43,6 +44,15 @@ export async function received(request, context, store = blobStore(), tables = t
     if (gated.denied) return gated.denied;
 
     return json(200, await serviceFlow({ store, tables }));
+}
+
+// Its own route rather than more fields on `received`, because it costs a blob
+// read per archive and the arrivals table is the alarm.
+export async function stats(request, context, store = blobStore(), tables = tableStore()) {
+    const gated = operatorGate({ request, log: context });
+    if (gated.denied) return gated.denied;
+
+    return json(200, await serviceStats({ store, tables, log: context }));
 }
 
 async function restore(request, context) {
@@ -81,6 +91,13 @@ app.http('last-received', {
     authLevel: 'anonymous',
     route: 'manage/last-received',
     handler: received
+});
+
+app.http('service-stats', {
+    methods: ['GET'],
+    authLevel: 'anonymous',
+    route: 'manage/stats',
+    handler: stats
 });
 
 app.http('deletions-restore', {

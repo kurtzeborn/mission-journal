@@ -30,13 +30,14 @@
     exactly the people it was untrue for. A refused visitor now gets the same
     answer as anyone who mistypes a URL.
 
-    Four tables. The deletions list is ordinarily empty, which is the state it
-    is designed around: the common case is confirming that nothing is waiting.
-    The arrivals list always has every archive in it, and the common case is
-    confirming that the top row is recent. The refusals list is the one with
-    buttons that change somebody's mind for them, and it should be empty too --
-    a row in it is a family who tried to start an archive and could not. The
-    waiting list is where a claim email that never arrived becomes visible.
+    Four tables, under a row of totals. The deletions list is ordinarily empty,
+    which is the state it is designed around: the common case is confirming
+    that nothing is waiting. The arrivals list always has every archive in it,
+    and the common case is confirming that the top row is recent. The refusals
+    list is the one with buttons that change somebody's mind for them, and it
+    should be empty too -- a row in it is a family who tried to start an archive
+    and could not. The waiting list is where a claim email that never arrived
+    becomes visible.
 -->
 
 <body>
@@ -60,6 +61,18 @@
 
         <div id="tooling" hidden>
             <h1>Service tooling</h1>
+
+            <!--
+                The shape of the service, above the alarm that watches it.
+                Five numbers and no controls: everything else on this page is
+                a list of things that need a decision, and this is the one part
+                that is only ever read. It loads on its own route because the
+                letter and photograph counts cost a blob read per archive, and
+                the arrivals table below must not wait behind them.
+            -->
+            <dl class="tally" id="tally" hidden></dl>
+
+            <p class="note" id="tally-state"><span class="waiting">Loading</span></p>
 
             <!--
                 Above the deletions, because this is the half somebody comes
@@ -87,6 +100,9 @@
                 answer somebody comes for is in the top few. No display name
                 column -- the slug is made from it, so the two said the same
                 thing twice across the widest table on the page.
+
+                The last three columns arrive separately and later, from the
+                stats route, and hold a dash until they do.
             -->
             <table id="flow" class="deletions deletions--dense" hidden>
                 <thead>
@@ -96,6 +112,9 @@
                         <th scope="col">Last received</th>
                         <th scope="col">Newest letter</th>
                         <th scope="col">Waiting</th>
+                        <th scope="col" class="count">Letters</th>
+                        <th scope="col" class="count">Photos</th>
+                        <th scope="col" class="count">People</th>
                     </tr>
                 </thead>
                 <tbody id="flow-rows"></tbody>
