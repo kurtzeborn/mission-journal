@@ -6,35 +6,39 @@ What exists in Azure and Cloudflare, and how the pieces connect. Every "why" liv
 
 ## System overview
 
+Mail flows in from the left; pages and print go out to the right.
+
 ```mermaid
 flowchart LR
-    missionary([Missionary]) -->|BCC / forward| cf
-    family([Family & friends]) -->|forward| cf
+    missionary([Missionary]) -->|"BCC or forward"| cf
+    family(["Family & friends"]) -->|forward| cf
 
-    subgraph cloudflare[Cloudflare]
-        cf[Email Routing<br/>MX on pdayletters.com]
-        worker[Email Worker<br/>mj-ingest]
+    subgraph cloudflare["Cloudflare"]
+        direction TB
+        cf["Email Routing<br/>MX on pdayletters.com"]
+        worker["Email Worker<br/>mj-ingest"]
         cf -->|in-SMTP| worker
     end
 
-    subgraph azure[Azure — rg mission-journal, westus2]
-        swa[Static Web App<br/>mj-swa-*, Standard]
-        fn[Function App<br/>mj-fn-*, Flex Consumption]
-        st[(Storage<br/>mjst*, GRS)]
-        kv[Key Vault<br/>mj-kv-*]
-        ai[App Insights<br/>mj-ai-* + mj-log-*]
+    subgraph azure["Azure &mdash; mission-journal, westus2"]
+        direction TB
+        swa["Static Web App<br/>mj-swa-*<br/>Standard"]
+        fn["Function App<br/>mj-fn-*<br/>Flex Consumption"]
+        st[("Storage<br/>mjst*<br/>GRS")]
+        kv["Key Vault<br/>mj-kv-*"]
+        ai["App Insights<br/>mj-ai-*<br/>mj-log-*"]
 
-        swa -->|linked backend<br/>/api/*| fn
+        swa -->|"/api/*"| fn
         fn --> st
         fn --> kv
         fn --> ai
         swa --> kv
     end
 
-    worker -->|SAS: blob write + queue add| st
-    reader([Reader in a browser]) -->|Google / Microsoft auth| swa
-    fn -->|REST| mail[Cloudflare Email Service<br/>outbound]
-    fn -->|REST| peecho[Peecho<br/>print fulfilment]
+    worker -->|"SAS write"| st
+    swa <-->|"Google or Microsoft sign-in"| reader(["Reader in a browser"])
+    fn -->|REST| mail["Cloudflare Email Service<br/>outbound mail"]
+    fn -->|REST| peecho["Peecho<br/>print fulfilment"]
 ```
 
 Details: [High-level architecture](plan.md#high-level-architecture) · [Azure resource plan](plan.md#azure-resource-plan) · [External constraints](plan.md#external-constraints)
@@ -158,7 +162,9 @@ Details: [Access control](plan.md#access-control) · [Ownership and the 60-day w
 
 ## Tables
 
-Same storage account. Keys as written; every one is a point read or a single-partition query except where noted.
+Twelve tables in the same storage account, drawn in three groups so they stay legible. Keys as written; every one is a point read or a single-partition query except where noted.
+
+### People and access
 
 ```mermaid
 erDiagram
@@ -172,30 +178,31 @@ erDiagram
         string RowKey "slug"
         string note "DERIVED from acl.json - never grants access"
     }
-    sites {
-        string PartitionKey "slug"
-        string RowKey "activity"
-        string columns "display name, mission dates, lastPostAt, lastReceivedAt"
+    identities {
+        string PartitionKey "identity"
+        string RowKey "sha256 of provider and userId"
+        string note "DERIVED - repaired by signing in again"
     }
     invites {
         string PartitionKey "slug"
         string RowKey "hash of the invitation token"
         string note "the hash revokes; it does not accept"
     }
-    arrivals {
-        string PartitionKey "slug:YYYY-MM-DD"
-        string RowKey "message ULID"
-        string note "daily cap guard - swept after 30 days"
-    }
-    visits {
-        string PartitionKey "YYYY-MM-DD"
-        string RowKey "slug + bar + sha256 of the address"
-        string note "one row per person per archive per day - swept after 40"
-    }
-    deletions {
+```
+
+### Archives and mail
+
+```mermaid
+erDiagram
+    sites {
         string PartitionKey "slug"
-        string RowKey "record"
-        string note "AUTHORITATIVE - the 30-day promise lives here"
+        string RowKey "activity"
+        string columns "display name, mission dates, lastPostAt, lastReceivedAt"
+    }
+    nudges {
+        string PartitionKey "lowercased email"
+        string RowKey "slug:kind"
+        string note "send-once guard for reminder mail"
     }
     optouts {
         string PartitionKey "optout"
@@ -207,20 +214,31 @@ erDiagram
         string RowKey "sha256 of email"
         string note "DERIVED from Cloudflare suppression"
     }
+```
+
+### Guards and housekeeping
+
+```mermaid
+erDiagram
+    arrivals {
+        string PartitionKey "slug:YYYY-MM-DD"
+        string RowKey "message ULID"
+        string note "daily cap guard - swept after 30 days"
+    }
+    visits {
+        string PartitionKey "YYYY-MM-DD"
+        string RowKey "slug + bar + sha256 of the address"
+        string note "one row per person per archive per day - swept after 40"
+    }
     rejections {
         string PartitionKey "slug"
         string RowKey "message ULID"
         string note "AUTHORITATIVE - the only trace of a refused first letter"
     }
-    identities {
-        string PartitionKey "identity"
-        string RowKey "sha256 of provider and userId"
-        string note "DERIVED - repaired by signing in again"
-    }
-    nudges {
-        string PartitionKey "lowercased email"
-        string RowKey "slug:kind"
-        string note "send-once guard for reminder mail"
+    deletions {
+        string PartitionKey "slug"
+        string RowKey "record"
+        string note "AUTHORITATIVE - the 30-day promise lives here"
     }
 ```
 
