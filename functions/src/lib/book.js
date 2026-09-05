@@ -133,6 +133,14 @@ const CONTENTS = {
 // the least bad answer.
 export const SHEET_LEAST = 24;
 
+// And the most it can be bound to. Peecho's other end of the same rule, and
+// unlike the floor there is nothing to be done about it here: blank paper
+// fixes a book that is too thin and nothing fixes one that is too thick.
+// A build that reaches this is refused with the number, because the owner's
+// remedy is to take pictures out of the archive and they need to know how
+// many.
+export const SHEET_MOST = 500;
+
 // Front and back. Named because the number turns up in three unrelated sums
 // -- the printer's floor, the page total, and the parity of the last leaf --
 // and a bare 2 in any of them reads as a coincidence rather than as the same
@@ -958,8 +966,9 @@ export function albumPageCount(count) {
 /**
  * Deal the photographs out over that many pages, as evenly as they go.
  *
- * Order is kept, because the order is the order they were attached in and
- * that is usually the order they were taken in.
+ * Order is kept, because the order is the one `present.js` handed over, and
+ * that is capture order for anything carrying a date and arrival order for
+ * the rest.
  */
 export function albumSpread(photos, { pages }) {
     const out = [];
@@ -1853,6 +1862,32 @@ const freshState = (madeAt, proof) => ({
 });
 
 /**
+ * What to say about a book too thick to bind.
+ *
+ * The floor is padded and the ceiling is refused, and the difference between
+ * them is that this one can be explained. A thin book cannot be told how much
+ * more it needs, because that depends on letters nobody has written yet; a
+ * fat one knows exactly how far over it is, and the album prints six
+ * photographs to a page, so the arithmetic back to a number of pictures is
+ * the whole of it.
+ *
+ * Rounded to ten and hedged with "about", because taking pictures out also
+ * takes out padding that was keeping chapters on right-hand pages, and the
+ * true figure is a little kinder than the estimate.
+ */
+function tooLong(pages, most, posts) {
+    const over = pages - most;
+    const drop = Math.ceil((over * ALBUM_MOST) / 10) * 10;
+    const held = posts.reduce((sum, post) => sum + (post.photos?.length ?? 0), 0);
+
+    return (
+        `this archive makes a ${pages}-page book and the press binds up to ${most}. ` +
+        `Removing about ${drop} of its ${held} pictures would bring it under, ` +
+        `since the album prints ${ALBUM_MOST} to a page.`
+    );
+}
+
+/**
  * Build the book.
  *
  * One PDF, covers included, which is the form Peecho asks for. Returns the
@@ -1866,6 +1901,12 @@ const freshState = (madeAt, proof) => ({
  * press's rules off altogether -- no floor and no parity -- which is what
  * code measuring the layout wants, since twenty blank leaves and a rounding
  * to the next even number hide whatever it was trying to see.
+ *
+ * `most` is the same press's ceiling and overridable for the same reason,
+ * with zero meaning nobody is binding this and any length will do. It is
+ * checked between the two passes rather than at the end: a book that cannot
+ * be printed should cost the layout arithmetic and stop, not several hundred
+ * megabytes of photographs and a PDF nobody can use.
  *
  * `pages` counts what the printer counts -- every leaf, both covers -- since
  * that is the number their spine calculation is fed. The folios in `opens`
@@ -1895,6 +1936,7 @@ export function buildInterior({
     cover = {},
     madeAt,
     least = SHEET_LEAST,
+    most = SHEET_MOST,
     proof = false,
     dpi = proof ? PROOF_DPI : PRINT_DPI,
     log
@@ -1942,14 +1984,21 @@ export function buildInterior({
         });
 
         draft.end();
-        return starts;
+        return { ...starts, pages: state.page + COVERS };
     })();
 
     const state = freshState(madeAt, proof);
     const doc = openBook({ title, state });
 
     const done = (async () => {
-        const { starts, chapters } = await measured;
+        const { starts, chapters, pages } = await measured;
+
+        // Before the second pass, which fetches every photograph in the book.
+        // The measuring pass reads no blobs, so a book that cannot be printed
+        // costs layout arithmetic and stops there rather than a few hundred
+        // megabytes of downloads and a PDF nobody can use.
+        if (most && pages > most) throw new Error(tooLong(pages, most, ordered));
+
         for (let index = 0; index < ordered.length; index += 1) {
             entries[index].page = starts.get(ordered[index].id) ?? 0;
         }

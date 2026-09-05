@@ -5,7 +5,7 @@ import { ROLE } from '../lib/acl.js';
 import { deletionOf } from '../lib/deletion.js';
 import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
-import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES } from '../lib/photos.js';
+import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES, MAX_PHOTOS, overSizeClaim } from '../lib/photos.js';
 import { runRender } from '../lib/render.js';
 
 const problem = (status, error) => ({
@@ -234,8 +234,26 @@ async function restore(request, context) {
 // of the bytes, the other names a single id to drop. Neither can undo an edit
 // it never saw, and enforcing it would break the ordinary case of adding two
 // pictures in a row -- the first one moves the ETag the second was holding.
-const TOO_MANY = 'this letter already has as many added pictures as it can hold';
-export const MAX_ADDED = 24;
+const TOO_MANY = `a letter can hold ${MAX_PHOTOS} pictures, and this one is full`;
+
+// The date the browser read off the file, if it managed to.
+//
+// A wall clock with no zone on it, matching `originalDate` -- see `web/taken.js`
+// for why the reading happens out there and why there is no instant to be had.
+// The shape is checked and anything else is dropped in silence: the date is how
+// the pictures are ordered, and ordering is not worth failing an upload over.
+const TAKEN_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
+
+export function readTakenAt(header) {
+    const said = String(header ?? '').trim();
+    if (!TAKEN_AT.test(said)) return null;
+
+    // Read back rather than merely parsed. `Date.parse` rolls February 31st
+    // forward into March instead of refusing it, and a filename full of digits
+    // will produce a day like that eventually.
+    const when = new Date(`${said}Z`);
+    return Number.isNaN(when.getTime()) || !when.toISOString().startsWith(said) ? null : said;
+}
 
 /**
  * Put one picture on one letter.
@@ -249,14 +267,12 @@ export const MAX_ADDED = 24;
  * answers with a response rather than a result, because every caller's next
  * line is `return`.
  */
-export async function attachPhoto({ store, context, slug, postId, posts, bytes, via }) {
+export async function attachPhoto({ store, context, slug, postId, posts, bytes, via, takenAt }) {
     // Both of these are refusals, and refusing before spending a transcode on
     // bytes that cannot be stored is the whole reason to look.
     const existing = (posts ?? []).find((post) => post.id === postId);
     if (!existing) return problem(404, 'no such post');
-    if ((existing.photos ?? []).filter((photo) => photo.addedAt).length >= MAX_ADDED) {
-        return problem(409, TOO_MANY);
-    }
+    if ((existing.photos ?? []).length >= MAX_PHOTOS) return problem(409, TOO_MANY);
 
     // Before `commitPosts`, never inside it: its `mutate` is called
     // synchronously and may be called more than once, so a transcode in there
@@ -264,7 +280,7 @@ export async function attachPhoto({ store, context, slug, postId, posts, bytes, 
     const stored = await storePhoto({ store, slug, bytes });
     if (!stored) return problem(415, 'that picture could not be read');
 
-    const photo = { ...stored, addedAt: new Date().toISOString() };
+    const photo = { ...stored, addedAt: new Date().toISOString(), ...(takenAt ? { takenAt } : {}) };
     let added = false;
 
     const outcome = await commitPosts({
@@ -281,9 +297,7 @@ export async function attachPhoto({ store, context, slug, postId, posts, bytes, 
             // covers the double-click as well as the honest mistake.
             if (photos.some((entry) => entry.id === photo.id)) return { posts: all };
 
-            if (photos.filter((entry) => entry.addedAt).length >= MAX_ADDED) {
-                return { error: TOO_MANY };
-            }
+            if (photos.length >= MAX_PHOTOS) return { error: TOO_MANY };
 
             added = true;
             const next = [...all];
@@ -315,6 +329,8 @@ export async function addPhoto({ request, context, store }) {
         return problem(415, 'this site does not support a file format you tried to add');
     }
 
+    if (overSizeClaim(request.headers)) return problem(413, 'that picture is too large to add');
+
     const bytes = Buffer.from(await request.arrayBuffer());
     if (!bytes.length) return problem(400, 'no picture was sent');
     if (bytes.length > MAX_UPLOAD_BYTES) {
@@ -328,7 +344,8 @@ export async function addPhoto({ request, context, store }) {
         postId,
         posts: gated.posts,
         bytes,
-        via: 'upload'
+        via: 'upload',
+        takenAt: readTakenAt(request.headers.get('x-taken-at'))
     });
 }
 

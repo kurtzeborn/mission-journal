@@ -75,11 +75,6 @@
         no.className = 'ask__button';
         no.textContent = 'Cancel';
 
-        const yes = document.createElement('button');
-        yes.type = 'submit';
-        yes.value = 'yes';
-        yes.className = 'ask__button ask__button--go';
-
         // Drawn only for the questions that will be asked again. There is no
         // stopping the one asked before a letter is deleted.
         const again = document.createElement('label');
@@ -98,7 +93,7 @@
         // must not be the answer that does it. The checkbox sits ahead of both
         // and takes that focus on the questions that show it, which is safe:
         // Enter still submits through the first submit button, which is Cancel.
-        form.append(again, no, yes);
+        form.append(again, no);
 
         // Clicking the dark area answers Cancel, like the archive's other two
         // dialogs. A click on the backdrop is reported as a click on the
@@ -110,8 +105,72 @@
         dialog.append(question, detail, form);
         document.body.append(dialog);
 
-        asking = { dialog, question, detail, yes, again, box };
+        asking = { dialog, question, detail, form, again, box, actions: [] };
         return asking;
+    }
+
+    /**
+     * Ask, and resolve with the value of whichever action was chosen.
+     *
+     * More than one is offered where the question is genuinely a fork rather
+     * than a yes -- a pile of photographs can go onto the letter in front of
+     * the owner or be spread across the archive by date, and neither of those
+     * is the negative of the other. Cancel is always there and is always the
+     * answer to Escape, so a dialog nobody understands can be got out of.
+     *
+     * The buttons are rebuilt each time rather than kept and relabelled: the
+     * count varies, and a stale one left over from the last question would be
+     * an answer nobody was offered.
+     *
+     * @param {{question: string, detail?: string, remember?: string,
+     *   actions: {label: string, value: string, tone?: 'grave'|'calm'}[]}} asked
+     * @returns {Promise<string|null>}
+     */
+    function choose({ question, detail, actions, remember }) {
+        const view = ensureAsk();
+        view.question.textContent = question;
+
+        for (const old of view.actions) old.remove();
+        view.actions = actions.map(({ label, value, tone = 'grave' }) => {
+            const button = document.createElement('button');
+            button.type = 'submit';
+            button.value = value;
+            button.className = 'ask__button ask__button--go';
+            button.classList.toggle('ask__button--calm', tone === 'calm');
+            button.textContent = label;
+            view.form.append(button);
+            return button;
+        });
+
+        view.again.hidden = !remember;
+        view.box.checked = false;
+
+        // Some questions answer themselves -- "Withdraw the invitation to
+        // ada@example.com?" needs no second sentence, and an empty paragraph
+        // below it is a gap that reads as something failing to load.
+        view.detail.textContent = detail ?? '';
+        view.detail.hidden = !detail;
+
+        const offered = new Set(actions.map((action) => action.value));
+
+        return new Promise((resolve) => {
+            // Cleared rather than trusted: the element is reused, and a `yes`
+            // left over from the last question would turn the next Escape into
+            // an answer nobody gave.
+            view.dialog.returnValue = '';
+            view.dialog.addEventListener(
+                'close',
+                () => {
+                    const said = view.dialog.returnValue;
+                    // Only a yes is worth remembering. A remembered Cancel
+                    // would be a button that silently stopped working.
+                    if (offered.has(said) && remember && view.box.checked) keep(remember);
+                    resolve(offered.has(said) ? said : null);
+                },
+                { once: true }
+            );
+            view.dialog.showModal();
+        });
     }
 
     /**
@@ -136,39 +195,13 @@
     function ask({ question, detail, action, tone = 'grave', remember }) {
         if (remember && recall(remember)) return Promise.resolve(true);
 
-        const view = ensureAsk();
-        view.question.textContent = question;
-        view.yes.textContent = action;
-        view.yes.classList.toggle('ask__button--calm', tone === 'calm');
-
-        view.again.hidden = !remember;
-        view.box.checked = false;
-
-        // Some questions answer themselves -- "Withdraw the invitation to
-        // ada@example.com?" needs no second sentence, and an empty paragraph
-        // below it is a gap that reads as something failing to load.
-        view.detail.textContent = detail ?? '';
-        view.detail.hidden = !detail;
-
-        return new Promise((resolve) => {
-            // Cleared rather than trusted: the element is reused, and a `yes`
-            // left over from the last question would turn the next Escape into
-            // an answer nobody gave.
-            view.dialog.returnValue = '';
-            view.dialog.addEventListener(
-                'close',
-                () => {
-                    const said = view.dialog.returnValue === 'yes';
-                    // Only a yes is worth remembering. A remembered Cancel
-                    // would be a button that silently stopped working.
-                    if (said && remember && view.box.checked) keep(remember);
-                    resolve(said);
-                },
-                { once: true }
-            );
-            view.dialog.showModal();
-        });
+        return choose({
+            question,
+            detail,
+            remember,
+            actions: [{ label: action, value: 'yes', tone }]
+        }).then((said) => said === 'yes');
     }
 
-    window.Confirm = { ask };
+    window.Confirm = { ask, choose };
 })();

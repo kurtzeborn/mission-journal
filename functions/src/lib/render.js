@@ -7,7 +7,7 @@
 
 import { extractOriginal } from './extract.js';
 import { redactAccessLinks, sanitizeBody, photoUrl } from './sanitize.js';
-import { storePhoto, isPhotoType } from './photos.js';
+import { storePhoto, isPhotoType, MAX_PHOTOS } from './photos.js';
 import { photoId } from './paths.js';
 import { linkedPhotoServices } from './photolinks.js';
 
@@ -106,6 +106,23 @@ async function renderPhotos({ store, slug, extracted, log }) {
     const seen = new Set();
 
     for (const { part, cid } of parts) {
+        // A letter takes as many pictures from a message as an owner may add to
+        // one by hand. Nothing anybody sends comes near it -- the fullest of
+        // forty-four real letters carried five -- so what this actually bounds
+        // is the pathological case, which the byte ceiling does not: 26 MiB of
+        // message is tens of thousands of distinct tiny images, and each one is
+        // a transcode and two blob writes. That render would exhaust the
+        // thirty-minute timeout, be redelivered, and exhaust it four more times
+        // before the letter reached the poison queue.
+        if (rendered.length >= MAX_PHOTOS) {
+            log.error?.('render: message carried more pictures than a letter can hold', {
+                slug,
+                kept: rendered.length,
+                parts: parts.length
+            });
+            break;
+        }
+
         if (!isPhotoType(part.mimeType)) continue;
 
         const bytes = Buffer.from(part.content);

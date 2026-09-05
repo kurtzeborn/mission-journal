@@ -18,6 +18,7 @@ import {
 import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { safeName, msgIdSegment, validSlug } from '../src/lib/paths.js';
 import { memoryStore } from './memory-store.js';
+import { ARCHIVE_CAP } from '../src/lib/cap.js';
 import { normalizeSubject, bodyHead100, findDuplicate, dedupeKey } from '../src/lib/dedupe.js';
 import { dayInOwnOffset, rfc3339InOwnOffset } from '../src/lib/dates.js';
 
@@ -179,6 +180,97 @@ test('the same message ingested twice yields one post', async () => {
     assert.equal(second.status, 'duplicate');
     assert.equal(second.reason, 'message-id');
     assert.equal(store.json('rendered', 'elder.example/posts.json').length, 1);
+});
+
+// --- the archive ceiling ---------------------------------------------------
+
+// Distinct in every field dedupe compares, so filler can never be mistaken for
+// the fixture letter being ingested alongside it.
+const filler = (count) =>
+    Array.from({ length: count }, (_, i) => ({
+        id: `2025-01-01-fill${i}`,
+        subject: `Filler ${i}`,
+        originalFrom: `filler${i}@example.com`,
+        originalDate: '2025-01-01T00:00:00',
+        originalMessageId: `<fill${i}@example.com>`,
+        bodyHead100: `filler ${i}`,
+        photos: []
+    }));
+
+const archiveOf = (store, posts, slug = 'elder.example') =>
+    store.blobs.set(`rendered/${slug}/posts.json`, {
+        bytes: Buffer.from(JSON.stringify(posts), 'utf8'),
+        metadata: {},
+        etag: `etag-${posts.length}`
+    });
+
+test('an archive at its ceiling refuses the next letter', async () => {
+    const store = memoryStore();
+    store.acl('elder.example', OWNER);
+    archiveOf(store, filler(ARCHIVE_CAP));
+
+    const result = await ingestFixture(store, 'direct-missionary');
+
+    assert.equal(result.status, 'archive-full');
+    assert.equal(store.json('rendered', 'elder.example/posts.json').length, ARCHIVE_CAP);
+
+    // Refused is not destroyed. The raw message keeps its thirty days in
+    // inbox/, so a letter caught by a cap that turns out to be wrong can be
+    // re-enqueued once somebody deletes one.
+    assert.ok(store.blobs.has('inbox/01TEST0000000000000000000.raw'));
+});
+
+test('one letter short of the ceiling still takes it', async () => {
+    const store = memoryStore();
+    store.acl('elder.example', OWNER);
+    archiveOf(store, filler(ARCHIVE_CAP - 1));
+
+    assert.equal((await ingestFixture(store, 'direct-missionary')).status, 'stored');
+    assert.equal(store.json('rendered', 'elder.example/posts.json').length, ARCHIVE_CAP);
+});
+
+// The order of the two checks matters. A family who forwards the same letter
+// twice into a full archive should be told it is already there, not that the
+// archive is full -- the second answer sends them looking for a problem their
+// own mail did not cause.
+test('a full archive still answers a re-forward as a duplicate', async () => {
+    const store = memoryStore();
+    store.acl('elder.example', OWNER);
+    const first = await ingestFixture(store, 'direct-missionary', '01FIRST000000000000000000');
+    assert.equal(first.status, 'stored');
+
+    const stored = store.json('rendered', 'elder.example/posts.json');
+    archiveOf(store, [...stored, ...filler(ARCHIVE_CAP - stored.length)]);
+
+    const again = await ingestFixture(store, 'direct-missionary', '01SECOND00000000000000000');
+    assert.equal(again.status, 'duplicate');
+});
+
+// The wiring only. capacity.test.js owns the thresholds and the wording.
+test('the letter that fills the archive tells the owners', async () => {
+    const store = memoryStore();
+    store.acl('elder.example', OWNER);
+    archiveOf(store, filler(ARCHIVE_CAP - 1));
+
+    const mailer = { sent: [], send: async (m) => (mailer.sent.push(m), { status: 'sent' }) };
+    const ulid = '01TEST0000000000000000000';
+    store.seed(ulid, await raw('direct-missionary'));
+
+    const result = await runIngest({
+        ulid,
+        store,
+        mailer,
+        config,
+        log: silent,
+        now: () => new Date('2026-08-03T12:00:00Z'),
+        verifyDkim: offlineDkim
+    });
+
+    assert.equal(result.status, 'stored');
+    assert.equal(result.count, ARCHIVE_CAP);
+    assert.equal(mailer.sent.length, 1);
+    assert.equal(mailer.sent[0].to, 'scott@kurtzeborn.org');
+    assert.match(mailer.sent[0].subject, /full/);
 });
 
 test('an attached forward from an ACL member is archived with its attachments', async () => {

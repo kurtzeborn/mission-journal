@@ -89,3 +89,29 @@ export async function withinDailyCap({ tables, slug, ulid, now = () => new Date(
 
     return { ok: true, count: seen.length + 1 };
 }
+
+// ---------------------------------------------------------------------------
+// How many letters one archive may hold, ever.
+//
+// The cap above limits the rate and not the total, which are different
+// guarantees: two hundred a day sustained is seventy thousand letters a year,
+// and the file every reader downloads on every visit is one JSON document
+// holding all of them. Nothing pages it, deliberately -- the client-side
+// search rests on having the whole archive in hand -- so the assumption that
+// an archive is small is load-bearing and until now was written down nowhere.
+//
+// A two-year mission is about a hundred and four p-days, so a hundred and four
+// weekly letters is the theoretical ceiling for an elder and rather fewer for a
+// sister serving eighteen months. The one complete archive on the service ran
+// to forty-four. A hundred and fifty clears the theoretical maximum with room
+// for the things that are not weekly letters -- a mission president's note, a
+// transfer announcement, a re-forward an edit stopped dedupe from matching.
+//
+// **This one does not reset tomorrow.** The daily cap forgives itself at
+// midnight; reaching this one is permanent until somebody deletes a letter.
+// The replay path is the same -- the raw message keeps its thirty days in
+// `inbox/` and a refused letter can be re-enqueued by ULID -- but the window
+// is the only warning there is, so the refusal logs at error level.
+// ---------------------------------------------------------------------------
+
+export const ARCHIVE_CAP = 150;

@@ -7,6 +7,7 @@ import {
     MARGIN,
     PAGE,
     SHEET_LEAST,
+    SHEET_MOST,
     albumPageCount,
     albumPlan,
     albumRows,
@@ -463,6 +464,24 @@ describe('setting a whole book', () => {
         // exercised as much as the count.
         assert.ok(result.pages >= SHEET_LEAST, `only ${result.pages} pages`);
         assert.equal(result.pages % 2, 0, `${result.pages} pages is odd`);
+    });
+
+    test('refuses a book the press cannot bind', async () => {
+        // The floor is padded and the ceiling is refused, and the message has
+        // to carry the arithmetic: an owner told only "too long" has no way
+        // to know whether that means removing five pictures or five hundred.
+        const { stream, done } = build({ most: 8 });
+
+        stream.on('error', () => {});
+        await assert.rejects(done, /makes a \d+-page book and the press binds up to 8/);
+    });
+
+    test('the ceiling belongs to the press and can be turned off', async () => {
+        const { stream, done } = build({ most: 0 });
+        const [, result] = await Promise.all([readPdf(stream), done]);
+
+        assert.ok(result.pages > 0);
+        assert.ok(SHEET_MOST > SHEET_LEAST);
     });
 
     test('counts the covers, because the printer does', async () => {

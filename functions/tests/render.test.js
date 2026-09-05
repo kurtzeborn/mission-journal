@@ -16,7 +16,7 @@ import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { runRender } from '../src/lib/render.js';
 import { sanitizeBody, photoUrl } from '../src/lib/sanitize.js';
 import { linkedPhotoServices } from '../src/lib/photolinks.js';
-import { transcode, storePhoto, MIN_PHOTO_EDGE, LARGE_EDGE, THUMB_EDGE } from '../src/lib/photos.js';
+import { transcode, storePhoto, MIN_PHOTO_EDGE, LARGE_EDGE, THUMB_EDGE, MAX_PHOTOS } from '../src/lib/photos.js';
 import { memoryStore } from './memory-store.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
@@ -567,6 +567,74 @@ test('a letter whose photos cannot be decoded still publishes', async () => {
 
     const post = store.json('rendered', `${SLUG}/posts.json`)[0];
     assert.equal(post.photos.length, 0);
+    assert.match(post.bodyHtml, /Still a letter/);
+});
+
+// Ingest caps the bytes of a message but not the number of pictures inside it,
+// and 26 MiB holds an implausible number of small ones. The letter survives;
+// it just stops filling.
+test('a message stuffed with pictures fills the letter and stops', async () => {
+    const { store, message } = await pipeline('outlook-web-inline');
+
+    // Each one a different colour, so content-hash dedupe cannot collapse them
+    // and the ceiling is what does the stopping. Built one at a time: fifty
+    // concurrent libvips operations in a worker that is already sharing a
+    // machine with the rest of the suite has been seen to take the process
+    // down with an access violation.
+    const images = [];
+    for (let i = 0; i < MAX_PHOTOS + 2; i++) {
+        images.push(
+            await sharp({
+                create: {
+                    width: MIN_PHOTO_EDGE + 1,
+                    height: MIN_PHOTO_EDGE + 1,
+                    channels: 3,
+                    background: { r: i * 5, g: 40, b: 200 - i }
+                }
+            })
+                .jpeg()
+                .toBuffer()
+        );
+    }
+
+    const parts = images.map((bytes, i) =>
+        [
+            '--b',
+            'Content-Type: image/jpeg',
+            `Content-Disposition: attachment; filename="p${i}.jpg"`,
+            'Content-Transfer-Encoding: base64',
+            '',
+            bytes.toString('base64')
+        ].join('\r\n')
+    );
+
+    const key = `raw/${SLUG}/${message.msgId}/message.eml`;
+    store.blobs.set(key, {
+        bytes: Buffer.from(
+            [
+                'From: Elder Example <elder.example@missionary.org>',
+                'Subject: Week 12',
+                'Content-Type: multipart/mixed; boundary=b',
+                '',
+                '--b',
+                'Content-Type: text/html',
+                '',
+                '<p>Still a letter</p>',
+                ...parts,
+                '--b--',
+                ''
+            ].join('\r\n'),
+            'utf8'
+        ),
+        metadata: {},
+        etag: 'etag-stuffed'
+    });
+
+    const result = await runRender({ message, store, log: silent });
+    assert.equal(result.status, 'rendered');
+
+    const post = store.json('rendered', `${SLUG}/posts.json`)[0];
+    assert.equal(post.photos.length, MAX_PHOTOS);
     assert.match(post.bodyHtml, /Still a letter/);
 });
 

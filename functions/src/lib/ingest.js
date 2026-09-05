@@ -20,7 +20,8 @@ import { nudgeOnce, NUDGE } from './nudge.js';
 import { acknowledgeForward } from './ack.js';
 import { explainRejection, isTold } from './rejection.js';
 import { recordRejection } from './rejections.js';
-import { withinDailyCap } from './cap.js';
+import { withinDailyCap, ARCHIVE_CAP } from './cap.js';
+import { warnIfFilling } from './capacity.js';
 import { RELAY_TTL_DAYS } from './relay.js';
 import { issueClaimToken, PURPOSE } from './claimtoken.js';
 import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
@@ -529,6 +530,31 @@ export async function runIngest({
         }
     }
 
+    // Tell the owners when this letter is the one that reaches a threshold.
+    //
+    // Here and not in `commitLetter` for the same reason the receipt is: that
+    // is the entry point promotion uses, and a claimed site replaying a
+    // backlog is being watched by the person who claimed it. Mail about how
+    // full it is getting would arrive while they are looking at the number.
+    if (mailer && committed.status === 'stored') {
+        try {
+            await warnIfFilling({
+                store,
+                tables,
+                mailer,
+                slug,
+                count: committed.count,
+                baseUrl: config.baseUrl,
+                log
+            });
+        } catch (error) {
+            log.error?.('ingest: could not warn that the archive is filling up', {
+                slug,
+                error: error.message
+            });
+        }
+    }
+
     return committed;
 }
 
@@ -663,7 +689,7 @@ export async function commitLetter({ store, tables = null, slug, ulid, raw, extr
         attachments: extracted.attachments.length
     });
 
-    return { status: 'stored', ulid, slug, msgId, postId: post.id, post, verdict };
+    return { status: 'stored', ulid, slug, msgId, postId: post.id, post, verdict, count: committed.count };
 }
 
 // Read-modify-write against posts.json under an ETag. The dedupe check happens
@@ -688,6 +714,19 @@ async function commitPost({ store, slug, post, candidate, log, ulid }) {
             return { status: 'duplicate', reason: duplicate.reason, postId: duplicate.post.id };
         }
 
+        // After the duplicate check, so a re-forward of a letter the archive
+        // already holds is still answered as the duplicate it is rather than
+        // refused for being one too many.
+        if (posts.length >= ARCHIVE_CAP) {
+            log.error?.('ingest: archive is full', {
+                ulid,
+                slug,
+                cap: ARCHIVE_CAP,
+                count: posts.length
+            });
+            return { status: 'archive-full', count: posts.length };
+        }
+
         // Two letters written the same day can collide on the legible part of
         // the id; the suffix is what actually distinguishes them, so a
         // collision means only that the id needs another character.
@@ -703,7 +742,7 @@ async function commitPost({ store, slug, post, candidate, log, ulid }) {
                 // a second message racing it.
                 ...(current ? { ifMatch: current.etag } : { ifNoneMatch: '*' })
             });
-            return { status: 'stored' };
+            return { status: 'stored', count: posts.length };
         } catch (err) {
             if (!isConflict(err)) throw err;
             log.info?.('ingest: posts.json conflict, retrying', { ulid, slug, attempt });

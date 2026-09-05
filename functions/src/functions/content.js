@@ -4,6 +4,7 @@ import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { deletionOf } from '../lib/deletion.js';
 import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
+import { MAX_PHOTOS } from '../lib/photos.js';
 import { recordVisit } from '../lib/visits.js';
 
 // The whole site in one response. A family archive is a few hundred letters at
@@ -96,6 +97,11 @@ async function handler(request, context) {
             // the time rather than absent, so the client has one shape to
             // read and no reason to guess.
             deleted,
+            // The per-letter picture limit, sent rather than duplicated in
+            // the page: the browser checks a whole selection against it
+            // before uploading anything, and a second copy of the number
+            // would eventually disagree with the one that is enforced.
+            maxPhotos: MAX_PHOTOS,
             posts: presentPosts(result.posts, result.role)
         }
     };

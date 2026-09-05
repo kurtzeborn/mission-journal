@@ -15,7 +15,7 @@ import sharp from 'sharp';
 import { addPhoto, removePhoto } from '../src/functions/post.js';
 import { memoryStore } from './memory-store.js';
 import { ROLE } from '../src/lib/acl.js';
-import { MAX_UPLOAD_BYTES } from '../src/lib/photos.js';
+import { MAX_UPLOAD_BYTES, MAX_PHOTOS } from '../src/lib/photos.js';
 
 const SLUG = 'elder.example';
 const POST = '2026-03-25-9CRE';
@@ -36,11 +36,21 @@ const header = (email) =>
 const picture = (width = 900, height = 600, background = '#336699') =>
     sharp({ create: { width, height, channels: 3, background } }).jpeg().toBuffer();
 
-const request = ({ as, type = 'image/jpeg', bytes = Buffer.alloc(0), postId = POST, photoId }) => ({
+const request = ({
+    as,
+    type = 'image/jpeg',
+    bytes = Buffer.alloc(0),
+    postId = POST,
+    photoId,
+    takenAt,
+    claims
+}) => ({
     headers: {
         get: (name) => {
             if (name === 'x-ms-client-principal') return as ? header(as) : null;
             if (name === 'content-type') return type;
+            if (name === 'x-taken-at') return takenAt ?? null;
+            if (name === 'content-length') return claims ?? null;
             return null;
         }
     },
@@ -155,6 +165,34 @@ describe('adding a picture', () => {
         assert.equal(photosOf(store).length, 0);
     });
 
+    // The declared length is checked first so an oversized body is refused
+    // before it is buffered. It is a claim and not a promise, which is why the
+    // test above still has to pass.
+    test('a body that declares itself too large is refused before it is read', async () => {
+        const store = await seeded();
+        let read = false;
+
+        const asked = request({ as: MUM, claims: String(MAX_UPLOAD_BYTES + 1) });
+        asked.arrayBuffer = async () => {
+            read = true;
+            return new ArrayBuffer(0);
+        };
+
+        const response = await addPhoto({ request: asked, context: silent, store });
+
+        assert.equal(response.status, 413);
+        assert.equal(read, false, 'the body should never have been buffered');
+    });
+
+    test('an honest content-length is left alone', async () => {
+        const store = await seeded();
+        const bytes = await picture();
+
+        const response = await posted(store, { as: MUM, bytes, claims: String(bytes.length) });
+
+        assert.equal(response.status, 200);
+    });
+
     test('a post that does not exist is a 404', async () => {
         const store = await seeded();
         const before = store.blobs.size;
@@ -183,7 +221,7 @@ describe('adding a picture', () => {
     });
 
     test('a letter that is already full refuses the next one', async () => {
-        const full = Array.from({ length: 24 }, (unused, index) => ({
+        const full = Array.from({ length: MAX_PHOTOS }, (unused, index) => ({
             id: `p_added${index}`,
             width: 10,
             height: 10,
@@ -194,13 +232,28 @@ describe('adding a picture', () => {
         const response = await posted(store, { as: MUM, bytes: await picture() });
 
         assert.equal(response.status, 409);
-        assert.equal(photosOf(store).length, 24);
+        assert.equal(photosOf(store).length, MAX_PHOTOS);
     });
 
-    test('the cap counts only what an owner added', async () => {
-        // A forward with thirty attachments is a letter, not an abuse of the
-        // upload endpoint, and it must not lock its own owner out.
-        const many = Array.from({ length: 30 }, (unused, index) => ({
+    test('attachments count towards the cap as well', async () => {
+        // The book counts every picture on a letter, so the cap does too. A
+        // forward that arrived full is full, and the owner is told rather than
+        // being allowed to add another forty-eight on top of it.
+        const full = Array.from({ length: MAX_PHOTOS }, (unused, index) => ({
+            id: `p_attached${index}`,
+            width: 10,
+            height: 10
+        }));
+        const store = await seeded(full);
+
+        const response = await posted(store, { as: MUM, bytes: await picture() });
+
+        assert.equal(response.status, 409);
+        assert.equal(photosOf(store).length, MAX_PHOTOS);
+    });
+
+    test('a letter with room under the cap still accepts one', async () => {
+        const many = Array.from({ length: MAX_PHOTOS - 1 }, (unused, index) => ({
             id: `p_attached${index}`,
             width: 10,
             height: 10
@@ -209,6 +262,48 @@ describe('adding a picture', () => {
 
         assert.equal((await posted(store, { as: MUM, bytes: await picture() })).status, 200);
     });
+});
+
+// The date the picture was taken, read in the browser off the file and sent
+// alongside the bytes. It cannot be read here: the transcoder strips EXIF
+// before anything is stored, deliberately, because it carries GPS.
+describe('when the picture was taken', () => {
+    const stored = async (takenAt) => {
+        const store = await seeded();
+        const response = await posted(store, { as: MUM, bytes: await picture(), takenAt });
+        return { response, photo: photosOf(store)[0] };
+    };
+
+    test('a wall clock is kept as it was sent', async () => {
+        const { photo } = await stored('2025-04-28T14:07:33');
+        assert.equal(photo.takenAt, '2025-04-28T14:07:33');
+    });
+
+    test('no header is a picture with no date, which is allowed', async () => {
+        const { response, photo } = await stored(undefined);
+        assert.equal(response.status, 200);
+        assert.equal(photo.takenAt, undefined);
+        assert.match(photo.addedAt, /^\d{4}-\d{2}-\d{2}T/);
+    });
+
+    for (const [label, sent] of [
+        ['an offset, which there is no zone to resolve', '2025-04-28T14:07:33-06:00'],
+        ['a UTC instant', '2025-04-28T14:07:33Z'],
+        ['milliseconds', '2025-04-28T14:07:33.481'],
+        ['a day with no time on it', '2025-04-28'],
+        ['a day that never happened', '2025-02-31T14:07:33'],
+        ['something that is not a date', 'yesterday afternoon'],
+        ['an attempt at something else entirely', '<script>alert(1)</script>']
+    ]) {
+        test(`${label} is dropped, and the upload still succeeds`, async () => {
+            // Losing the order of a photograph is a small thing. Refusing the
+            // photograph over it, in the middle of a run of six hundred, is
+            // not -- so a header that cannot be trusted is simply not kept.
+            const { response, photo } = await stored(sent);
+            assert.equal(response.status, 200);
+            assert.equal(photo.takenAt, undefined);
+        });
+    }
 });
 
 describe('taking a picture back off', () => {

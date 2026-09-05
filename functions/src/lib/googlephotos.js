@@ -29,9 +29,14 @@ const PICKER = 'https://photospicker.googleapis.com/v1';
 // over in one session, and nothing else.
 export const SCOPE = 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly';
 
-// Matches `MAX_ADDED` in post.js. Told to Google rather than only enforced on
-// the way in, so somebody who picks their whole camera roll is stopped at the
-// picking screen instead of after a five-minute wait and a 409.
+// Told to Google rather than only enforced on the way in, so somebody who
+// picks their whole camera roll is stopped at the picking screen instead of
+// after a five-minute wait and a 409.
+//
+// Well under `MAX_ADDED`, and deliberately so. That cap has to accommodate a
+// bulk upload spread across an archive by date; this is a person choosing
+// pictures by hand, one screen at a time, and each one costs a fetch from
+// Google before it can be transcoded.
 export const MAX_PICK = 24;
 
 // How long the owner has to finish picking. Google's own session outlives this

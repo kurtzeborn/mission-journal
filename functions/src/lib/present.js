@@ -46,6 +46,36 @@ const pick = (post, fields) => {
     return out;
 };
 
+// A letter's pictures are shown in the order they were taken.
+//
+// Which is not the order they arrived in. An owner adding two years of
+// photographs from a phone uploads them in whatever order the file picker
+// handed them over, and a bulk add spread across the archive by date can put
+// three on one letter from three separate runs. Arrival order there is not an
+// order at all, it is a record of how the work was done.
+//
+// Only pictures added by an owner carry `takenAt`: it is read in the browser
+// from the file (see `web/taken.js`), and a letter's own attachments never
+// pass through there. So those keep the order the missionary sent them in,
+// which is the order they were meant to be seen in, and the sort has to leave
+// it alone. An empty key does that -- undated first, in arrival order,
+// untouched -- because `Array.prototype.sort` is stable and a comparator
+// returning 0 pins them where they were.
+const takenAt = (photo) => String(photo?.takenAt ?? '');
+
+const byTaken = (a, b) => {
+    const ta = takenAt(a);
+    const tb = takenAt(b);
+    if (ta === tb) return 0;
+    return ta < tb ? -1 : 1;
+};
+
+// Copied before sorting. `pick` hands out the stored array by reference, and
+// sorting in place would reorder the object the caller read from storage --
+// which the render path then writes back.
+const inOrder = (post) =>
+    post.photos ? { ...post, photos: [...post.photos].sort(byTaken) } : post;
+
 // Letters are ordered by the local wall clock the sender wrote, not by the
 // instant that clock refers to. That is a deliberate choice and the opposite
 // of what this file used to do by accident.
@@ -102,7 +132,7 @@ export function presentPosts(posts, role) {
     const visible = owner ? posts : posts.filter((p) => !p.hidden);
 
     return visible
-        .map((p) => pick(p, fields))
+        .map((p) => inOrder(pick(p, fields)))
         .sort(byNewestWritten);
 }
 

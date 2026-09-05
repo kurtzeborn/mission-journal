@@ -5,7 +5,7 @@
 // handling an expired session. The drawing is Reader.mount(), which the
 // downloaded zip calls with exactly the same arguments.
 
-/* global Reader, Confirm */
+/* global Reader, Confirm, Taken */
 
 (function () {
     'use strict';
@@ -23,6 +23,17 @@
     // The slug is the first path segment. Everything else about the site --
     // including whether it exists at all -- is decided by the API.
     const slug = decodeURIComponent(window.location.pathname.split('/').filter(Boolean)[0] ?? '');
+
+    // The letters, once they have been fetched. Held here because adding
+    // photographs needs to know what else is in the archive to work out where
+    // each one belongs, and that decision is made a long way from the fetch.
+    let letters = [];
+
+    // The per-letter picture limit, as the API reports it. Zero until the
+    // archive has loaded, and zero again for a page cached from before this
+    // was sent -- in which case the check below is skipped and the server does
+    // the refusing, one picture later.
+    let maxPhotos = 0;
 
     const show = (message) => {
         elements.state.textContent = message;
@@ -406,23 +417,64 @@
         TYPE_BY_EXTENSION[String(file.name ?? '').split('.').pop().toLowerCase()] ||
         'application/octet-stream';
 
+    // How many pictures one sitting may carry. A minute of work, measured: a
+    // photograph off a phone averages 1.5 MB and takes about two seconds to
+    // upload, transcode into both renditions and commit. Unlike the per-letter
+    // cap this is nobody's rule but ours, and it is about the run rather than
+    // the archive -- a ten-minute run is one that gets interrupted by a closed
+    // laptop, and every picture after the interruption has to be found again.
+    const MAX_BATCH = 30;
+
     // Pictures go up one at a time and the page is reloaded once at the end,
     // because each upload is its own commit and reloading between them would
     // throw away the rest of the selection. The first failure stops the run
     // and is reported with what did get through, since "three of five" is the
     // only honest thing to say and the owner needs to know which to retry.
+    //
+    // What comes before the loop is the choice of where each one lands. A
+    // returned missionary with two years of photographs on a phone has a pile
+    // that belongs to the whole archive rather than to the letter the owner
+    // happens to be standing on, and sorting it by hand is forty sittings. So
+    // the dates are read here, off the files, and the owner is asked once.
     async function addPhotos(postId, files, say) {
+        const chosen = [...files];
+        if (chosen.length > MAX_BATCH) {
+            return (
+                `Please choose up to ${MAX_BATCH} pictures at a time, not ${chosen.length}. ` +
+                'Nothing was added. Each batch is still spread across the letters by date, ' +
+                'so a whole camera roll goes up a handful at a time.'
+            );
+        }
+
+        const plan = [];
+        for (const file of chosen) {
+            say(`Reading dates (${plan.length + 1} of ${chosen.length})…`);
+            plan.push({ file, takenAt: await Taken.of(file) });
+        }
+
+        const spread = await askWhere(postId, plan, say);
+        if (!spread) return null;
+
+        const full = tooManyFor(spread);
+        if (full) return full;
+
         let done = 0;
 
-        for (const file of files) {
-            say(`Adding pictures (${done + 1} of ${files.length})…`);
+        for (const { file, takenAt, target } of spread) {
+            say(`Adding pictures (${done + 1} of ${spread.length})…`);
 
             const failed = await call(
                 'POST',
-                postId,
+                target,
                 '/photos',
                 {
-                    headers: { 'Content-Type': typeOf(file) },
+                    headers: {
+                        'Content-Type': typeOf(file),
+                        // Only sent when the file said so. An absent header is
+                        // a picture with no date, which the archive can hold;
+                        // a guessed one is not.
+                        ...(takenAt ? { 'X-Taken-At': takenAt } : {})
+                    },
                     body: file
                 },
                 false
@@ -430,7 +482,7 @@
 
             if (failed) {
                 if (!done) return failed;
-                reloadAt(postId, stoppedAfter(done, files.length, failed));
+                reloadAt(postId, stoppedAfter(done, spread.length, failed));
                 return null;
             }
             done += 1;
@@ -438,6 +490,118 @@
 
         reloadAt(postId);
         return null;
+    }
+
+    // Which letter a photograph belongs to: the first one written on or after
+    // the moment it was taken.
+    //
+    // That is how the letters were written -- something happened on the
+    // Wednesday and was described on the next P-day -- so the picture lands
+    // beside the paragraph about it. One taken after the last letter has no
+    // letter after it and goes on the last, rather than being refused for the
+    // sake of a rule.
+    //
+    // Compared as text over the first nineteen characters, which is what
+    // `present.js` orders letters by and for the same reason: both stamps are
+    // local wall clocks with no instant behind them.
+    const written = (post) => String(post.originalDate ?? '').slice(0, 19);
+
+    const letterFor = (takenAt, ordered) =>
+        (ordered.find((post) => written(post) >= takenAt) ?? ordered[ordered.length - 1]).id;
+
+    /**
+     * Refuse a selection that would overfill a letter, before anything is sent.
+     *
+     * The server refuses too, one picture at a time, and that is the check
+     * that counts. But a 409 arriving at picture 380 of a bulk add stops the
+     * run and leaves the owner to work out which letter filled up and which
+     * pictures never went; the same sentence said first costs nothing and
+     * names the letter while there is still something they can do about it.
+     *
+     * @returns {string|null} a sentence to show, or null to go ahead
+     */
+    function tooManyFor(spread) {
+        if (!maxPhotos) return null;
+
+        const adding = new Map();
+        for (const { target } of spread) adding.set(target, (adding.get(target) ?? 0) + 1);
+
+        const over = [];
+        for (const [id, count] of adding) {
+            const post = letters.find((letter) => letter.id === id);
+            const held = (post?.photos ?? []).length;
+            if (held + count > maxPhotos) over.push({ post, room: Math.max(0, maxPhotos - held) });
+        }
+
+        if (!over.length) return null;
+
+        // Named rather than counted when there is one, because with one letter
+        // the owner's next move is to open it, and they need to know which.
+        const [first] = over;
+        const names = first.post?.subject || written(first.post).slice(0, 10) || 'that letter';
+        const which =
+            over.length === 1
+                ? `"${names}" has room for ${first.room} more`
+                : `${over.length} of the letters they would go on are too full`;
+
+        return (
+            `A letter can hold ${maxPhotos} pictures, and ${which}. ` +
+            'Nothing was added. Remove some from it first, or choose fewer pictures.'
+        );
+    }
+
+    /**
+     * Settle where each picture goes, asking only when there is a real choice.
+     *
+     * Silent for the ordinary case -- one photograph, or a handful carrying no
+     * dates, or an archive with a single letter in it -- because a dialog in
+     * front of every upload would tax the common errand to serve the rare one.
+     *
+     * @returns {Promise<object[]|null>} the plan with a target on each entry,
+     *   or null if the owner backed out
+     */
+    async function askWhere(postId, plan, say) {
+        const here = () => plan.map((entry) => ({ ...entry, target: postId }));
+
+        const dated = plan.filter((entry) => entry.takenAt);
+        if (plan.length < 2 || !dated.length || letters.length < 2) return here();
+
+        const ordered = [...letters].sort((a, b) => (written(a) < written(b) ? -1 : 1));
+        const targets = new Set(dated.map((entry) => letterFor(entry.takenAt, ordered)));
+
+        // Nothing to decide: every dated picture already belongs to the letter
+        // the owner is standing on, and there is no second place to offer.
+        if (targets.size === 1 && targets.has(postId) && dated.length === plan.length) return here();
+
+        const undated = plan.length - dated.length;
+        const said = await Confirm.choose({
+            question: `Where should these ${plan.length} pictures go?`,
+            detail:
+                `${dated.length} of them say when they were taken, and would be spread across ` +
+                `${targets.size} ${targets.size === 1 ? 'letter' : 'letters'} — each one on the ` +
+                'first letter written after it was taken.' +
+                (undated ? ` The other ${undated} said nothing, and would stay on this letter.` : ''),
+            actions: [
+                { label: 'Spread by date', value: 'spread', tone: 'calm' },
+                { label: 'All on this letter', value: 'here', tone: 'calm' }
+            ]
+        });
+
+        if (!said) return null;
+        if (said === 'here') return here();
+
+        say('Adding pictures…');
+
+        // Sorted, so the letters fill in the order the pictures were taken.
+        // Nothing downstream depends on it -- the reader orders them again on
+        // the way out -- but a run interrupted half way has then left the
+        // archive in a state that makes sense on its own.
+        return plan
+            .map((entry) => ({
+                ...entry,
+                target: entry.takenAt ? letterFor(entry.takenAt, ordered) : postId
+            }))
+            .sort((a, b) => String(a.takenAt ?? '').localeCompare(String(b.takenAt ?? '')));
     }
 
     // --- the same pictures, from Google Photos -----------------------------
@@ -704,6 +868,8 @@
 
         const payload = await response.json();
         loadedEtag = response.headers.get('ETag');
+        letters = payload.posts ?? [];
+        maxPhotos = Number(payload.maxPhotos) || 0;
 
         // The name if the archive has one, the slug if it does not. A site
         // claimed before anybody typed a name still has to be called something,

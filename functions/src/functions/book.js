@@ -1,7 +1,7 @@
 import { app } from '@azure/functions';
 import { blobStore, mailer, tableStore } from '../lib/clients.js';
 import { jsonResponse as json, siteGate } from '../lib/api.js';
-import { isPhotoType, MAX_UPLOAD_BYTES } from '../lib/photos.js';
+import { isPhotoType, MAX_UPLOAD_BYTES, overSizeClaim } from '../lib/photos.js';
 import { readProfile } from '../lib/profile.js';
 import {
     chooseCover,
@@ -239,6 +239,10 @@ export async function putCoverPicture({ request, context, store }) {
 
     if (!isPhotoType(request.headers.get('content-type'))) {
         return json(415, { error: 'that is not a kind of picture this site can print' });
+    }
+
+    if (overSizeClaim(request.headers)) {
+        return json(413, { error: 'that picture is too large to use' });
     }
 
     const bytes = Buffer.from(await request.arrayBuffer());

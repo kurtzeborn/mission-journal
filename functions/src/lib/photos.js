@@ -42,6 +42,32 @@ export const MIN_PHOTO_EDGE = 200;
 // no business being larger than an entire letter with its attachments.
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
+// The most pictures one letter may hold, from any source.
+//
+// The number comes from the printed book. Its album puts six photographs on a
+// page, so 48 is eight pages of plates behind a letter that usually runs to
+// two -- ten leaves for one fortnight, which is where a letter stops being a
+// letter with pictures and becomes an album with a caption. It is also what
+// keeps a whole archive inside the press's 500-page ceiling without the cap
+// having to know anything about the rest of the book.
+//
+// Counted across attachments and uploads together, because the book counts
+// them together. It used to count only what an owner added, which meant a
+// letter that arrived with forty attachments could take another twenty-four.
+export const MAX_PHOTOS = 48;
+
+/**
+ * Whether a request has already declared itself too large to accept.
+ *
+ * A claim and not a promise, so this never stands in for measuring the bytes
+ * that actually arrive -- it only avoids buffering a body that said up front
+ * it was over the line. `fetchPicked` checks Google's responses the same way.
+ */
+export function overSizeClaim(headers, maxBytes = MAX_UPLOAD_BYTES) {
+    const claimed = Number(headers?.get('content-length'));
+    return Number.isFinite(claimed) && claimed > maxBytes;
+}
+
 export const isPhotoType = (mimeType) =>
     PHOTO_TYPES.has(String(mimeType ?? '').toLowerCase().split(';')[0].trim());
 

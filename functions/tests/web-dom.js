@@ -278,6 +278,12 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
             replace(target) {
                 this.href = target;
                 this.replaced = target;
+            },
+            // Counted, not performed. A script that reloads is a script that
+            // has finished and handed the rest to a fresh page, and the count
+            // is how a test says "and then it stopped".
+            reload() {
+                this.reloaded = (this.reloaded ?? 0) + 1;
             }
         },
         // A real `replaceState` rewrites the address bar, fragment included,
@@ -311,6 +317,10 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
             if (timer) timer.cleared = true;
         },
         confirmed: true,
+        // Which of a `choose` dialog's actions a test wants taken. Null is
+        // Cancel, which is also what Escape gives, so the default is the
+        // answer that does nothing.
+        chose: null,
         console
     };
 
@@ -335,7 +345,13 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
     // The site's own dialog, stubbed to the answer a test asked for. It draws
     // itself into a page this DOM does not have, and the question under test
     // is only ever which branch the answer took.
-    context.Confirm = { ask: async () => context.confirmed };
+    context.Confirm = {
+        ask: async () => context.confirmed,
+        choose: async (asked) => {
+            context.asked = asked;
+            return context.chose;
+        }
+    };
     context.self = context;
 
     return {
@@ -386,7 +402,17 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
 export function fetching(answer) {
     const calls = [];
     const fetch = async (url, init = {}) => {
-        calls.push({ url, method: init.method ?? 'GET', body: init.body ? JSON.parse(init.body) : null });
+        // Not every body is JSON. A photograph goes up as raw bytes with a
+        // content type on it, and a harness that insisted on parsing would
+        // fail the upload path before it reached the code under test.
+        let sent = null;
+        try {
+            sent = init.body ? JSON.parse(init.body) : null;
+        } catch {
+            sent = init.body;
+        }
+
+        calls.push({ url, method: init.method ?? 'GET', headers: init.headers ?? {}, body: sent });
         const reply = await answer(url, init, calls.length);
         if (reply instanceof Error) throw reply;
         const { status = 200, body = {}, headers = {} } = reply ?? {};

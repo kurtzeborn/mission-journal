@@ -412,6 +412,61 @@ describe('the order letters are listed in', () => {
     });
 });
 
+// Within a letter, pictures are listed in the order they were taken rather
+// than the order they were uploaded -- which for a bulk add is not an order at
+// all, only a record of how the work was done.
+describe('the order a letter lists its pictures in', () => {
+    const photos = (list) =>
+        presentPosts([{ id: 'a', originalDate: '2026-08-01T20:00:00', photos: list }], 'reader')[0]
+            .photos.map((photo) => photo.id);
+
+    const taken = (id, at) => ({ id, addedAt: '2026-09-01T00:00:00Z', takenAt: at });
+
+    test('by capture time, not by arrival', () => {
+        assert.deepEqual(
+            photos([
+                taken('p_third', '2025-03-04T09:00:00'),
+                taken('p_first', '2025-01-02T09:00:00'),
+                taken('p_second', '2025-02-03T09:00:00')
+            ]),
+            ['p_first', 'p_second', 'p_third']
+        );
+    });
+
+    test("a letter's own attachments keep the order they arrived in", () => {
+        // Nothing that came with the letter has a capture time -- the date is
+        // read in the browser, and an attachment never passes through one --
+        // so the order the missionary attached them in is all there is, and it
+        // is the order they were meant to be seen in.
+        assert.deepEqual(
+            photos([{ id: 'p_b' }, { id: 'p_a' }, { id: 'p_c' }]),
+            ['p_b', 'p_a', 'p_c']
+        );
+    });
+
+    test('undated pictures lead, still in arrival order', () => {
+        assert.deepEqual(
+            photos([
+                taken('p_late', '2025-05-05T09:00:00'),
+                { id: 'p_sent_b' },
+                taken('p_early', '2025-01-01T09:00:00'),
+                { id: 'p_sent_a' }
+            ]),
+            ['p_sent_b', 'p_sent_a', 'p_early', 'p_late']
+        );
+    });
+
+    test('the stored array is not reordered underneath the caller', () => {
+        // `pick` copies field references, so sorting in place would rewrite
+        // the posts the render path is about to write back to storage.
+        const stored = [taken('p_z', '2025-09-09T09:00:00'), taken('p_a', '2025-01-01T09:00:00')];
+        const post = { id: 'a', originalDate: '2026-08-01T20:00:00', photos: stored };
+
+        presentPosts([post], 'reader');
+        assert.deepEqual(stored.map((photo) => photo.id), ['p_z', 'p_a']);
+    });
+});
+
 describe('photo visibility', () => {
     test('a photo of a published letter is served', () => {
         assert.equal(photoIsVisible(POSTS, 'p_0eade5b54243', 'reader'), true);
