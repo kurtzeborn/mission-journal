@@ -83,8 +83,8 @@ export function photoEntries(posts) {
  * always produces the same bytes, which is what makes it testable without a
  * storage account.
  */
-export function textEntries({ slug, posts, exportedAt }) {
-    const payload = { slug, posts, exportedAt };
+export function textEntries({ slug, name, mission, posts, exportedAt }) {
+    const payload = { slug, name: name ?? '', mission: mission ?? '', posts, exportedAt };
 
     // archive.js is loaded with <script src>, not inlined, so a letter
     // containing the characters "</script>" cannot break out of it. Escaped
@@ -111,11 +111,13 @@ export function textEntries({ slug, posts, exportedAt }) {
  *
  * @returns {{stream: import('node:stream').Readable, done: Promise<void>}}
  */
-export function buildArchive({ store, slug, posts, exportedAt, log }) {
+export function buildArchive({ store, slug, name, mission, posts, exportedAt, log }) {
     const zip = new yazl.ZipFile();
 
-    for (const [name, bytes] of Object.entries(textEntries({ slug, posts, exportedAt }))) {
-        zip.addBuffer(bytes, name, { mtime: FIXED_MTIME, mode: 0o100644 });
+    for (const [entryName, bytes] of Object.entries(
+        textEntries({ slug, name, mission, posts, exportedAt })
+    )) {
+        zip.addBuffer(bytes, entryName, { mtime: FIXED_MTIME, mode: 0o100644 });
     }
 
     const photos = photoEntries(posts);

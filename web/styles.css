@@ -612,7 +612,30 @@ button:focus-visible {
 /* The archive's own title borrows the letter heading's type but not its
    layout -- it is a plain heading, with nothing to open. */
 #site-title {
+    margin-bottom: 0.1rem;
+}
+
+/* The name and the mission are one block, so the gap belongs below the pair.
+   That way the mission sits tight under the name, and an archive without one
+   keeps the spacing it always had. */
+.archive-name {
     margin-bottom: 0.9rem;
+}
+
+/* Wide and flat, so it reads as a rule under the name rather than as a second
+   heading. The mission is where the name was, not a thing of its own, and
+   tracking this loose at this size gives a line that is mostly horizontal --
+   which is the whole idea. Uppercase for the same reason: it has no ascenders
+   or descenders to break the band. */
+.archive-mission {
+    margin: 0;
+    font-family: system-ui, sans-serif;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    color: var(--ink-soft);
 }
 
 /* The title and the count-up clock share a line.

@@ -77,7 +77,9 @@ for (const slug of slugs) {
             tables,
             slug,
             missionaryDisplayName: profile.displayName ?? '',
-            missionStartDate: profile.startDate ?? ''
+            missionName: profile.mission ?? '',
+            missionStartDate: profile.startDate ?? '',
+            missionReturnDate: profile.returnDate ?? ''
         });
     }
 

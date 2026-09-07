@@ -1,7 +1,8 @@
 import { app } from '@azure/functions';
-import { blobStore } from '../lib/clients.js';
+import { blobStore, tableStore } from '../lib/clients.js';
 import { gate, hardened } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
+import { sitesBySlug } from '../lib/sites.js';
 import { buildArchive } from '../lib/archive.js';
 
 // Where finished archives are staged. Its own container so a lifecycle rule
@@ -39,9 +40,18 @@ async function handler(request, context) {
     const posts = presentPosts(result.posts, result.role);
     const name = `${result.slug}/${result.role}.zip`;
 
+    // One point read, so the downloaded copy is headed the way the site is
+    // rather than with the slug -- which is an email address with the @ taken
+    // out, and not what anybody calls them.
+    const site = (await sitesBySlug({ tables: tableStore(), slugs: [result.slug] })).get(
+        result.slug
+    );
+
     const { stream, done } = buildArchive({
         store: blobStore(),
         slug: result.slug,
+        name: site?.missionaryDisplayName ?? '',
+        mission: site?.missionName ?? '',
         posts,
         exportedAt: new Date().toISOString(),
         log: context

@@ -295,6 +295,15 @@ describe('content validators', () => {
         );
     });
 
+    test('naming the mission is a new validator too', () => {
+        // It is printed under the name at the top of the archive, so an owner
+        // who fills it in and goes to look has to be handed a fresh page.
+        assert.notEqual(
+            contentEtag('"0x8DD1"', 'reader', false, false, siteFacts({ missionName: 'Ghana Accra Mission' })),
+            contentEtag('"0x8DD1"', 'reader', false, false, siteFacts({}))
+        );
+    });
+
     test('the same facts salt the same way, whichever row they came from', () => {
         // The archive response and the If-Match check on an owner's edit both
         // compute this, from separate reads. They must agree or every edit is

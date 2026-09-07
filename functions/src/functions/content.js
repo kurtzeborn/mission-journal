@@ -76,6 +76,11 @@ async function handler(request, context) {
             // titled with. Empty until somebody claims the site and types one,
             // so the client falls back to the slug rather than to nothing.
             name: site?.missionaryDisplayName ?? '',
+            // Where they served, or empty. Sent to every reader rather than to
+            // owners alone for the same reason the dates are: it is printed
+            // under the name at the top of the archive, and only the form that
+            // sets it is owners-only.
+            mission: site?.missionName ?? '',
             // The day the mission began, or empty. Sent to everyone who can
             // read the archive rather than to owners alone, because the page
             // counts up from it in front of the whole family; the settings

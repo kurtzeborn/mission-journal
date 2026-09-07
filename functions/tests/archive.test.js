@@ -196,6 +196,14 @@ describe('the photo manifest', () => {
 });
 
 describe('the offline data file', () => {
+    const parse = (entries) =>
+        JSON.parse(
+            entries['archive.js']
+                .toString('utf8')
+                .replace(/^window\.__ARCHIVE__ = /, '')
+                .replace(/;\n$/, '')
+        );
+
     test('escapes a letter that contains a closing script tag', () => {
         const entries = textEntries({
             slug: SLUG,
@@ -205,6 +213,33 @@ describe('the offline data file', () => {
         const data = entries['archive.js'].toString('utf8');
         assert.ok(!data.includes('</script'), 'an unescaped closing tag survived');
         assert.ok(data.startsWith('window.__ARCHIVE__ = '));
+    });
+
+    test('carries the name and the mission, so the copy is headed like the site', () => {
+        const payload = parse(
+            textEntries({
+                slug: SLUG,
+                name: 'Elder Isaac Backman',
+                mission: 'Ghana Kumasi',
+                posts: [],
+                exportedAt: '2026-08-03T00:00:00.000Z'
+            })
+        );
+
+        assert.equal(payload.name, 'Elder Isaac Backman');
+        assert.equal(payload.mission, 'Ghana Kumasi');
+    });
+
+    test('is empty rather than absent when there is neither', () => {
+        // The reader falls back to the slug, and it can only do that if the
+        // field is there to be empty.
+        const payload = parse(
+            textEntries({ slug: SLUG, posts: [], exportedAt: '2026-08-03T00:00:00.000Z' })
+        );
+
+        assert.equal(payload.name, '');
+        assert.equal(payload.mission, '');
+        assert.equal(payload.slug, SLUG);
     });
 });
 

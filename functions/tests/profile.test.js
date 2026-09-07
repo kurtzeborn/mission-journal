@@ -144,6 +144,21 @@ describe('which mission it was', () => {
 
         assert.equal('mission' in store.json('config', `${SLUG}/profile.json`), false);
     });
+
+    test('reaches the row, which is where the archive page reads it from', async () => {
+        // Absent from the file means absent, but the row is an index and the
+        // page reads it on every load: an owner who clears the mission has to
+        // see the line under the name go away.
+        const store = memoryStore();
+        const missionOf = async () =>
+            (await sitesBySlug({ tables: store, slugs: [SLUG] })).get(SLUG).missionName;
+
+        await save(store, { displayName: 'Elder Example', mission: 'Ghana Accra Mission' });
+        assert.equal(await missionOf(), 'Ghana Accra Mission');
+
+        await save(store, { displayName: 'Elder Example', mission: '' });
+        assert.equal(await missionOf(), '');
+    });
 });
 
 describe('the return date', () => {

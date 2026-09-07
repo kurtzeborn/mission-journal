@@ -160,7 +160,15 @@
             failure, and this is the first thing on the page.
         -->
         <div class="archive-head">
-            <h1 id="site-title" class="post__subject">&nbsp;</h1>
+            <div class="archive-name">
+                <h1 id="site-title" class="post__subject">&nbsp;</h1>
+                <!--
+                    Hidden until the archive turns out to have a mission, which
+                    is optional and often blank. The name has to stand on its
+                    own without it.
+                -->
+                <p class="archive-mission" id="site-mission" hidden></p>
+            </div>
             <div class="elapsed" id="elapsed" hidden>
                 <!--
                     Empty until the script decides which of the three readings

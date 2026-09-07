@@ -73,12 +73,14 @@ export async function touchSiteActivity({ tables, slug, lastPostAt, receivedAt }
  * therefore does overwrite. Undefined means "I have no opinion"; empty means
  * "there is no date", and the two must not collapse into each other.
  *
- * `missionReturnDate` follows the same rule for the same reason.
+ * `missionReturnDate` and `missionName` follow the same rule for the same
+ * reason.
  */
 export async function setSiteProfile({
     tables,
     slug,
     missionaryDisplayName,
+    missionName,
     missionStartDate,
     missionReturnDate
 }) {
@@ -88,6 +90,7 @@ export async function setSiteProfile({
         partitionKey: slug,
         rowKey: ROW,
         missionaryDisplayName: missionaryDisplayName ?? '',
+        ...(missionName === undefined ? {} : { missionName }),
         ...(missionStartDate === undefined ? {} : { missionStartDate }),
         ...(missionReturnDate === undefined ? {} : { missionReturnDate })
     });
@@ -145,7 +148,7 @@ export async function recordAlbumUrls({ tables, slug, urls }) {
  * empty values and the caller falls back to the slug.
  *
  * @returns {Promise<Map<string, {lastPostAt: string, lastReceivedAt: string,
- *   missionaryDisplayName: string, missionStartDate: string,
+ *   missionaryDisplayName: string, missionName: string, missionStartDate: string,
  *   missionReturnDate: string, photoAlbumUrls: string[]}>>}
  */
 export async function sitesBySlug({ tables, slugs }) {
@@ -157,6 +160,7 @@ export async function sitesBySlug({ tables, slugs }) {
             lastPostAt: row?.lastPostAt ?? '',
             lastReceivedAt: row?.lastReceivedAt ?? '',
             missionaryDisplayName: row?.missionaryDisplayName ?? '',
+            missionName: row?.missionName ?? '',
             missionStartDate: row?.missionStartDate ?? '',
             missionReturnDate: row?.missionReturnDate ?? '',
             photoAlbumUrls: albumUrlsOf(row)
@@ -225,6 +229,7 @@ export async function forgetSite({ tables, slug }) {
 export const siteFacts = (row) =>
     [
         row?.missionaryDisplayName ?? '',
+        row?.missionName ?? '',
         row?.missionStartDate ?? '',
         row?.missionReturnDate ?? ''
     ].join('\u0000');

@@ -878,6 +878,14 @@
         title.textContent = heading;
         document.title = `${heading} — Pday Letters`;
 
+        // Left hidden when it is blank rather than emptied, so the space under
+        // the name closes up instead of holding a gap for a line nobody wrote.
+        const mission = document.getElementById('site-mission');
+        if (mission) {
+            mission.textContent = payload.mission ?? '';
+            mission.hidden = !mission.textContent;
+        }
+
         runClock(payload.startDate, payload.returnDate);
 
         const download = document.getElementById('download');

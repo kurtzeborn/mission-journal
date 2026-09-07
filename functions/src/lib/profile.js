@@ -173,9 +173,10 @@ export async function saveProfile({
             tables,
             slug,
             missionaryDisplayName: name,
-            // Always offered, empty included: the archive page reads both
-            // dates off this row, so an owner who clears a field has to see
-            // the clock change to match.
+            // Always offered, empty included: the archive page reads the
+            // mission and both dates off this row, so an owner who clears a
+            // field has to see the page change to match.
+            missionName: where,
             missionStartDate: began,
             missionReturnDate: when
         });

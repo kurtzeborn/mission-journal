@@ -20,8 +20,16 @@
         searchCount: document.getElementById('search-count')
     };
 
-    document.getElementById('site-title').textContent = archive.slug;
-    document.title = `${archive.slug} — Pday Letters`;
+    // The slug is the fallback rather than the heading. A copy downloaded
+    // before the name was packaged has none, and so does a site nobody has
+    // named.
+    const heading = archive.name || archive.slug;
+    document.getElementById('site-title').textContent = heading;
+    document.title = `${heading} — Pday Letters`;
+
+    const mission = document.getElementById('site-mission');
+    mission.textContent = archive.mission || '';
+    mission.hidden = !mission.textContent;
 
     // Relative, with no leading slash: a leading slash on file:// resolves to
     // the root of the disk rather than to this folder.

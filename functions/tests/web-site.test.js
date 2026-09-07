@@ -197,6 +197,38 @@ describe('the other archives in the menu', () => {
     });
 });
 
+// The line under the archive's name.
+//
+// It is optional and most archives do not have one, so the case that matters
+// is the empty one: a blank line under the name reads as something that
+// failed to load rather than as something nobody filled in.
+describe('where they served', () => {
+    const named = (mission) =>
+        archive({
+            answer: async (url) =>
+                url === '/.auth/me'
+                    ? signedIn('gran@example.com')
+                    : {
+                        status: 200,
+                        body: { slug: SLUG, role: 'reader', name: 'Elder Example', mission, posts: [] }
+                    }
+        });
+
+    test('sits under the name when somebody has said', async () => {
+        const view = await named('Ghana Accra Mission');
+
+        assert.equal(view.el('site-mission').hidden, false);
+        assert.equal(view.text('site-mission'), 'Ghana Accra Mission');
+    });
+
+    test('is not there at all when nobody has', async () => {
+        const view = await named(undefined);
+
+        assert.equal(view.el('site-mission').hidden, true);
+        assert.equal(view.text('site-mission'), '');
+    });
+});
+
 // The clock at the top of the archive.
 //
 // It is the only thing on the page that is not a letter, and the only one that
