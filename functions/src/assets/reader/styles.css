@@ -599,9 +599,12 @@ button:focus-visible {
     transform: rotate(-135deg);
 }
 
+/* One clear step above the letter's own prose, and no more. The row is a
+   contents entry far more often than it is a heading, and at 1.4rem it dwarfed
+   the month it sits under and made the contents scroll for no gain. */
 .post__subject {
     position: relative;
-    font-size: 1.4rem;
+    font-size: 1.15rem;
     line-height: 1.3;
     margin: 0;
 }
