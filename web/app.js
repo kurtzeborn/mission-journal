@@ -261,35 +261,28 @@
         return null;
     }
 
-    // What to tell an owner when a run of uploads stopped part way.
+    // The part of a refusal that says what went wrong, without the part that
+    // says nothing was changed.
     //
-    // Several of `explain`'s sentences end in a reassurance that nothing was
-    // changed. That is true of the one request it was handed and false here,
-    // where pictures are already on the letter -- so the reassurance is cut
-    // and the count takes its place as the thing the owner is actually told.
+    // That reassurance is true of the one request `explain` was handed and
+    // false of a run that has already put pictures on a letter, so it is cut.
     // Cutting at the first sentence end is enough because in every one of
     // those the reassurance is a sentence of its own.
-    function stoppedAfter(done, total, failed) {
+    function reasonOf(failed) {
         const end = failed.indexOf('. ');
-        const reason = end === -1 ? failed : failed.slice(0, end + 1);
-        return `Added ${done} of ${total} pictures, then stopped. ${reason}`;
+        return end === -1 ? failed : failed.slice(0, end + 1);
     }
 
-    // What to tell an owner when a run finished but did not send everything.
-    //
-    // Kept separate from `stoppedAfter` because the two mean opposite things
-    // about what to do next. That one has pictures still waiting and the run
-    // should be tried again; this one is finished, and what it passed over it
-    // will never need. Saying so is the difference between the owner sending
-    // the same batch a second time for nothing and the owner going to look at
-    // the handful that were named.
-    function passedOver(done, total, { unreadable = 0, already = 0 }) {
+    // Why a run did not send everything it was given, or an empty string when
+    // it did. Both of these are ordinary outcomes of a bulk add rather than
+    // faults, which is why neither ends the run.
+    function whyNotAll({ unreadable = 0, already = 0 }) {
         const parts = [];
         if (already) {
             parts.push(
                 already === 1
-                    ? 'One was already on its letter.'
-                    : `${already} were already on their letters.`
+                    ? 'One was already in the archive.'
+                    : `${already} were already in the archive.`
             );
         }
         if (unreadable) {
@@ -299,7 +292,21 @@
                     : `${unreadable} could not be read and were skipped.`
             );
         }
-        return `Added ${done} of ${total} pictures. ${parts.join(' ')}`;
+        return parts.join(' ');
+    }
+
+    // The end of a run of uploads, said in a dialog and not on the status line.
+    //
+    // The line cannot survive what comes after it. Showing the new pictures
+    // means reloading, the reload throws the sentence away, and the page it
+    // draws opens at the top of an archive that runs to dozens of letters --
+    // so the answer to a minute of watching a counter arrived somewhere the
+    // owner was not looking, if it arrived at all. Holding the reload until
+    // the dialog is dismissed puts the two back in the order they happened:
+    // here is what the run did, then here is the letter with it done.
+    async function report(postId, question, detail) {
+        await Confirm.tell({ question, detail });
+        reloadAt(postId);
     }
 
     // Where a sentence waits out the reload that would otherwise destroy it.
@@ -514,8 +521,7 @@
         // refuse the whole batch on their behalf.
         const fresh = spread.filter((entry) => !holding(entry.target).includes(entry.id));
         const already = spread.length - fresh.length;
-
-        if (!fresh.length) return passedOver(0, spread.length, { already });
+        const total = spread.length;
 
         const full = tooManyFor(fresh);
         if (full) return full;
@@ -555,22 +561,28 @@
 
             if (failed) {
                 if (!done) return failed;
-                reloadAt(postId, stoppedAfter(done, fresh.length, failed));
+                await report(
+                    postId,
+                    `Added ${done} of ${total} pictures, then stopped.`,
+                    `${reasonOf(failed)} ${whyNotAll({ unreadable, already })}`.trim()
+                );
                 return null;
             }
             done += 1;
         }
 
-        if (!unreadable && !already) {
+        const detail = whyNotAll({ unreadable, already });
+
+        // One picture is not a run. It went on the letter in front of the
+        // owner and the reload shows it there, so a dialog would be a click
+        // spent dismissing an answer already on the screen.
+        if (total === 1) {
+            if (!done) return detail;
             reloadAt(postId);
             return null;
         }
 
-        // Nothing landed, so there is nothing to reload for and the sentence
-        // can be handed straight back to the status line.
-        if (!done) return passedOver(0, spread.length, { unreadable, already });
-
-        reloadAt(postId, passedOver(done, spread.length, { unreadable, already }));
+        await report(postId, `Added ${done} of ${total} pictures.`, detail);
         return null;
     }
 
@@ -826,7 +838,11 @@
             if (failed) {
                 await askGoogle('session', { method: 'DELETE' });
                 if (!done) return failed;
-                reloadAt(postId, stoppedAfter(done, items.length, failed));
+                await report(
+                    postId,
+                    `Added ${done} of ${items.length} pictures, then stopped.`,
+                    reasonOf(failed)
+                );
                 return null;
             }
 
@@ -834,7 +850,13 @@
         }
 
         await askGoogle('session', { method: 'DELETE' });
-        reloadAt(postId);
+
+        if (items.length === 1) {
+            reloadAt(postId);
+            return null;
+        }
+
+        await report(postId, `Added ${done} of ${items.length} pictures.`, '');
         return null;
     }
 

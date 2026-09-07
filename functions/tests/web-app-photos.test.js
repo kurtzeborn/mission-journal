@@ -356,7 +356,7 @@ describe('a picture the server cannot read', () => {
             file(`202508${String((index % 28) + 1).padStart(2, '0')}_120000.jpg`)
         );
 
-    const notice = (view) => JSON.parse(view.context.sessionStorage.getItem('mj.notice') ?? 'null');
+    const told = (view) => view.context.told;
 
     test('the rest of the batch still goes up', async () => {
         const view = await owner({ chose: 'here', refuseAt: [2] });
@@ -370,34 +370,40 @@ describe('a picture the server cannot read', () => {
         const view = await owner({ chose: 'here', refuseAt: [1, 3] });
         await view.admin.addPhotos('b', pile(5), () => {});
 
-        assert.match(
-            notice(view).notice,
-            /Added 3 of 5 pictures\. 2 could not be read and were skipped\./
-        );
+        assert.equal(told(view).question, 'Added 3 of 5 pictures.');
+        assert.equal(told(view).detail, '2 could not be read and were skipped.');
     });
 
     test('one of them is counted as one', async () => {
         const view = await owner({ chose: 'here', refuseAt: [0] });
         await view.admin.addPhotos('b', pile(3), () => {});
 
-        assert.match(notice(view).notice, /One could not be read and was skipped\./);
+        assert.equal(told(view).detail, 'One could not be read and was skipped.');
     });
 
-    test('a run where every one is refused says so without reloading', async () => {
-        // Nothing landed, so there is no page worth fetching again and the
-        // sentence goes straight to the status line under the button.
+    test('a run where every one is refused still says what it did', async () => {
         const view = await owner({ chose: 'here', refuseAt: [0, 1] });
-        const told = await view.admin.addPhotos('b', pile(2), () => {});
+        await view.admin.addPhotos('b', pile(2), () => {});
 
-        assert.equal(view.context.location.reloaded, undefined);
-        assert.match(told, /Added 0 of 2 pictures\. 2 could not be read and were skipped\./);
+        assert.equal(told(view).question, 'Added 0 of 2 pictures.');
+        assert.equal(told(view).detail, '2 could not be read and were skipped.');
     });
 
-    test('a batch with nothing wrong with it is not given a sentence', async () => {
+    test('a batch with nothing wrong with it is given no reason', async () => {
+        // The count is still said, because a run of thirty that ends in
+        // silence is a run the owner cannot tell from one that failed.
         const view = await owner({ chose: 'here' });
         await view.admin.addPhotos('b', pile(3), () => {});
 
-        assert.equal(notice(view), null);
+        assert.equal(told(view).question, 'Added 3 of 3 pictures.');
+        assert.equal(told(view).detail, '');
+    });
+
+    test('one picture on its own is not worth a dialog', async () => {
+        const view = await owner();
+        await view.admin.addPhotos('b', [file('20250801_120000.jpg')], () => {});
+
+        assert.equal(view.context.told, undefined);
         assert.equal(view.context.location.reloaded, 1);
     });
 
@@ -434,10 +440,8 @@ describe('a picture the server cannot read', () => {
 
         const sent = net.calls.filter((call) => call.url.endsWith('/photos'));
         assert.equal(sent.length, 3, 'the run kept going after a refusal that would repeat');
-        assert.match(
-            JSON.parse(view.context.sessionStorage.getItem('mj.notice')).notice,
-            /Added 2 of 5 pictures, then stopped\./
-        );
+        assert.equal(view.context.told.question, 'Added 2 of 5 pictures, then stopped.');
+        assert.match(view.context.told.detail, /Your session expired\./);
     });
 });
 
@@ -471,19 +475,19 @@ describe('sending the same pictures a second time', () => {
 
         await view.admin.addPhotos('b', [file(ONE), file(TWO), file(THREE)], () => {});
 
-        const held = JSON.parse(view.context.sessionStorage.getItem('mj.notice'));
-        assert.match(held.notice, /Added 1 of 3 pictures\. 2 were already on their letters\./);
+        assert.equal(view.context.told.question, 'Added 1 of 3 pictures.');
+        assert.equal(view.context.told.detail, '2 were already in the archive.');
     });
 
-    test('a batch that is entirely a repeat sends nothing and stays put', async () => {
+    test('a batch that is entirely a repeat sends nothing', async () => {
         const posts = [await carrying(LETTERS[2], [ONE, TWO]), ...LETTERS.filter((p) => p.id !== 'b')];
         const view = await owner({ posts, chose: 'here' });
 
-        const told = await view.admin.addPhotos('b', [file(ONE), file(TWO)], () => {});
+        await view.admin.addPhotos('b', [file(ONE), file(TWO)], () => {});
 
         assert.deepEqual(view.uploads(), []);
-        assert.equal(view.context.location.reloaded, undefined, 'a run that changed nothing reloaded');
-        assert.match(told, /Added 0 of 2 pictures\. 2 were already on their letters\./);
+        assert.equal(view.context.told.question, 'Added 0 of 2 pictures.');
+        assert.equal(view.context.told.detail, '2 were already in the archive.');
     });
 
     test('a repeat onto a full letter is not refused for filling it', async () => {
@@ -496,20 +500,25 @@ describe('sending the same pictures a second time', () => {
         const posts = [full, ...LETTERS.filter((post) => post.id !== 'b')];
         const view = await owner({ posts, maxPhotos: 3, chose: 'here' });
 
-        const told = await view.admin.addPhotos('b', [file(ONE), file(TWO)], () => {});
+        const said = await view.admin.addPhotos('b', [file(ONE), file(TWO)], () => {});
 
         assert.deepEqual(view.uploads(), []);
-        assert.doesNotMatch(told, /can hold 3 pictures/);
-        assert.match(told, /2 were already on their letters\./);
+        assert.equal(said, null, 'the cap refused a batch that would add nothing');
+        assert.equal(view.context.told.detail, '2 were already in the archive.');
     });
 
     test('a letter that really would overfill is still refused', async () => {
         const posts = [await carrying(LETTERS[2], [ONE, TWO]), ...LETTERS.filter((p) => p.id !== 'b')];
         const view = await owner({ posts, maxPhotos: 3, chose: 'here' });
 
-        const told = await view.admin.addPhotos('b', [file(ONE), file(THREE), file('20250804_090000.jpg')], () => {});
+        const said = await view.admin.addPhotos(
+            'b',
+            [file(ONE), file(THREE), file('20250804_090000.jpg')],
+            () => {}
+        );
 
         assert.deepEqual(view.uploads(), []);
-        assert.match(told, /can hold 3 pictures/);
+        assert.match(said, /can hold 3 pictures/);
+        assert.equal(view.context.told, undefined, 'a refusal was reported as a finished run');
     });
 });

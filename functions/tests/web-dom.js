@@ -353,6 +353,11 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
         choose: async (asked) => {
             context.asked = asked;
             return context.chose;
+        },
+        // A report has no answer to stub, so what it said is the only thing
+        // there is to record and the only thing a test can assert about it.
+        tell: async (said) => {
+            context.told = said;
         }
     };
     context.self = context;

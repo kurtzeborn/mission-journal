@@ -105,7 +105,7 @@
         dialog.append(question, detail, form);
         document.body.append(dialog);
 
-        asking = { dialog, question, detail, form, again, box, actions: [] };
+        asking = { dialog, question, detail, form, again, box, no, actions: [] };
         return asking;
     }
 
@@ -115,20 +115,25 @@
      * More than one is offered where the question is genuinely a fork rather
      * than a yes -- a pile of photographs can go onto the letter in front of
      * the owner or be spread across the archive by date, and neither of those
-     * is the negative of the other. Cancel is always there and is always the
-     * answer to Escape, so a dialog nobody understands can be got out of.
+     * is the negative of the other. Cancel is the answer to Escape, so a
+     * dialog nobody understands can be got out of.
      *
      * The buttons are rebuilt each time rather than kept and relabelled: the
      * count varies, and a stale one left over from the last question would be
      * an answer nobody was offered.
      *
-     * @param {{question: string, detail?: string, remember?: string,
+     * `cancel` is false only where there is nothing to cancel -- a dialog that
+     * reports what has already happened. Everywhere else it stays, because a
+     * question with no way out is a trap.
+     *
+     * @param {{question: string, detail?: string, remember?: string, cancel?: boolean,
      *   actions: {label: string, value: string, tone?: 'grave'|'calm'}[]}} asked
      * @returns {Promise<string|null>}
      */
-    function choose({ question, detail, actions, remember }) {
+    function choose({ question, detail, actions, remember, cancel = true }) {
         const view = ensureAsk();
         view.question.textContent = question;
+        view.no.hidden = !cancel;
 
         for (const old of view.actions) old.remove();
         view.actions = actions.map(({ label, value, tone = 'grave' }) => {
@@ -203,5 +208,26 @@
         }).then((said) => said === 'yes');
     }
 
-    window.Confirm = { ask, choose };
+    /**
+     * Say something, and resolve once the owner has dismissed it.
+     *
+     * A report rather than a question, which is why there is no Cancel: the
+     * work is done and this is what it did. Escape and the backdrop dismiss it
+     * like any other dialog, because dismissing is the only thing to do with
+     * it -- so the promise resolves the same way however it was closed, and no
+     * caller is left waiting on an answer that is never given.
+     *
+     * @param {{question: string, detail?: string, action?: string}} said
+     * @returns {Promise<void>}
+     */
+    async function tell({ question, detail, action = 'OK' }) {
+        await choose({
+            question,
+            detail,
+            cancel: false,
+            actions: [{ label: action, value: 'ok', tone: 'calm' }]
+        });
+    }
+
+    window.Confirm = { ask, choose, tell };
 })();
