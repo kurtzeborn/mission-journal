@@ -1194,6 +1194,9 @@ button:focus-visible {
     font-size: 0.9rem;
     line-height: 1.5;
     color: var(--ink-soft);
+    /* A run's report is a list of letters, one to a line, and the text is set
+       with textContent -- so the newlines have to survive collapsing. */
+    white-space: pre-line;
 }
 
 .ask__buttons {

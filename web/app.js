@@ -276,8 +276,23 @@
     // Why a run did not send everything it was given, or an empty string when
     // it did. Both of these are ordinary outcomes of a bulk add rather than
     // faults, which is why neither ends the run.
-    function whyNotAll({ unreadable = 0, already = 0 }) {
+    //
+    // A line each, not a sentence: three of these run together read as a
+    // paragraph, and a paragraph in a dialog is a thing people click past.
+    function whyNotAll({ unreadable = 0, already = 0, undated = 0 }) {
         const parts = [];
+        // Said even where the dialog before the run already said it. An
+        // undated picture is placed by where the owner was standing rather
+        // than by when it was taken, and that dialog is skipped entirely when
+        // nothing in the batch carried a date -- which is the batch where
+        // being told matters most.
+        if (undated) {
+            parts.push(
+                undated === 1
+                    ? 'One had no date and stayed on this letter.'
+                    : `${undated} had no date and stayed on this letter.`
+            );
+        }
         if (already) {
             parts.push(
                 already === 1
@@ -292,7 +307,7 @@
                     : `${unreadable} could not be read and were skipped.`
             );
         }
-        return parts.join(' ');
+        return parts.join('\n');
     }
 
     // The end of a run of uploads, said in a dialog and not on the status line.
@@ -534,6 +549,19 @@
         // gone up and which had not.
         let unreadable = 0;
 
+        // Kept apart from `placed` so the lines add up: every picture that
+        // landed is counted once, either under the day it was taken to or
+        // here, and no picture is described twice.
+        let undated = 0;
+
+        /** How many landed on each letter, counting only the ones with a date. */
+        const placed = new Map();
+
+        const summary = () =>
+            [...whereTo(placed), whyNotAll({ unreadable, already, undated })]
+                .filter(Boolean)
+                .join('\n');
+
         for (const { file, takenAt, target } of fresh) {
             say(`Adding pictures (${done + unreadable + 1} of ${fresh.length})…`);
 
@@ -564,14 +592,17 @@
                 await report(
                     postId,
                     `Added ${done} of ${total} pictures, then stopped.`,
-                    `${reasonOf(failed)} ${whyNotAll({ unreadable, already })}`.trim()
+                    [reasonOf(failed), summary()].filter(Boolean).join('\n')
                 );
                 return null;
             }
+
             done += 1;
+            if (takenAt) placed.set(target, (placed.get(target) ?? 0) + 1);
+            else undated += 1;
         }
 
-        const detail = whyNotAll({ unreadable, already });
+        const detail = summary();
 
         // One picture is not a run. It went on the letter in front of the
         // owner and the reload shows it there, so a dialog would be a click
@@ -602,6 +633,30 @@
 
     const letterFor = (takenAt, ordered) =>
         (ordered.find((post) => written(post) >= takenAt) ?? ordered[ordered.length - 1]).id;
+
+    // A letter's day in the reader's own short form. Split rather than parsed,
+    // for the reason `formatDate` gives: the stamp carries no zone, and Date
+    // would shift the day for anyone reading from another continent.
+    function dayOf(post) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(written(post));
+        if (!match) return 'that letter';
+        const [, year, month, day] = match;
+        return new Date(Date.UTC(+year, +month - 1, +day)).toLocaleDateString(undefined, {
+            timeZone: 'UTC'
+        });
+    }
+
+    // Where a run's pictures ended up, a letter to a line, oldest first.
+    //
+    // Spreading by date is the one thing this page does that the owner cannot
+    // watch happen -- thirty pictures go to seven letters and the reload shows
+    // one of them. Counting them out by day is the receipt for that.
+    function whereTo(placed) {
+        return [...letters]
+            .sort((a, b) => (written(a) < written(b) ? -1 : 1))
+            .filter((post) => placed.has(post.id))
+            .map((post) => `${placed.get(post.id)} added to ${dayOf(post)}`);
+    }
 
     /**
      * Refuse a selection that would overfill a letter, before anything is sent.

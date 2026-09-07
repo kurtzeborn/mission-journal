@@ -358,6 +358,11 @@ describe('a picture the server cannot read', () => {
 
     const told = (view) => view.context.told;
 
+    // The day is the reader's own short form and so is the machine's to
+    // choose; asserting the shape of the line rather than the digits keeps
+    // these from failing on a runner with a different locale.
+    const lines = (view) => view.context.told.detail.split('\n');
+
     test('the rest of the batch still goes up', async () => {
         const view = await owner({ chose: 'here', refuseAt: [2] });
         await view.admin.addPhotos('b', pile(5), () => {});
@@ -371,14 +376,15 @@ describe('a picture the server cannot read', () => {
         await view.admin.addPhotos('b', pile(5), () => {});
 
         assert.equal(told(view).question, 'Added 3 of 5 pictures.');
-        assert.equal(told(view).detail, '2 could not be read and were skipped.');
+        assert.match(lines(view)[0], /^3 added to /);
+        assert.equal(lines(view)[1], '2 could not be read and were skipped.');
     });
 
     test('one of them is counted as one', async () => {
         const view = await owner({ chose: 'here', refuseAt: [0] });
         await view.admin.addPhotos('b', pile(3), () => {});
 
-        assert.equal(told(view).detail, 'One could not be read and was skipped.');
+        assert.equal(lines(view)[1], 'One could not be read and was skipped.');
     });
 
     test('a run where every one is refused still says what it did', async () => {
@@ -389,14 +395,15 @@ describe('a picture the server cannot read', () => {
         assert.equal(told(view).detail, '2 could not be read and were skipped.');
     });
 
-    test('a batch with nothing wrong with it is given no reason', async () => {
-        // The count is still said, because a run of thirty that ends in
-        // silence is a run the owner cannot tell from one that failed.
+    test('a batch with nothing wrong with it still says where it went', async () => {
+        // The count is said whatever happened, because a run of thirty that
+        // ends in silence is a run the owner cannot tell from one that failed.
         const view = await owner({ chose: 'here' });
         await view.admin.addPhotos('b', pile(3), () => {});
 
         assert.equal(told(view).question, 'Added 3 of 3 pictures.');
-        assert.equal(told(view).detail, '');
+        assert.deepEqual(lines(view).length, 1);
+        assert.match(lines(view)[0], /^3 added to \d/);
     });
 
     test('one picture on its own is not worth a dialog', async () => {
@@ -476,7 +483,7 @@ describe('sending the same pictures a second time', () => {
         await view.admin.addPhotos('b', [file(ONE), file(TWO), file(THREE)], () => {});
 
         assert.equal(view.context.told.question, 'Added 1 of 3 pictures.');
-        assert.equal(view.context.told.detail, '2 were already in the archive.');
+        assert.equal(view.context.told.detail.split('\n').at(-1), '2 were already in the archive.');
     });
 
     test('a batch that is entirely a repeat sends nothing', async () => {
@@ -520,5 +527,42 @@ describe('sending the same pictures a second time', () => {
         assert.deepEqual(view.uploads(), []);
         assert.match(said, /can hold 3 pictures/);
         assert.equal(view.context.told, undefined, 'a refusal was reported as a finished run');
+    });
+});
+
+// Spreading by date is the one thing the page does that the owner cannot watch
+// happen: thirty pictures go onto seven letters and the reload shows one of
+// them. So the run says where they went, and says which of them it could not
+// place -- a picture with no date is put where the owner was standing, and
+// that is a guess worth admitting to.
+describe('what a run says about placement', () => {
+    test('the letters are counted out, a day to a line', async () => {
+        const view = await owner({ chose: 'spread' });
+
+        await view.admin.addPhotos(
+            'b',
+            [file('20250801_120000.jpg'), file('20250820_090000.jpg'), file('undated.jpg')],
+            () => {}
+        );
+
+        const said = view.context.told.detail.split('\n');
+        assert.equal(said.length, 3);
+        assert.match(said[0], /^1 added to \d/);
+        assert.match(said[1], /^1 added to \d/);
+        assert.notEqual(said[0], said[1], 'two letters were reported as one');
+        assert.equal(said[2], 'One had no date and stayed on this letter.');
+    });
+
+    test('a batch where nothing is dated is told so', async () => {
+        // No dialog asks where these should go, because with nothing dated
+        // there is no second place to offer -- so this report is the only
+        // time the owner hears that a guess was made on their behalf.
+        const view = await owner();
+
+        await view.admin.addPhotos('b', [file('one.jpg'), file('two.jpg')], () => {});
+
+        assert.equal(view.context.asked, undefined, 'an empty choice was put in the way');
+        assert.equal(view.context.told.question, 'Added 2 of 2 pictures.');
+        assert.equal(view.context.told.detail, '2 had no date and stayed on this letter.');
     });
 });
