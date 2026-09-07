@@ -11,7 +11,7 @@ import { dedupeKey, findDuplicate, bodyHead100, normalizeSubject } from './dedup
 import { rfc3339InOwnOffset, dayInOwnOffset } from './dates.js';
 import { attachmentPath, msgIdSegment, validSlug } from './paths.js';
 import { redactAccessLinks, sanitizeBody } from './sanitize.js';
-import { linkedPhotoServices } from './photolinks.js';
+import { albumUrls, stripAlbumLinks } from './album.js';
 import { verifyEmbeddedDkim } from './dkim.js';
 import { readAcl } from './acl.js';
 import { holdPending } from './pending.js';
@@ -25,7 +25,7 @@ import { warnIfFilling } from './capacity.js';
 import { RELAY_TTL_DAYS } from './relay.js';
 import { issueClaimToken, PURPOSE } from './claimtoken.js';
 import { addressedToClaim, isClaimVerb, recipientVerbs, runClaimVerb } from './claimverb.js';
-import { touchSiteActivity } from './sites.js';
+import { recordAlbumUrls, touchSiteActivity } from './sites.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { domainOf } from './authresults.js';
 
@@ -606,9 +606,9 @@ export async function commitLetter({ store, tables = null, slug, ulid, raw, extr
         ? sanitizeBody(original.html, { letterText: original.text })
         : null;
     // A text-only letter never reaches the sanitizer, so the access-link scrub
-    // has to be applied here as well. `bodyText` is served to readers whenever
-    // render has not run yet or never succeeded.
-    const bodyText = original.html ? null : redactAccessLinks(original.text ?? null);
+    // and the album strip have to be applied here as well. `bodyText` is served
+    // to readers whenever render has not run yet or never succeeded.
+    const bodyText = original.html ? null : stripAlbumLinks(redactAccessLinks(original.text ?? null));
 
     const post = {
         id: postIdFor(day, msgId),
@@ -619,10 +619,6 @@ export async function commitLetter({ store, tables = null, slug, ulid, raw, extr
         bodyHtml,
         bodyText,
         bodyHead100: candidate.head,
-        // Detection only — see photolinks.js. Recorded from the first write so
-        // a letter is never counted late, and recomputed at render because
-        // that pass rebuilds the body.
-        linkedPhotoServices: linkedPhotoServices(bodyHtml ?? bodyText),
         hidden: verdict.disposition === DISPOSITION.hold,
         heldReason: verdict.reason ?? null,
         editedBy: null,
@@ -671,6 +667,21 @@ export async function commitLetter({ store, tables = null, slug, ulid, raw, extr
             });
         } catch (error) {
             log.error?.('ingest: site activity write failed', { slug, error: error.message });
+        }
+
+        // Read off the original, because the body stored above no longer has
+        // it. Recorded here rather than at render because render is given no
+        // table client, and swallowed for a reason stronger than the one
+        // above: the same missionary pastes the same album into next week's
+        // letter, and `raw/` keeps this one either way.
+        try {
+            await recordAlbumUrls({
+                tables,
+                slug,
+                urls: albumUrls(original.html ?? original.text)
+            });
+        } catch (error) {
+            log.error?.('ingest: album link write failed', { slug, error: error.message });
         }
     }
 

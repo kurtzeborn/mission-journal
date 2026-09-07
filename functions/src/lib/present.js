@@ -1,8 +1,7 @@
 // What a caller is allowed to see of a stored post.
 //
-// An allowlist rather than a denylist, deliberately. Post records grow -- this
-// one already gained `linkedPhotoServices` after it was first designed -- and
-// a denylist ships every new internal field to the browser until someone
+// An allowlist rather than a denylist, deliberately. Post records grow, and a
+// denylist ships every new internal field to the browser until someone
 // remembers to add it. An allowlist ships nothing until someone decides to.
 
 import { ROLE } from './acl.js';
@@ -19,8 +18,7 @@ const READER_FIELDS = [
     // Only present in the gap between ingest and render, or if a render never
     // succeeded. Carried so a letter is legible rather than blank in that case.
     'bodyText',
-    'photos',
-    'linkedPhotoServices'
+    'photos'
 ];
 
 // The owner is the missionary's family member who runs the site. They see the

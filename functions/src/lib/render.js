@@ -9,7 +9,7 @@ import { extractOriginal } from './extract.js';
 import { redactAccessLinks, sanitizeBody, photoUrl } from './sanitize.js';
 import { storePhoto, isPhotoType, MAX_PHOTOS } from './photos.js';
 import { photoId } from './paths.js';
-import { linkedPhotoServices } from './photolinks.js';
+import { stripAlbumLinks } from './album.js';
 
 const CONFLICT_RETRIES = 8;
 const utf8 = (value) => Buffer.from(JSON.stringify(value, null, 2), 'utf8');
@@ -69,9 +69,10 @@ export async function runRender({ message, store, restore = false, log = console
     const bodyHtml = source.html
         ? sanitizeBody(source.html, { cidMap, letterText: source.text })
         // The text path builds its own HTML and never passes through the
-        // sanitizer, so the access-link scrub is applied explicitly. Before
-        // escaping, so a wrapped or entity-mangled URL cannot slip past it.
-        : textToHtml(redactAccessLinks(source.text));
+        // sanitizer, so the access-link scrub and the album strip are applied
+        // explicitly. Before escaping, so a wrapped or entity-mangled URL
+        // cannot slip past either of them.
+        : textToHtml(stripAlbumLinks(redactAccessLinks(source.text)));
 
     const stored = photos.map(({ id, width, height }) => ({ id, width, height }));
     return commitRender({
@@ -80,7 +81,6 @@ export async function runRender({ message, store, restore = false, log = console
         postId,
         bodyHtml,
         photos: stored,
-        linked: linkedPhotoServices(bodyHtml),
         restore,
         // Derived exactly as ingest derives it, so a restored letter is headed
         // what the original was headed rather than what the last edit left.
@@ -155,7 +155,7 @@ async function renderPhotos({ store, slug, extracted, log }) {
 
 // posts.json is shared by every message on the site, so render contends with
 // ingest for it exactly as two ingests contend with each other.
-async function commitRender({ store, slug, postId, bodyHtml, photos, linked, restore, subject, log }) {
+async function commitRender({ store, slug, postId, bodyHtml, photos, restore, subject, log }) {
     const name = `${slug}/posts.json`;
 
     for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
@@ -176,7 +176,7 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, linked, res
         const added = restore ? [] : (posts[index].photos ?? []).filter((photo) => photo.addedAt);
         const all = [...photos, ...added];
 
-        posts[index] = { ...posts[index], bodyHtml, photos: all, linkedPhotoServices: linked };
+        posts[index] = { ...posts[index], bodyHtml, photos: all };
 
         if (restore) {
             posts[index].subject = subject;

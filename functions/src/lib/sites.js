@@ -93,6 +93,49 @@ export async function setSiteProfile({
     });
 }
 
+// A table entity holds strings, so a list is JSON. Anything unreadable is
+// treated as nothing rather than thrown, because the only caller that can be
+// hurt by an empty answer is the one that is about to write the URL back.
+const albumUrlsOf = (row) => {
+    try {
+        const parsed = JSON.parse(row?.photoAlbumUrls ?? '[]');
+        return Array.isArray(parsed) ? parsed.filter((url) => typeof url === 'string') : [];
+    } catch {
+        return [];
+    }
+};
+
+/**
+ * Remember the album a missionary shares their pictures through.
+ *
+ * The link is removed from every letter -- see album.js -- so this is the only
+ * copy outside the original messages in `raw/`. A list rather than a single
+ * value because nothing guarantees a missionary keeps one album for two years,
+ * even though all three who have used one so far did.
+ *
+ * Additive, and never removes. A second album means the first one still holds
+ * the first year's pictures.
+ *
+ * Read-modify-write without an ETag, for the same reason `touchSiteActivity`
+ * skips one: two letters committed at once would race, and the loser drops an
+ * addition that next week's letter makes again. An ETag loop here would buy
+ * correctness against a list that changes about once per mission.
+ */
+export async function recordAlbumUrls({ tables, slug, urls }) {
+    if (!slug || !urls?.length) return;
+
+    const row = await tables.getEntity(TABLES.sites, slug, ROW);
+    const known = albumUrlsOf(row);
+    const merged = [...new Set([...known, ...urls])].sort();
+    if (merged.length === known.length) return;
+
+    await tables.upsertEntity(TABLES.sites, {
+        partitionKey: slug,
+        rowKey: ROW,
+        photoAlbumUrls: JSON.stringify(merged)
+    });
+}
+
 /**
  * Look up several sites at once.
  *
@@ -103,7 +146,7 @@ export async function setSiteProfile({
  *
  * @returns {Promise<Map<string, {lastPostAt: string, lastReceivedAt: string,
  *   missionaryDisplayName: string, missionStartDate: string,
- *   missionReturnDate: string}>>}
+ *   missionReturnDate: string, photoAlbumUrls: string[]}>>}
  */
 export async function sitesBySlug({ tables, slugs }) {
     const found = new Map();
@@ -115,7 +158,8 @@ export async function sitesBySlug({ tables, slugs }) {
             lastReceivedAt: row?.lastReceivedAt ?? '',
             missionaryDisplayName: row?.missionaryDisplayName ?? '',
             missionStartDate: row?.missionStartDate ?? '',
-            missionReturnDate: row?.missionReturnDate ?? ''
+            missionReturnDate: row?.missionReturnDate ?? '',
+            photoAlbumUrls: albumUrlsOf(row)
         });
     }
 

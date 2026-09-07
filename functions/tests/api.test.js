@@ -322,7 +322,10 @@ describe('what a reader receives', () => {
             'editedBy',
             'editedAt',
             'hidden',
-            'heldReason'
+            'heldReason',
+            // Retired, but still on stored records written before it was, so
+            // the allowlist is what actually keeps it out of a response.
+            'linkedPhotoServices'
         ]) {
             assert.equal(post[field], undefined, `${field} reached a reader`);
         }
@@ -332,7 +335,6 @@ describe('what a reader receives', () => {
         const post = shown()[0];
         assert.equal(post.subject, 'Week one');
         assert.equal(post.bodyHtml, '<p>hello</p>');
-        assert.deepEqual(post.linkedPhotoServices, ['googlePhotos']);
         assert.equal(post.photos.length, 1);
     });
 });

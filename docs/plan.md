@@ -480,7 +480,6 @@ No separate deduplication table — `rendered/{slug}/posts.json` is the dedup so
     { "id": "p_0eade5b54243", "width": 2400, "height": 1600,
       "addedAt": "2026-09-14T19:22:05.118Z", "takenAt": "2025-04-28T14:07:33" }
   ],
-  "linkedPhotoServices": ["googlePhotos"],   // body links an album we can't archive; [] when none
   "sourceRawPath": "raw/elder.smith/{msgId}/message.eml"
 }
 ```
@@ -489,7 +488,7 @@ The original `Date:` header keeps its offset rather than being normalized to UTC
 
 **No `ingestDomain` field.** An acknowledgment email could name the address the sender wrote to, but acks are composed at ingest time when that value is already in hand, so storing it on the post buys nothing. It's logged to App Insights instead, matching how client type and DKIM results are handled.
 
-**`linkedPhotoServices` is a list rather than a bool**, because the two services it distinguishes have opposite prospects: a Google Drive link is fetchable in principle and a Google Photos album is not, so collapsing them would erase the only part of the observation worth recording. See [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments).
+**No `linkedPhotoServices` field.** There was one, it answered the question it was added to ask, and it was removed. The album link itself is removed from the letter body too, and the URL kept once on the site row instead of eighty-four times in the archive. See [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments).
 
 **No full `bodyText` field either.** Carrying both `bodyHtml` and a plain-text twin put every letter in the reader payload twice, and nothing needed the second copy: [search](#search) can strip tags in the browser, dedup only ever read the first hundred characters, and the offline export and printed book both render from `bodyHtml`. So the plain-text body is dropped and `bodyHead100` — the one slice with a real consumer — is stored on its own. Roughly a 40% cut to `posts.json`, which is also the search index and the offline bundle.
 
@@ -573,6 +572,27 @@ Missionaries with more photos than an email will carry link a shared album inste
 3. **The compliance question is unresolved.** `drive.readonly` is a restricted scope; a service account acting as itself shows no consent screen and so probably escapes OAuth verification review, but that is unverified and must be confirmed before anything is built on it.
 
 **What is built instead is detection, which is cheap and generates the missing evidence.** Ingest flags a published post whose body links `photos.app.goo.gl`, `drive.google.com`, or a bare `photos.google.com` album, and records which. That is already the same signal that identifies an oversized send stripped of its photos, so it costs one regex and earns a real answer to *how often does this happen, and to which service* — the input this decision actually lacks.
+
+##### What detection measured, and what replaced it
+
+It ran for a year and answered. Across the first four archives, 98 letters:
+
+| Archive | Letters | Carrying an album link | Carrying a Drive link |
+| --- | ---: | ---: | ---: |
+| declan.kurtzeborn | 5 | 5 | 0 |
+| isaac.backman | 48 | 41 | 0 |
+| mallory.kurtzeborn | 44 | 38 | 0 |
+| tristan.thomasson | 1 | 0 | 0 |
+
+**Always Photos, never Drive, not once.** The Drive path stays unbuilt, and now on measurement rather than on the absence of it. More usefully: 84 links, **exactly one per letter, and exactly one distinct album per missionary for their entire mission**. The thing being stored eighty-four times was one URL.
+
+**So the link is removed from the letters and kept once on the site row**, as `photoAlbumUrls` — a JSON list rather than a single value, because nothing guarantees a missionary keeps one album for two years even though all three who used one did, and because a second album does not invalidate the first year's pictures. Additive, never removing.
+
+**Removing it is the better half of the trade, not a side effect.** The link is perishable in a way the letters are not: the share stops resolving once the account behind it stops being a missionary account, roughly sixty days after they come home. An archive whose promise is permanence should not print, in every letter and in the bound book, a URL that will already be dead when it is read.
+
+**The label goes with it**, because a line reading "Fotos:" above nothing is worse than either keeping the link or removing both. This is the only place in the system where words somebody wrote are removed from a letter, and it is deliberately narrow. The rule is in `album.js`: the text run immediately before the link is treated as a label only if it is under sixty characters, contains no sentence-ending punctuation except at its end, and either names pictures or contains no words at all. All three conditions are load-bearing, and the boundary was set from the data rather than guessed — the longest real label observed is 54 characters, the shortest sentence that merely happens to end in one is 67, and one 83-character sentence contains no internal punctuation at all, so neither length nor punctuation alone is sufficient. Of the 84, **77 were labels and 7 were the tail of a sentence**; the seven are kept, with their trailing colon closed to a full stop.
+
+**Stripped at storage, not at display.** The sanitizer is the one path every letter takes on the way into `rendered/`, and `raw/` is never modified — so a strip implemented anywhere else would be undone by the next re-render, and the offline export and the printed book would still carry the link.
 
 **The Picker turned out to be the answer, once the question changed.** Everything above asks how the *service* can reach an album, and that is still impossible. An *owner* is a different asker — a consented human sitting in front of a browser, which is exactly what the Picker requires and exactly what unattended ingest can never be. See [Adding pictures from Google Photos](#adding-pictures-from-google-photos). It does not repair a link that has already rotted, since the album has to still exist, so the guidance below remains the cheaper fix and the detection above remains how we learn how often it is needed.
 
@@ -1331,7 +1351,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
   - Original-message extractor over `postal-mime`: `message/rfc822` attachments first, then inline-forward fallback (Gmail / Apple Mail / Outlook separators). Size-cap the message before parsing.
   - Append a bare post record to `rendered/{slug}/posts.json` (subject, body, original headers — `photos: []` for now) and write raw MIME + attachments to `raw/{slug}/{msgId}/` with sanitized path segments. Log rejections to App Insights only (sender, subject, reason, timestamp — no body).
 - **`posts.json` is ETag-guarded from the first write**, per [Concurrency](#extracting-and-de-duplicating-forwards) — `If-None-Match: *` on creation, `If-Match` on append, retry on `412`. This is separate from dedup and cannot wait for it: bulk-forwarding a stack of letters in one sitting is the very first thing that will happen, and unguarded concurrent appends lose posts silently.
-- **Flag posts whose photos arrived as links.** A regex over the sanitized body for `photos.app.goo.gl`, `photos.google.com`, and `drive.google.com`, recorded on the post as which service was seen. Detection only — nothing is fetched, and see [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments) for why fetching a Google Photos album is impossible rather than merely unbuilt. Both of the first two real letters carried such a link, and this counts how often it happens and to which service, which is the evidence any later decision needs. It doubles as the signal for an oversized send that was stripped of its attachments in transit.
+- **Flag posts whose photos arrived as links.** A regex over the sanitized body for `photos.app.goo.gl`, `photos.google.com`, and `drive.google.com`, recorded on the post as which service was seen. Detection only — nothing is fetched, and see [Photos that arrive as links](#photos-that-arrive-as-links-not-attachments) for why fetching a Google Photos album is impossible rather than merely unbuilt. Both of the first two real letters carried such a link, and this counts how often it happens and to which service, which is the evidence any later decision needs. It doubles as the signal for an oversized send that was stripped of its attachments in transit. **Retired once it had answered** — see [What detection measured, and what replaced it](#what-detection-measured-and-what-replaced-it).
 - **No dedup.** One forwarder cannot duplicate their own letters, and the reset script is the cleanup path. Dedup arrives in [Phase 7](#phase-7--onboarding-pending-sites-and-the-claim-flow), where pending-site promotion is the first thing that genuinely cannot work without it.
 - **Verification is Storage Explorer.** No `/manage/last-received` page — it would need an authorization model that doesn't exist until Phase 3, and inspecting blobs directly is adequate for two phases. The operator view arrives in Phase 9 with the role it belongs to.
 

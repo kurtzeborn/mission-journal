@@ -11,6 +11,7 @@
 // export and print-book PDF inherit safe content for free.
 
 import sanitizeHtmlLib from 'sanitize-html';
+import { stripAlbumLinks } from './album.js';
 
 // Allowlist, never denylist. The plan's set — headings, paragraphs, breaks,
 // lists, emphasis, blockquote, links, images — plus two additions:
@@ -214,14 +215,16 @@ export function sanitizeBody(
 
     // Before anything is parsed, so the token is gone from the href and from
     // the visible text in one pass -- a mail client writes it in both places.
-    const source = redactAccessLinks(String(html));
+    // The album strip runs here for the same reason, and after the redaction
+    // so that a redacted link can never be mistaken for a label.
+    const source = stripAlbumLinks(redactAccessLinks(String(html)));
 
     // Redacted on both sides, so the two stay comparable. The probe is matched
     // against the sanitized HTML's text; redacting one and not the other could
     // turn a match into a miss for a letter that opens with a link, and a miss
     // there means a block holding the letter is mistaken for a header block
     // and dropped.
-    const probe = squash(redactAccessLinks(letterText)).slice(0, PROBE_LENGTH);
+    const probe = squash(stripAlbumLinks(redactAccessLinks(letterText))).slice(0, PROBE_LENGTH);
     const dropHeaders = probe.length >= MIN_PROBE;
 
     // Output positions of horizontal rules and line breaks that survived.

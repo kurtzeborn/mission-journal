@@ -15,7 +15,6 @@ import { runIngest } from '../src/lib/ingest.js';
 import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { runRender } from '../src/lib/render.js';
 import { sanitizeBody, photoUrl } from '../src/lib/sanitize.js';
-import { linkedPhotoServices } from '../src/lib/photolinks.js';
 import { transcode, storePhoto, MIN_PHOTO_EDGE, LARGE_EDGE, THUMB_EDGE, MAX_PHOTOS } from '../src/lib/photos.js';
 import { memoryStore } from './memory-store.js';
 
@@ -195,54 +194,6 @@ test('nothing is stripped without enough letter text to recognize', () => {
     const html = '<p><b>From:</b> a@x.com<br><b>Sent:</b> Mon<br><b>To:</b> b@y.com<br><b>Subject:</b> Hi</p>';
     assert.match(sanitizeBody(html, { letterText: 'Love, Elder' }), /b@y\.com/);
     assert.match(sanitizeBody(html), /b@y\.com/);
-});
-
-// --- linked photo services -------------------------------------------------
-
-test('a shared album link is recorded, and the two services stay apart', () => {
-    // The shape both real letters used.
-    assert.deepEqual(
-        linkedPhotoServices('<p>Photos: <a href="https://photos.app.goo.gl/eGtkcGt6kXqodvf26">here</a></p>'),
-        ['googlePhotos']
-    );
-    assert.deepEqual(
-        linkedPhotoServices('<a href="https://photos.google.com/share/AF1Qxyz">album</a>'),
-        ['googlePhotos']
-    );
-    assert.deepEqual(
-        linkedPhotoServices('<a href="https://drive.google.com/file/d/1AbC/view">file</a>'),
-        ['googleDrive']
-    );
-});
-
-test('both services in one letter are both reported, sorted and deduplicated', () => {
-    const html = [
-        '<a href="https://drive.google.com/file/d/1AbC/view">a</a>',
-        '<a href="https://photos.app.goo.gl/xyz">b</a>',
-        '<a href="https://photos.google.com/share/AF1">c</a>'
-    ].join('');
-    assert.deepEqual(linkedPhotoServices(html), ['googleDrive', 'googlePhotos']);
-});
-
-test('a letter with no album link records nothing', () => {
-    assert.deepEqual(linkedPhotoServices('<p>Hello <a href="https://example.com/x">x</a></p>'), []);
-    assert.deepEqual(linkedPhotoServices(null), []);
-    assert.deepEqual(linkedPhotoServices(''), []);
-});
-
-test('the host is parsed, not substring-matched', () => {
-    // A host that appears in the path or in userinfo is not that host, and
-    // counting it would corrupt the very numbers this exists to collect.
-    assert.deepEqual(linkedPhotoServices('<a href="https://evil.example/photos.google.com">x</a>'), []);
-    assert.deepEqual(linkedPhotoServices('<a href="https://photos.google.com@evil.example/">x</a>'), []);
-});
-
-test('a plain-text letter is scanned too', () => {
-    // No HTML part means bodyText carries the letter, and the link with it.
-    assert.deepEqual(
-        linkedPhotoServices('Pictures are at https://photos.app.goo.gl/abc123 — enjoy!'),
-        ['googlePhotos']
-    );
 });
 
 // --- transcoder ------------------------------------------------------------
@@ -486,15 +437,6 @@ test('storePhoto writes both renditions and refuses what is not a photo', async 
     // the upload handler turns it into a 415 and nothing is written.
     assert.equal(await storePhoto({ store, slug: SLUG, bytes: Buffer.from('not an image') }), null);
     assert.equal(store.blobs.size, 2);
-});
-
-test('every rendered post carries a linkedPhotoServices array', async () => {
-    // The fixture attaches its photos rather than linking them, so the
-    // expected answer is an empty array -- present and empty, not absent.
-    // A missing field and a zero count are the same thing to a naive counter,
-    // and they mean opposite things.
-    const { post } = await pipeline('outlook-web-inline');
-    assert.deepEqual(post.linkedPhotoServices, []);
 });
 
 test('a plain-text letter becomes escaped HTML paragraphs', async () => {
