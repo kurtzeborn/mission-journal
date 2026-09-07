@@ -1,0 +1,20 @@
+# Everything not named below sits behind a sign-in and answers a crawler with
+# 401. Listing the open pages saves the round trip and keeps Search Console
+# from reporting those refusals as problems to fix.
+#
+# The stylesheet and the mark are allowed because Google renders a page before
+# it decides what the page is, and a page it cannot style looks broken to it.
+
+User-agent: *
+
+Allow: /$
+Allow: /start
+Allow: /faq
+Allow: /terms
+Allow: /privacy
+Allow: /styles.css
+Allow: /logo.png
+Allow: /apple-touch-icon.png
+Allow: /favicon.ico
+Allow: /vendor/fontawesome/
+Disallow: /

@@ -173,6 +173,11 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "A crawler reads this before anything else, so the catch-all below must not turn it into a 401. Refusing it is not a way of hiding: a robots.txt that answers 4xx is read as though no file existed, which invites the crawl it was meant to shape.",
+      "route": "/robots.txt",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "The sign-in chooser is anonymous and shows a provider icon, so the icon font has to be reachable without a session. It carries no archive data.",
       "route": "/vendor/fontawesome/*",
       "allowedRoles": ["anonymous", "authenticated"]
@@ -260,6 +265,7 @@
       "/*.ico",
       "/*.svg",
       "/*.png",
+      "/*.txt",
       "/*.webp",
       "/*.woff2"
     ]
