@@ -262,6 +262,45 @@ describe('adding a picture', () => {
 
         assert.equal((await posted(store, { as: MUM, bytes: await picture() })).status, 200);
     });
+
+    test('a full letter still takes a picture it already has', async () => {
+        // Because taking it changes nothing. A run of uploads that stopped
+        // part way is started again over the same folder, and answering the
+        // repeats with a conflict would make the letter that filled up on the
+        // first pass refuse every attempt to finish the rest.
+        const bytes = await picture();
+        const store = await seeded();
+        await posted(store, { as: MUM, bytes });
+
+        const held = photosOf(store);
+        const padding = Array.from({ length: MAX_PHOTOS - 1 }, (unused, index) => ({
+            id: `p_attached${index}`,
+            width: 10,
+            height: 10
+        }));
+        const packed = await seeded([...padding, ...held]);
+
+        const response = await posted(packed, { as: MUM, bytes });
+
+        assert.equal(response.status, 200);
+        assert.equal(response.jsonBody.added, false);
+        assert.equal(photosOf(packed).length, MAX_PHOTOS);
+    });
+
+    test('a full letter is not decoded to find that out', async () => {
+        // The id is a hash, so the answer is known before a transcode is
+        // spent. A picture already on a full letter must not cost one.
+        const full = Array.from({ length: MAX_PHOTOS }, (unused, index) => ({
+            id: `p_added${index}`,
+            width: 10,
+            height: 10
+        }));
+        const store = await seeded(full);
+        const before = store.blobs.size;
+
+        assert.equal((await posted(store, { as: MUM, bytes: await picture() })).status, 409);
+        assert.equal(store.blobs.size, before, 'refuse before spending a transcode');
+    });
 });
 
 // The date the picture was taken, read in the browser off the file and sent

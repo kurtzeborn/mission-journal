@@ -26,12 +26,25 @@ const LETTERS = [
     { id: 'a', originalDate: '2025-07-21T18:00:00', subject: 'One' }
 ];
 
-/** A file the picker could have handed over, named so its date is readable. */
-const file = (name) => ({
+/**
+ * A file the picker could have handed over, named so its date is readable.
+ *
+ * The bytes are the name, so two files with different names hash to different
+ * ids -- which is what the page uses to tell a repeat from a new picture.
+ */
+const file = (name, bytes = name) => ({
     name,
     type: 'image/jpeg',
-    slice: () => ({ arrayBuffer: async () => new ArrayBuffer(0) })
+    slice: () => ({ arrayBuffer: async () => new ArrayBuffer(0) }),
+    arrayBuffer: async () => new TextEncoder().encode(bytes).buffer
 });
+
+/** The id the site will give a file, worked out the way the site works it out. */
+async function idOf(name) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(name));
+    const hex = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    return `p_${hex.slice(0, 12)}`;
+}
 
 /**
  * Load the archive as its owner and hand back the controls the reader is given.
@@ -357,7 +370,10 @@ describe('a picture the server cannot read', () => {
         const view = await owner({ chose: 'here', refuseAt: [1, 3] });
         await view.admin.addPhotos('b', pile(5), () => {});
 
-        assert.match(notice(view).notice, /Added 3 of 5 pictures\. 2 could not be read and were skipped\./);
+        assert.match(
+            notice(view).notice,
+            /Added 3 of 5 pictures\. 2 could not be read and were skipped\./
+        );
     });
 
     test('one of them is counted as one', async () => {
@@ -422,5 +438,78 @@ describe('a picture the server cannot read', () => {
             JSON.parse(view.context.sessionStorage.getItem('mj.notice')).notice,
             /Added 2 of 5 pictures, then stopped\./
         );
+    });
+});
+
+// Six hundred photographs go up thirty at a time over an evening, and any run
+// that stops part way is started again over the same folder. Nobody can be
+// asked to remember which thirty already went, so the page works out the id
+// the server would give each file and leaves out the ones already there.
+describe('sending the same pictures a second time', () => {
+    /** A letter already carrying the pictures these files would become. */
+    const carrying = async (post, names) => ({
+        ...post,
+        photos: await Promise.all(names.map(async (name) => ({ id: await idOf(name) })))
+    });
+
+    const ONE = '20250801_120000.jpg';
+    const TWO = '20250802_090000.jpg';
+    const THREE = '20250803_090000.jpg';
+
+    test('a picture the letter already holds is not sent again', async () => {
+        const posts = [await carrying(LETTERS[2], [ONE]), ...LETTERS.filter((p) => p.id !== 'b')];
+        const view = await owner({ posts, chose: 'here' });
+
+        await view.admin.addPhotos('b', [file(ONE), file(TWO), file(THREE)], () => {});
+
+        assert.equal(view.uploads().length, 2, 'the picture already on the letter went up again');
+    });
+
+    test('the owner is told, so the count is not a mystery', async () => {
+        const posts = [await carrying(LETTERS[2], [ONE, TWO]), ...LETTERS.filter((p) => p.id !== 'b')];
+        const view = await owner({ posts, chose: 'here' });
+
+        await view.admin.addPhotos('b', [file(ONE), file(TWO), file(THREE)], () => {});
+
+        const held = JSON.parse(view.context.sessionStorage.getItem('mj.notice'));
+        assert.match(held.notice, /Added 1 of 3 pictures\. 2 were already on their letters\./);
+    });
+
+    test('a batch that is entirely a repeat sends nothing and stays put', async () => {
+        const posts = [await carrying(LETTERS[2], [ONE, TWO]), ...LETTERS.filter((p) => p.id !== 'b')];
+        const view = await owner({ posts, chose: 'here' });
+
+        const told = await view.admin.addPhotos('b', [file(ONE), file(TWO)], () => {});
+
+        assert.deepEqual(view.uploads(), []);
+        assert.equal(view.context.location.reloaded, undefined, 'a run that changed nothing reloaded');
+        assert.match(told, /Added 0 of 2 pictures\. 2 were already on their letters\./);
+    });
+
+    test('a repeat onto a full letter is not refused for filling it', async () => {
+        // The cap counts pictures the letter would gain, and a repeat gains it
+        // none. Counting them anyway meant a run that stopped once could never
+        // be started again over the same folder: the letter that filled up on
+        // the first pass refused the whole second batch, including everything
+        // in it bound for other letters.
+        const full = await carrying(LETTERS[2], [ONE, TWO, THREE]);
+        const posts = [full, ...LETTERS.filter((post) => post.id !== 'b')];
+        const view = await owner({ posts, maxPhotos: 3, chose: 'here' });
+
+        const told = await view.admin.addPhotos('b', [file(ONE), file(TWO)], () => {});
+
+        assert.deepEqual(view.uploads(), []);
+        assert.doesNotMatch(told, /can hold 3 pictures/);
+        assert.match(told, /2 were already on their letters\./);
+    });
+
+    test('a letter that really would overfill is still refused', async () => {
+        const posts = [await carrying(LETTERS[2], [ONE, TWO]), ...LETTERS.filter((p) => p.id !== 'b')];
+        const view = await owner({ posts, maxPhotos: 3, chose: 'here' });
+
+        const told = await view.admin.addPhotos('b', [file(ONE), file(THREE), file('20250804_090000.jpg')], () => {});
+
+        assert.deepEqual(view.uploads(), []);
+        assert.match(told, /can hold 3 pictures/);
     });
 });

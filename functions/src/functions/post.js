@@ -6,6 +6,7 @@ import { deletionOf } from '../lib/deletion.js';
 import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
 import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES, MAX_PHOTOS, overSizeClaim } from '../lib/photos.js';
+import { photoId } from '../lib/paths.js';
 import { runRender } from '../lib/render.js';
 
 const problem = (status, error) => ({
@@ -268,10 +269,24 @@ export function readTakenAt(header) {
  * line is `return`.
  */
 export async function attachPhoto({ store, context, slug, postId, posts, bytes, via, takenAt }) {
-    // Both of these are refusals, and refusing before spending a transcode on
-    // bytes that cannot be stored is the whole reason to look.
     const existing = (posts ?? []).find((post) => post.id === postId);
     if (!existing) return problem(404, 'no such post');
+
+    // Asked before the cap, and before the transcode, because a picture the
+    // letter already holds is going to change nothing either way. A run of
+    // uploads that was interrupted and started again sends the same files a
+    // second time, and a full letter answering those with a 409 is refusing a
+    // request that had nothing to add -- which stops a re-run for no reason.
+    // Identity is a hash of the bytes, so this costs one pass over memory the
+    // handler is already holding.
+    const id = photoId(bytes);
+    if ((existing.photos ?? []).some((entry) => entry.id === id)) {
+        context.log('post.photoAdded', { slug, postId, photo: id, added: false, via });
+        return ok({ id: postId, photo: id, added: false });
+    }
+
+    // A refusal, and refusing before spending a transcode on bytes that cannot
+    // be stored is the whole reason to look.
     if ((existing.photos ?? []).length >= MAX_PHOTOS) return problem(409, TOO_MANY);
 
     // Before `commitPosts`, never inside it: its `mutate` is called

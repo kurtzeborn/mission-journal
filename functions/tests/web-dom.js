@@ -321,6 +321,9 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
         // Cancel, which is also what Escape gives, so the default is the
         // answer that does nothing.
         chose: null,
+        // The real one. Pages hash a picture's bytes to work out the id the
+        // server will give it, and a stub would let two different files agree.
+        crypto: globalThis.crypto,
         console
     };
 

@@ -275,19 +275,31 @@
         return `Added ${done} of ${total} pictures, then stopped. ${reason}`;
     }
 
-    // What to tell an owner when a run finished but left some behind.
+    // What to tell an owner when a run finished but did not send everything.
     //
     // Kept separate from `stoppedAfter` because the two mean opposite things
     // about what to do next. That one has pictures still waiting and the run
-    // should be tried again; this one is finished, and the only files it did
-    // not take are files it will never take. Saying so is the difference
-    // between the owner sending the batch a second time for nothing and the
-    // owner going to look at the handful that were skipped.
-    function skippedSome(done, total) {
-        const left = total - done;
-        return left === 1
-            ? `Added ${done} of ${total} pictures. One could not be read and was skipped.`
-            : `Added ${done} of ${total} pictures. ${left} could not be read and were skipped.`;
+    // should be tried again; this one is finished, and what it passed over it
+    // will never need. Saying so is the difference between the owner sending
+    // the same batch a second time for nothing and the owner going to look at
+    // the handful that were named.
+    function passedOver(done, total, { unreadable = 0, already = 0 }) {
+        const parts = [];
+        if (already) {
+            parts.push(
+                already === 1
+                    ? 'One was already on its letter.'
+                    : `${already} were already on their letters.`
+            );
+        }
+        if (unreadable) {
+            parts.push(
+                unreadable === 1
+                    ? 'One could not be read and was skipped.'
+                    : `${unreadable} could not be read and were skipped.`
+            );
+        }
+        return `Added ${done} of ${total} pictures. ${parts.join(' ')}`;
     }
 
     // Where a sentence waits out the reload that would otherwise destroy it.
@@ -446,6 +458,25 @@
     // laptop, and every picture after the interruption has to be found again.
     const MAX_BATCH = 30;
 
+    // The identity the server will give a picture: the first twelve hex digits
+    // of the SHA-256 of its bytes.
+    //
+    // Worked out here rather than asked for, because asking means uploading
+    // the picture to find out, and knowing in advance is what lets a run that
+    // was interrupted and started again leave alone the ones that already
+    // landed. The two have to agree exactly -- see `photoId` in paths.js.
+    async function photoId(file) {
+        const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+        const hex = [...new Uint8Array(digest)]
+            .map((byte) => byte.toString(16).padStart(2, '0'))
+            .join('');
+        return `p_${hex.slice(0, 12)}`;
+    }
+
+    /** The ids of the pictures a letter is already carrying. */
+    const holding = (postId) =>
+        (letters.find((letter) => letter.id === postId)?.photos ?? []).map((photo) => photo.id);
+
     // Pictures go up one at a time and the page is reloaded once at the end,
     // because each upload is its own commit and reloading between them would
     // throw away the rest of the selection. The first failure stops the run
@@ -470,13 +501,23 @@
         const plan = [];
         for (const file of chosen) {
             say(`Reading dates (${plan.length + 1} of ${chosen.length})…`);
-            plan.push({ file, takenAt: await Taken.of(file) });
+            plan.push({ file, takenAt: await Taken.of(file), id: await photoId(file) });
         }
 
         const spread = await askWhere(postId, plan, say);
         if (!spread) return null;
 
-        const full = tooManyFor(spread);
+        // Left out rather than uploaded to be thrown away. The server treats a
+        // picture a letter already holds as a no-op, so sending these would
+        // cost the bytes and the transcode to be told nothing changed -- and
+        // the cap below, which cannot tell a repeat from a new picture, would
+        // refuse the whole batch on their behalf.
+        const fresh = spread.filter((entry) => !holding(entry.target).includes(entry.id));
+        const already = spread.length - fresh.length;
+
+        if (!fresh.length) return passedOver(0, spread.length, { already });
+
+        const full = tooManyFor(fresh);
         if (full) return full;
 
         let done = 0;
@@ -485,10 +526,10 @@
         // the run steps over it. Stopping on one was costing the rest of the
         // batch and leaving the owner to work out by hand which pictures had
         // gone up and which had not.
-        let skipped = 0;
+        let unreadable = 0;
 
-        for (const { file, takenAt, target } of spread) {
-            say(`Adding pictures (${done + skipped + 1} of ${spread.length})…`);
+        for (const { file, takenAt, target } of fresh) {
+            say(`Adding pictures (${done + unreadable + 1} of ${fresh.length})…`);
 
             const failed = await call(
                 'POST',
@@ -508,28 +549,28 @@
             );
 
             if (failed?.startsWith(UNREADABLE)) {
-                skipped += 1;
+                unreadable += 1;
                 continue;
             }
 
             if (failed) {
                 if (!done) return failed;
-                reloadAt(postId, stoppedAfter(done, spread.length, failed));
+                reloadAt(postId, stoppedAfter(done, fresh.length, failed));
                 return null;
             }
             done += 1;
         }
 
-        if (!skipped) {
+        if (!unreadable && !already) {
             reloadAt(postId);
             return null;
         }
 
         // Nothing landed, so there is nothing to reload for and the sentence
         // can be handed straight back to the status line.
-        if (!done) return skippedSome(0, spread.length);
+        if (!done) return passedOver(0, spread.length, { unreadable, already });
 
-        reloadAt(postId, skippedSome(done, spread.length));
+        reloadAt(postId, passedOver(done, spread.length, { unreadable, already }));
         return null;
     }
 
