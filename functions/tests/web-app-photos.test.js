@@ -39,8 +39,12 @@ const file = (name) => ({
  * `taken.js` is run first, exactly as the markup loads it, so the real date
  * reading is what the placement is being fed.
  */
-async function owner({ posts = LETTERS, chose = null, maxPhotos = 48 } = {}) {
+async function owner({ posts = LETTERS, chose = null, maxPhotos = 48, refuseAt = [] } = {}) {
     const view = page({ html: 'site.html', path: `/${SLUG}/` });
+
+    // Which uploads, counted from zero in the order they are sent, come back
+    // as a file the server could not decode.
+    let posted = 0;
 
     let admin = null;
     view.context.Reader = {
@@ -58,6 +62,13 @@ async function owner({ posts = LETTERS, chose = null, maxPhotos = 48 } = {}) {
             };
         }
         if (url === '/api/memberships') return { status: 200, body: { sites: [] } };
+        if (url.endsWith('/photos')) {
+            const at = posted;
+            posted += 1;
+            return refuseAt.includes(at)
+                ? { status: 415, body: { error: 'that picture could not be read' } }
+                : { status: 200, body: { ok: true } };
+        }
         if (url.startsWith('/api/posts/')) return { status: 200, body: { ok: true } };
         return { status: 200, body: { slug: SLUG, role: 'owner', posts, maxPhotos } };
     });
@@ -319,5 +330,97 @@ describe('how many may go up in one sitting', () => {
 
         assert.ok(heard.includes('Reading dates (1 of 3)…'), heard.join(' | '));
         assert.ok(heard.includes('Reading dates (3 of 3)…'), heard.join(' | '));
+    });
+});
+
+// A phone's worth of photographs collects damaged files -- a chat app or a
+// download truncates one and it will never decode, here or anywhere. Losing
+// the other twenty-six because of it is the expensive part, and so is leaving
+// the owner to work out by hand which ones went up before it.
+describe('a picture the server cannot read', () => {
+    const pile = (count) =>
+        Array.from({ length: count }, (unused, index) =>
+            file(`202508${String((index % 28) + 1).padStart(2, '0')}_120000.jpg`)
+        );
+
+    const notice = (view) => JSON.parse(view.context.sessionStorage.getItem('mj.notice') ?? 'null');
+
+    test('the rest of the batch still goes up', async () => {
+        const view = await owner({ chose: 'here', refuseAt: [2] });
+        await view.admin.addPhotos('b', pile(5), () => {});
+
+        assert.equal(view.uploads().length, 5, 'the run stopped at the bad file');
+        assert.equal(view.context.location.reloaded, 1);
+    });
+
+    test('and the owner is told how many were left behind', async () => {
+        const view = await owner({ chose: 'here', refuseAt: [1, 3] });
+        await view.admin.addPhotos('b', pile(5), () => {});
+
+        assert.match(notice(view).notice, /Added 3 of 5 pictures\. 2 could not be read and were skipped\./);
+    });
+
+    test('one of them is counted as one', async () => {
+        const view = await owner({ chose: 'here', refuseAt: [0] });
+        await view.admin.addPhotos('b', pile(3), () => {});
+
+        assert.match(notice(view).notice, /One could not be read and was skipped\./);
+    });
+
+    test('a run where every one is refused says so without reloading', async () => {
+        // Nothing landed, so there is no page worth fetching again and the
+        // sentence goes straight to the status line under the button.
+        const view = await owner({ chose: 'here', refuseAt: [0, 1] });
+        const told = await view.admin.addPhotos('b', pile(2), () => {});
+
+        assert.equal(view.context.location.reloaded, undefined);
+        assert.match(told, /Added 0 of 2 pictures\. 2 could not be read and were skipped\./);
+    });
+
+    test('a batch with nothing wrong with it is not given a sentence', async () => {
+        const view = await owner({ chose: 'here' });
+        await view.admin.addPhotos('b', pile(3), () => {});
+
+        assert.equal(notice(view), null);
+        assert.equal(view.context.location.reloaded, 1);
+    });
+
+    test('a refusal that is not about the file still stops the run', async () => {
+        // An expired session says the same thing about picture four as it did
+        // about picture three. Carrying on would be twenty-three more
+        // round trips to be told so twenty-three more times.
+        const view = page({ html: 'site.html', path: `/${SLUG}/` });
+        let admin = null;
+        view.context.Reader = { mount: (options) => (admin = options.admin) };
+        view.context.chose = 'here';
+
+        let posted = 0;
+        const net = fetching(async (url) => {
+            if (url === '/.auth/me') {
+                return {
+                    status: 200,
+                    body: {
+                        clientPrincipal: { userDetails: 'mum@example.com', identityProvider: 'aad' }
+                    }
+                };
+            }
+            if (url === '/api/memberships') return { status: 200, body: { sites: [] } };
+            if (url.endsWith('/photos')) {
+                posted += 1;
+                return posted > 2 ? { status: 401, body: {} } : { status: 200, body: { ok: true } };
+            }
+            return { status: 200, body: { slug: SLUG, role: 'owner', posts: LETTERS, maxPhotos: 48 } };
+        });
+
+        run(['taken.js', 'app.js'], { context: view.context, fetch: net.fetch });
+        await settled();
+        await admin.addPhotos('b', pile(5), () => {});
+
+        const sent = net.calls.filter((call) => call.url.endsWith('/photos'));
+        assert.equal(sent.length, 3, 'the run kept going after a refusal that would repeat');
+        assert.match(
+            JSON.parse(view.context.sessionStorage.getItem('mj.notice')).notice,
+            /Added 2 of 5 pictures, then stopped\./
+        );
     });
 });

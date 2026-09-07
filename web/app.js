@@ -216,6 +216,12 @@
         );
     }
 
+    // How the one refusal that is about a single file rather than about the
+    // request opens. A run of uploads steps over this one and keeps going;
+    // every other refusal it stops on, because every other refusal will say
+    // the same thing about the next picture too.
+    const UNREADABLE = 'Upload failed: ';
+
     // What to tell an owner when a write did not land, or null when it did.
     // A table rather than a procedure, and kept apart from `call` for that
     // reason: this is the half somebody comes back to when a relative reports
@@ -240,7 +246,7 @@
         // a file this site cannot decode.
         if (response.status === 415) {
             const detail = await response.json().catch(() => null);
-            return `Upload failed: ${detail?.error ?? 'that file could not be read as a picture'}`;
+            return `${UNREADABLE}${detail?.error ?? 'that file could not be read as a picture'}`;
         }
 
         if (!response.ok) {
@@ -267,6 +273,21 @@
         const end = failed.indexOf('. ');
         const reason = end === -1 ? failed : failed.slice(0, end + 1);
         return `Added ${done} of ${total} pictures, then stopped. ${reason}`;
+    }
+
+    // What to tell an owner when a run finished but left some behind.
+    //
+    // Kept separate from `stoppedAfter` because the two mean opposite things
+    // about what to do next. That one has pictures still waiting and the run
+    // should be tried again; this one is finished, and the only files it did
+    // not take are files it will never take. Saying so is the difference
+    // between the owner sending the batch a second time for nothing and the
+    // owner going to look at the handful that were skipped.
+    function skippedSome(done, total) {
+        const left = total - done;
+        return left === 1
+            ? `Added ${done} of ${total} pictures. One could not be read and was skipped.`
+            : `Added ${done} of ${total} pictures. ${left} could not be read and were skipped.`;
     }
 
     // Where a sentence waits out the reload that would otherwise destroy it.
@@ -460,8 +481,14 @@
 
         let done = 0;
 
+        // A file this site cannot decode says nothing about the next one, so
+        // the run steps over it. Stopping on one was costing the rest of the
+        // batch and leaving the owner to work out by hand which pictures had
+        // gone up and which had not.
+        let skipped = 0;
+
         for (const { file, takenAt, target } of spread) {
-            say(`Adding pictures (${done + 1} of ${spread.length})…`);
+            say(`Adding pictures (${done + skipped + 1} of ${spread.length})…`);
 
             const failed = await call(
                 'POST',
@@ -480,6 +507,11 @@
                 false
             );
 
+            if (failed?.startsWith(UNREADABLE)) {
+                skipped += 1;
+                continue;
+            }
+
             if (failed) {
                 if (!done) return failed;
                 reloadAt(postId, stoppedAfter(done, spread.length, failed));
@@ -488,7 +520,16 @@
             done += 1;
         }
 
-        reloadAt(postId);
+        if (!skipped) {
+            reloadAt(postId);
+            return null;
+        }
+
+        // Nothing landed, so there is nothing to reload for and the sentence
+        // can be handed straight back to the status line.
+        if (!done) return skippedSome(0, spread.length);
+
+        reloadAt(postId, skippedSome(done, spread.length));
         return null;
     }
 

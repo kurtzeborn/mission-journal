@@ -95,7 +95,15 @@ const looksLikeHeic = (bytes) =>
  * @returns {Promise<{bytes: Buffer, options: object, width: number, height: number}>}
  */
 async function open(input) {
-    const options = { limitInputPixels: MAX_PIXELS, animated: false };
+    // `failOn: 'none'` because sharp's default throws out a file libjpeg
+    // merely disapproves of. Every picture here has been through a phone, a
+    // chat app and a download, and in one real 593-photo import eleven carried
+    // a scan header libjpeg calls invalid -- all eleven decode whole and look
+    // perfect, and the strict setting silently lost every one. What it costs
+    // is that a genuinely truncated file now yields a part-grey picture rather
+    // than nothing, which an owner can see and delete. The pixel ceiling below
+    // is what guards the machine; this setting was only guarding taste.
+    const options = { limitInputPixels: MAX_PIXELS, animated: false, failOn: 'none' };
 
     try {
         const meta = await sharp(input, options).metadata();

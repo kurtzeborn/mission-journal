@@ -257,6 +257,28 @@ test('undecodable bytes yield null rather than throwing', async () => {
     assert.equal(await transcode(heicish), null);
 });
 
+test('a damaged JPEG is rendered rather than thrown away', async () => {
+    // sharp's default refuses anything libjpeg complains about, and a
+    // photograph that has been through a phone, a chat app and a download
+    // collects complaints -- a real import of 593 files lost eleven that way,
+    // every one of which decodes whole. Truncation is the same class of
+    // damage and the one that can be made here on purpose: what matters is
+    // that a picture comes back at all, since the alternative the archive was
+    // choosing is nothing.
+    const source = await sharp({
+        create: { width: 1200, height: 900, channels: 3, background: '#336699' }
+    })
+        .jpeg()
+        .toBuffer();
+
+    const out = await transcode(source.subarray(0, Math.floor(source.length * 0.6)));
+
+    assert.ok(out, 'a JPEG missing its last scan lines was thrown away');
+    assert.equal(out.width, 1200);
+    assert.equal(out.height, 900);
+    assert.equal((await sharp(out.large).metadata()).format, 'webp');
+});
+
 test('a photograph shot upright is recorded upright', async () => {
     // Every phone writes the sensor's landscape rectangle and an EXIF note
     // saying which way up it was held, and sharp's `metadata()` reports the
