@@ -300,7 +300,7 @@ describe('how many may go up in one sitting', () => {
 
         assert.deepEqual(view.uploads(), []);
         assert.equal(view.context.asked, undefined, 'the owner was questioned about a refused pile');
-        assert.match(told, /up to 30 pictures at a time, not 31/);
+        assert.match(told, /up to 30 pictures at a time\. You chose 31\./);
     });
 
     test('a full batch goes through', async () => {

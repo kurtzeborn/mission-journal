@@ -440,9 +440,9 @@
         const chosen = [...files];
         if (chosen.length > MAX_BATCH) {
             return (
-                `Please choose up to ${MAX_BATCH} pictures at a time, not ${chosen.length}. ` +
-                'Nothing was added. Each batch is still spread across the letters by date, ' +
-                'so a whole camera roll goes up a handful at a time.'
+                `Please choose up to ${MAX_BATCH} pictures at a time. You chose ${chosen.length}. ` +
+                'Nothing was added. Each batch will be spread across the letters by date, ' +
+                'so a whole camera roll will need to go up a handful at a time.'
             );
         }
 
