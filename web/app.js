@@ -324,11 +324,6 @@
         reloadAt(postId);
     }
 
-    // Where a sentence waits out the reload that would otherwise destroy it.
-    // Session storage rather than the fragment: this is one sentence for one
-    // person in one tab, not something to be linked to or bookmarked.
-    const NOTICE = 'mj.notice';
-
     // Every owner action ends in a full reload, and a reload lands the owner
     // back at the top of an archive that can run to hundreds of letters --
     // a long way from the letter they were working on.
@@ -337,45 +332,9 @@
     // This is the route a digest link already takes, so there is no second
     // mechanism to keep working; `replaceState` rather than assignment because
     // a reload is not somewhere anyone should be able to press Back into.
-    //
-    // A notice is for the actions that have something left to say afterwards.
-    // Reloading is the only way to show the pictures that did land, and it
-    // takes the status line with it, so the sentence about the ones that did
-    // not has to go somewhere the next page can find it.
-    function reloadAt(postId, notice) {
+    function reloadAt(postId) {
         if (postId) history.replaceState(null, '', `#panel-${encodeURIComponent(postId)}`);
-
-        if (postId && notice) {
-            try {
-                sessionStorage.setItem(NOTICE, JSON.stringify({ slug, postId, notice }));
-            } catch {
-                // A browser that refuses storage gets the silence it used to
-                // get anyway. Not worth holding up the reload for.
-            }
-        }
-
         window.location.reload();
-    }
-
-    // Keyed by archive as well as by letter: post ids are dates, and the same
-    // one turns up in two archives on the same origin.
-    function takeNotice(postId) {
-        let held = null;
-        try {
-            held = JSON.parse(sessionStorage.getItem(NOTICE) ?? 'null');
-        } catch {
-            return null;
-        }
-
-        if (held?.slug !== slug || held?.postId !== postId) return null;
-
-        // Dropped on the way out, because it describes one reload and reading
-        // it again tomorrow would be a report of something that did not just
-        // happen. One that never matches -- a letter deleted between the
-        // writing and the reading -- is left to die with the tab or under the
-        // next notice, which is cheaper than sweeping for it.
-        sessionStorage.removeItem(NOTICE);
-        return held.notice;
     }
 
     // The wire half of `send`, without the assumption that the body is JSON or
@@ -1145,7 +1104,6 @@
                       restore: (postId) => send('POST', postId, null, '/restore'),
                       addPhotos,
                       addFromGoogle,
-                      notice: takeNotice,
                       confirmDelete: (post) =>
                           Confirm.ask({
                               question: `Remove "${post.subject || 'Untitled'}" from the site?`,
