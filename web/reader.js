@@ -2014,38 +2014,91 @@ window.Reader = (function () {
             toolbar.className = 'toolbar';
 
             if (many) {
-                const all = document.createElement('button');
-                all.type = 'button';
-                all.className = 'button button--quiet button--compact';
-                all.textContent = 'Expand all';
+                // A control that alternates between opening and shutting, and
+                // whose name is what the next press will do rather than what
+                // the list currently is.
+                const folder = ({ open, shut, opening, act }) => {
+                    const el = document.createElement('button');
+                    el.type = 'button';
+                    el.className = 'button button--quiet button--compact button--glyph';
 
-                all.addEventListener('click', () => {
-                    const opening = all.textContent === 'Expand all';
-                    // Folded first when shutting, because opening a letter
-                    // unfolds its month and doing the two in the other order
-                    // would undo half the work as it went.
-                    for (const group of groups) setFolded(group, !opening);
-                    for (const view of views.values()) setExpanded(view, opening);
-                    all.textContent = opening ? 'Collapse all' : 'Expand all';
-                });
+                    const draw = () => {
+                        const { glyph, hint } = opening ? open : shut;
+                        el.textContent = glyph;
+                        el.title = hint;
+                        el.setAttribute('aria-label', hint);
+                    };
 
-                // The far end of the row from Expand all, which sits over on the
-                // right above the Expand buttons it works on. One rearranges the
-                // list in front of you and the other opens a window over the top
-                // of it, and a thumb reaching for one should not land on the other.
+                    el.addEventListener('click', () => {
+                        act(opening);
+                        opening = !opening;
+                        draw();
+                    });
+
+                    draw();
+                    return el;
+                };
+
+                // Two controls, because they answer different questions.
+                // Unfolding the months and leaving the letters shut gives a
+                // list of every date with its photo count beside it, which is
+                // how you find the letters carrying none; opening every letter
+                // to get there buries that list under a screenful of prose
+                // apiece. Doubling the glyph is what says the second one is
+                // the first one taken further.
+                const folding = document.createElement('div');
+                folding.className = 'toolbar__group';
+
+                if (groups.length) {
+                    folding.append(
+                        folder({
+                            open: { glyph: '+', hint: 'Expand months' },
+                            shut: { glyph: '−', hint: 'Collapse months' },
+                            opening: groups.some((group) => group.inner.hidden),
+                            act: (opening) => {
+                                for (const group of groups) setFolded(group, !opening);
+                            }
+                        })
+                    );
+                }
+
+                // Singular where there are no months to be the other one, so
+                // a doubled glyph is never the only glyph on the row.
+                const both = groups.length;
+                folding.append(
+                    folder({
+                        open: { glyph: both ? '++' : '+', hint: 'Expand all' },
+                        shut: { glyph: both ? '−−' : '−', hint: 'Collapse all' },
+                        opening: true,
+                        act: (opening) => {
+                            // Folded first when shutting, because opening a
+                            // letter unfolds its month and doing the two in the
+                            // other order would undo half the work as it went.
+                            for (const group of groups) setFolded(group, !opening);
+                            for (const view of views.values()) setExpanded(view, opening);
+                        }
+                    })
+                );
+
+                // The far end of the row from the folding controls, which sit
+                // over on the right above the Expand buttons they work on. One
+                // rearranges the list in front of you and the other opens a
+                // window over the top of it, and a thumb reaching for one
+                // should not land on the other.
                 const cloudButton = document.createElement('button');
                 cloudButton.type = 'button';
                 cloudButton.className = 'button button--quiet button--compact';
                 cloudButton.textContent = 'Word cloud';
                 cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
 
-                toolbar.append(cloudButton, all);
+                toolbar.append(cloudButton, folding);
             }
 
-            // Beside the word cloud rather than beside Expand all: both open a
-            // window over the archive instead of rearranging it. Counted across
-            // the archive rather than per letter, because one photograph is the
-            // one already on the page rather than an album worth opening.
+            // Beside the word cloud rather than beside the folding controls:
+            // both open a window over the archive instead of rearranging it.
+            // Counted across the archive rather than per letter, because one
+            // photograph is the one already on the page rather than an album
+            // worth opening.
             if (gallery) {
                 const photos = document.createElement('button');
                 photos.type = 'button';

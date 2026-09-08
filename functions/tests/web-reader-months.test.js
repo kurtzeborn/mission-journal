@@ -245,3 +245,48 @@ describe('expand all', () => {
         assert.equal(view.$$('.post--open').length, 0);
     });
 });
+
+// The control beside it, which stops at the months. This is how an owner finds
+// the letters carrying no photographs: every date on one screen with its count
+// beside it, rather than every date buried under the letter it belongs to.
+describe('expand months', () => {
+    test('unfolds the months and leaves the letters shut', () => {
+        const view = archive();
+
+        view.click(view.button('Expand months'));
+
+        assert.deepEqual(folded(view), [false, false, false]);
+        assert.deepEqual(view.$$('.post--open').map((el) => el.dataset.post), ['2026-03-25-A25']);
+        assert.equal(reachable(view).length, MANY.length);
+    });
+
+    test('and folds them again, without touching the letters either', () => {
+        const view = archive();
+
+        view.click(view.button('Expand months'));
+        view.click(view.button('Collapse months'));
+
+        assert.deepEqual(folded(view), [true, true, true]);
+        assert.deepEqual(view.$$('.post--open').map((el) => el.dataset.post), ['2026-03-25-A25']);
+    });
+
+    test('it opens with the offer the list has not already taken', () => {
+        // A short archive arrives unfolded, so the useful press is the one
+        // that shuts it -- and a button named for what it will not do is a
+        // button pressed once to find out.
+        assert.equal(archive(FEW).button('Collapse months').textContent, '−');
+        assert.equal(archive(MANY).button('Expand months').textContent, '+');
+    });
+
+    test('there is none where there are no months to fold', () => {
+        // And with nothing beside it, the remaining control drops back to a
+        // single glyph rather than being a double of nothing.
+        const view = archive([
+            letter('2026-03-25-A25', '<p>One.</p>'),
+            letter('2026-03-18-A18', '<p>Two.</p>')
+        ]);
+
+        assert.equal(view.button('Expand months'), undefined);
+        assert.equal(view.button('Expand all').textContent, '+');
+    });
+});

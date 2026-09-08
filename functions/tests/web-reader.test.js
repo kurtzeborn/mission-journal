@@ -69,11 +69,11 @@ describe('the shape of the page', () => {
         const all = view.button('Expand all');
         view.click(all);
         assert.deepEqual(expanded(view), ['true', 'true', 'true']);
-        assert.equal(all.textContent, 'Collapse all');
+        assert.equal(all.getAttribute('aria-label'), 'Collapse all');
 
         view.click(all);
         assert.deepEqual(expanded(view), ['false', 'false', 'false']);
-        assert.equal(all.textContent, 'Expand all');
+        assert.equal(all.getAttribute('aria-label'), 'Expand all');
     });
 
     test('there is no expand-all on an archive with one letter in it', () => {

@@ -35,8 +35,13 @@ function archive({ posts = POSTS, withAlbum = true } = {}) {
     return { ...view, album: book };
 }
 
+// By accessible name, not by the words in the element: the folding controls
+// carry a glyph and are named in an attribute, which is what a screen reader
+// and a tooltip both read.
 const labels = (view) =>
-    [...view.$('.toolbar').querySelectorAll('button')].map((el) => el.textContent);
+    [...view.$('.toolbar').querySelectorAll('button')].map(
+        (el) => el.getAttribute('aria-label') ?? el.textContent
+    );
 
 describe('getting to the album', () => {
     test('its button sits with the word cloud, not with Expand all', () => {

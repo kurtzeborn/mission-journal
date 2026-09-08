@@ -48,7 +48,9 @@ describe('getting to the cloud', () => {
 
         // Expand all sits on the right, over the Expand buttons it works on.
         assert.deepEqual(
-            [...toolbar.querySelectorAll('button')].map((el) => el.textContent),
+            [...toolbar.querySelectorAll('button')].map(
+                (el) => el.getAttribute('aria-label') ?? el.textContent
+            ),
             ['Word cloud', 'Expand all']
         );
     });

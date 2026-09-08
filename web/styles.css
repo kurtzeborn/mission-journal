@@ -207,6 +207,16 @@ a {
     line-height: 1.2;
 }
 
+/* A button whose label is one glyph or two. Fixed width because it swaps
+   between them on every press, and a control that changes size under the
+   finger moves the one next to it out from under the next press. */
+.button--glyph {
+    justify-content: center;
+    min-width: 2.75rem;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+}
+
 /* --- the masthead menu --- */
 
 /* One control for everything that is not a letter. A `details` rather than a
@@ -735,11 +745,16 @@ button:focus-visible {
     margin-top: 1.25rem;
 }
 
-/* Expand all is built last, and it sits over on the right above the Expand
-   buttons it works on. Everything before it opens a window over the archive
-   rather than rearranging it, so those group together at the other end. */
+/* The folding controls are built last, and they sit over on the right above
+   the Expand buttons they work on. Everything before them opens a window over
+   the archive rather than rearranging it, so those group at the other end. */
 .toolbar > :last-child {
     margin-left: auto;
+}
+
+.toolbar__group {
+    display: flex;
+    gap: 0.5rem;
 }
 
 .post__body {
