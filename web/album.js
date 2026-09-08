@@ -256,6 +256,20 @@ window.Album = (function () {
     // has asked to see it.
     const NEAR = 1;
 
+    // How far either side a fetched photograph is kept before it is let go.
+    //
+    // Nothing used to let go of anything, and that is what made a large album
+    // fail slowly rather than at once: the deck holds every card in the DOM,
+    // so a picture given a `src` keeps it, and `LARGE_EDGE` is 2400 -- around
+    // seventeen megabytes of bitmap once decoded, whatever the file weighed.
+    // Left running, the album moves on every four seconds. A hundred pictures
+    // in, which is seven minutes, the tab was holding a hundred of them.
+    //
+    // Three is far enough that going back a couple is instant and short enough
+    // that what is held is bounded rather than a function of how long somebody
+    // has been looking.
+    const FAR = 3;
+
     function slideFor(frame, index) {
         // No src yet, and no `loading="lazy"` either -- `preload` decides when
         // this one is fetched, for the reason written there.
@@ -273,6 +287,10 @@ window.Album = (function () {
         // Held under the card until the full-size photograph arrives. Outside
         // the zoom container on purpose: Swiper pinches the first image it
         // finds in there, and it has to find the sharp one.
+        //
+        // Hidden rather than removed once the photograph lands, because the
+        // photograph is given back later and the thumbnail has to be there to
+        // stand in for it a second time.
         const standin = document.createElement('img');
         standin.className = 'reel__standin';
         standin.dataset.src = frame.thumb;
@@ -331,6 +349,9 @@ window.Album = (function () {
      *
      * The thumbnails below are left to the browser, because the strip really
      * does scroll and the ones off the end really are outside the viewport.
+     *
+     * The same reasoning run backwards is why this also takes photographs
+     * away again. See `FAR`.
      */
     function preload(view) {
         if (!view.swiper) return;
@@ -352,15 +373,31 @@ window.Album = (function () {
             // whole game when there is not.
             img.setAttribute('fetchpriority', gap === 0 ? 'high' : 'low');
 
-            if (gap > NEAR || img.src) continue;
+            const standin = slide.querySelector('.reel__standin');
+            const holding = Boolean(img.getAttribute('src'));
+
+            if (gap > FAR) {
+                // Dropping the attribute is what releases the decoded bitmap.
+                // The thumbnail comes back up underneath, so a card the reader
+                // scrolls past and returns to is a soft picture rather than a
+                // blank one while the photograph is fetched again -- from the
+                // browser's own cache, ordinarily.
+                if (holding) {
+                    img.removeAttribute('src');
+                    if (standin) standin.hidden = false;
+                }
+                continue;
+            }
+
+            if (gap > NEAR || holding) continue;
 
             // Fetched together, and the small one wins by a factor of eighteen.
-            // Dropped the moment the real photograph is decoded, so the two are
+            // Hidden the moment the real photograph is decoded, so the two are
             // never both on screen and nothing has to be stacked.
-            const standin = slide.querySelector('.reel__standin');
             if (standin) {
+                standin.hidden = false;
                 standin.src = standin.dataset.src;
-                img.addEventListener('load', () => standin.remove(), { once: true });
+                img.addEventListener('load', () => { standin.hidden = true; }, { once: true });
             }
 
             img.src = img.dataset.src;
