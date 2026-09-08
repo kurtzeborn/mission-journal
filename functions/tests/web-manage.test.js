@@ -98,12 +98,24 @@ describe('what an operator is shown', () => {
 
     test('and dates a person can read, not timestamps', async () => {
         // What matters is how many days are left, and nobody counts those off
-        // an ISO string.
+        // an ISO string. Short form, and the year in two digits: a column of
+        // these is scanned rather than read.
         const [, deletedAt, , , purgeAfter] = cells(rows(await manage({ answer: listed(DELETIONS) }))[0]);
 
         assert.doesNotMatch(deletedAt, /T\d\d:/);
         assert.doesNotMatch(purgeAfter, /T\d\d:/);
-        assert.match(purgeAfter, /2026/);
+        assert.doesNotMatch(purgeAfter, /2026/);
+        assert.match(purgeAfter, /26/);
+    });
+
+    test('the slug is the way into the archive it names', async () => {
+        // In a new tab: the page is four tables filled by four calls, and
+        // navigating away means loading all of them again.
+        const view = await manage({ answer: listed(DELETIONS) });
+        const link = view.link('rows', 'elder.example');
+
+        assert.equal(link.href, '/elder.example');
+        assert.equal(link.target, '_blank');
     });
 
     test('a reason reaches the page as text, not as markup', async () => {
@@ -149,8 +161,8 @@ describe('the other table, which is every archive there is', () => {
         const [slug, state, received, posted] = cells(flowRows(view)[0]);
         assert.equal(slug, 'elder.recent');
         assert.equal(state, 'live');
-        assert.match(received, /2026/);
-        assert.match(posted, /2026/);
+        assert.match(received, /26/);
+        assert.match(posted, /26/);
         assert.doesNotMatch(received, /T\d\d:/);
     });
 

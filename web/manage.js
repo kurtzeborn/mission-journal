@@ -53,11 +53,15 @@
     // Dates are shown in the reader's own locale rather than as ISO strings.
     // The number that matters is how many days are left, and nobody counts
     // those off a timestamp.
+    //
+    // The short form, because most rows carry two of these and the year is
+    // almost always the current one. These are scanned down a column rather
+    // than read, and a narrower column is what makes that possible.
     const day = (value) => {
         const when = new Date(value);
         return Number.isNaN(when.getTime())
             ? '\u2014'
-            : when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+            : when.toLocaleDateString(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
     };
 
     // Whole days, rounded down, from a timestamp to now. Only the headline
@@ -79,6 +83,24 @@
         const td = document.createElement('td');
         td.textContent = text;
         row.appendChild(td);
+        return td;
+    };
+
+    // The slug, and a way into the archive it names. Every table here starts
+    // with one, and what an operator does after reading a row is usually go
+    // and look at the thing -- which otherwise means retyping it by hand.
+    //
+    // A new tab because the page is four tables filled by four separate calls,
+    // and coming back to it means loading all of them again. On a deleted or
+    // an unclaimed archive the link is a 404, which is the truth about it.
+    const slugCell = (row, slug) => {
+        const td = cell(row, '');
+        const link = document.createElement('a');
+        link.href = `/${encodeURIComponent(slug)}`;
+        link.textContent = slug;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        td.appendChild(link);
         return td;
     };
 
@@ -123,7 +145,7 @@
 
         for (const deletion of deletions) {
             const row = document.createElement('tr');
-            cell(row, deletion.slug);
+            slugCell(row, deletion.slug);
             cell(row, day(deletion.deletedAt));
             cell(row, deletion.deletedBy ?? '\u2014');
             cell(row, deletion.reason || '\u2014');
@@ -160,7 +182,7 @@
 
         for (const archive of archives) {
             const row = document.createElement('tr');
-            cell(row, archive.slug);
+            slugCell(row, archive.slug);
             cell(row, archive.state);
             cell(row, archive.lastReceivedAt ? day(archive.lastReceivedAt) : '\u2014');
             cell(row, archive.lastPostAt ? day(archive.lastPostAt) : '\u2014');
@@ -322,7 +344,7 @@
 
         for (const rejection of rejections) {
             const row = document.createElement('tr');
-            cell(row, rejection.slug);
+            slugCell(row, rejection.slug);
             cell(row, rejection.sender || '\u2014');
             cell(row, rejection.subject || '\u2014');
             cell(row, day(rejection.at));
@@ -438,7 +460,7 @@
 
         for (const site of sites) {
             const row = document.createElement('tr');
-            cell(row, site.slug);
+            slugCell(row, site.slug);
             cell(row, site.recipient || '\u2014');
             cell(row, String(site.messageCount));
             cell(row, site.offeredAt ? day(site.offeredAt) : 'never');
