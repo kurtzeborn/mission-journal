@@ -437,6 +437,123 @@ button:focus-visible {
     font-size: 1.25rem;
     line-height: 1.5;
 }
+
+/* --- the dictionary entry that opens the landing page --- */
+
+/* Borrowed wholesale from a printed dictionary, because the form itself does
+   half the explaining: a reader who has never heard the word recognizes the
+   shape on sight and knows to read it as a definition rather than as a slogan.
+   Tinted and ruled rather than plain, so it reads as an inset quotation from
+   somewhere else and not as the site talking about itself. */
+.entry {
+    background: #f8f6f3;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 1.5rem 1.5rem 1.25rem;
+    margin: 0 0 2rem;
+}
+
+/* Big enough to be the first thing read, and the only place on the site where
+   the body face is set at a display size. */
+.entry__word {
+    font-size: 2.6rem;
+    line-height: 1.05;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+
+/* Pronunciation, part of speech and spellings on one line, wrapping to two on
+   a phone rather than being three stacked fragments. */
+.entry__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.15rem 0.7rem;
+    margin: 0.5rem 0 0;
+    color: var(--ink-soft);
+}
+
+.entry__say {
+    font-size: 1.05rem;
+}
+
+/* The stress marks and the IPA vowels are outside Georgia's repertoire, so a
+   stack that actually carries them keeps the browser from falling back one
+   glyph at a time and setting the line in two faces. */
+.entry__say,
+.entry__ipa {
+    font-family: 'Charis SIL', 'Gentium Plus', 'Segoe UI', 'Lucida Sans Unicode', system-ui, sans-serif;
+    white-space: nowrap;
+}
+
+.entry__ipa {
+    font-size: 0.9rem;
+}
+
+.entry__also {
+    font-family: system-ui, sans-serif;
+    font-size: 0.8rem;
+}
+
+/* The functional label. It sits on the sense rather than on the headword
+   because the two senses are different parts of speech, which a print
+   dictionary would answer by splitting the word into two numbered entries --
+   more apparatus than one word needs when the whole point is to explain it. */
+.entry__part {
+    font-style: italic;
+    color: var(--ink-soft);
+}
+
+.entry__part::after {
+    content: ' \2014 ';
+}
+
+/* Own counter, so the numeral can take the accent and sit in the margin the
+   way a dictionary sets it. */
+.entry__senses {
+    list-style: none;
+    counter-reset: sense;
+    margin: 1.25rem 0 0;
+    padding: 0;
+}
+
+.entry__senses > li {
+    counter-increment: sense;
+    position: relative;
+    padding-left: 1.6rem;
+}
+
+.entry__senses > li + li {
+    margin-top: 1rem;
+}
+
+.entry__senses > li::before {
+    content: counter(sense);
+    position: absolute;
+    left: 0;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+/* Attributed to nobody, because these are the sentences a family actually
+   says rather than a quotation from anywhere. */
+.entry__example {
+    font-style: italic;
+    color: var(--ink-soft);
+    margin: 0.35rem 0 0;
+}
+
+@media (max-width: 30rem) {
+    .entry {
+        padding: 1.25rem 1.1rem 1rem;
+    }
+
+    .entry__word {
+        font-size: 2.1rem;
+    }
+}
+
 /* An address, always inside a sentence -- there is not one standalone use of
    this on the site. So it has to sit *in* the line rather than push it open:
    `display: inline` means the vertical padding overflows the line box instead
