@@ -1,17 +1,18 @@
 // Fails only on advisories we have not already looked at.
 //
-// `npm audit` scores the dependency tree, not the code path. Every finding
-// against this package today is unreachable: `undici` is never loaded by
-// `mailauth/lib/dkim/verify`, and of `nodemailer` we load one file --
-// `lib/addressparser` -- while every advisory against it concerns SMTP
-// transport, OAuth2, or jsonTransport. All are marked "No fix available", so a
-// build that failed on them would be permanently red, which is the reliable way
-// to teach everyone to stop reading it.
+// `npm audit` scores the dependency tree, not the code path, and for a long
+// while every finding against this package was against something `mailauth`
+// pulled in and we never load. They were also all marked "No fix available", so
+// a build that failed on them would have been permanently red, which is the
+// reliable way to teach everyone to stop reading it.
 //
 // So this compares advisory IDs against `audit-baseline.json` rather than
 // counting them. A count can stay the same while one advisory is fixed and
 // another appears. An ID that is not in the baseline is new, and new is the
 // only thing worth interrupting anyone for.
+//
+// The baseline is empty today and should be left that way where it can be:
+// prefer the upgrade to the note explaining why the upgrade is not needed.
 //
 // To accept a new advisory, add its ID to the baseline **with a note saying why
 // it is not reachable**. An entry without a reason is a silenced alarm.
