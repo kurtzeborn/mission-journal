@@ -200,6 +200,11 @@
 .viewer__stage {
     position: relative;
     display: grid;
+    /* One cell, and it has to be sized by the stage rather than by the picture
+       standing in it. An automatic row takes its height from the image, and the
+       image's own `max-height: 100%` would then be measuring itself -- so it
+       caps at nothing and a tall photograph runs down over the caption. */
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
     place-items: center;
     flex: 1;
     min-height: 0;
