@@ -24,22 +24,16 @@ The comment above `.deletions--dense` in [web/styles.css](../web/styles.css) des
 
 Never audited, and the owner bar raises the stakes: it is icon-only now, so each control's meaning lives entirely in its `aria-label`. The album, the word cloud and the search stepper are all keyboard-reachable by construction and none of them has been listened to.
 
-### `album.open({at})` has no caller
-
-[web/album.js](../web/album.js) accepts a photograph to open at, and every call site omits it. That was deliberate — it exists for the day a picture in a letter links into the album — but an unused parameter is one nobody notices has stopped working. Either use it or delete it.
-
 ---
 
 ## The photo album, small things
 
 None of these is wrong; all of them were noticed and left.
 
-- **A zoomed photograph is clipped at the edge of its card.** `.reel__stage .swiper-slide` sets `overflow: hidden` so the rounded corners clip the card face, and pinch-zoom then has nowhere to grow into.
-- **Zooming does not stop the autoplay.** Swiper emits `zoomChange`; nothing listens. Somebody who zooms in to look at a face is the clearest possible signal that the slideshow should wait.
-- **Opening at a named picture cannot start paused.** Related to the unused `at` above: arriving at a specific photograph and being carried off it a moment later is the wrong default.
-- **No mousewheel on the desktop**, which is the gesture a trackpad user reaches for first.
+- **No pinch-zoom in the viewer.** The deck that stood here before had it, from the library; the grid does not. A phone can zoom the page but not the photograph, and a face in the back of a group shot is where somebody wants to get closer.
 - **No way to narrow the album** to one letter or one month. The whole archive is the right default; it is not always the right answer.
-- **The pagination is Swiper's own.** It works and does not look like the rest of the site.
+- **No swipe between photographs in the viewer.** The arrows and the arrow keys are the whole of the navigation, and a thumb on a phone reaches for a swipe first.
+- **A picture in a letter does not link into the album.** Clicking it opens the reader's lightbox, which is right, but there is nowhere to say "and show me the rest of them from here".
 
 ---
 

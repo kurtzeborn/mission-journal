@@ -1,4 +1,4 @@
-// Every photo in the archive, as one slideshow.
+// Every photograph in the archive, as one page.
 //
 // The website only, and only from the Photo Album button. Clicking a picture
 // in a letter opens the reader's own lightbox instead, here as well as in the
@@ -6,9 +6,9 @@
 // asking to see all of them, and answering the first with the second sweeps
 // the letter out from under the reader.
 //
-// The downloaded zip is not given this file at all -- the album is where video
-// will live, video is not going in the download, and the bundle this leans on
-// is larger than everything else the site serves put together.
+// The downloaded zip is not given this file at all. That is a decision rather
+// than an oversight -- the album is where video will live, and video is not
+// going in the download.
 //
 // The archive is a list of dates. The word cloud is a view of the same letters
 // by what is in them; this is a view of them by what was photographed. Both
@@ -17,46 +17,29 @@
 // is the whole reason a picture is worth clicking here rather than in a folder
 // of images.
 //
-// The sliding, the pinch-zoom, the arrows, the counter and the keyboard are
-// Swiper's. What is written here is the dialog around it, the caption, and the
-// way back to the letter.
+// A grid of thumbnails and nothing else. What stood here before was a deck of
+// cards driven by a slider library, and it failed the way that design has to
+// fail: it built a slide for every photograph up front, it held the full-size
+// image of every one it had passed, and it started a timer the moment it
+// opened -- so on a slow first request it spent that timer moving past
+// photographs that had not arrived. A grid asks the browser for the two dozen
+// thumbnails on screen and nothing else, and a slow connection shows up as
+// pictures filling in rather than as a slideshow running on empty.
+//
+// Two dialogs, one on top of the other. `.gallery` is where you look for a
+// photograph; `.viewer` is where you look at one. Stacking them rather than
+// swapping the contents of one is what makes closing the viewer put you back
+// on the thumbnail you clicked, with the grid scrolled where you left it.
+//
+// Not `.album`, which is taken: reader.js already gives that class to the row
+// of thumbnails under a single letter, and styles.css sets a `display` on it.
+// An author `display` beats the browser's `dialog:not([open])` rule, so a
+// dialog wearing that class stays on screen after it is closed.
 
-/* global Swiper, Reader */
+/* global Reader */
 
 window.Album = (function () {
     'use strict';
-
-    const SWIPER_JS = '/vendor/swiper-bundle.min.js';
-    const SWIPER_CSS = '/vendor/swiper-bundle.min.css';
-
-    // Fetched on first open, not by a script tag in the page. Most readers
-    // never open the album, and the ones who do have already decided to wait
-    // for photographs.
-    let ready = null;
-
-    function loadSwiper() {
-        if (ready) return ready;
-
-        ready = new Promise((resolve, reject) => {
-            if (window.Swiper) return resolve();
-
-            const css = document.createElement('link');
-            css.rel = 'stylesheet';
-            css.href = SWIPER_CSS;
-
-            const js = document.createElement('script');
-            js.src = SWIPER_JS;
-            js.addEventListener('load', () => resolve());
-            js.addEventListener('error', () => reject(new Error('Swiper did not load')));
-
-            document.head.append(css, js);
-        });
-
-        // A dropped connection must not be remembered as a permanent no.
-        ready.catch(() => { ready = null; });
-
-        return ready;
-    }
 
     const ORDERS = [
         ['oldest', 'Oldest first'],
@@ -73,57 +56,280 @@ window.Album = (function () {
     // remembered any longer than that.
     let order = 'oldest';
 
-    function framesOf(posts, photoSrc, how) {
+    // How long a photograph stays on screen once it has arrived.
+    //
+    // Once it has arrived is the whole of it. The clock does not start until
+    // the picture is decoded, so on a cold connection the slideshow waits
+    // instead of running ahead of the network -- which is what the thing this
+    // replaces did, and why it looked broken rather than merely slow.
+    const DWELL = 4000;
+
+    /**
+     * The photographs, in the order asked for, grouped by the letter they came
+     * with.
+     *
+     * Grouping only survives a date order. Under "Random" the headings would
+     * be one letter per picture, which is not a grouping, so the whole album
+     * becomes a single block.
+     */
+    function planOf(posts, photoSrc, how) {
         // Posts arrive newest first. Reversing whole letters rather than the
         // finished list keeps the pictures inside one letter in the order they
         // were written around.
         const ordered = how === 'newest' ? posts : [...posts].reverse();
-        const frames = [];
 
+        const blocks = [];
         for (const post of ordered) {
-            for (const photo of post.photos ?? []) {
-                frames.push({
-                    id: photo.id,
+            const photos = post.photos ?? [];
+            if (!photos.length) continue;
+            blocks.push({
+                post,
+                frames: photos.map((photo) => ({
                     post,
                     src: photoSrc(photo.id, 'large'),
                     thumb: photoSrc(photo.id, 'thumb')
-                });
+                }))
+            });
+        }
+
+        const frames = blocks.flatMap((block) => block.frames);
+
+        if (how === 'random') {
+            for (let i = frames.length - 1; i > 0; i -= 1) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [frames[i], frames[j]] = [frames[j], frames[i]];
             }
         }
 
-        if (how !== 'random') return frames;
+        // Its own position, so a thumbnail can name the picture it opens
+        // without a click handler having to work out where it sits.
+        frames.forEach((frame, at) => { frame.at = at; });
 
-        for (let i = frames.length - 1; i > 0; i -= 1) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [frames[i], frames[j]] = [frames[j], frames[i]];
-        }
-
-        return frames;
+        return { blocks: how === 'random' ? [{ post: null, frames }] : blocks, frames };
     }
 
-    let reel = null;
+    const titleOf = (post) => {
+        const date = Reader.formatDate(post.originalDate);
+        const subject = post.subject || 'Untitled';
+        return date ? `${date} \u2014 ${subject}` : subject;
+    };
 
-    function ensureReel() {
-        if (reel) return reel;
+    // --- the viewer -------------------------------------------------------
+
+    let viewer = null;
+
+    function ensureViewer() {
+        if (viewer) return viewer;
 
         const dialog = document.createElement('dialog');
-        dialog.className = 'reel';
+        dialog.className = 'viewer';
 
-        const title = document.createElement('h2');
-        title.className = 'reel__title';
-        title.id = 'reel-title';
-        title.textContent = 'Photos';
-        dialog.setAttribute('aria-labelledby', title.id);
+        // Behind the photograph and blurred, so a slow fetch shows the picture
+        // softly rather than showing nothing. It costs no request: the grid
+        // has already put every thumbnail it painted into the browser's cache,
+        // so this is on screen in the same frame as the click.
+        const standin = document.createElement('img');
+        standin.className = 'viewer__standin';
+        standin.alt = '';
+        standin.decoding = 'async';
+
+        // Contained rather than cropped, unlike the grid. A photograph being
+        // looked at wants its whole frame, and the parts a crop takes are
+        // where a phone camera puts the people.
+        const image = document.createElement('img');
+        image.className = 'viewer__image';
+        image.alt = '';
+        image.decoding = 'async';
+
+        const stage = document.createElement('div');
+        stage.className = 'viewer__stage';
+        stage.append(standin, image);
+
+        const arrow = (label, glyph, delta) => {
+            const el = document.createElement('button');
+            el.type = 'button';
+            el.className = `viewer__step viewer__step--${delta < 0 ? 'back' : 'on'}`;
+            el.setAttribute('aria-label', label);
+            el.textContent = glyph;
+            el.addEventListener('click', () => step(delta));
+            return el;
+        };
+
+        const previous = arrow('Previous photograph', '\u2039', -1);
+        const next = arrow('Next photograph', '\u203a', 1);
 
         const close = document.createElement('button');
         close.type = 'button';
-        close.className = 'reel__close';
-        close.setAttribute('aria-label', 'Close the photos');
+        close.className = 'viewer__close';
+        close.setAttribute('aria-label', 'Close this photograph');
         close.textContent = '\u00d7';
         close.addEventListener('click', () => dialog.close());
 
+        const caption = document.createElement('p');
+        caption.className = 'viewer__caption';
+
+        const where = document.createElement('p');
+        where.className = 'viewer__where';
+
+        const play = document.createElement('button');
+        play.type = 'button';
+        play.className = 'button button--quiet button--compact viewer__play';
+        play.textContent = 'Play';
+        play.addEventListener('click', () => setPlaying(!viewer.playing));
+
+        const goTo = document.createElement('button');
+        goTo.type = 'button';
+        goTo.className = 'button button--quiet button--compact viewer__goto';
+        goTo.textContent = 'Go to this letter';
+        goTo.addEventListener('click', () => {
+            const post = viewer.frames[viewer.at]?.post;
+            if (!post) return;
+            dialog.close();
+            gallery.dialog.close();
+            gallery.reveal?.(post.id);
+        });
+
+        const foot = document.createElement('div');
+        foot.className = 'viewer__foot';
+        foot.append(caption, where, play, goTo);
+
+        dialog.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowRight') step(1);
+            else if (event.key === 'ArrowLeft') step(-1);
+            else return;
+            event.preventDefault();
+        });
+
+        // A click on the dark around the picture leaves, which is what every
+        // other image viewer does. The stage fills the dialog and the
+        // photograph is contained inside it, so the letterboxing either side
+        // belongs to the stage rather than to the dialog box -- both have to
+        // count as "not the picture".
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog || event.target === stage) dialog.close();
+        });
+
+        // Everything the viewer was doing stops when it goes away: the timer,
+        // because it would otherwise advance a closed dialog, and the src,
+        // because a 2400px photograph is a lot of memory to leave held for a
+        // window nobody is looking at.
+        //
+        // The grid is scrolled to the picture that was up, which matters after
+        // a slideshow has run: it may be a hundred thumbnails from the one
+        // that was clicked, and landing back at the old scroll position would
+        // lose the reader.
+        dialog.addEventListener('close', () => {
+            setPlaying(false);
+            image.removeAttribute('src');
+            standin.removeAttribute('src');
+            gallery?.cells[viewer.at]?.scrollIntoView({ block: 'nearest' });
+        });
+
+        dialog.append(stage, previous, next, close, foot);
+        document.body.append(dialog);
+
+        viewer = {
+            dialog, stage, image, standin, caption, where, play, goTo,
+            frames: [], at: 0, playing: false, timer: 0, pass: 0
+        };
+
+        return viewer;
+    }
+
+    function describe() {
+        const frame = viewer.frames[viewer.at];
+        if (!frame) return;
+        viewer.caption.textContent = titleOf(frame.post);
+        viewer.where.textContent = `${viewer.at + 1} / ${viewer.frames.length}`;
+    }
+
+    /**
+     * Start the clock on the picture that is up, once it is up.
+     *
+     * `pass` is the showing it was armed for. Every move increments it, so a
+     * reader who presses the arrow while a slow photograph is still coming
+     * down does not get that photograph's timer firing underneath the one they
+     * asked for.
+     */
+    function arm(pass) {
+        if (!viewer.playing) return;
+
+        const start = () => {
+            if (pass !== viewer.pass || !viewer.playing) return;
+            viewer.timer = setTimeout(() => step(1), DWELL);
+        };
+
+        // A picture that never arrives must not park the slideshow for good,
+        // so a failed load starts the clock the same as a good one.
+        if (viewer.image.complete) start();
+        else {
+            viewer.image.addEventListener('load', start, { once: true });
+            viewer.image.addEventListener('error', start, { once: true });
+        }
+    }
+
+    function show(index) {
+        const total = viewer.frames.length;
+        if (!total) return;
+
+        const at = ((index % total) + total) % total;
+        const frame = viewer.frames[at];
+
+        clearTimeout(viewer.timer);
+        viewer.at = at;
+        viewer.pass += 1;
+        const pass = viewer.pass;
+
+        viewer.standin.src = frame.thumb;
+        viewer.standin.hidden = false;
+        viewer.image.src = frame.src;
+
+        const settle = () => { if (pass === viewer.pass) viewer.standin.hidden = true; };
+        viewer.image.addEventListener('load', settle, { once: true });
+        if (viewer.image.complete) settle();
+
+        // One ahead, and only one. It is the picture most likely to be asked
+        // for next whether the reader is pressing the arrow or watching the
+        // slideshow, and each of these is most of a megabyte.
+        const after = viewer.frames[(at + 1) % total];
+        if (after !== frame) new Image().src = after.src;
+
+        describe();
+        arm(pass);
+    }
+
+    // Round rather than stopping at the end, so a slideshow left running does
+    // not stop of its own accord in the middle of somebody's evening.
+    const step = (delta) => show(viewer.at + delta);
+
+    function setPlaying(on) {
+        clearTimeout(viewer.timer);
+        viewer.playing = on;
+        viewer.play.textContent = on ? 'Pause' : 'Play';
+        if (on) arm(viewer.pass);
+    }
+
+    // --- the grid ---------------------------------------------------------
+
+    let gallery = null;
+
+    function ensureGallery() {
+        if (gallery) return gallery;
+
+        const dialog = document.createElement('dialog');
+        dialog.className = 'gallery';
+
+        const title = document.createElement('h2');
+        title.className = 'gallery__title';
+        title.id = 'gallery-title';
+        title.textContent = 'Photos';
+        dialog.setAttribute('aria-labelledby', title.id);
+
+        const count = document.createElement('p');
+        count.className = 'gallery__count';
+
         const picker = document.createElement('select');
-        picker.className = 'reel__order';
+        picker.className = 'gallery__order';
         picker.setAttribute('aria-label', 'Order the photographs');
 
         for (const [value, label] of ORDERS) {
@@ -133,414 +339,134 @@ window.Album = (function () {
             picker.append(option);
         }
 
-        picker.value = order;
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'gallery__close';
+        close.setAttribute('aria-label', 'Close the photos');
+        close.textContent = '\u00d7';
+        close.addEventListener('click', () => dialog.close());
 
         const head = document.createElement('div');
-        head.className = 'reel__head';
-        head.append(title, picker, close);
+        head.className = 'gallery__head';
+        head.append(title, count, picker, close);
 
-        const wrapper = document.createElement('div');
-        wrapper.className = 'swiper-wrapper';
-
-        const previous = document.createElement('div');
-        previous.className = 'swiper-button-prev';
-
-        const next = document.createElement('div');
-        next.className = 'swiper-button-next';
-
-        const counter = document.createElement('div');
-        counter.className = 'swiper-pagination';
-
-        const stage = document.createElement('div');
-        stage.className = 'swiper reel__stage';
-        stage.append(wrapper, previous, next, counter);
-
-        const stripWrapper = document.createElement('div');
-        stripWrapper.className = 'swiper-wrapper';
-
-        const strip = document.createElement('div');
-        strip.className = 'swiper reel__strip';
-        strip.append(stripWrapper);
-
-        // The caption is one element updated on each slide rather than one per
-        // slide, because it holds a button and a thousand-photo archive should
-        // not build a thousand of those.
-        const caption = document.createElement('p');
-        caption.className = 'reel__caption';
-
-        const goTo = document.createElement('button');
-        goTo.type = 'button';
-        goTo.className = 'button button--quiet button--compact reel__goto';
-        goTo.textContent = 'Go to this letter';
-
-        const play = document.createElement('button');
-        play.type = 'button';
-        play.className = 'button button--quiet button--compact reel__play';
-        play.textContent = 'Play';
-        play.addEventListener('click', () => {
-            const autoplay = reel.swiper?.autoplay;
-            if (!autoplay) return;
-            autoplay.running ? autoplay.stop() : autoplay.start();
-        });
-
-        const foot = document.createElement('div');
-        foot.className = 'reel__foot';
-        foot.append(caption, play, goTo);
-
-        dialog.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape') dialog.close();
-        });
-
-        // Swiper fills the dialog, so a click on the dark gutter is reported
-        // against the slide rather than the dialog and the usual test for a
-        // backdrop click never fires. Handled from Swiper's own click event
-        // instead, in `build`.
-        dialog.append(head, stage, strip, foot);
-        document.body.append(dialog);
-
-        reel = {
-            dialog, stage, wrapper, strip, stripWrapper, caption, goTo, play, picker, title,
-            controls: { previous, next, counter },
-            swiper: null, thumbs: null, frames: [], reveal: null, source: null
-        };
+        const body = document.createElement('div');
+        body.className = 'gallery__body';
 
         picker.addEventListener('change', () => {
             order = picker.value;
-            if (!reel.source) return;
-
-            // Re-sorted around the picture on screen rather than back to the
-            // start, because the reader is looking at something and asking for
-            // the rest of the album to be arranged differently around it.
-            const at = frameOn(reel)?.id;
-            const playing = reel.swiper?.autoplay?.running ?? true;
-
-            teardown(reel);
-            build(reel, at);
-
-            // A rebuilt slideshow starts itself. Somebody who had stopped it
-            // asked for a different order, not for it to start running again.
-            if (!playing) reel.swiper.autoplay.stop();
+            fill();
+            body.scrollTop = 0;
         });
 
-        goTo.addEventListener('click', () => {
-            const frame = frameOn(reel);
-            if (!frame) return;
-            dialog.close();
-            reel.reveal?.(frame.post.id);
+        // Delegated. Six hundred thumbnails is six hundred listeners
+        // otherwise, and the grid is rebuilt every time the order changes.
+        body.addEventListener('click', (event) => {
+            const cell = event.target.closest?.('.gallery__cell');
+            if (!cell || !body.contains(cell)) return;
+            openViewer(Number(cell.dataset.at));
         });
 
-        // Destroyed on close rather than kept: an owner can add pictures to a
+        // Emptied on close rather than kept: an owner can add pictures to a
         // letter while the page is open, and rebuilding is cheaper than
         // working out what changed.
-        dialog.addEventListener('close', () => teardown(reel));
+        dialog.addEventListener('close', () => {
+            gallery.frames = [];
+            gallery.cells = [];
+            body.replaceChildren();
+        });
 
-        return reel;
+        dialog.append(head, body);
+        document.body.append(dialog);
+
+        gallery = {
+            dialog, title, count, picker, body,
+            frames: [], cells: [], reveal: null, source: null
+        };
+
+        return gallery;
     }
 
-    function teardown(view) {
-        view.swiper?.destroy(true, true);
-        view.thumbs?.destroy(true, true);
-        view.swiper = null;
-        view.thumbs = null;
-        view.wrapper.replaceChildren();
-        view.stripWrapper.replaceChildren();
-    }
+    function fill() {
+        const { posts, photoSrc } = gallery.source;
+        const { blocks, frames } = planOf(posts, photoSrc, order);
 
-    // How many card faces the stylesheet paints, cycled through by position so
-    // the fan behind the top card is never two of the same colour.
-    const TINTS = 6;
+        gallery.frames = frames;
+        gallery.cells = new Array(frames.length);
 
-    // How far either side of the picture on screen is fetched. See `preload`.
-    // One rather than two: the full-size rendition averages 358 KB, so each
-    // extra step of lookahead is most of a megabyte pulled down before anyone
-    // has asked to see it.
-    const NEAR = 1;
+        const built = document.createDocumentFragment();
 
-    // How far either side a fetched photograph is kept before it is let go.
-    //
-    // Nothing used to let go of anything, and that is what made a large album
-    // fail slowly rather than at once: the deck holds every card in the DOM,
-    // so a picture given a `src` keeps it, and `LARGE_EDGE` is 2400 -- around
-    // seventeen megabytes of bitmap once decoded, whatever the file weighed.
-    // Left running, the album moves on every four seconds. A hundred pictures
-    // in, which is seven minutes, the tab was holding a hundred of them.
-    //
-    // Three is far enough that going back a couple is instant and short enough
-    // that what is held is bounded rather than a function of how long somebody
-    // has been looking.
-    const FAR = 3;
-
-    function slideFor(frame, index) {
-        // No src yet, and no `loading="lazy"` either -- `preload` decides when
-        // this one is fetched, for the reason written there.
-        const img = document.createElement('img');
-        img.dataset.src = frame.src;
-        img.alt = '';
-        img.decoding = 'async';
-
-        // The wrapper is not decoration: Swiper's zoom scales this element, and
-        // without it there is nothing to pinch.
-        const zoom = document.createElement('div');
-        zoom.className = 'swiper-zoom-container';
-        zoom.append(img);
-
-        // Held under the card until the full-size photograph arrives. Outside
-        // the zoom container on purpose: Swiper pinches the first image it
-        // finds in there, and it has to find the sharp one.
-        //
-        // Hidden rather than removed once the photograph lands, because the
-        // photograph is given back later and the thumbnail has to be there to
-        // stand in for it a second time.
-        const standin = document.createElement('img');
-        standin.className = 'reel__standin';
-        standin.dataset.src = frame.thumb;
-        standin.alt = '';
-        standin.decoding = 'async';
-
-        // The colour is set here rather than with nth-child, because looping
-        // moves slide elements about and a card would change colour as the
-        // deck came round again. `frame` is on the element for the same
-        // reason: once they have moved, position no longer says which is which.
-        const slide = document.createElement('div');
-        slide.className = `swiper-slide reel__card reel__card--${index % TINTS}`;
-        slide.dataset.frame = index;
-        slide.append(standin, zoom);
-
-        return slide;
-    }
-
-    function thumbFor(frame) {
-        const img = document.createElement('img');
-        img.src = frame.thumb;
-        img.alt = '';
-        img.loading = 'lazy';
-        img.decoding = 'async';
-
-        const slide = document.createElement('div');
-        slide.className = 'swiper-slide';
-        slide.append(img);
-
-        return slide;
-    }
-
-    // `realIndex`, not `activeIndex`. Looping shuffles the slide elements
-    // round the wrapper as the deck comes back on itself, and only the real
-    // index still lines up with the list the slides were built from.
-    const frameOn = (view) => view.frames[view.swiper?.realIndex ?? 0];
-
-    function describe(view) {
-        const frame = frameOn(view);
-        if (!frame) return;
-
-        const date = Reader.formatDate(frame.post.originalDate);
-        const subject = frame.post.subject || 'Untitled';
-        view.caption.textContent = date ? `${subject} \u2014 ${date}` : subject;
-    }
-
-    /**
-     * Fetch the photographs near the one on screen, and nothing else.
-     *
-     * `loading="lazy"` does not work here, which is not obvious: the cards
-     * effect translates every slide back on top of the active one, so as far
-     * as the browser is concerned the whole album is already on screen and
-     * there is nothing left to defer. Measured over forty slides, the plain
-     * slide effect fetched three pictures on opening and cards fetched all
-     * forty -- a whole archive down the wire to look at one photograph.
-     *
-     * The thumbnails below are left to the browser, because the strip really
-     * does scroll and the ones off the end really are outside the viewport.
-     *
-     * The same reasoning run backwards is why this also takes photographs
-     * away again. See `FAR`.
-     */
-    function preload(view) {
-        if (!view.swiper) return;
-
-        const total = view.frames.length;
-        const active = view.swiper.realIndex;
-
-        for (const slide of view.wrapper.children) {
-            const img = slide.querySelector('.swiper-zoom-container img');
-            if (!img) continue;
-
-            // The deck loops, so the last card is a neighbour of the first.
-            const apart = Math.abs(Number(slide.dataset.frame) - active);
-            const gap = Math.min(apart, total - apart);
-
-            // Set before `src`, which is the only time it counts. The picture
-            // being looked at outranks the one that might be looked at next --
-            // that ordering is free when there is bandwidth for both and is the
-            // whole game when there is not.
-            img.setAttribute('fetchpriority', gap === 0 ? 'high' : 'low');
-
-            const standin = slide.querySelector('.reel__standin');
-            const holding = Boolean(img.getAttribute('src'));
-
-            if (gap > FAR) {
-                // Dropping the attribute is what releases the decoded bitmap.
-                // The thumbnail comes back up underneath, so a card the reader
-                // scrolls past and returns to is a soft picture rather than a
-                // blank one while the photograph is fetched again -- from the
-                // browser's own cache, ordinarily.
-                if (holding) {
-                    img.removeAttribute('src');
-                    if (standin) standin.hidden = false;
-                }
-                continue;
+        for (const block of blocks) {
+            if (block.post) {
+                const heading = document.createElement('h3');
+                heading.className = 'gallery__day';
+                heading.textContent = titleOf(block.post);
+                built.append(heading);
             }
 
-            if (gap > NEAR || holding) continue;
+            const grid = document.createElement('ul');
+            grid.className = 'gallery__grid';
 
-            // Fetched together, and the small one wins by a factor of eighteen.
-            // Hidden the moment the real photograph is decoded, so the two are
-            // never both on screen and nothing has to be stacked.
-            if (standin) {
-                standin.hidden = false;
-                standin.src = standin.dataset.src;
-                img.addEventListener('load', () => { standin.hidden = true; }, { once: true });
+            for (const frame of block.frames) {
+                const img = document.createElement('img');
+                img.src = frame.thumb;
+                img.alt = '';
+                // The whole point of the rewrite. The browser fetches what is
+                // on screen and nothing else, which needs no code here and no
+                // window to keep track of, and it goes on being true at six
+                // hundred thumbnails.
+                img.loading = 'lazy';
+                img.decoding = 'async';
+
+                // A button rather than a bare image, so it is reachable by
+                // keyboard and announces itself as something that opens.
+                const cell = document.createElement('button');
+                cell.type = 'button';
+                cell.className = 'gallery__cell';
+                cell.dataset.at = String(frame.at);
+                cell.setAttribute('aria-label', `Photograph ${frame.at + 1}`);
+                cell.append(img);
+
+                const item = document.createElement('li');
+                item.append(cell);
+                grid.append(item);
+
+                gallery.cells[frame.at] = cell;
             }
 
-            img.src = img.dataset.src;
+            built.append(grid);
         }
+
+        gallery.body.replaceChildren(built);
+        gallery.count.textContent =
+            frames.length === 1 ? '1 photograph' : `${frames.length} photographs`;
+    }
+
+    function openViewer(at) {
+        const view = ensureViewer();
+        view.frames = gallery.frames;
+
+        // Stopped, every time. Somebody who wants the slideshow presses Play;
+        // somebody who clicked a thumbnail wanted that thumbnail.
+        view.playing = false;
+        view.play.textContent = 'Play';
+
+        view.dialog.showModal();
+        show(at);
     }
 
     /**
-     * Hold the slideshow until the picture it just moved to has arrived.
-     *
-     * Autoplay runs on a timer, so on a slow connection it moves on before the
-     * photograph it moved to has finished downloading -- and then does it
-     * again four seconds later. The deck ends up further ahead of the network
-     * the longer it runs, and the reader watches a stack of blank cards while
-     * a queue of images they have already gone past comes down the wire.
-     *
-     * `pause` rather than `stop`, because stopping is something the reader
-     * asked for: it fires `autoplayStop`, which relabels the button. Waiting is
-     * not a state the button should report.
-     */
-    function holdFor(view) {
-        const autoplay = view.swiper?.autoplay;
-        if (!autoplay?.running) return;
-
-        const img = view.swiper.slides[view.swiper.activeIndex]?.querySelector('.swiper-zoom-container img');
-        if (!img || img.complete) return;
-
-        autoplay.pause();
-
-        // Resumed on failure as well as success. A photograph that never
-        // arrives must not park the slideshow for good.
-        const go = () => autoplay.resume();
-        img.addEventListener('load', go, { once: true });
-        img.addEventListener('error', go, { once: true });
-    }
-
-    /**
-     * Fill the dialog and start Swiper, at whichever picture is named.
-     *
-     * Called on open and again whenever the order changes, which is why it
-     * takes a photo id rather than an index -- an index means nothing once the
-     * album has been re-sorted underneath it.
-     */
-    function build(view, at) {
-        const { posts, photoSrc } = view.source;
-
-        view.frames = framesOf(posts, photoSrc, order);
-        view.wrapper.replaceChildren(...view.frames.map(slideFor));
-        view.stripWrapper.replaceChildren(...view.frames.map(thumbFor));
-
-        const start = at ? view.frames.findIndex((frame) => frame.id === at) : 0;
-
-        // Built first, because the slider below is handed this one as an
-        // option and Swiper wants the instance, not a selector to find later.
-        view.thumbs = new Swiper(view.strip, {
-            slidesPerView: 'auto',
-            spaceBetween: 8,
-            freeMode: true,
-            slideToClickedSlide: true,
-            // What tells the strip which thumbnail is the current one, so the
-            // stylesheet has something to mark.
-            watchSlidesProgress: true
-        });
-
-        view.swiper = new Swiper(view.stage, {
-            initialSlide: Math.max(start, 0),
-            // A deck rather than a strip. The pictures came in an envelope one
-            // at a time, and a stack of them with the next one showing at the
-            // edge is closer to how they were looked at than a filmstrip is.
-            effect: 'cards',
-            cardsEffect: { perSlideOffset: 9, perSlideRotate: 2, slideShadows: true },
-            grabCursor: true,
-            // Round and round rather than stopping at the end. A deck has no
-            // last card, and it means the slideshow left running never stops
-            // of its own accord.
-            loop: true,
-            navigation: { prevEl: view.controls.previous, nextEl: view.controls.next },
-            // A fraction rather than bullets. An archive runs to hundreds of
-            // photographs and a row of hundreds of dots says nothing; "34 / 212"
-            // says both where you are and how much there is.
-            pagination: { el: view.controls.counter, type: 'fraction' },
-            thumbs: { swiper: view.thumbs },
-            keyboard: { enabled: true },
-            zoom: { maxRatio: 4 },
-            // Running from the moment it opens. Interaction does not cancel
-            // it, because reaching for the arrow to skip one picture is not a
-            // request to end the slideshow.
-            autoplay: { delay: 4000, disableOnInteraction: false },
-            on: {
-                slideChange: () => {
-                    describe(view);
-                    preload(view);
-                    holdFor(view);
-                },
-                autoplayStart: () => { view.play.textContent = 'Pause'; },
-                // Also fires on its own at the last picture, which is the
-                // reason the label is driven from the event rather than set
-                // beside the call that started it.
-                autoplayStop: () => {
-                    view.play.textContent = 'Play';
-                    view.play.style.setProperty('--fill', 0);
-                },
-                // Swiper counts the delay down a frame at a time and reports
-                // what is left as 1 down to 0. Turned round, that is how far
-                // the fill across the button has got.
-                autoplayTimeLeft: (swiper, left, remaining) => {
-                    view.play.style.setProperty('--fill', 1 - remaining);
-                },
-                // Tap the picture to zoom, tap the dark around it to leave --
-                // which is what the lightbox this replaces did, and what every
-                // other viewer does.
-                click(swiper, event) {
-                    if (event.target.closest('.swiper-zoom-container')) swiper.zoom.toggle();
-                    else view.dialog.close();
-                }
-            }
-        });
-
-        describe(view);
-        preload(view);
-        holdFor(view);
-    }
-
-    /**
-     * Open the album, optionally at one particular picture.
+     * Open the album.
      *
      * @param {object} options
      * @param {Array} options.posts        the presented posts, newest first
      * @param {Function} options.photoSrc  (photoId, size) => url
      * @param {Function} options.reveal    hand a post id back to the page
-     * @param {string} [options.at]        a photo id to start on
      */
-    async function open({ posts, photoSrc, reveal, at }) {
+    function open({ posts, photoSrc, reveal }) {
         if (!posts.some((post) => post.photos?.length)) return;
 
-        try {
-            await loadSwiper();
-        } catch {
-            // Nothing to say and nowhere to say it. The pictures are all still
-            // in the letters, which is where this reader came from.
-            return;
-        }
-
-        const view = ensureReel();
+        const view = ensureGallery();
         view.source = { posts, photoSrc };
         view.reveal = reveal;
 
@@ -550,12 +476,11 @@ window.Album = (function () {
         // would put the coupling in the wrong file.
         const name = document.getElementById('site-title')?.textContent?.trim();
         view.title.textContent = name || 'Photos';
+        view.picker.value = order;
 
-        // Shown before Swiper measures: a slide inside a closed dialog has no
-        // width, and every position it works out would be zero.
+        fill();
         view.dialog.showModal();
-
-        build(view, at);
+        view.body.scrollTop = 0;
     }
 
     return { open };

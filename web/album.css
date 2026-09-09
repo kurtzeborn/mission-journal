@@ -6,9 +6,15 @@
  *
  * Dark, unlike everything else here. The archive is paper and this is not: a
  * photograph shown against ink-on-cream borrows the page's colour, and the one
- * thing a picture wants from its surroundings is for them to stop competing. */
+ * thing a picture wants from its surroundings is for them to stop competing.
+ *
+ * Two windows, and the second opens on top of the first. `.gallery` is the grid
+ * of thumbnails; `.viewer` is one photograph, full size. Neither is called
+ * `.album`, which styles.css already gives to the row of thumbnails under a
+ * single letter. */
 
-.reel {
+.gallery,
+.viewer {
     width: 100vw;
     max-width: 100vw;
     height: 100dvh;
@@ -17,33 +23,41 @@
     color: #f5f5f4;
     background: #1c1917;
     border: 0;
+    overflow: hidden;
 }
 
-/* On `[open]`, not on `.reel`. A closed dialog is hidden by `display: none` in
-   the browser's own stylesheet, and an author `display` on the element itself
-   beats it -- so laying this out as a flex column unconditionally means it
-   never goes away when it is closed. It looks like the close button does
-   nothing; what actually happens is that the dialog empties and stays. */
-.reel[open] {
+/* On `[open]`, not on the class. A closed dialog is hidden by `display: none`
+   in the browser's own stylesheet, and an author `display` on the element
+   itself beats it -- so laying these out as flex columns unconditionally would
+   mean they never go away when they are closed. It looks like the close button
+   does nothing; what actually happens is that the dialog empties and stays. */
+.gallery[open],
+.viewer[open] {
     display: flex;
     flex-direction: column;
 }
 
-.reel::backdrop {
+.gallery::backdrop,
+.viewer::backdrop {
     background: #1c1917;
 }
 
-.reel__head {
+/* --- the grid ---------------------------------------------------------- */
+
+/* Stays put while the thumbnails scroll under it. `flex: none` in a column
+   that owns the whole screen is all that takes -- no `position: sticky`, which
+   would need the scrolling to be on the dialog rather than on the body. */
+.gallery__head {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 0.75rem;
     flex: none;
-    padding: 0.5rem 0.75rem 0.5rem 1.25rem;
+    padding: 0.6rem 0.75rem 0.6rem 1.25rem;
+    border-bottom: 1px solid #292524;
 }
 
-.reel__title {
+.gallery__title {
     margin: 0;
-    margin-right: auto;
     min-width: 0;
     font-size: 1.1rem;
     overflow: hidden;
@@ -51,8 +65,19 @@
     white-space: nowrap;
 }
 
-.reel__order {
+/* Beside the name rather than under it, and quiet. It answers "how much is in
+   here" once, on the way past. */
+.gallery__count {
+    margin: 0 auto 0 0;
     flex: none;
+    font-family: system-ui, sans-serif;
+    font-size: 0.8rem;
+    color: #a8a29e;
+}
+
+.gallery__order {
+    flex: none;
+    align-self: center;
     padding: 0.3rem 0.5rem;
     font-family: system-ui, sans-serif;
     font-size: 0.85rem;
@@ -68,18 +93,15 @@
     color-scheme: dark;
 }
 
-.reel__order option {
+.gallery__order option {
     color: #f5f5f4;
     background-color: #292524;
 }
 
-.reel__order:focus-visible {
-    outline: 3px solid #f5f5f4;
-    outline-offset: 1px;
-}
-
-.reel__close {
+.gallery__close,
+.viewer__close {
     flex: none;
+    align-self: center;
     width: 44px;
     height: 44px;
     font-size: 1.6rem;
@@ -91,150 +113,170 @@
     cursor: pointer;
 }
 
-.reel__close:hover {
+.gallery__close:hover,
+.viewer__close:hover {
     color: #ffffff;
 }
 
-.reel__close:focus-visible {
+.gallery__order:focus-visible,
+.gallery__close:focus-visible,
+.gallery__cell:focus-visible,
+.viewer__close:focus-visible,
+.viewer__step:focus-visible {
     outline: 3px solid #f5f5f4;
     outline-offset: 1px;
 }
 
-/* Swiper measures this box and positions every slide against it, so it needs a
-   height it did not get from its contents. `min-height: 0` is the flex item
-   half of the same thing: without it the stage refuses to shrink below the
-   natural height of the tallest photograph and pushes the caption off screen.
-
-   Narrower than the dialog, because the cards effect fans the slides behind
-   the top one and rotates them a couple of degrees -- given the full width of
-   a desktop screen, those two degrees throw the corners a long way out. */
-.reel__stage {
-    flex: 1 1 auto;
+.gallery__body {
+    flex: 1;
     min-height: 0;
-    width: min(92vw, 46rem);
-    margin: 0 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.75rem 1.25rem 2rem;
 }
 
-/* The card face. Contained photographs do not fill their card, and without a
-   surface under them the deck is a stack of nothing with pictures floating in
-   front of it. */
-.reel__stage .swiper-slide {
+/* The date the photographs came with, which is the only caption a grid can
+   carry without turning into a list. It is also what makes the album
+   navigable: scrolling past headings is how you find the month you meant. */
+.gallery__day {
+    margin: 1.5rem 0 0.6rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #d6d3d1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.gallery__day:first-child {
+    margin-top: 0.25rem;
+}
+
+/* `auto-fill` rather than a column count, so one rule gives three across on a
+   phone and eight on a desktop without a media query deciding where the
+   boundaries are. */
+.gallery__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Square and cropped, where the viewer contains. A thumbnail is being
+   recognised rather than looked at, and a wall of ragged letterboxed rectangles
+   is much harder to scan than a wall of even squares. */
+.gallery__cell {
+    display: block;
+    width: 100%;
+    aspect-ratio: 1;
+    padding: 0;
+    background: #292524;
+    border: 0;
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.gallery__cell img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.gallery__cell:hover img {
+    opacity: 0.85;
+    transform: scale(1.04);
+}
+
+/* --- the viewer -------------------------------------------------------- */
+
+/* The photograph gets everything the caption and the controls do not, and the
+   arrows are laid over the top of it rather than given room of their own --
+   on a phone in landscape there is no room to give. */
+.viewer__stage {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 0.5rem;
-    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+    padding: 0.5rem;
 }
 
-/* The word cloud's six, unchanged. They were mixed to sit beside the site's
-   accent without any one of them winning, which is the same job here -- and a
-   reader who has seen the cloud has already been told these six belong to this
-   archive. Used at full strength because the photograph covers most of the
-   card and only the margins are left to carry the colour. */
-.reel__card--0 { background: #2f5d50; } /* sea green, the accent */
-.reel__card--1 { background: #3a5c72; } /* slate blue */
-.reel__card--2 { background: #5a4a72; } /* muted plum */
-.reel__card--3 { background: #7b4a5c; } /* dusty rose */
-.reel__card--4 { background: #8a5a3c; } /* clay */
-.reel__card--5 { background: #6b6234; } /* olive */
-
-/* Contained rather than cropped. A photograph in an album is being looked at
-   rather than illustrating something, so the whole frame matters more than
-   filling the space -- and the parts that would be cropped are exactly the
-   parts a phone camera puts the people in. */
-.reel__stage .swiper-slide img {
+.viewer__image {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
 }
 
-/* The thumbnail, standing in until the full-size photograph lands. It is a
-   twentieth of the bytes and arrives about eighteen times sooner, so a reader
-   on a poor connection sees the actual picture, softly, instead of a coloured
-   rectangle.
-
-   Blurred rather than merely small: a 400px rendition stretched across the
-   stage is coarse enough to look broken, and blur reads as not-ready-yet. The
-   slight scale keeps the blur's own soft edge off the card.
-
-   Ignoring the pointer matters more than it looks -- tapping the picture zooms
-   and tapping the surround closes, and that is told apart by what the click
-   landed on. Without this, an early tap would close the album. */
-.reel__stage .reel__standin {
+/* The thumbnail, blurred, holding the photograph's place until it arrives. It
+   is already in the cache from the grid, so this is what the reader sees in
+   the first frame after the click, and the full picture sharpens into it. */
+.viewer__standin {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    filter: blur(6px);
-    transform: scale(1.03);
+    inset: 0.5rem;
+    width: calc(100% - 1rem);
+    height: calc(100% - 1rem);
+    object-fit: contain;
+    filter: blur(12px);
+    transform: scale(1.02);
     pointer-events: none;
 }
 
-.reel__stage .swiper-button-prev,
-.reel__stage .swiper-button-next {
-    color: #f5f5f4;
+.viewer__close {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.5rem;
 }
 
-/* Keyed off the pointer rather than the width: a narrow desktop window still
-   has a mouse to aim with, and a tablet held in two hands does not. Where the
-   gesture is the photograph itself, an arrow sitting on top of it is one more
-   thing between the reader and the picture. */
-@media (hover: none) and (pointer: coarse) {
-    .reel__stage .swiper-button-prev,
-    .reel__stage .swiper-button-next {
-        display: none;
+/* Big enough to hit with a thumb, and dark enough behind the glyph to stay
+   visible over a white sky. */
+.viewer__step {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 44px;
+    height: 64px;
+    font-size: 2rem;
+    line-height: 1;
+    color: #f5f5f4;
+    background: rgba(28, 25, 23, 0.5);
+    border: 0;
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.viewer__step:hover {
+    background: rgba(28, 25, 23, 0.8);
+}
+
+.viewer__step--back {
+    left: 0.5rem;
+}
+
+.viewer__step--on {
+    right: 0.5rem;
+}
+
+/* A pointer can reach the arrows without them sitting over the photograph the
+   whole time. A touch screen cannot hover, so on a phone they stay. */
+@media (hover: hover) and (pointer: fine) {
+    .viewer__step {
+        opacity: 0;
+        transition: opacity 150ms ease;
+    }
+
+    .viewer:hover .viewer__step,
+    .viewer__step:focus-visible {
+        opacity: 1;
     }
 }
 
-.reel__stage .swiper-pagination {
-    color: #d6d3d1;
-    font-family: system-ui, sans-serif;
-    font-size: 0.8rem;
-}
-
-/* The whole album at a glance, and the only control here that answers "how far
-   in am I" with something other than a number. Fixed height rather than a
-   proportion of the dialog: it is a strip, and on a short laptop screen a
-   proportional one would take the photograph's room to show smaller copies of
-   it. */
-.reel__strip {
-    flex: none;
-    width: 100%;
-    height: 4.5rem;
-    padding: 0 0.75rem;
-}
-
-.reel__strip .swiper-slide {
-    width: 6rem;
-    height: 100%;
-    opacity: 0.4;
-    cursor: pointer;
-    border-radius: var(--radius);
-    overflow: hidden;
-    transition: opacity 150ms ease;
-}
-
-.reel__strip .swiper-slide:hover {
-    opacity: 0.75;
-}
-
-.reel__strip .swiper-slide-thumb-active {
-    opacity: 1;
-    outline: 2px solid #f5f5f4;
-    outline-offset: -2px;
-}
-
-/* Cropped, where the photograph above is contained. A thumbnail is being
-   recognised rather than looked at, and a row of ragged letterboxed rectangles
-   is harder to scan than a row of even squares. */
-.reel__strip img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.reel__foot {
+.viewer__foot {
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -242,7 +284,7 @@
     padding: 0.75rem 1.25rem 1rem;
 }
 
-.reel__caption {
+.viewer__caption {
     margin: 0;
     min-width: 0;
     font-family: system-ui, sans-serif;
@@ -253,66 +295,75 @@
     white-space: nowrap;
 }
 
+.viewer__where {
+    margin: 0 auto 0 0;
+    flex: none;
+    font-family: system-ui, sans-serif;
+    font-size: 0.8rem;
+    color: #a8a29e;
+    font-variant-numeric: tabular-nums;
+}
+
+.viewer__play {
+    flex: none;
+    /* Wide enough for "Pause" as well as "Play", so the row does not shuffle
+       sideways every time it is pressed. */
+    min-width: 5rem;
+    color: #f5f5f4;
+    background-color: transparent;
+    border-color: #57534e;
+}
+
+.viewer__play:hover {
+    color: #ffffff;
+    border-color: #a8a29e;
+}
+
 /* The one light thing in a dark room, because it is the only thing here that
    goes anywhere. */
-.reel__goto {
+.viewer__goto {
     flex: none;
     color: #1c1917;
     background: #f5f5f4;
     border-color: #f5f5f4;
 }
 
-.reel__goto:hover {
+.viewer__goto:hover {
     background: #ffffff;
 }
 
-/* The countdown to the next photograph, drawn as a fill across the button that
-   stops it. A bar of its own would be one more thing in a footer whose job is
-   to stay out of the way, and the button is already where you look when you
-   want to know what the slideshow is about to do.
-
-   Painted as a background image rather than a pseudo-element so it sits behind
-   the label without the label needing a wrapper to be lifted above it. */
-.reel__play {
-    flex: none;
-    margin-left: auto;
-    min-width: 4.5rem;
-    color: #f5f5f4;
-    background-color: transparent;
-    background-image: linear-gradient(#44403c, #44403c);
-    background-repeat: no-repeat;
-    background-size: calc(var(--fill, 0) * 100%) 100%;
-    border-color: #57534e;
-}
-
-.reel__play:hover {
-    color: #ffffff;
-    border-color: #a8a29e;
-}
-
 @media (max-width: 30rem) {
-    .reel__head {
+    .gallery__head {
         padding-left: 0.75rem;
     }
 
-    .reel__title {
+    .gallery__title {
         font-size: 1rem;
     }
 
-    .reel__strip {
-        height: 3.25rem;
+    /* Dropped rather than wrapped: the name and the order picker are what the
+       header is for, and three columns of thumbnails already say how many
+       there are. */
+    .gallery__count {
+        display: none;
     }
 
-    .reel__strip .swiper-slide {
-        width: 4.25rem;
+    .gallery__body {
+        padding: 0.75rem 0.75rem 2rem;
     }
 
-    .reel__foot {
+    .gallery__grid {
+        grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+        gap: 0.35rem;
+    }
+
+    .viewer__foot {
         flex-wrap: wrap;
         gap: 0.5rem;
+        padding: 0.5rem 0.75rem 0.75rem;
     }
 
-    .reel__caption {
+    .viewer__caption {
         flex: 1 0 100%;
         text-align: center;
     }

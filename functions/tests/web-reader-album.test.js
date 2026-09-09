@@ -1,10 +1,14 @@
 // The photo album, from the reader's side of the seam.
 //
-// The album itself is a Swiper in a dialog and the website's alone -- there is
-// no test for it here, because what it does is measure elements and animate
-// them, and jsdom has neither. What can be tested is everything on this side of
-// the handover: whether the button appears, that nothing else reaches the
-// album, and what the archive looks like once the album hands a letter back.
+// The album itself is a grid of thumbnails in a dialog and the website's alone
+// -- there is no test for it here, because what it does is lazily fetch images
+// and lay them out, and jsdom does neither. What can be tested is everything on
+// this side of the handover: whether the button appears, that nothing else
+// reaches the album, and what the archive looks like once the album hands a
+// letter back.
+//
+// The stub stands exactly where the real one does. `mount` is given an object
+// with an `open`, and that is the whole of the contract.
 //
 // The stub stands exactly where the real one does. `mount` is given an object
 // with an `open`, and that is the whole of the contract.
@@ -81,13 +85,14 @@ describe('getting to the album', () => {
         assert.deepEqual(labels(archive({ posts: [POSTS[0]] })), ['Photo Album']);
     });
 
-    test('opening it from the toolbar starts at the beginning', () => {
+    test('opening it from the toolbar hands over the whole archive', () => {
         const view = archive();
         view.click(view.button('Photo Album'));
 
         assert.equal(view.album.opened.length, 1);
-        assert.equal(view.album.opened[0].at, undefined);
         assert.equal(view.album.opened[0].posts.length, 2);
+        assert.equal(typeof view.album.opened[0].photoSrc, 'function');
+        assert.equal(typeof view.album.opened[0].reveal, 'function');
     });
 });
 
@@ -112,8 +117,8 @@ describe('clicking a photograph', () => {
     });
 
     test('and the archive with no album behaves exactly the same', () => {
-        // The zip ships the lightbox and no Swiper. Both sides now take the
-        // same path, which is the point -- one behaviour to keep working.
+        // The zip ships the lightbox and no album at all. Both sides now take
+        // the same path, which is the point -- one behaviour to keep working.
         const view = archive({ withAlbum: false });
         view.click(view.$('.photo'));
 
