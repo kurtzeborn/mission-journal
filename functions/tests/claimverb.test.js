@@ -296,14 +296,32 @@ describe('the header block reader', () => {
         // for the one header the decision rests on. If the two disagree, the
         // claim path is deciding from something the rest of the system does not
         // recognize.
+        //
+        // Compared after parsing, not as text. The two unfold differently --
+        // ours collapses a continuation to one space, postal-mime 3 keeps the
+        // original run of spaces or the tab -- and RFC 5322 permits both, since
+        // unfolding removes the CRLF and leaves the whitespace alone. Asserting
+        // on the raw string would fail on a difference no reader of this header
+        // can see: every consumer splits on `;` and then on whitespace.
         const { extractOriginal } = await import('../src/lib/extract.js');
+        const { parseAuthenticationResults } = await import('../src/lib/authresults.js');
+
         const bytes = await raw('direct-missionary');
         const parsed = (await extractOriginal(bytes)).headers.filter(
             (h) => h.key === 'authentication-results'
         );
         const cheap = readHeaderBlock(bytes).filter((h) => h.key === 'authentication-results');
 
-        assert.deepEqual(cheap.map((h) => h.value), parsed.map((h) => h.value));
+        const read = (list) => list.map((h) => {
+            const { authservId, results } = parseAuthenticationResults(h.value);
+            return {
+                authservId,
+                results: results.map((r) => ({ ...r, properties: [...r.properties].sort() }))
+            };
+        });
+
+        assert.ok(cheap.length, 'the fixture must actually carry the header');
+        assert.deepEqual(read(cheap), read(parsed));
     });
 });
 
