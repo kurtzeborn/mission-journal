@@ -127,8 +127,8 @@ window.Reader = (function () {
     // image URL, leaving the reader to find their way back.
     //
     // Every photo click lands here, on the website as well as in the zip. The
-    // slideshow is a different question -- "show me the photographs" rather
-    // than "show me this one bigger" -- and is reached from its own button and
+    // album is a different question -- "show me the photographs" rather than
+    // "show me this one bigger" -- and is reached from its own button and
     // nowhere else, so that tapping a picture in a letter does not sweep the
     // letter away.
     //
@@ -1945,9 +1945,9 @@ window.Reader = (function () {
      * @param {object} options.elements    the page's list, state and search nodes
      * @param {object|null} [options.admin] owner controls, when the caller has
      *   somewhere to send them. Absent in the downloaded archive.
-     * @param {object|null} [options.album] a slideshow over every photo in the
-     *   archive. Absent in the downloaded archive, which has no video in it and
-     *   should not carry a library this size for the half that is left.
+     * @param {object|null} [options.album] every photograph in the archive, as
+     *   one page. Absent in the downloaded archive, which is where video would
+     *   go and video is not going in the zip.
      */
     function mount({ posts, photoSrc, elements, admin = null, help = null, album = null }) {
         const { list, state } = elements;

@@ -199,18 +199,33 @@
    on a phone in landscape there is no room to give. */
 .viewer__stage {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     flex: 1;
     min-height: 0;
     padding: 0.5rem;
 }
 
+/* Both panes share one grid cell, so each is sized by its own picture rather
+   than stretched to the stage -- which is what keeps the dark either side
+   belonging to the stage, and a click on it a click that leaves. */
 .viewer__image {
+    grid-area: 1 / 1;
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+    opacity: 0;
+    transition: opacity 260ms ease;
+}
+
+.viewer__image.is-up {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .viewer__image {
+        transition: none;
+    }
 }
 
 /* The thumbnail, blurred, holding the photograph's place until it arrives. It

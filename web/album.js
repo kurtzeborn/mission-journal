@@ -64,6 +64,11 @@ window.Album = (function () {
     // replaces did, and why it looked broken rather than merely slow.
     const DWELL = 4000;
 
+    // The dissolve from one photograph to the next. Long enough to read as a
+    // change rather than a cut, short enough not to be a wait. It has to match
+    // the transition on `.viewer__image` in album.css.
+    const FADE = 260;
+
     /**
      * The photographs, in the order asked for, grouped by the letter they came
      * with.
@@ -136,14 +141,24 @@ window.Album = (function () {
         // Contained rather than cropped, unlike the grid. A photograph being
         // looked at wants its whole frame, and the parts a crop takes are
         // where a phone camera puts the people.
-        const image = document.createElement('img');
-        image.className = 'viewer__image';
-        image.alt = '';
-        image.decoding = 'async';
+        //
+        // Two of them, stacked in one grid cell, because nothing can dissolve
+        // into itself: the picture being left has to stay on screen while the
+        // one arriving comes up over it. They swap roles on every move.
+        const pane = () => {
+            const el = document.createElement('img');
+            el.className = 'viewer__image';
+            el.alt = '';
+            el.decoding = 'async';
+            return el;
+        };
+
+        const image = pane();
+        const spare = pane();
 
         const stage = document.createElement('div');
         stage.className = 'viewer__stage';
-        stage.append(standin, image);
+        stage.append(standin, spare, image);
 
         const arrow = (label, glyph, delta) => {
             const el = document.createElement('button');
@@ -220,7 +235,9 @@ window.Album = (function () {
         // lose the reader.
         dialog.addEventListener('close', () => {
             setPlaying(false);
+            clearTimeout(viewer.release);
             image.removeAttribute('src');
+            spare.removeAttribute('src');
             standin.removeAttribute('src');
             gallery?.cells[viewer.at]?.scrollIntoView({ block: 'nearest' });
         });
@@ -229,8 +246,8 @@ window.Album = (function () {
         document.body.append(dialog);
 
         viewer = {
-            dialog, stage, image, standin, caption, where, play, goTo,
-            frames: [], at: 0, playing: false, timer: 0, pass: 0
+            dialog, stage, image, spare, standin, caption, where, play, goTo,
+            frames: [], at: 0, playing: false, timer: 0, release: 0, pass: 0
         };
 
         return viewer;
@@ -280,13 +297,44 @@ window.Album = (function () {
         viewer.pass += 1;
         const pass = viewer.pass;
 
-        viewer.standin.src = frame.thumb;
-        viewer.standin.hidden = false;
-        viewer.image.src = frame.src;
+        // What was on screen becomes the pane being faded out, and the one it
+        // replaced is reused for what is arriving.
+        const outgoing = viewer.image;
+        const incoming = viewer.spare;
+        viewer.image = incoming;
+        viewer.spare = outgoing;
 
-        const settle = () => { if (pass === viewer.pass) viewer.standin.hidden = true; };
-        viewer.image.addEventListener('load', settle, { once: true });
-        if (viewer.image.complete) settle();
+        incoming.classList.remove('is-up');
+        incoming.src = frame.src;
+
+        const reveal = () => {
+            if (pass !== viewer.pass) return;
+
+            incoming.classList.add('is-up');
+            outgoing.classList.remove('is-up');
+
+            // Let go of the picture we came from only once the dissolve is
+            // over. Dropping its src while it is still half on screen blinks.
+            clearTimeout(viewer.release);
+            viewer.release = setTimeout(() => {
+                if (pass !== viewer.pass) return;
+                outgoing.removeAttribute('src');
+                viewer.standin.hidden = true;
+            }, FADE);
+        };
+
+        // Already decoded is the ordinary case, because the picture ahead is
+        // fetched as soon as this one is shown -- so a move is a dissolve and
+        // the stand-in never appears.
+        if (incoming.complete) reveal();
+        else {
+            // It only has work to do when the photograph is not here yet: the
+            // first opening, or a connection the prefetch could not outrun.
+            viewer.standin.src = frame.thumb;
+            viewer.standin.hidden = false;
+            incoming.addEventListener('load', reveal, { once: true });
+            incoming.addEventListener('error', reveal, { once: true });
+        }
 
         // One ahead, and only one. It is the picture most likely to be asked
         // for next whether the reader is pressing the arrow or watching the
