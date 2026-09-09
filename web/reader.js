@@ -526,6 +526,15 @@ window.Reader = (function () {
         // by the lightbox, so a reader who wants a closer look at one photo
         // does not lose the letter to get it.
         album.addEventListener('click', (event) => {
+            // A frame rather than a link is one of the letter's own pictures,
+            // moved in by `mergeTrailingRun`. It carries its own full-size URL
+            // and has no href to suppress.
+            const frame = event.target.closest?.(`.${PHOTO_FRAME}`);
+            if (frame && album.contains(frame)) {
+                openLightbox(frame.dataset.large, frame.querySelector('img')?.alt ?? '');
+                return;
+            }
+
             const link = event.target.closest?.('a');
             if (!link || !album.contains(link)) return;
             event.preventDefault();
@@ -533,6 +542,78 @@ window.Reader = (function () {
         });
 
         return album;
+    }
+
+    // A letter that ends in a burst of photographs and has one an owner added
+    // afterwards drew two scrolling rows, one under the other, on behalf of a
+    // distinction nothing else on the page makes: `tile` and `renderAlbum`
+    // build the same row and styles.css gives them one rule.
+    //
+    // Only a run at the very end moves. A burst in the middle of a letter is
+    // where the missionary put it, and pulling it down to the foot would
+    // rearrange the letter rather than tidy it.
+    //
+    // Into the album rather than the other way about, because the album is
+    // where an owner's remove buttons live, and splitting those across two
+    // containers would be worse than the two rows.
+    function mergeTrailingRun(body, album) {
+        if (!album) return;
+
+        const rows = body.querySelectorAll(`.${PHOTO_ROW}`);
+        const row = rows[rows.length - 1];
+        if (!row || !endsLetter(body, row)) return;
+
+        const parent = row.parentNode;
+        const first = album.firstChild;
+        for (const frame of [...row.querySelectorAll(`.${PHOTO_FRAME}`)]) {
+            const item = document.createElement('li');
+            // Read by `splitTrailingRun` to put them back, and the reason none
+            // of them is offered the remove button an owner's own photos get.
+            item.dataset.inline = '';
+            item.append(frame);
+            album.insertBefore(item, first);
+        }
+        row.remove();
+
+        // The run may have been a paragraph of its own, which is a blank line
+        // once the pictures have left it.
+        for (let node = parent; node && node !== body && PACKAGING.test(node.tagName);) {
+            if (node.querySelector('img') || node.textContent.trim()) break;
+            const up = node.parentNode;
+            node.remove();
+            node = up;
+        }
+    }
+
+    // Whether nothing but blank markup stands between this node and the end of
+    // the letter. Checked at every level up to the body, because a run can be
+    // sitting inside a paragraph.
+    function endsLetter(body, node) {
+        for (let at = node; at && at !== body; at = at.parentNode) {
+            for (let next = at.nextSibling; next; next = next.nextSibling) {
+                if (next.textContent.trim()) return false;
+                if (next.nodeType !== Node.ELEMENT_NODE) continue;
+                if (next.tagName === 'IMG' || next.querySelector('img')) return false;
+            }
+        }
+        return true;
+    }
+
+    // The inverse, and it has to run before an edit does. `open` hands the body
+    // to the browser as an editable region and `markup` writes back whatever is
+    // in it, so a letter whose own pictures were sitting in the album would be
+    // saved without them.
+    function splitTrailingRun(body, album) {
+        const items = album ? [...album.querySelectorAll('li[data-inline]')] : [];
+        if (!items.length) return;
+
+        const row = document.createElement('span');
+        row.className = PHOTO_ROW;
+        for (const item of items) {
+            row.append(item.firstElementChild);
+            item.remove();
+        }
+        body.append(row);
     }
 
     // --- one letter -------------------------------------------------------
@@ -646,6 +727,7 @@ window.Reader = (function () {
 
         const album = renderAlbum(post, photoSrc, admin);
         if (album) panel.append(album);
+        mergeTrailingRun(body, album);
 
         // Assembled before the owner controls are built, because those insert
         // the subject field next to the heading and `insertAdjacentElement`
@@ -949,6 +1031,7 @@ window.Reader = (function () {
             // region, and the search marks are not the owner's words -- if
             // either were left in place the owner would be editing something
             // the archive does not actually contain.
+            splitTrailingRun(body, album);
             undecoratePhotos(body);
             clearMarks(body);
 
@@ -989,6 +1072,7 @@ window.Reader = (function () {
             // Refilling put the photos back in their deferred state, and this
             // letter is already open -- nothing is going to open it again.
             loadPhotos(body);
+            mergeTrailingRun(body, album);
             close();
         };
 

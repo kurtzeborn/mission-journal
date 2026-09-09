@@ -941,8 +941,11 @@ button:focus-visible {
 }
 
 /* Undoing the float and the block treatment, both of which are written with a
-   single class and so lose to this on specificity rather than on order. */
-.photo-row .photo {
+   single class and so lose to this on specificity rather than on order. The
+   album selector is for a run reader.js has moved in from the end of a letter,
+   which arrives as a frame rather than a link. */
+.photo-row .photo,
+.album .photo {
     float: none;
     width: auto;
     max-width: none;
