@@ -1621,7 +1621,7 @@ button:focus-visible {
     max-width: 18rem;
 }
 
-/* The arrivals table is the one that grows without bound: every archive the
+/* The last-received view is the one that grows without bound: every archive the
    service has ever had is a row in it, for as long as it exists. Smaller and
    tighter than the others so the answer somebody came for stays on one
    screen. */

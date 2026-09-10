@@ -1181,7 +1181,7 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Collapsible letters, collapsed by default~~ — [Reader UI backlog](#reader-ui-backlog)
 - [x] ~~Horizontal photo carousel in place of the vertical album~~ — [Reader UI backlog](#reader-ui-backlog)
 - [x] ~~Any automated test over `reader.js`~~ — [Reader UI backlog](#reader-ui-backlog)
-- [ ] Word cloud over a missionary's letters — [Later features](#later-features)
+- [x] ~~Word cloud over a missionary's letters~~ — [Later features](#later-features)
 
 **Onboarding — a site comes into existence**
 
@@ -1228,14 +1228,14 @@ Struck-through items are done. Each links to the phase that built it, where the 
 - [x] ~~Basic publishing credentials refused in the template~~ — [Phase 0](#phase-0--foundation)
 - [x] ~~Expiry date on the Cloudflare send token in Key Vault~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
 - [x] ~~Route `SecretNearExpiry` to a notification~~ — [Phase 9](#phase-9--owner-admin-invitations-and-operators)
-- [ ] Align every credential to one expiry month — [issue #7](https://github.com/kurtzeborn/mission-journal/issues/7)
+- [x] ~~Align every credential to one expiry month~~ — [issue #7](https://github.com/kurtzeborn/mission-journal/issues/7) *(everything now falls in August)*
 
 **Leaving beta**
 
-- [ ] Terms of use — [Phase 12](#phase-12--leaving-beta)
-- [ ] Privacy policy, including operator access — [Phase 12](#phase-12--leaving-beta)
-- [ ] Takedown and dispute process — [Phase 12](#phase-12--leaving-beta)
-- [ ] Journal Publish — [Phase 11](#phase-11--journal-publish)
+- [x] ~~Terms of use~~ — [Phase 12](#phase-12--leaving-beta)
+- [x] ~~Privacy policy, including operator access~~ — [Phase 12](#phase-12--leaving-beta)
+- [x] ~~Takedown and dispute process~~ — [Phase 12](#phase-12--leaving-beta)
+- [ ] Journal Publish — [Phase 11](#phase-11--journal-publish) *(built; the phase closes when a real book has been ordered and arrives)*
 
 
 ---
@@ -1783,7 +1783,7 @@ The bridge from Google Photos. A linked album stops working whenever it is delet
 - **HEIC matters more here than in email.** It is already a defensive branch in the render path, justified there by being rare; a parent uploading straight from an iPhone makes it the expected case rather than the occasional one.
 - **[Restoring a post to its original](#restoring-the-original) discards them, and that is settled.** Restore re-renders from `raw/`, and a photo the owner added was never in `raw/` — so it is dropped by the same three lines that preserve it on an ordinary re-render, with no second stored state and no prompt. Asking whether to keep them was rejected on those grounds. The confirmation already said so out loud before any of this was built, so the answer could not quietly become whatever the code happened to do.
 
-Landing a photo at the caret in the editor is answered — it does not, and the album is where it goes. **Pulling the pictures out of a linked album is answered too**, by the Picker below. What is still open is the last step of that story: nothing takes the dead link back out of the letter afterwards, so an owner who imports the photographs is left with a working album underneath a hyperlink that goes nowhere. Editing the body removes it by hand.
+Landing a photo at the caret in the editor is answered — it does not, and the album is where it goes. **Pulling the pictures out of a linked album is answered too**, by the Picker below. So is the last step of that story: `stripAlbumLinks` takes the link out of the letter on the way in, so importing the photographs no longer leaves a working album sitting underneath a hyperlink that goes nowhere.
 
 ### Spreading a camera roll across the letters
 
