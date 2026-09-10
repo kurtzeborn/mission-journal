@@ -520,6 +520,9 @@ export async function runIngest({
                 // header, read the same way, and stored on the post as
                 // `receivedMessageId` for whatever wants to reply later.
                 messageId: headerValue(extracted.headers, 'message-id'),
+                // The forwarder's subject rather than the missionary's, because
+                // it is the forwarder's conversation the receipt is joining.
+                subject: extracted.outerSubject ?? '',
                 now,
                 log
             });

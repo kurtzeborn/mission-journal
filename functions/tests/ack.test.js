@@ -83,17 +83,57 @@ describe('what the receipt says', () => {
         assert.match(body.html, /Elder Example/);
     });
 
-    test('it says not to send it again, and that one note covers the lot', async () => {
+    test('it answers with the subject it was sent, which is what Outlook threads on', async () => {
+        const body = ackEmail({ slug: SLUG, baseUrl: config.baseUrl, subject: 'Fw: Semana 13' });
+
+        assert.equal(body.subject, 'Re: Fw: Semana 13');
+    });
+
+    test('a forward that was already a reply is not made one twice', async () => {
+        const body = ackEmail({ slug: SLUG, baseUrl: config.baseUrl, subject: 'RE: Semana 13' });
+
+        assert.equal(body.subject, 'RE: Semana 13');
+    });
+
+    test('a forward with no subject still says something', async () => {
+        const body = ackEmail({ slug: SLUG, baseUrl: config.baseUrl, subject: '   ' });
+
+        assert.equal(body.subject, 'Your letter arrived');
+    });
+
+    test('a subject cannot smuggle a second header into the reply', async () => {
+        const body = ackEmail({ slug: SLUG, baseUrl: config.baseUrl, subject: 'Semana 13\r\nBcc: stranger@example.com' });
+
+        assert.doesNotMatch(body.subject, /[\r\n]/);
+        assert.equal(body.subject, 'Re: Semana 13 Bcc: stranger@example.com');
+    });
+
+    test('it says one note covers however many letters were sent', async () => {
         const body = ackEmail({ author: '', slug: SLUG, baseUrl: 'https://pdayletters.com' });
 
-        assert.match(body.text, /do not need to send it\s*\n?again/);
-        assert.match(body.text, /one note rather than one per letter/);
+        assert.match(body.text, /You do not need to do anything else/);
+        assert.match(body.text, /not send acknowledgments\s*\n?for each letter individually/);
+    });
+
+    test('the archive is named in full the first time it is offered', async () => {
+        // House rule for every message the service sends: say which archive,
+        // and say it belongs to PDayLetters.com, before handing over a link.
+        const body = ackEmail({ author: '', slug: SLUG, baseUrl: 'https://pdayletters.com', name: 'Elder Example' });
+
+        assert.match(body.text, /The PDayLetters\.com archive for Elder Example/);
+        assert.match(body.html, /The PDayLetters\.com archive for Elder Example/);
+    });
+
+    test('an archive nobody has named yet falls back to its slug', async () => {
+        const body = ackEmail({ author: '', slug: SLUG, baseUrl: 'https://pdayletters.com' });
+
+        assert.match(body.text, /The PDayLetters\.com archive for elder\.example/);
     });
 
     test('an unknown author leaves no gap in the sentence', async () => {
         const body = ackEmail({ author: '', slug: SLUG, baseUrl: 'https://pdayletters.com' });
 
-        assert.match(body.text, /the letter you forwarded is in the archive/);
+        assert.match(body.text, /the letter you forwarded is now in the archive/);
         assert.doesNotMatch(body.text, /letter from\s/);
     });
 
@@ -104,13 +144,17 @@ describe('what the receipt says', () => {
         assert.doesNotMatch(body.html, /o&brien/);
     });
 
-    test('somebody who never asked for this is told what happened', async () => {
-        // The address came out of a stranger's mail headers. A receipt that
-        // explains nothing reads as the beginning of a spam campaign.
+    test('both bodies say the same thing', async () => {
+        // Two hand-written copies of one message, which is exactly the pair
+        // that drifts when only one of them gets edited.
         const body = ackEmail({ author: 'Elder Example', slug: SLUG, baseUrl: 'https://pdayletters.com' });
+        const flat = body.html.replace(/<[^>]+>/g, ' ').replace(/&mdash;/g, '—').replace(/\s+/g, ' ').trim();
 
-        assert.match(body.text, /If you were not expecting this/);
-        assert.match(body.text, /Nothing was published anywhere public/);
+        for (const sentence of body.text.split(/\n{2,}/)) {
+            const words = sentence.replace(/\s+/g, ' ').trim();
+            if (words.startsWith('http')) continue;
+            assert.ok(flat.includes(words), `the HTML is missing: ${words}`);
+        }
     });
 });
 
@@ -233,7 +277,7 @@ describe('when ingest sends one', () => {
         assert.equal(result.status, 'stored');
         assert.equal(mailer.sent.length, 1);
         assert.equal(mailer.sent[0].to, 'scott@kurtzeborn.org');
-        assert.equal(mailer.sent[0].subject, 'Your letter arrived');
+        assert.equal(mailer.sent[0].subject, 'Re: Fw: Semana 13 — conferencia de zona y una llanta ponchada');
     });
 
     test('it threads onto the message we were actually sent', async () => {
