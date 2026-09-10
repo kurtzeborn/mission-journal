@@ -453,11 +453,11 @@ button:focus-visible {
     margin: 0 0 2rem;
 }
 
-/* Big enough to be the first thing read, and the only place on the site where
-   the body face is set at a display size. */
+/* Set above the body copy but well below a display size -- it is a headword
+   introducing a definition, not a banner. */
 .entry__word {
-    font-size: 2.6rem;
-    line-height: 1.05;
+    font-size: 2rem;
+    line-height: 1.1;
     font-weight: 700;
     letter-spacing: -0.01em;
     margin: 0;
@@ -550,7 +550,7 @@ button:focus-visible {
     }
 
     .entry__word {
-        font-size: 2.1rem;
+        font-size: 1.7rem;
     }
 }
 
