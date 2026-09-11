@@ -47,16 +47,22 @@ describe('being turned away from an archive', () => {
 
     test('offers a way back to the sign-in chooser, returning here', async () => {
         // Signing out and being dropped on the front page means finding the
-        // archive again from an invitation email they may have deleted.
+        // archive again from an invitation email they may have deleted. It goes
+        // out through the chooser rather than straight back here, because
+        // straight back here the 401 is answered silently by the provider they
+        // are still signed in to -- handing them the account just refused.
         const view = await archive({
             answer: async (url) =>
                 url === '/.auth/me' ? signedIn('other@example.com') : { status: 404, body: {} }
         });
 
-        assert.equal(
-            view.el('denied-switch').href,
-            `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(`/${SLUG}/`)}`
-        );
+        const out = new URL(view.el('denied-switch').href, 'https://pdayletters.com');
+        assert.equal(out.pathname, '/.auth/logout');
+
+        const back = new URL(out.searchParams.get('post_logout_redirect_uri'), 'https://pdayletters.com');
+        assert.equal(back.pathname, '/login.html');
+        assert.ok(back.searchParams.has('signedout'));
+        assert.equal(back.searchParams.get('post_login_redirect_uri'), `/${SLUG}/`);
     });
 
     test('says nothing about the account when it cannot find out which one', async () => {
@@ -495,7 +501,7 @@ describe('the masthead menu', () => {
         const view = await archive({ answer: async () => new Error('offline') });
 
         assert.equal(view.el('menu').hidden, false);
-        assert.match(view.source, /href="\/\.auth\/logout">Sign out/);
+        assert.match(view.source, /href="\/\.auth\/logout\?[^"]*signedout[^"]*">Sign out/);
     });
 
     test('the archive group stays down for somebody who was refused', async () => {

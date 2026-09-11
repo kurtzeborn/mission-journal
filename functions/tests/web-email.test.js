@@ -34,7 +34,7 @@ describe('the masthead', () => {
     test('carries the account menu, drawn by the script the landing page uses', () => {
         assert.match(source, /<details class="menu" id="menu">/);
         assert.match(source, /<script src="\/account\.js">/);
-        assert.match(source, /href="\/\.auth\/logout"/);
+        assert.match(source, /href="\/\.auth\/logout\?[^"]*signedout/);
     });
 });
 

@@ -1238,11 +1238,12 @@
         // definition not one of theirs.
         showArchives(null);
 
-        // Signing out returns them here, where the missing session turns into
-        // the ordinary 401 redirect to the chooser. One mechanism, already
-        // built, rather than a second hand-assembled round trip through login.
+        // Out through the chooser rather than straight back here. Straight
+        // back here, the 401 is answered silently by the provider they are
+        // still signed in to -- handing them the very account just refused.
+        const back = `/login.html?signedout=1&post_login_redirect_uri=${encodeURIComponent(window.location.pathname)}`;
         document.getElementById('denied-switch').href =
-            `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(window.location.pathname)}`;
+            `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(back)}`;
 
         // Only claimed when known. Telling somebody which account they are on
         // and being wrong about it is worse than not saying.

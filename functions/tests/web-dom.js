@@ -224,7 +224,7 @@ const DEVICES = {
  * null, because that failure -- a script reaching for an id the HTML lost in a
  * rename -- is a real bug and should be loud.
  */
-export function page({ html, path = '/', hash = '', device = 'desktop' }) {
+export function page({ html, path = '/', search = '', hash = '', device = 'desktop' }) {
     const { ids, sections, source } = markup(html);
 
     const elements = new Map();
@@ -261,11 +261,13 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
     };
 
     const storage = new Map();
+    const kept = new Map();
 
     const context = {
         document,
         location: {
             pathname: path,
+            search,
             hash,
             href: path,
             assign(target) {
@@ -303,6 +305,15 @@ export function page({ html, path = '/', hash = '', device = 'desktop' }) {
             setItem: (key, value) => storage.set(key, String(value)),
             removeItem: (key) => storage.delete(key)
         },
+        // Separate from sessionStorage on purpose: the difference between the
+        // two is the whole point wherever both are used, and a harness that
+        // shared one map would let a tab-scoped value look permanent.
+        localStorage: {
+            getItem: (key) => kept.get(key) ?? null,
+            setItem: (key, value) => kept.set(key, String(value)),
+            removeItem: (key) => kept.delete(key)
+        },
+        URLSearchParams,
         // Recorded rather than scheduled. The archive page runs a clock, and a
         // test that waits for a real one is a test whose result depends on how
         // busy the machine is. Handing the callback back lets a test say
