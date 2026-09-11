@@ -176,6 +176,35 @@ describe('a burst of photos becomes one row', () => {
 });
 
 describe('opening a photo full size', () => {
+    test('says the large rendition is coming until it arrives', () => {
+        const { view, body } = only(`${img('p1')}${para(400)}`);
+
+        view.click(body.querySelector('.photo img'));
+        const picture = view.lightbox().querySelector('.lightbox__image');
+        const loading = view.lightbox().querySelector('.lightbox__loading');
+
+        assert.equal(picture.hidden, true);
+        assert.equal(loading.hidden, false);
+        assert.equal(loading.textContent, 'Loading photograph');
+
+        picture.dispatchEvent(new view.window.Event('load'));
+        assert.equal(picture.hidden, false);
+        assert.equal(loading.hidden, true);
+    });
+
+    test('a failed large rendition says so instead of spinning forever', () => {
+        const { view, body } = only(`${img('p1')}${para(400)}`);
+
+        view.click(body.querySelector('.photo img'));
+        const picture = view.lightbox().querySelector('.lightbox__image');
+        const loading = view.lightbox().querySelector('.lightbox__loading');
+        picture.dispatchEvent(new view.window.Event('error'));
+
+        assert.equal(picture.hidden, true);
+        assert.equal(loading.hidden, false);
+        assert.equal(loading.textContent, 'Photograph could not be loaded.');
+    });
+
     test('clicking a picture in the letter opens the large rendition', () => {
         const { view, body } = only(`${img('p1')}${para(400)}`);
 
@@ -221,6 +250,7 @@ describe('opening a photo full size', () => {
         // time the dialog opens, and a full-size photo sits in memory in the
         // meantime.
         assert.equal(view.lightbox().querySelector('img').hasAttribute('src'), false);
+        assert.equal(view.lightbox().querySelector('.lightbox__loading').hidden, true);
     });
 });
 

@@ -1179,6 +1179,35 @@ button:focus-visible {
     background: #1c1917;
 }
 
+.lightbox__loading {
+    display: grid;
+    place-items: center;
+    gap: 0.75rem;
+    min-width: 12rem;
+    min-height: 8rem;
+    color: #fff;
+    font-family: system-ui, sans-serif;
+    font-size: 0.9rem;
+}
+
+.lightbox__loading::before {
+    width: 2rem;
+    height: 2rem;
+    content: '';
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: lightbox-spin 0.8s linear infinite;
+}
+
+.lightbox__loading--failed::before {
+    display: none;
+}
+
+@keyframes lightbox-spin {
+    to { transform: rotate(360deg); }
+}
+
 .lightbox__close {
     display: block;
     margin: 0.75rem auto 0;

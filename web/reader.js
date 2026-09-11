@@ -147,6 +147,22 @@ window.Reader = (function () {
         const image = document.createElement('img');
         image.className = 'lightbox__image';
         image.alt = '';
+        image.hidden = true;
+
+        const loading = document.createElement('div');
+        loading.className = 'lightbox__loading';
+        loading.setAttribute('role', 'status');
+
+        image.addEventListener('load', () => {
+            image.hidden = false;
+            loading.hidden = true;
+        });
+
+        image.addEventListener('error', () => {
+            image.hidden = true;
+            loading.classList.add('lightbox__loading--failed');
+            loading.textContent = 'Photograph could not be loaded.';
+        });
 
         const close = document.createElement('button');
         close.type = 'button';
@@ -180,17 +196,23 @@ window.Reader = (function () {
         // the next time the dialog opens.
         dialog.addEventListener('close', () => {
             image.removeAttribute('src');
+            image.hidden = true;
+            loading.hidden = true;
         });
 
-        dialog.append(image, close);
+        dialog.append(image, loading, close);
         document.body.append(dialog);
 
-        lightbox = { dialog, image };
+        lightbox = { dialog, image, loading };
         return lightbox;
     }
 
     function openLightbox(src, alt) {
         const view = ensureLightbox();
+        view.image.hidden = true;
+        view.loading.hidden = false;
+        view.loading.classList.remove('lightbox__loading--failed');
+        view.loading.textContent = 'Loading photograph';
         view.image.src = src;
         view.image.alt = alt ?? '';
         view.dialog.showModal();
