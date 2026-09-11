@@ -101,7 +101,7 @@ const named = (el) => el.getAttribute('aria-label') ?? el.textContent;
  * ranking, the prefix matching and the fuzziness are half of what the search
  * tests are about.
  */
-export function page({ url = 'https://pdayletters.com/isaac.backman' } = {}) {
+export function page({ url = 'https://pdayletters.com/isaac.backman', album = false } = {}) {
     const dom = new JSDOM(read('web/site.html'), { runScripts: 'outside-only', url });
     const { window } = dom;
     const record = { scrolled: [], commands: [], wordcloud: [] };
@@ -111,6 +111,10 @@ export function page({ url = 'https://pdayletters.com/isaac.backman' } = {}) {
     const context = dom.getInternalVMContext();
     runInContext(read('web/vendor/minisearch.js'), context, { filename: 'minisearch.js' });
     runInContext(read('web/reader.js'), context, { filename: 'reader.js' });
+
+    // Website-only, and it reads `Reader`, so it goes second and only when
+    // asked for. The zip is never given this file at all.
+    if (album) runInContext(read('web/album.js'), context, { filename: 'album.js' });
 
     const { document } = window;
     const $ = (selector) => document.querySelector(selector);
@@ -165,6 +169,12 @@ export function page({ url = 'https://pdayletters.com/isaac.backman' } = {}) {
         },
 
         lightbox: () => $('dialog.lightbox'),
+
+        /** The album's grid of every photograph, once it has been opened. */
+        gallery: () => $('dialog.gallery'),
+
+        /** The album's one-photograph-at-a-time view. */
+        viewer: () => $('dialog.viewer'),
 
         /** The word cloud dialog, once something has caused it to exist. */
         cloud: () => $('dialog.cloud'),

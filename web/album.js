@@ -119,6 +119,64 @@ window.Album = (function () {
         return date ? `${date} \u2014 ${subject}` : subject;
     };
 
+    // --- Back ---------------------------------------------------------------
+    //
+    // Both dialogs cover the whole window, so they read as places rather than
+    // as boxes, and Back is what people reach for to leave a place. Without
+    // this it leaves the archive instead -- one press and the letters are gone,
+    // from a screen where the only way out was a button in the corner.
+    //
+    // So each layer pushes a history entry as it opens and takes it back as it
+    // closes, whichever way it was closed. The URL never changes: what is being
+    // recorded is depth, not an address, and an album nobody can link to is not
+    // worth putting in anyone's address bar.
+
+    // Open layers, innermost last. One pushed entry each.
+    const layers = [];
+
+    // Entries belonging to layers that have closed, not yet given back.
+    let giveBack = 0;
+
+    // Traversals we asked for ourselves, and must not act on a second time.
+    let ignore = 0;
+
+    function enter(dialog) {
+        layers.push(dialog);
+        history.pushState({ album: layers.length }, '');
+    }
+
+    function leave(dialog) {
+        // Already gone if Back is what closed it -- the entry went with it.
+        const at = layers.indexOf(dialog);
+        if (at === -1) return;
+
+        layers.splice(at, 1);
+
+        // Coalesced into a single traversal, because "Go to this letter"
+        // closes both layers at once and two back() calls in one task are not
+        // reliably two steps -- the browser is free to collapse them, and does.
+        if (giveBack === 0) queueMicrotask(unwind);
+        giveBack += 1;
+    }
+
+    function unwind() {
+        const steps = giveBack;
+        giveBack = 0;
+        ignore += 1;
+        history.go(-steps);
+    }
+
+    window.addEventListener('popstate', () => {
+        if (ignore > 0) {
+            ignore -= 1;
+            return;
+        }
+
+        // Nothing open means this is somebody leaving the page, which is
+        // theirs to do.
+        layers.pop()?.close();
+    });
+
     // --- the viewer -------------------------------------------------------
 
     let viewer = null;
@@ -234,6 +292,7 @@ window.Album = (function () {
         // that was clicked, and landing back at the old scroll position would
         // lose the reader.
         dialog.addEventListener('close', () => {
+            leave(dialog);
             setPlaying(false);
             clearTimeout(viewer.release);
             image.removeAttribute('src');
@@ -419,6 +478,7 @@ window.Album = (function () {
         // letter while the page is open, and rebuilding is cheaper than
         // working out what changed.
         dialog.addEventListener('close', () => {
+            leave(dialog);
             gallery.frames = [];
             gallery.cells = [];
             body.replaceChildren();
@@ -499,6 +559,7 @@ window.Album = (function () {
         view.playing = false;
         view.play.textContent = 'Play';
 
+        enter(view.dialog);
         view.dialog.showModal();
         show(at);
     }
@@ -527,6 +588,7 @@ window.Album = (function () {
         view.picker.value = order;
 
         fill();
+        enter(view.dialog);
         view.dialog.showModal();
         view.body.scrollTop = 0;
     }

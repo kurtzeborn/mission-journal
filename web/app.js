@@ -989,6 +989,14 @@
         letters = payload.posts ?? [];
         maxPhotos = Number(payload.maxPhotos) || 0;
 
+        // The silent return out to whichever provider they used is allowed one
+        // attempt per destination, or a session that never comes back loops.
+        // Arriving here is the proof that it came back, and a tab left open for
+        // days will expire more than once.
+        try {
+            sessionStorage.removeItem('mj.returning');
+        } catch { /* private mode; the guard just stays set for this tab */ }
+
         // The name if the archive has one, the slug if it does not. A site
         // claimed before anybody typed a name still has to be called something,
         // and the slug is the one label that always exists.

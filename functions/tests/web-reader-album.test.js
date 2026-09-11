@@ -1,14 +1,11 @@
 // The photo album, from the reader's side of the seam.
 //
-// The album itself is a grid of thumbnails in a dialog and the website's alone
-// -- there is no test for it here, because what it does is lazily fetch images
-// and lay them out, and jsdom does neither. What can be tested is everything on
-// this side of the handover: whether the button appears, that nothing else
-// reaches the album, and what the archive looks like once the album hands a
-// letter back.
-//
-// The stub stands exactly where the real one does. `mount` is given an object
-// with an `open`, and that is the whole of the contract.
+// The album itself is the website's alone, and what it does is lazily fetch
+// images and lay them out, which jsdom does neither of -- the one part of it
+// that is testable here is how it gives the reader back, and that lives in
+// `web-album.test.js`. What is tested below is everything on this side of the
+// handover: whether the button appears, that nothing else reaches the album,
+// and what the archive looks like once the album hands a letter back.
 //
 // The stub stands exactly where the real one does. `mount` is given an object
 // with an `open`, and that is the whole of the contract.
