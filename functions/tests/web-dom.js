@@ -434,10 +434,11 @@ export function fetching(answer) {
         calls.push({ url, method: init.method ?? 'GET', headers: init.headers ?? {}, body: sent });
         const reply = await answer(url, init, calls.length);
         if (reply instanceof Error) throw reply;
-        const { status = 200, body = {}, headers = {} } = reply ?? {};
+        const { status = 200, body = {}, headers = {}, type = 'basic' } = reply ?? {};
         return {
             ok: status >= 200 && status < 300,
             status,
+            type,
             headers: { get: (name) => headers[name] ?? null },
             json: async () => body
         };

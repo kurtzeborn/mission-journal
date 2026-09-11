@@ -19,7 +19,7 @@ async function archive({ answer, path = `/${SLUG}/`, device }) {
     const view = page({ html: 'site.html', path, device });
     // The reader itself is not under test here; only what happens instead of
     // it when the letters never arrive.
-    view.context.Reader = { mount() {} };
+    view.context.Reader = { mount(options) { view.context.mounted = options; } };
     const net = fetching(answer);
     run('app.js', { context: view.context, fetch: net.fetch });
     await settled();
@@ -94,6 +94,61 @@ describe('being turned away from an archive', () => {
 
         assert.equal(view.el('denied').hidden, true);
         assert.match(view.context.location.href, /login\.html\?post_login_redirect_uri/);
+    });
+
+    test('a failed photograph renews an expired session', async () => {
+        let contentCalls = 0;
+        const view = await archive({
+            answer: async (url) => {
+                if (!url.includes('/posts.json')) return signedIn('mum@example.com');
+                contentCalls += 1;
+                return contentCalls === 1
+                    ? { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } }
+                    : { status: 401 };
+            }
+        });
+
+        await view.context.mounted.photoFailed();
+
+        assert.match(view.context.location.href, /login\.html\?post_login_redirect_uri/);
+        assert.equal(contentCalls, 2);
+    });
+
+    test('a failed photograph stays an image error while the session is healthy', async () => {
+        const view = await archive({
+            answer: async (url) => url.includes('/posts.json')
+                ? { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } }
+                : signedIn('mum@example.com')
+        });
+
+        const before = view.context.location.href;
+        await view.context.mounted.photoFailed();
+
+        assert.equal(view.context.location.href, before);
+    });
+
+    test('several failed photographs share one session check', async () => {
+        let release;
+        let contentCalls = 0;
+        const waiting = new Promise((resume) => { release = resume; });
+        const view = await archive({
+            answer: async (url) => {
+                if (!url.includes('/posts.json')) return signedIn('mum@example.com');
+                contentCalls += 1;
+                if (contentCalls === 1) {
+                    return { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } };
+                }
+                await waiting;
+                return { status: 401 };
+            }
+        });
+
+        const first = view.context.mounted.photoFailed();
+        const second = view.context.mounted.photoFailed();
+        release();
+        await Promise.all([first, second]);
+
+        assert.equal(contentCalls, 2);
     });
 
     test('the letters loading is not a refusal', async () => {

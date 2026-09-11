@@ -2054,9 +2054,19 @@ window.Reader = (function () {
      * @param {object|null} [options.album] every photograph in the archive, as
      *   one page. Absent in the downloaded archive, which is where video would
      *   go and video is not going in the zip.
+     * @param {Function|null} [options.photoFailed] called when a displayed
+     *   photograph fails. Absent in the downloaded archive.
      */
-    function mount({ posts, photoSrc, elements, admin = null, help = null, album = null }) {
+    function mount({
+        posts, photoSrc, elements, admin = null, help = null, album = null, photoFailed = null
+    }) {
         const { list, state } = elements;
+
+        if (photoFailed) {
+            document.addEventListener('error', (event) => {
+                if (event.target instanceof HTMLImageElement) photoFailed();
+            }, true);
+        }
 
         if (!posts.length) {
             state.textContent = 'No letters have arrived yet.';

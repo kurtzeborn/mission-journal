@@ -176,6 +176,19 @@ describe('a burst of photos becomes one row', () => {
 });
 
 describe('opening a photo full size', () => {
+    test('a failed photograph is handed back to the website', () => {
+        const view = page();
+        let failures = 0;
+        view.mount({
+            posts: [letter('2026-03-25-9CRE', `${img('p1')}${para(400)}`)],
+            photoFailed: () => { failures += 1; }
+        });
+
+        view.$('.post__body img').dispatchEvent(new view.window.Event('error'));
+
+        assert.equal(failures, 1);
+    });
+
     test('says the large rendition is coming until it arrives', () => {
         const { view, body } = only(`${img('p1')}${para(400)}`);
 

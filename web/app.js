@@ -43,6 +43,31 @@
     const photoSrc = (photoId, size) =>
         `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(photoId)}/${size}.webp`;
 
+    const contentUrl = `/api/content/${encodeURIComponent(slug)}/posts.json`;
+
+    function signIn() {
+        window.location.assign(
+            `/login.html?post_login_redirect_uri=${encodeURIComponent(window.location.pathname)}`
+        );
+    }
+
+    let checkingSession = null;
+
+    function recoverPhotoSession() {
+        checkingSession ??= (async () => {
+            try {
+                const response = await fetch(contentUrl, { redirect: 'manual', cache: 'no-cache' });
+                if (response.status === 401 || response.type === 'opaqueredirect') signIn();
+            } catch {
+                // A photo can also fail because the phone is offline.
+            } finally {
+                checkingSession = null;
+            }
+        })();
+
+        return checkingSession;
+    }
+
     // --- the clock ---------------------------------------------------------
     //
     // One line at the top of the archive. It is the only thing on this page
@@ -951,7 +976,7 @@
             // redirect lands on Microsoft's cross-origin sign-in page and fetch
             // reports an opaque failure that is indistinguishable from the
             // network being down. Left unfollowed, it is unmistakable.
-            response = await fetch(`/api/content/${encodeURIComponent(slug)}/posts.json`, {
+            response = await fetch(contentUrl, {
                 redirect: 'manual',
                 // A normal reload revalidates the document but is happy to take
                 // subresources from cache, which is how an owner's saved edit
@@ -971,9 +996,7 @@
             // Via the chooser, not straight at a provider: there are two now,
             // and guessing means occasionally offering someone the wrong one
             // and stranding them on an account no archive has ever heard of.
-            window.location.assign(
-                `/login.html?post_login_redirect_uri=${encodeURIComponent(window.location.pathname)}`
-            );
+            signIn();
             return;
         }
 
@@ -1148,6 +1171,7 @@
             // Off the window rather than a bare global, because unlike Reader
             // this one is genuinely optional -- the archive draws without it.
             album: window.Album ?? null,
+            photoFailed: recoverPhotoSession,
             help: { href: '/faq#forward-did-nothing', address: 'post@pdayletters.com' }
         });
     }
