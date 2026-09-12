@@ -70,7 +70,8 @@
         const make = $('make');
 
         if (status.state === 'building') {
-            said.textContent = 'Making your book. This takes a few minutes, and you can close this page \u2014 it carries on without you.';
+            said.textContent =
+                'Assembling your book from the archive. This takes a few minutes. You can leave this page and return shortly to review the proof.';
             make.disabled = true;
             finished.hidden = true;
             return;
