@@ -29,6 +29,7 @@ import {
 import { holdPending } from '../src/lib/pending.js';
 import { attachClaimToken } from '../src/lib/claim.js';
 import { deliveryKey, recordDelivery } from '../src/lib/delivery.js';
+import { BOOKS, bookName, proofName, statusName } from '../src/lib/publish.js';
 import { TABLES } from '../src/lib/tables.js';
 
 const KEY = 'a-signing-key-from-key-vault';
@@ -383,6 +384,39 @@ describe('the book handlers', () => {
 
         assert.equal(print.status, 404);
         assert.equal(proof.status, 404);
+    });
+
+    test('a finished book is handed over with a short-lived uncached link', async () => {
+        const store = printable();
+        const started = await publish({ request: asOwner(), context: silent, store });
+        const id = started.jsonBody.id;
+        const status = {
+            id,
+            slug: SLUG,
+            state: 'ready',
+            requestedAt: NOW().toISOString(),
+            builtAt: NOW().toISOString(),
+            pages: 24,
+            letters: 1
+        };
+
+        await store.writeBlob(BOOKS, statusName(SLUG, id), Buffer.from(JSON.stringify(status)));
+        await store.writeBlob(BOOKS, bookName(SLUG, id), Buffer.from('print'));
+        await store.writeBlob(BOOKS, proofName(SLUG, id), Buffer.from('proof'));
+
+        const bookRequest = request({
+            principal: { userDetails: OWNER },
+            params: { slug: SLUG, id }
+        });
+        const print = await deliver({ request: bookRequest, context: silent, store });
+        const proof = await review({ request: bookRequest, context: silent, store });
+
+        assert.equal(print.status, 302);
+        assert.match(print.headers.Location, /book\.pdf\?.*se=15m/);
+        assert.equal(print.headers['Cache-Control'], 'no-store');
+        assert.equal(proof.status, 302);
+        assert.match(proof.headers.Location, /proof\.pdf\?.*se=15m/);
+        assert.equal(proof.headers['Cache-Control'], 'no-store');
     });
 
     test('an owner is offered a palette and told what the cover says', async () => {
