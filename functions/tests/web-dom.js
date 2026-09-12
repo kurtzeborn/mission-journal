@@ -360,7 +360,10 @@ export function page({ html, path = '/', search = '', hash = '', device = 'deskt
     // itself into a page this DOM does not have, and the question under test
     // is only ever which branch the answer took.
     context.Confirm = {
-        ask: async () => context.confirmed,
+        ask: async (asked) => {
+            context.asked = asked;
+            return context.confirmed;
+        },
         choose: async (asked) => {
             context.asked = asked;
             return context.chose;

@@ -1421,6 +1421,64 @@ button:focus-visible {
     accent-color: var(--accent);
 }
 
+/* --- book-only pages --- */
+
+.book-part {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--rule);
+}
+
+.book-part h3,
+.book-part p {
+    margin: 0;
+}
+
+.book-part .note--fine,
+.book-part-dialog .note--fine {
+    font-size: 0.7rem;
+}
+
+.book-part__actions,
+.book-part-dialog__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.book-part-dialog {
+    width: min(44rem, 92vw);
+    margin: auto;
+    padding: 1.25rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    border-radius: var(--radius);
+}
+
+.book-part-dialog::backdrop {
+    background: rgba(28, 25, 23, 0.6);
+}
+
+.book-part-editor {
+    min-height: 14rem;
+    max-height: 60vh;
+    margin: 1rem 0;
+    padding: 0.8rem;
+    overflow: auto;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: #fff;
+}
+
+.book-part-editor[contenteditable="true"] {
+    outline-color: var(--accent);
+}
+
 /* A letter that is out of view, seen by an owner.
 
    Dimmed rather than badged. The badge was a pill on its own line above the

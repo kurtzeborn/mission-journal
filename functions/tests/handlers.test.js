@@ -24,7 +24,9 @@ import {
     review,
     cover,
     chooseTheCover,
-    putCoverPicture
+    putCoverPicture,
+    sections,
+    changeSection
 } from '../src/functions/book.js';
 import { holdPending } from '../src/lib/pending.js';
 import { attachClaimToken } from '../src/lib/claim.js';
@@ -49,12 +51,13 @@ function principalHeader({ userDetails, identityProvider = 'aad', userId = 'abc1
     ).toString('base64');
 }
 
-function request({ principal = null, body = {}, params = {}, bytes = null, type = null } = {}) {
+function request({ principal = null, body = {}, params = {}, bytes = null, type = null, method = 'GET' } = {}) {
     const headers = principal ? { 'x-ms-client-principal': principalHeader(principal) } : {};
     if (type) headers['content-type'] = type;
 
     return {
         headers: { get: (name) => headers[name.toLowerCase()] ?? null },
+        method,
         params,
         json: async () => body,
         arrayBuffer: async () => (bytes ?? Buffer.alloc(0))
@@ -505,6 +508,50 @@ describe('the book handlers', () => {
         });
 
         assert.equal(response.status, 403);
+    });
+
+    test('only an owner can read or write book-only sections', async () => {
+        const store = printable();
+        const reader = request({
+            principal: { userDetails: READER },
+            params: { slug: SLUG, section: 'foreword' },
+            method: 'PUT',
+            body: { bodyHtml: '<p>Not mine.</p>' }
+        });
+
+        assert.equal((await sections({ request: reader, context: silent, store })).status, 403);
+        assert.equal((await changeSection({ request: reader, context: silent, store })).status, 403);
+    });
+
+    test('an owner can create, read, and delete sanitized book-only sections', async () => {
+        const store = printable();
+        const save = await changeSection({
+            request: asOwner({
+                params: { slug: SLUG, section: 'foreword' },
+                method: 'PUT',
+                body: { bodyHtml: '<p>Hello <b>there</b><img src="/api/photo/elder.example/p1/large.webp"></p>' }
+            }),
+            context: silent,
+            store
+        });
+
+        assert.equal(save.status, 200);
+        assert.equal(save.jsonBody.foreword, '<p>Hello <b>there</b></p>');
+
+        const found = await sections({ request: asOwner(), context: silent, store });
+        assert.equal(found.jsonBody.foreword, '<p>Hello <b>there</b></p>');
+        assert.equal(found.jsonBody.afterword, null);
+
+        const removed = await changeSection({
+            request: asOwner({
+                params: { slug: SLUG, section: 'foreword' },
+                method: 'DELETE'
+            }),
+            context: silent,
+            store
+        });
+        assert.equal(removed.status, 200);
+        assert.equal(removed.jsonBody.foreword, null);
     });
 
     test('a cover upload that is not a picture is refused before it is decoded', async () => {
