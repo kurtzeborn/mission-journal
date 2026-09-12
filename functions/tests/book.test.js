@@ -20,6 +20,8 @@ import {
     contentsSheets,
     coverDate,
     dateLine,
+    endingAlbum,
+    endingPhotoCount,
     emojiRuns,
     inReadingOrder,
     mirror,
@@ -303,6 +305,33 @@ describe('how many leaves the album gets', () => {
         const sizes = albumSpread(range(17), { pages: 4 }).map((leaf) => leaf.length);
 
         assert.equal(Math.max(...sizes) - Math.min(...sizes), 1);
+    });
+});
+
+describe('sharing the end of a letter with its album', () => {
+    const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
+
+    test('uses up to three photographs when half the page remains', () => {
+        assert.equal(endingPhotoCount(1, { remaining: usable / 2, usable }), 1);
+        assert.equal(endingPhotoCount(2, { remaining: usable / 2, usable }), 2);
+        assert.equal(endingPhotoCount(8, { remaining: usable * 0.8, usable }), 3);
+    });
+
+    test('leaves the album alone when less than half the page remains', () => {
+        assert.equal(endingPhotoCount(3, { remaining: usable / 2 - 1, usable }), 0);
+    });
+
+    test('leaves the page alone when there are no photographs', () => {
+        assert.equal(endingPhotoCount(0, { remaining: usable, usable }), 0);
+    });
+
+    test('keeps every photograph in order without duplicating one', () => {
+        const photos = range(7);
+        const ending = endingAlbum(photos, { remaining: usable, usable });
+
+        assert.deepEqual(ending.shared, photos.slice(0, 3));
+        assert.deepEqual(ending.remaining, photos.slice(3));
+        assert.deepEqual([...ending.shared, ...ending.remaining], photos);
     });
 });
 
@@ -752,7 +781,7 @@ describe('setting a whole book', () => {
         // came back from the printer.
         const withPhotos = posts.map((entry) =>
             entry.id === 'b'
-                ? { ...entry, photos: [{ id: 'p1', width: 2400, height: 1600 }] }
+                ? { ...entry, photos: range(3) }
                 : entry
         );
 
@@ -768,10 +797,11 @@ describe('setting a whole book', () => {
 
         // Same book, same rectangles, but now the bytes are actually there.
         const filled = memoryStore();
-        await filled.writeBlob(
-            'rendered',
-            'isaac.backman/photos/p1/large.webp',
-            await pixels(2400, 1600)
+        const image = await pixels(2400, 1600);
+        await Promise.all(
+            range(3).map(({ id }) =>
+                filled.writeBlob('rendered', `isaac.backman/photos/${id}/large.webp`, image)
+            )
         );
         const second = buildInterior({
             store: filled,
