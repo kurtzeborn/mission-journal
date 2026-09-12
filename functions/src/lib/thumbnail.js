@@ -31,7 +31,7 @@
 
 import sharp from 'sharp';
 import { fileURLToPath } from 'node:url';
-import { PAGE, MARGIN, PLATE_HEIGHT, coverDate } from './book.js';
+import { PAGE, MARGIN, PLATE_HEIGHT, coverSpan } from './book.js';
 import { clothOf } from './cover.js';
 
 // One pixel to one point, so every measurement below is the same number it is
@@ -192,15 +192,15 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
             })
         );
 
-        const span = [profile.startDate, profile.returnDate].filter(Boolean).map(coverDate);
-        if (span.length) {
+        const span = coverSpan(profile);
+        if (span) {
             y += 1.4 * size * 0.43 * LEADING;
             await place(
                 setLine({
                     face: FACES.regular,
                     size: size * 0.4,
                     color: cloth.quiet,
-                    text: span.join(' \u2013 ')
+                    text: span
                 })
             );
         }

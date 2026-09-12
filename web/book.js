@@ -230,6 +230,7 @@
         board.style.background = cloth.paper;
         $('board-name').style.color = cloth.ink;
         $('board-mission').style.color = cloth.quiet;
+        $('board-dates').style.color = cloth.quiet;
 
         const plate = $('plate');
         if (chosen.picture) {
@@ -246,6 +247,7 @@
         // the way down when there is not, which is what the book does.
         $('board-name').style.top = chosen.picture ? '58%' : '26%';
         $('board-mission').style.top = chosen.picture ? '74%' : '40%';
+        $('board-dates').style.top = chosen.picture ? '82%' : '50%';
 
         for (const button of $('cloths').children) {
             button.setAttribute('aria-pressed', String(button.dataset.cloth === chosen.cloth));
@@ -390,6 +392,8 @@
         // is the one thing a cover can be short of and still be printed.
         $('board-name').textContent = body.title;
         $('board-mission').textContent = body.mission || 'Letters from the mission';
+        $('board-dates').textContent = body.dates ?? '';
+        $('board-dates').hidden = !$('board-dates').textContent;
 
         if (!body.mission) {
             $('wanting-link').href = `/settings/${encodeURIComponent(slug)}`;

@@ -19,6 +19,7 @@ import {
     contentsPages,
     contentsSheets,
     coverDate,
+    coverSpan,
     dateLine,
     endingAlbum,
     endingPhotoCount,
@@ -28,6 +29,7 @@ import {
     monthLabel,
     photoBox,
     printPhoto,
+    proofMarks,
     reserve,
     runningHead,
     trailingPhotoIds
@@ -128,6 +130,26 @@ describe('the date over a letter', () => {
     test('writes an archive date with the month named', () => {
         assert.equal(coverDate('2026-09-12'), 'September 12, 2026');
     });
+
+    test('writes the cover date span once for every rendering', () => {
+        assert.equal(
+            coverSpan({ startDate: '2024-07-01', returnDate: '2026-01-15' }),
+            'July 1, 2024 \u2013 January 15, 2026'
+        );
+    });
+});
+
+test('the proof alternates three warnings with two site names', () => {
+    assert.deepEqual(
+        proofMarks.map((mark) => mark.text),
+        [
+            'PROOF \u00b7 NOT FOR PRINT',
+            'PDayLetters.com',
+            'PROOF \u00b7 NOT FOR PRINT',
+            'PDayLetters.com',
+            'PROOF \u00b7 NOT FOR PRINT'
+        ]
+    );
 });
 
 describe('characters outside the book face', () => {

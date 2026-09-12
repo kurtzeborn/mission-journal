@@ -294,7 +294,12 @@ describe('the book handlers', () => {
             { email: READER, role: 'reader' }
         ]);
         store.blobs.set(`config/${SLUG}/profile.json`, {
-            bytes: Buffer.from(JSON.stringify({ slug: SLUG, displayName: 'Elder Example' }), 'utf8'),
+            bytes: Buffer.from(JSON.stringify({
+                slug: SLUG,
+                displayName: 'Elder Example',
+                startDate: '2024-07-01',
+                returnDate: '2026-01-15'
+            }), 'utf8'),
             metadata: {},
             etag: 'etag-profile'
         });
@@ -455,6 +460,7 @@ describe('the book handlers', () => {
         assert.equal(response.status, 200);
         assert.equal(response.jsonBody.title, 'Elder Example');
         assert.equal(response.jsonBody.mission, '');
+        assert.equal(response.jsonBody.dates, 'July 1, 2024 \u2013 January 15, 2026');
         assert.ok(response.jsonBody.cloth);
         // The hexes come down the wire so the page and the PDF cannot end up
         // with two different ideas of what navy is.
