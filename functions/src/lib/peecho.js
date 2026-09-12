@@ -39,10 +39,10 @@ export const TEST_BASE = 'https://test.www.peecho.com';
 // spine -- but wrong numbers here would show the buyer the wrong book.
 export const TRIM_MM = { width: 216, height: 280 };
 
-// Long enough that a family passing the link round at Christmas can still use
-// it, short enough that a link found in an old email is not a permanent open
+// Long enough for extended family to order without the owner repeatedly
+// creating and redistributing links, while still avoiding a permanent open
 // checkout. Peecho takes the expiry in its own format and its own timezone.
-export const CHECKOUT_DAYS = 60;
+export const CHECKOUT_DAYS = 180;
 
 /**
  * `dd-MM-yyyy HH:mm:ss`, in CET, which is what their field asks for.

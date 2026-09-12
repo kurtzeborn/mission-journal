@@ -17,7 +17,9 @@ describe('the finished book actions', () => {
         assert.match(html, /Letters marked as hidden in the archive are not included in the book/);
         assert.match(html, /Optional book-only content/);
         assert.match(html, /Foreword and Afterword sections are optional/);
+        assert.match(html, /This link lasts six months and can be shared/);
         assert.doesNotMatch(html, /Remembered for next time/);
+        assert.doesNotMatch(html, /This link lasts two months/);
         assert.ok(html.indexOf('The cover') < html.indexOf('Optional book-only content'));
     });
 
