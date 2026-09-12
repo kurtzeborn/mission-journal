@@ -36,13 +36,13 @@
         <section id="everything" hidden>
             <p>
                 This gathers every letter in the archive, in order, with the photographs, and
-                lays them out as a hardcover book &mdash; a title page, a contents by date, and
-                a chapter for each letter.
+                lays them out as a hardcover book which serves as a personalized missionary
+                keepsake.
             </p>
             <p class="note">
-                Letters you have hidden are left out, exactly as they are for everyone else
-                reading the archive. Nothing is ordered or paid for here: what you get at the
-                end is the book itself, to look at.
+                Letters marked as hidden in the archive are not included in the book. The book is
+                created here and then sent to the printing company as a product you can purchase
+                from them.
             </p>
 
             <!--
@@ -108,6 +108,39 @@
                         <p class="note" id="cover-said" role="status" aria-live="polite"></p>
                     </div>
                 </div>
+            </section>
+
+            <section class="book-parts" id="book-parts" hidden>
+                <hr class="rule">
+                <h2>Optional book-only content</h2>
+                <p class="note">
+                    The Foreword and Afterword sections are optional and will only appear in the
+                    printed book, not in the online archive.
+                </p>
+
+                <div class="book-part">
+                    <div>
+                        <h3>Foreword</h3>
+                        <p class="note note--fine">A foreword is often most meaningful when written by a parent or friend.</p>
+                    </div>
+                    <p class="book-part__actions">
+                        <button class="button button--quiet button--compact" type="button" id="foreword-create">Create</button>
+                        <button class="button button--quiet button--compact" type="button" id="foreword-view" hidden>View</button>
+                        <button class="button button--quiet button--compact button--danger" type="button" id="foreword-delete" hidden>Delete</button>
+                    </p>
+                </div>
+
+                <div class="book-part">
+                    <div>
+                        <h3>Afterword</h3>
+                    </div>
+                    <p class="book-part__actions">
+                        <button class="button button--quiet button--compact" type="button" id="afterword-create">Create</button>
+                        <button class="button button--quiet button--compact" type="button" id="afterword-view" hidden>View</button>
+                        <button class="button button--quiet button--compact button--danger" type="button" id="afterword-delete" hidden>Delete</button>
+                    </p>
+                </div>
+                <p class="note" id="parts-said" role="status" aria-live="polite"></p>
             </section>
 
             <p>
@@ -191,6 +224,21 @@
         </section>
     </main>
 
+    <dialog class="book-part-dialog" id="book-part-dialog" aria-labelledby="book-part-title">
+        <h2 id="book-part-title"></h2>
+        <p class="note note--fine" id="book-part-note" hidden></p>
+        <div class="book-part-editor" id="book-part-editor"></div>
+        <p class="note" id="book-part-said" role="status" aria-live="polite"></p>
+        <div class="book-part-dialog__actions">
+            <button class="button button--quiet" type="button" id="book-part-close">Close</button>
+            <button class="button button--quiet button--danger" type="button" id="book-part-modal-delete">Delete</button>
+            <button class="button" type="button" id="book-part-edit">Edit</button>
+            <button class="button button--quiet" type="button" id="book-part-cancel" hidden>Cancel</button>
+            <button class="button" type="button" id="book-part-save" hidden>Save</button>
+        </div>
+    </dialog>
+
+    <script src="/confirm.js"></script>
     <script src="/book.js"></script>
 </body>
 

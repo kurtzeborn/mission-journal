@@ -39,6 +39,7 @@
     };
 
     const url = `/api/book/${encodeURIComponent(slug)}`;
+    const sectionsUrl = `${url}/sections`;
 
     // Every refusal this page can meet, handled once, exactly as on the
     // settings page. Shared by the load, the request and the polling so they
@@ -197,6 +198,155 @@
         $('back').href = `/${encodeURIComponent(slug)}/`;
 
         dressTheCover();
+        loadSections();
+    }
+
+    // --- foreword and afterword -------------------------------------------
+
+    const SECTION_NAMES = ['foreword', 'afterword'];
+    const SECTION_TITLES = { foreword: 'Foreword', afterword: 'Afterword' };
+    const HOTKEYS = { b: 'bold', i: 'italic', u: 'underline' };
+    let sections = { foreword: null, afterword: null };
+    let activeSection = null;
+    let editingSection = false;
+
+    function drawSections() {
+        for (const name of SECTION_NAMES) {
+            const present = typeof sections[name] === 'string';
+            $(`${name}-create`).hidden = present;
+            $(`${name}-view`).hidden = !present;
+            $(`${name}-delete`).hidden = !present;
+        }
+        $('book-parts').hidden = false;
+    }
+
+    async function loadSections() {
+        try {
+            const response = await fetch(sectionsUrl, { cache: 'no-store' });
+            if (refused(response)) return;
+            if (!response.ok) throw new Error();
+            const body = await response.json();
+            sections = {
+                foreword: typeof body.foreword === 'string' ? body.foreword : null,
+                afterword: typeof body.afterword === 'string' ? body.afterword : null
+            };
+            drawSections();
+        } catch {
+            $('book-parts').hidden = false;
+            $('parts-said').textContent = 'Could not load the book-only pages. Please reload before changing them.';
+        }
+    }
+
+    function setEditing(editing) {
+        editingSection = editing;
+        const editor = $('book-part-editor');
+        if (editing) {
+            editor.setAttribute('contenteditable', 'true');
+            editor.setAttribute('role', 'textbox');
+            editor.setAttribute('aria-multiline', 'true');
+            editor.setAttribute('aria-label', SECTION_TITLES[activeSection]);
+            try {
+                document.execCommand?.('styleWithCSS', false, false);
+            } catch {
+                // The browser's default is already semantic markup.
+            }
+            editor.focus?.();
+        } else {
+            editor.removeAttribute('contenteditable');
+            editor.removeAttribute('role');
+            editor.removeAttribute('aria-multiline');
+            editor.removeAttribute('aria-label');
+        }
+
+        $('book-part-close').hidden = editing;
+        $('book-part-edit').hidden = editing;
+        $('book-part-modal-delete').hidden = editing || !sections[activeSection];
+        $('book-part-cancel').hidden = !editing;
+        $('book-part-save').hidden = !editing;
+    }
+
+    function openSection(name, edit) {
+        activeSection = name;
+        $('book-part-title').textContent = SECTION_TITLES[name];
+        $('book-part-note').textContent =
+            name === 'foreword' ? 'A foreword is often most meaningful when written by a parent or friend.' : '';
+        $('book-part-note').hidden = name !== 'foreword';
+        $('book-part-editor').innerHTML = sections[name] ?? '';
+        $('book-part-said').textContent = '';
+        setEditing(edit);
+        $('book-part-dialog').showModal();
+    }
+
+    function closeSection() {
+        $('book-part-dialog').close();
+        activeSection = null;
+        editingSection = false;
+    }
+
+    function cancelSectionEdit() {
+        $('book-part-editor').innerHTML = sections[activeSection] ?? '';
+        if (sections[activeSection]) setEditing(false);
+        else closeSection();
+    }
+
+    $('book-part-dialog').addEventListener('cancel', (event) => {
+        event.preventDefault();
+        if (editingSection) cancelSectionEdit();
+        else closeSection();
+    });
+
+    async function saveSection() {
+        const name = activeSection;
+        const button = $('book-part-save');
+        button.disabled = true;
+        $('book-part-said').textContent = 'Saving\u2026';
+
+        try {
+            const response = await fetch(`${sectionsUrl}/${name}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bodyHtml: $('book-part-editor').innerHTML })
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                $('book-part-said').textContent = body.error ?? 'Could not save that.';
+                return;
+            }
+            sections = body;
+            drawSections();
+            closeSection();
+        } catch {
+            $('book-part-said').textContent = 'Could not reach the server. Nothing has changed.';
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    async function deleteSection(name, fromModal = false) {
+        const title = SECTION_TITLES[name];
+        const confirmed = await window.Confirm.ask({
+            question: `Delete the ${title}?`,
+            detail: `The ${title.toLowerCase()} will be removed from future books. This cannot be undone.`,
+            action: 'Delete'
+        });
+        if (!confirmed) return;
+
+        const target = fromModal ? $('book-part-said') : $('parts-said');
+        target.textContent = 'Deleting\u2026';
+        try {
+            const response = await fetch(`${sectionsUrl}/${name}`, { method: 'DELETE' });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                target.textContent = body.error ?? 'Could not delete that.';
+                return;
+            }
+            sections = body;
+            drawSections();
+            $('parts-said').textContent = '';
+            if (fromModal) closeSection();
+        } catch {
+            target.textContent = 'Could not reach the server. Nothing has changed.';
+        }
     }
 
     // --- the cover ---------------------------------------------------------
@@ -526,6 +676,31 @@
 
     $('make').addEventListener('click', make);
     $('order').addEventListener('click', orderOne);
+    for (const name of SECTION_NAMES) {
+        $(`${name}-create`).addEventListener('click', () => openSection(name, true));
+        $(`${name}-view`).addEventListener('click', () => openSection(name, false));
+        $(`${name}-delete`).addEventListener('click', () => deleteSection(name));
+    }
+    $('book-part-close').addEventListener('click', closeSection);
+    $('book-part-edit').addEventListener('click', () => setEditing(true));
+    $('book-part-cancel').addEventListener('click', cancelSectionEdit);
+    $('book-part-save').addEventListener('click', saveSection);
+    $('book-part-modal-delete').addEventListener('click', () => deleteSection(activeSection, true));
+    $('book-part-editor').addEventListener('input', () => {
+        for (const image of $('book-part-editor').querySelectorAll?.('img') ?? []) image.remove();
+    });
+    $('book-part-editor').addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            cancelSectionEdit();
+            return;
+        }
+        if (!editingSection || !(event.ctrlKey || event.metaKey) || event.altKey) return;
+        const command = HOTKEYS[event.key.toLowerCase()];
+        if (!command) return;
+        event.preventDefault();
+        document.execCommand?.(command);
+    });
     watchingSince = Date.now();
     look(true);
 })();

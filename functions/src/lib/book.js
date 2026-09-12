@@ -129,6 +129,14 @@ const CONTENTS = {
     indent: 16
 };
 
+const CHAPTER_PROGRESS = {
+    columns: 6,
+    size: 8,
+    gap: 6,
+    rowGap: 5,
+    above: 18
+};
+
 // The fewest sheets a hardcover can be bound from, counting the two covers,
 // and it has to be an even number besides. Both are Peecho's rules rather
 // than ours: below two dozen there is not enough paper for a spine to hold,
@@ -375,9 +383,10 @@ export function byMonth(posts) {
  * heading is never stranded at a foot and a run of subjects never arrives at
  * the top of a leaf with nothing above it saying what month they belong to.
  *
- * @returns {{kind: string, month: object, label: string, page: number, letter: object, y: number}[][]}
+ * @returns {{kind: string, month?: object, section?: object, label: string,
+ *   page: number, letter?: object, y: number}[][]}
  */
-export function contentsSheets(months) {
+export function contentsSheets(months, sections = []) {
     const sheets = [[]];
     let y = CONTENTS.top + CONTENTS.title;
 
@@ -385,6 +394,23 @@ export function contentsSheets(months) {
         sheets.push([]);
         y = CONTENTS.top;
     };
+
+    const addSection = (section) => {
+        const gap = sheets.at(-1).length ? CONTENTS.gap : 0;
+        if (gap && y + gap + CONTENTS.month > TEXT_BOTTOM) turn();
+        else y += gap;
+        sheets.at(-1).push({
+            kind: 'section',
+            section,
+            label: section.title,
+            page: section.page,
+            y
+        });
+        y += CONTENTS.month;
+    };
+
+    const foreword = sections.find((section) => section.name === 'foreword');
+    if (foreword) addSection(foreword);
 
     for (const month of months) {
         const block = CONTENTS.month + CONTENTS.letter * month.letters.length;
@@ -408,13 +434,61 @@ export function contentsSheets(months) {
         }
     }
 
+    const afterword = sections.find((section) => section.name === 'afterword');
+    if (afterword) addSection(afterword);
+
     return sheets;
 }
 
 /**
  * How many pages the contents will occupy.
  */
-export const contentsPages = (months) => contentsSheets(months).length;
+export const contentsPages = (months, sections = []) => contentsSheets(months, sections).length;
+
+/**
+ * The quiet mission-progress grid on a chapter opening.
+ *
+ * The configured mission dates decide the length; chapter count cannot, since
+ * a month with no letter has no chapter. A span covering eighteen calendar
+ * months starts with one square filled, while a span crossing nineteen starts
+ * empty. The same rule applies to twenty-four and twenty-five calendar months.
+ * A missing month advances the next chapter by more than one square, and the
+ * final chapter completes the grid even when the last mission month had no
+ * letter of its own.
+ */
+export function chapterProgress(profile, month, index, chapters) {
+    const readMonth = (value) => {
+        const match = /^(\d{4})-(\d{2})/.exec(String(value ?? ''));
+        if (!match) return null;
+        const year = Number(match[1]);
+        const part = Number(match[2]);
+        return part >= 1 && part <= 12 ? year * 12 + part - 1 : null;
+    };
+
+    const start = readMonth(profile?.startDate);
+    const end = readMonth(profile?.returnDate);
+    const current = readMonth(month);
+    if (start === null || end === null || current === null || end < start) return null;
+
+    const span = end - start;
+    const total = span === 17 || span === 18
+        ? 18
+        : span === 23 || span === 24
+            ? 24
+            : 0;
+    if (!total) return null;
+
+    const opening = span === total ? 0 : 1;
+    const elapsed = current - start + opening;
+
+    return {
+        total,
+        rows: total / CHAPTER_PROGRESS.columns,
+        filled: index === chapters - 1
+            ? total
+            : Math.max(0, Math.min(total, elapsed))
+    };
+}
 
 /**
  * How far a page's contents slide to mirror the gutter.
@@ -1136,7 +1210,7 @@ function padToPrinter(doc, state, least) {
  *
  * @returns {number} the folio the chapter opened on
  */
-function setMonth(doc, { month, state }) {
+function setMonth(doc, { month, index, chapters, profile, state }) {
     padToRecto(doc, state);
 
     state.head = month.label;
@@ -1155,9 +1229,20 @@ function setMonth(doc, { month, state }) {
         lineBreak: false
     });
 
+    const progress = chapterProgress(
+        profile,
+        month.letters[0]?.post?.originalDate,
+        index,
+        chapters
+    );
+    const progressHeight = progress
+        ? progress.rows * CHAPTER_PROGRESS.size + (progress.rows - 1) * CHAPTER_PROGRESS.rowGap
+        : 0;
+    const progressTop = TEXT_BOTTOM - progressHeight;
     const top = doc.y + 28;
     const rowHeight = 15;
-    const rowsPerColumn = Math.max(1, Math.floor((TEXT_BOTTOM - top) / rowHeight));
+    const listBottom = progress ? progressTop - CHAPTER_PROGRESS.above : TEXT_BOTTOM;
+    const rowsPerColumn = Math.max(1, Math.floor((listBottom - top) / rowHeight));
     const columns = Math.ceil(month.letters.length / rowsPerColumn);
     const columnGap = 22;
     const columnWidth = (COLUMN - columnGap * (columns - 1)) / columns;
@@ -1177,6 +1262,25 @@ function setMonth(doc, { month, state }) {
             size: 9.5,
             height: rowHeight
         });
+    }
+
+    if (progress) {
+        const width =
+            CHAPTER_PROGRESS.columns * CHAPTER_PROGRESS.size +
+            (CHAPTER_PROGRESS.columns - 1) * CHAPTER_PROGRESS.gap;
+        const left = LEFT + (COLUMN - width) / 2;
+
+        doc.save().lineWidth(0.6).strokeColor(QUIET);
+        for (let square = 0; square < progress.total; square += 1) {
+            const row = Math.floor(square / CHAPTER_PROGRESS.columns);
+            const column = square % CHAPTER_PROGRESS.columns;
+            const x = left + column * (CHAPTER_PROGRESS.size + CHAPTER_PROGRESS.gap);
+            const y = progressTop + row * (CHAPTER_PROGRESS.size + CHAPTER_PROGRESS.rowGap);
+            const box = doc.rect(x, y, CHAPTER_PROGRESS.size, CHAPTER_PROGRESS.size);
+            if (square < progress.filled) box.fillAndStroke(QUIET, QUIET);
+            else box.stroke();
+        }
+        doc.restore();
     }
 
     return opened;
@@ -1893,10 +1997,10 @@ function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
  * remembers; the subjects sit under their month in small type as a reminder of
  * what is in it, and are found by turning a few leaves rather than by number.
  */
-function setContents(doc, { months, state }) {
+function setContents(doc, { months, sections, state }) {
     state.indent = 0;
 
-    for (const [index, sheet] of contentsSheets(months).entries()) {
+    for (const [index, sheet] of contentsSheets(months, sections).entries()) {
         doc.addPage();
 
         if (index === 0) {
@@ -1905,7 +2009,7 @@ function setContents(doc, { months, state }) {
         }
 
         for (const row of sheet) {
-            if (row.kind === 'month') {
+            if (row.kind === 'month' || row.kind === 'section') {
                 // Blank during the measuring pass, when no chapter has a page
                 // number yet. The row still occupies its line, which is all
                 // the reservation needs it to do.
@@ -1938,6 +2042,31 @@ function setContents(doc, { months, state }) {
             });
         }
     }
+}
+
+function setBookSection(doc, { section, slug, state }) {
+    padToRecto(doc, state);
+    state.head = section.title;
+    state.opening = true;
+    state.indent = 0;
+    doc.addPage();
+
+    const opened = state.page;
+    doc.y = MARGIN.top + 40;
+    setLines(doc, [{ text: section.title }], {
+        state,
+        font: 'semibold',
+        size: 19,
+        leading: 23
+    });
+    doc.y += 20;
+    doc.fillColor(BLACK);
+
+    for (const block of flowBody(section.html, slug)) {
+        if (block.kind !== 'photo') setBlock(doc, { block, state });
+    }
+
+    return opened;
 }
 
 /**
@@ -2016,21 +2145,40 @@ function setCloud(doc, { words, state }) {
  * Both passes call this and differ only in what `photosFor` hands back, which
  * is the invariant the contents page rests on -- see the header.
  *
- * @returns {Promise<{starts: Map<string, number>, chapters: number[]}>} where each
- * letter and each month opened
+ * @returns {Promise<{starts: Map<string, number>, chapters: number[],
+ *   sectionStarts: Map<string, number>}>} where each letter, month, and optional
+ * book-only section opened
  */
-async function setBook(doc, { slug, profile, title, months, words, imagesFor, cloth, picture, least, state }) {
+async function setBook(
+    doc,
+    { slug, profile, title, months, sections, words, imagesFor, cloth, picture, least, state }
+) {
     setFrontCover(doc, { title, profile, cloth, picture, state });
     setTitlePage(doc, { title, slug, profile, madeAt: state.madeAt, state });
     setCloud(doc, { words, state });
-    setContents(doc, { months, state });
 
     state.furniture = true;
     const starts = new Map();
     const chapters = [];
+    const sectionStarts = new Map();
+
+    const foreword = sections.find((section) => section.name === 'foreword');
+    if (foreword) {
+        sectionStarts.set(foreword.name, setBookSection(doc, { section: foreword, slug, state }));
+    }
+
+    state.furniture = false;
+    setContents(doc, { months, sections, state });
+    state.furniture = true;
 
     for (const [monthIndex, month] of months.entries()) {
-        chapters.push(setMonth(doc, { month, state }));
+        chapters.push(setMonth(doc, {
+            month,
+            index: monthIndex,
+            chapters: months.length,
+            profile,
+            state
+        }));
 
         for (const [letterIndex, { post }] of month.letters.entries()) {
             starts.set(post.id, setLetter(doc, {
@@ -2045,11 +2193,16 @@ async function setBook(doc, { slug, profile, title, months, words, imagesFor, cl
         }
     }
 
+    const afterword = sections.find((section) => section.name === 'afterword');
+    if (afterword) {
+        sectionStarts.set(afterword.name, setBookSection(doc, { section: afterword, slug, state }));
+    }
+
     state.furniture = false;
     padToPrinter(doc, state, least);
     setBackCover(doc, { slug, cloth, state });
 
-    return { starts, chapters };
+    return { starts, chapters, sectionStarts };
 }
 
 const NO_IMAGES = new Map();
@@ -2197,7 +2350,8 @@ function tooLong(pages, most, posts) {
  * for the one reason worth stating: a cover is exactly one page whatever is
  * printed on it, so nothing behind it moves.
  *
- * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number, opens: {id: string, page: number}[]}>}}
+ * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number,
+ *   opens: {id: string, page: number}[], sections: {name: string, page: number}[]}>}}
  */
 export function buildInterior({
     store,
@@ -2205,6 +2359,7 @@ export function buildInterior({
     posts,
     profile = {},
     cover = {},
+    sections = {},
     madeAt,
     least = SHEET_LEAST,
     most = SHEET_MOST,
@@ -2221,6 +2376,10 @@ export function buildInterior({
     // measuring pass reach the contents page the second pass actually draws.
     const months = byMonth(ordered);
     const entries = months.flatMap((month) => month.letters);
+    const sectionEntries = [
+        sections.foreword ? { name: 'foreword', title: 'Foreword', html: sections.foreword, page: 0 } : null,
+        sections.afterword ? { name: 'afterword', title: 'Afterword', html: sections.afterword, page: 0 } : null
+    ].filter(Boolean);
 
     // Counted once and handed to both passes. Not because it is expensive --
     // it is a walk over text already in memory -- but because the two passes
@@ -2246,6 +2405,7 @@ export function buildInterior({
             profile,
             title,
             months,
+            sections: sectionEntries,
             words,
             imagesFor: () => NO_IMAGES,
             cloth,
@@ -2262,7 +2422,7 @@ export function buildInterior({
     const doc = openBook({ title, state });
 
     const done = (async () => {
-        const { starts, chapters, pages } = await measured;
+        const { starts, chapters, sectionStarts, pages } = await measured;
 
         // Before the second pass, which fetches every photograph in the book.
         // The measuring pass reads no blobs, so a book that cannot be printed
@@ -2274,6 +2434,9 @@ export function buildInterior({
             entries[index].page = starts.get(ordered[index].id) ?? 0;
         }
         for (const [index, month] of months.entries()) month.page = chapters[index] ?? 0;
+        for (const section of sectionEntries) {
+            section.page = sectionStarts.get(section.name) ?? 0;
+        }
 
         // The one picture in the book that is fetched up front, because it is
         // the one the very first drawing call needs. A cover that will not
@@ -2289,11 +2452,12 @@ export function buildInterior({
             }
         }
 
-        const { starts: printed } = await setBook(doc, {
+        const { starts: printed, sectionStarts: printedSections } = await setBook(doc, {
             slug,
             profile,
             title,
             months,
+            sections: sectionEntries,
             words,
             cloth,
             picture,
@@ -2332,6 +2496,17 @@ export function buildInterior({
             state
         });
 
+        for (const post of ordered) {
+            if (printed.get(post.id) !== starts.get(post.id)) {
+                throw new Error(`book pagination changed between passes at letter ${post.id}`);
+            }
+        }
+        for (const section of sectionEntries) {
+            if (printedSections.get(section.name) !== sectionStarts.get(section.name)) {
+                throw new Error(`book pagination changed between passes at ${section.name}`);
+            }
+        }
+
         doc.end();
 
         // `opens` is the same map the contents page was built from, checked
@@ -2340,7 +2515,11 @@ export function buildInterior({
         // is worth being able to assert from outside this file.
         return {
             pages: state.page + COVERS,
-            opens: ordered.map((post) => ({ id: post.id, page: printed.get(post.id) ?? 0 }))
+            opens: ordered.map((post) => ({ id: post.id, page: printed.get(post.id) ?? 0 })),
+            sections: sectionEntries.map((section) => ({
+                name: section.name,
+                page: printedSections.get(section.name) ?? 0
+            }))
         };
     })();
 

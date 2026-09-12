@@ -178,6 +178,33 @@ describe('building the book', () => {
         assert.ok(!print.bytes.toString('latin1').includes('/ExtGState'));
     });
 
+    test('reads one book-section snapshot for both proof and print', async () => {
+        const store = seed(letters);
+        await store.writeBlob(
+            'config',
+            `${SLUG}/book-sections.json`,
+            Buffer.from(JSON.stringify({
+                foreword: '<p>From the family.</p>',
+                afterword: '<p>Welcome home.</p>'
+            }))
+        );
+        const read = store.readBlob.bind(store);
+        let sectionReads = 0;
+        store.readBlob = async (container, name) => {
+            if (container === 'config' && name === `${SLUG}/book-sections.json`) sectionReads += 1;
+            return read(container, name);
+        };
+        const { id } = await requestBook({ store, slug: SLUG, log: quiet });
+
+        await runBook({ message: { slug: SLUG, id }, store, log: quiet });
+
+        assert.equal(sectionReads, 1);
+        assert.deepEqual(
+            store.json(BOOKS, manifestName(SLUG, id)).sections.map((entry) => entry.name),
+            ['foreword', 'afterword']
+        );
+    });
+
     test('keeps a held letter out of a permanent object', async () => {
         const store = seed([...letters, post('d', '2026-04-01', 'Not for the family', { hidden: true })]);
         const { id } = await requestBook({ store, slug: SLUG, log: quiet });

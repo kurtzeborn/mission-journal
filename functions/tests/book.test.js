@@ -15,6 +15,7 @@ import {
     albumTarget,
     buildInterior,
     byMonth,
+    chapterProgress,
     chapterSummary,
     contentsPages,
     contentsSheets,
@@ -220,11 +221,103 @@ describe('how much room the contents need', () => {
             }
         }
     });
+
+    test('lists both optional book-only sections with their page numbers', () => {
+        const rows = contentsSheets(over(1), [
+            { name: 'foreword', title: 'Foreword', page: 3 },
+            { name: 'afterword', title: 'Afterword', page: 9 }
+        ]).flat();
+
+        assert.deepEqual(
+            rows.filter((row) => row.kind === 'section').map((row) => [row.label, row.page]),
+            [
+                ['Foreword', 3],
+                ['Afterword', 9]
+            ]
+        );
+    });
 });
 
 describe('gathering the letters into months', () => {
     test('names a month the way somebody would say it', () => {
         assert.equal(monthLabel({ originalDate: '2026-08-03T12:00:00Z' }), 'August 2026');
+    });
+
+    describe('the chapter progress grid', () => {
+        const eighteen = { startDate: '2025-01-15', returnDate: '2026-06-15' };
+        const nineteen = { startDate: '2025-01-15', returnDate: '2026-07-15' };
+        const twentyFour = { startDate: '2025-01-15', returnDate: '2026-12-15' };
+        const twentyFive = { startDate: '2025-01-15', returnDate: '2027-01-15' };
+
+        test('fills all eighteen squares across an eighteen-calendar-month mission', () => {
+            assert.deepEqual(chapterProgress(eighteen, '2025-01', 0, 18), {
+                total: 18,
+                rows: 3,
+                filled: 1
+            });
+            assert.deepEqual(chapterProgress(eighteen, '2026-06', 17, 18), {
+                total: 18,
+                rows: 3,
+                filled: 18
+            });
+        });
+
+        test('starts an extra calendar month empty and still finishes full', () => {
+            assert.deepEqual(chapterProgress(nineteen, '2025-01', 0, 19), {
+                total: 18,
+                rows: 3,
+                filled: 0
+            });
+            assert.deepEqual(chapterProgress(nineteen, '2026-07', 18, 19), {
+                total: 18,
+                rows: 3,
+                filled: 18
+            });
+            assert.deepEqual(chapterProgress(twentyFive, '2025-01', 0, 25), {
+                total: 24,
+                rows: 4,
+                filled: 0
+            });
+            assert.deepEqual(chapterProgress(twentyFive, '2027-01', 24, 25), {
+                total: 24,
+                rows: 4,
+                filled: 24
+            });
+        });
+
+        test('jumps over months without letters', () => {
+            assert.deepEqual(chapterProgress(eighteen, '2025-04', 1, 8), {
+                total: 18,
+                rows: 3,
+                filled: 4
+            });
+            assert.deepEqual(chapterProgress(eighteen, '2026-04', 7, 8), {
+                total: 18,
+                rows: 3,
+                filled: 18
+            });
+        });
+
+        test('uses four rows for a twenty-four-month mission', () => {
+            assert.deepEqual(chapterProgress(twentyFour, '2025-01', 0, 24), {
+                total: 24,
+                rows: 4,
+                filled: 1
+            });
+            assert.deepEqual(chapterProgress(twentyFour, '2026-12', 23, 24), {
+                total: 24,
+                rows: 4,
+                filled: 24
+            });
+        });
+
+        test('does not infer a mission length without aligned configured dates', () => {
+            assert.equal(chapterProgress({}, '2025-01', 0, 18), null);
+            assert.equal(
+                chapterProgress({ startDate: '2025-01-15', returnDate: '2026-08-15' }, '2025-01', 0, 20),
+                null
+            );
+        });
     });
 
     test('keeps a letter with no date rather than dropping it', () => {
@@ -792,6 +885,24 @@ describe('setting a whole book', () => {
 
         const seen = new Set(result.opens.map((opened) => opened.page));
         assert.equal(seen.size, result.opens.length);
+    });
+
+    test('places Foreword before the contents and Afterword after the final letter', async () => {
+        const { stream, done } = build({
+            least: 0,
+            sections: {
+                foreword: '<p>Before the letters.</p>',
+                afterword: '<p>After the letters.</p>'
+            }
+        });
+        const [, result] = await Promise.all([readPdf(stream), done]);
+        const pages = Object.fromEntries(result.sections.map((section) => [section.name, section.page]));
+
+        // Title and cloud are pages 1 and 2. A short Foreword opens on page 3,
+        // then the contents occupies page 4 before the first chapter.
+        assert.equal(pages.foreword, 3);
+        assert.ok(pages.foreword < result.opens[0].page);
+        assert.ok(pages.afterword > result.opens.at(-1).page);
     });
 
     test('runs the letter round a picture rather than under it', async () => {

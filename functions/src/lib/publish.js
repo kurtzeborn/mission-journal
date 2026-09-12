@@ -16,6 +16,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { buildInterior } from './book.js';
+import { readBookSections } from './booksections.js';
 import { bookFailedEmail, bookReadyEmail } from './bookmail.js';
 import { coverOf, readCoverPicture } from './cover.js';
 import { coverImage } from './thumbnail.js';
@@ -371,15 +372,17 @@ export async function runBook({
 /**
  * Lay one rendition out and put it in storage.
  *
- * @returns {Promise<{pages: number, opens: {id: string, page: number}[]}>}
+ * @returns {Promise<{pages: number, opens: {id: string, page: number}[],
+ *   sections: {name: string, page: number}[]}>}
  */
-async function render({ store, slug, name, posts, profile, cover, madeAt, proof, log }) {
+async function render({ store, slug, name, posts, profile, cover, sections, madeAt, proof, log }) {
     const { stream, done } = buildInterior({
         store,
         slug,
         posts,
         profile,
         cover,
+        sections,
         madeAt,
         proof,
         log
@@ -451,10 +454,11 @@ async function assemble({ store, slug, id, madeAt, log }) {
     if (!posts.length) throw new Error('there are no letters to print yet');
 
     const { profile } = await readProfile({ store, slug });
+    const { sections } = await readBookSections({ store, slug });
 
     // Read once and handed to both renditions. The proof and the print file
-    // have to be the same book, and a picture fetched twice is a picture that
-    // could change between the two.
+    // have to be the same book, and a picture or book-only section fetched
+    // twice is content that could change between the two.
     const chosen = coverOf(profile);
     const bytes = await readCoverPicture({ store, slug, cover: chosen });
 
@@ -464,6 +468,7 @@ async function assemble({ store, slug, id, madeAt, log }) {
         posts,
         profile: coverProfile(profile, posts),
         cover: { ...chosen, bytes },
+        sections,
         madeAt,
         log
     };
@@ -500,7 +505,8 @@ async function assemble({ store, slug, id, madeAt, log }) {
             // not: letters get edited and hidden after the fact, and without
             // this there is no way to answer "what is actually in the one on
             // the shelf".
-            posts: result.opens
+            posts: result.opens,
+            sections: result.sections
         }
     };
 }

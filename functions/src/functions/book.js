@@ -4,6 +4,11 @@ import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { isPhotoType, MAX_UPLOAD_BYTES, overSizeClaim } from '../lib/photos.js';
 import { isOperator } from '../lib/operators.js';
 import { coverSpan } from '../lib/book.js';
+import {
+    BOOK_SECTION_NAMES,
+    changeBookSection,
+    readBookSections
+} from '../lib/booksections.js';
 import { readProfile } from '../lib/profile.js';
 import {
     chooseCover,
@@ -290,6 +295,52 @@ export async function getCoverPicture({ request, context, store }) {
     };
 }
 
+export async function sections({ request, context, store }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
+    if (gated.denied) return gated.denied;
+
+    const found = await readBookSections({ store, slug: gated.slug });
+    return json(200, found.sections);
+}
+
+export async function changeSection({ request, context, store }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
+    if (gated.denied) return gated.denied;
+
+    const section = String(request.params.section ?? '').toLowerCase();
+    if (!BOOK_SECTION_NAMES.includes(section)) {
+        return json(404, { error: 'that is not a book section' });
+    }
+
+    let bodyHtml;
+    if (request.method !== 'DELETE') {
+        let body;
+        try {
+            body = await request.json();
+        } catch {
+            return json(400, { error: 'that was not valid JSON' });
+        }
+        bodyHtml = body?.bodyHtml;
+    }
+
+    const changed = await changeBookSection({
+        store,
+        slug: gated.slug,
+        section,
+        bodyHtml,
+        remove: request.method === 'DELETE',
+        log: context
+    });
+    if (changed.error) return json(400, { error: changed.error });
+
+    context.log?.('book.sectionChanged', {
+        slug: gated.slug,
+        section,
+        action: request.method === 'DELETE' ? 'deleted' : 'saved'
+    });
+    return json(200, changed.sections);
+}
+
 app.http('book-request', {
     // `anonymous` is the Functions access key, not the identity check: Static
     // Web Apps forwards to a linked backend without one. The identity check is
@@ -338,6 +389,20 @@ app.http('book-cover-picture', {
         request.method === 'POST'
             ? putCoverPicture({ request, context, store: blobStore() })
             : getCoverPicture({ request, context, store: blobStore() })
+});
+
+app.http('book-sections-read', {
+    authLevel: 'anonymous',
+    methods: ['GET'],
+    route: 'book/{slug}/sections',
+    handler: (request, context) => sections({ request, context, store: blobStore() })
+});
+
+app.http('book-section-write', {
+    authLevel: 'anonymous',
+    methods: ['PUT', 'DELETE'],
+    route: 'book/{slug}/sections/{section}',
+    handler: (request, context) => changeSection({ request, context, store: blobStore() })
 });
 
 app.http('book-status', {
