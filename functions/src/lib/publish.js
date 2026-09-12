@@ -45,7 +45,7 @@ export const manifestName = (slug, id) => `${bookFolder(slug, id)}/manifest.json
 // A picture of the front board, kept with the book rather than made when a
 // listing asks for one. It is wanted at the moment a stranger is looking at a
 // checkout page, which is the worst moment to be laying out type, and it is
-// wanted again every time that page is loaded for the next two months.
+// wanted again every time that page is loaded for the next six months.
 export const coverImageName = (slug, id) => `${bookFolder(slug, id)}/cover.jpg`;
 
 // The states a book can be in, and there are only three. Ordered is not among

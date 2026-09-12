@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 
 import { memoryStore } from './memory-store.js';
 import {
+    CHECKOUT_DAYS,
     checkoutExpiry,
     createPublication,
     orderReference,
@@ -137,6 +138,10 @@ const listing = (extra = {}) =>
     });
 
 describe('what the printer is told about a book', () => {
+    test('checkout links remain available for six months', () => {
+        assert.equal(CHECKOUT_DAYS, 180);
+    });
+
     test('the reference names the site and the book so an order can be traced back', () => {
         const reference = orderReference(SLUG, BOOK);
 
