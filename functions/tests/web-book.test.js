@@ -10,9 +10,14 @@ const script = readFileSync(new URL('../../web/book.js', import.meta.url), 'utf8
 describe('the finished book actions', () => {
     test('describes the keepsake, hidden letters, and optional content', () => {
         assert.match(html, /hardcover book which serves as a personalized missionary\s+keepsake/);
+        assert.match(
+            html,
+            /Below you can customize the cover and add optional, additional content\s+for the book/,
+        );
         assert.match(html, /Letters marked as hidden in the archive are not included in the book/);
         assert.match(html, /Optional book-only content/);
         assert.match(html, /Foreword and Afterword sections are optional/);
+        assert.doesNotMatch(html, /Remembered for next time/);
         assert.ok(html.indexOf('The cover') < html.indexOf('Optional book-only content'));
     });
 
