@@ -2,6 +2,7 @@ import { app } from '@azure/functions';
 import { blobStore, mailer, tableStore } from '../lib/clients.js';
 import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { isPhotoType, MAX_UPLOAD_BYTES, overSizeClaim } from '../lib/photos.js';
+import { isOperator } from '../lib/operators.js';
 import { readProfile } from '../lib/profile.js';
 import {
     chooseCover,
@@ -111,7 +112,10 @@ export async function progress({ request, context, store }) {
     const found = await wanted({ store, slug: gated.slug, id: request.params.id });
     if (!found) return json(404, { error: 'no book has been asked for yet' });
 
-    return json(200, forThePage(found, gated.viaOperator));
+    // `viaOperator` is intentionally false when an operator is also an owner
+    // in this archive's ACL. This control is about who the person is, not which
+    // of their two permissions happened to admit them.
+    return json(200, forThePage(found, isOperator(gated.principal.email)));
 }
 
 /**

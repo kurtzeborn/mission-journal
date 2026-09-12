@@ -353,10 +353,13 @@ describe('the book handlers', () => {
 
         const was = process.env.OPERATOR_EMAILS;
         try {
-            process.env.OPERATOR_EMAILS = OPERATOR;
+            const ordinary = await progress({ request: asOwner(), context: silent, store });
+            assert.equal(ordinary.jsonBody.operator, false);
 
-            const owner = await progress({ request: asOwner(), context: silent, store });
-            const operator = await progress({
+            process.env.OPERATOR_EMAILS = `${OWNER},${OPERATOR}`;
+
+            const operatorOwner = await progress({ request: asOwner(), context: silent, store });
+            const operatorBypass = await progress({
                 request: request({
                     principal: { userDetails: OPERATOR },
                     params: { slug: SLUG }
@@ -365,8 +368,8 @@ describe('the book handlers', () => {
                 store
             });
 
-            assert.equal(owner.jsonBody.operator, false);
-            assert.equal(operator.jsonBody.operator, true);
+            assert.equal(operatorOwner.jsonBody.operator, true);
+            assert.equal(operatorBypass.jsonBody.operator, true);
         } finally {
             if (was === undefined) delete process.env.OPERATOR_EMAILS;
             else process.env.OPERATOR_EMAILS = was;
