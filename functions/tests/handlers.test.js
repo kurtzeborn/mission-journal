@@ -285,6 +285,7 @@ describe('the memberships handler', () => {
 describe('the book handlers', () => {
     const OWNER = 'mum@example.com';
     const READER = 'gran@example.com';
+    const OPERATOR = 'ops@pdayletters.com';
 
     const printable = () => {
         const store = memoryStore();
@@ -344,6 +345,32 @@ describe('the book handlers', () => {
         assert.equal(response.status, 200);
         assert.equal(response.jsonBody.state, 'building');
         assert.equal('requestedBy' in response.jsonBody, false);
+    });
+
+    test('only an operator is offered the direct print-file download', async () => {
+        const store = printable();
+        await publish({ request: asOwner(), context: silent, store });
+
+        const was = process.env.OPERATOR_EMAILS;
+        try {
+            process.env.OPERATOR_EMAILS = OPERATOR;
+
+            const owner = await progress({ request: asOwner(), context: silent, store });
+            const operator = await progress({
+                request: request({
+                    principal: { userDetails: OPERATOR },
+                    params: { slug: SLUG }
+                }),
+                context: silent,
+                store
+            });
+
+            assert.equal(owner.jsonBody.operator, false);
+            assert.equal(operator.jsonBody.operator, true);
+        } finally {
+            if (was === undefined) delete process.env.OPERATOR_EMAILS;
+            else process.env.OPERATOR_EMAILS = was;
+        }
     });
 
     test('a site nobody has published yet says so rather than failing', async () => {

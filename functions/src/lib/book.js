@@ -1022,11 +1022,24 @@ export function endingPhotoCount(photoCount, { remaining, usable }) {
     return Math.min(photoCount, 3);
 }
 
-export function endingAlbum(photos, dimensions) {
-    const shared = endingPhotoCount(photos.length, dimensions);
+export function endingAlbum(photos, { remaining, usable, page = 0, fillChapterBlank = false }) {
+    let shared = endingPhotoCount(photos.length, { remaining, usable });
+    let pages = albumPageCount(photos.length - shared);
+
+    // A chapter must open on the recto. If that would otherwise require a
+    // blank leaf, spend the leaf on photographs from the preceding letter
+    // instead. This is deliberately lower priority than sharing the ending
+    // page and minimizing page count, and applies only when there is enough
+    // material to distribute rather than moving a lone photograph around.
+    if (fillChapterBlank && photos.length > 1 && (page + pages) % 2 !== 0) {
+        pages += 1;
+        shared = Math.min(shared, photos.length - pages);
+    }
+
     return {
         shared: photos.slice(0, shared),
-        remaining: photos.slice(shared)
+        remaining: photos.slice(shared),
+        pages
     };
 }
 
@@ -1170,7 +1183,7 @@ function setMonth(doc, { month, state }) {
  *
  * @returns {number} the page the letter opened on
  */
-function setLetter(doc, { post, slug, images, state }) {
+function setLetter(doc, { post, slug, images, state, fillChapterBlank = false }) {
     // All three set before the page is added, because the handler draws the
     // furniture and places the text box the moment it is, and cannot be told
     // any of this afterwards.
@@ -1258,7 +1271,12 @@ function setLetter(doc, { post, slug, images, state }) {
     const album = (post.photos ?? []).filter((photo) => !placed.has(photo.id));
     const pageUsable = TEXT_BOTTOM - MARGIN.top;
     const remaining = TEXT_BOTTOM - doc.y;
-    const ending = endingAlbum(album, { remaining, usable: pageUsable });
+    const ending = endingAlbum(album, {
+        remaining,
+        usable: pageUsable,
+        page: state.page,
+        fillChapterBlank
+    });
 
     if (ending.shared.length) {
         setBox(doc, state, 0);
@@ -1276,7 +1294,8 @@ function setLetter(doc, { post, slug, images, state }) {
     setAlbum(doc, {
         photos: ending.remaining,
         images,
-        state
+        state,
+        pages: ending.pages
     });
 
     return opened;
@@ -1291,14 +1310,12 @@ function setLetter(doc, { post, slug, images, state }) {
  * on the right, facing it. A longer letter still gets its album, just
  * further along.
  */
-function setAlbum(doc, { photos, images, state }) {
+function setAlbum(doc, { photos, images, state, pages = albumPageCount(photos.length) }) {
     if (!photos.length) return;
 
     setBox(doc, state, 0);
 
     const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
-    const pages = albumPageCount(photos.length);
-
     for (const leaf of albumSpread(photos, { pages })) {
         doc.addPage();
         setLeaf(doc, { photos: leaf, images, usable });
@@ -1996,11 +2013,19 @@ async function setBook(doc, { slug, profile, title, months, words, imagesFor, cl
     const starts = new Map();
     const chapters = [];
 
-    for (const month of months) {
+    for (const [monthIndex, month] of months.entries()) {
         chapters.push(setMonth(doc, { month, state }));
 
-        for (const { post } of month.letters) {
-            starts.set(post.id, setLetter(doc, { post, slug, images: await imagesFor(post), state }));
+        for (const [letterIndex, { post }] of month.letters.entries()) {
+            starts.set(post.id, setLetter(doc, {
+                post,
+                slug,
+                images: await imagesFor(post),
+                state,
+                fillChapterBlank:
+                    monthIndex < months.length - 1 &&
+                    letterIndex === month.letters.length - 1
+            }));
         }
     }
 
