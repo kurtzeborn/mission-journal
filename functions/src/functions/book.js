@@ -1,6 +1,6 @@
 import { app } from '@azure/functions';
 import { blobStore, mailer, tableStore } from '../lib/clients.js';
-import { jsonResponse as json, siteGate } from '../lib/api.js';
+import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { isPhotoType, MAX_UPLOAD_BYTES, overSizeClaim } from '../lib/photos.js';
 import { readProfile } from '../lib/profile.js';
 import {
