@@ -158,6 +158,7 @@ const COVERS = 2;
 const ALBUM_GAP = 10;
 const ALBUM_MIN_ROW = 84;
 const ALBUM_MOST = 6;
+const ALBUM_AFTER_TEXT = 18;
 
 // Four by three when nothing was recorded. Ingest measures every photograph it
 // stores, so this is for the handful that predate it -- and a picture with no
@@ -1016,6 +1017,19 @@ export function albumPageCount(count) {
     return Math.ceil(count / ALBUM_MOST);
 }
 
+export function endingPhotoCount(photoCount, { remaining, usable }) {
+    if (photoCount < 1 || remaining < usable / 2) return 0;
+    return Math.min(photoCount, 3);
+}
+
+export function endingAlbum(photos, dimensions) {
+    const shared = endingPhotoCount(photos.length, dimensions);
+    return {
+        shared: photos.slice(0, shared),
+        remaining: photos.slice(shared)
+    };
+}
+
 /**
  * Deal the photographs out over that many pages, as evenly as they go.
  *
@@ -1237,12 +1251,30 @@ function setLetter(doc, { post, slug, images, state }) {
     if (state.float) doc.y = Math.max(doc.y, state.float.bottom);
     state.float = null;
 
-    // Anything attached but never placed in the text. The reader shows these
-    // as an album under the letter and the book gives them the facing page,
-    // for the same reason: they belong to this letter and to no other, and
-    // dropping them would lose pictures the family sent.
+    // Anything attached but never placed in the text. When a letter has only
+    // spilled a few lines onto its last page, use the empty half beneath them
+    // for the first few pictures rather than following an almost
+    // blank text page with an album page.
+    const album = (post.photos ?? []).filter((photo) => !placed.has(photo.id));
+    const pageUsable = TEXT_BOTTOM - MARGIN.top;
+    const remaining = TEXT_BOTTOM - doc.y;
+    const ending = endingAlbum(album, { remaining, usable: pageUsable });
+
+    if (ending.shared.length) {
+        setBox(doc, state, 0);
+        const top = doc.y + ALBUM_AFTER_TEXT;
+        setLeaf(doc, {
+            photos: ending.shared,
+            images,
+            top,
+            usable: TEXT_BOTTOM - top
+        });
+    }
+
+    // The rest keep their own album pages. A letter with no photographs takes
+    // this path with an empty list and leaves the remainder of its page alone.
     setAlbum(doc, {
-        photos: (post.photos ?? []).filter((photo) => !placed.has(photo.id)),
+        photos: ending.remaining,
         images,
         state
     });
@@ -1278,7 +1310,7 @@ function setAlbum(doc, { photos, images, state }) {
 /**
  * One page of an album.
  */
-function setLeaf(doc, { photos, images, usable }) {
+function setLeaf(doc, { photos, images, usable, top = MARGIN.top }) {
     const rows = albumPlan(photos, { height: usable });
 
     // Centered both ways. Vertically because an arrangement can still come up
@@ -1288,7 +1320,7 @@ function setLeaf(doc, { photos, images, usable }) {
     // fit is narrower than the column, and a short band hanging off the
     // gutter edge reads as a mistake rather than as a plate.
     const total = albumHeight(rows);
-    let y = MARGIN.top + (total < usable ? (usable - total) / 2 : 0);
+    let y = top + (total < usable ? (usable - total) / 2 : 0);
 
     for (const row of rows) {
         const widths = row.photos.map((photo) => row.height * aspectOf(photo));
