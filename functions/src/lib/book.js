@@ -91,6 +91,7 @@ const face = (name) =>
 // Read once per process. Together they are about 440 KB and every book uses
 // the same bytes.
 const FONTS = Object.fromEntries(Object.entries(FACES).map(([key, file]) => [key, face(file)]));
+const SITE_LOGO = readFileSync(new URL('../assets/reader/logo.png', import.meta.url));
 
 // Crimson sets small for its point size -- it is a Garamond descendant, and
 // those run about a size beneath a Times. Twelve on sixteen measures out to
@@ -170,6 +171,7 @@ const aspectOf = (photo) =>
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 const SITE_NAME = 'PDayLetters.com';
+const SITE_LOGO_SIZE = 30;
 
 // The word cloud on the back of the title page. These are the reader's own six
 // tones, lifted from `web/styles.css`, so a word is the same color in the book
@@ -1780,7 +1782,7 @@ function setFrontCover(doc, { title, profile, cloth, picture, state }) {
     }
 
     // Below the picture when there is one, a fifth of the way down when there
-    // is not. Both leave the foot of the board clear for the wordmark.
+    // is not.
     doc.y = picture ? PLATE_HEIGHT + 46 : PAGE.height * 0.2;
 
     setNameplate(doc, {
@@ -1794,14 +1796,14 @@ function setFrontCover(doc, { title, profile, cloth, picture, state }) {
         quiet: cloth.quiet
     });
 
-    doc.font('italic').fontSize(11).fillColor(cloth.quiet);
-    doc.text(SITE_NAME, MARGIN.outside, PAGE.height - 44, {
-        width,
-        align: 'center',
-        lineBreak: false
-    });
-
     state.cover = false;
+}
+
+function setSiteLogo(doc, y) {
+    doc.image(SITE_LOGO, (PAGE.width - SITE_LOGO_SIZE) / 2, y, {
+        width: SITE_LOGO_SIZE,
+        height: SITE_LOGO_SIZE
+    });
 }
 
 /**
@@ -1821,8 +1823,11 @@ function setBackCover(doc, { slug, cloth, state }) {
 
     doc.save().rect(0, 0, PAGE.width, PAGE.height).fill(cloth.paper).restore();
 
+    const urlY = PAGE.height * 0.78;
+    setSiteLogo(doc, urlY - SITE_LOGO_SIZE - 8);
+
     doc.font('italic').fontSize(11).fillColor(cloth.quiet);
-    doc.text(`${SITE_NAME}/${slug}`, MARGIN.outside, PAGE.height * 0.78, {
+    doc.text(`${SITE_NAME}/${slug}`, MARGIN.outside, urlY, {
         width: PAGE.width - MARGIN.outside * 2,
         align: 'center',
         lineBreak: false
@@ -1857,6 +1862,7 @@ function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
 
     doc.font('italic').fontSize(10).fillColor(QUIET);
     doc.y = TEXT_BOTTOM - 36;
+    setSiteLogo(doc, doc.y - SITE_LOGO_SIZE - 8);
 
     for (const line of [
         `${SITE_NAME}/${slug}`,

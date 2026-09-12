@@ -19,7 +19,7 @@
 // What keeps that from being a lie rather than a lag: the palette, the trim,
 // the plate height, the faces and the date format are all *imported* from the
 // files that own them, so a color or a size can only ever be changed in one
-// place. Only the arithmetic of stacking four lines is duplicated, and this
+// place. Only the arithmetic of stacking three lines is duplicated, and this
 // image is a hundred pixels tall on the page it appears on.
 //
 // It is deliberately not pixel-exact. pdfkit's `moveDown` measures the
@@ -204,11 +204,6 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
                 })
             );
         }
-
-        y = BOARD.height - MARGIN.bottom - 14;
-        await place(
-            setLine({ face: FACES.italic, size: 11, color: cloth.quiet, text: 'pdayletters.com' })
-        );
 
         return await sharp({
             create: {
