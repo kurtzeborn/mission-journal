@@ -333,6 +333,48 @@ describe('sharing the end of a letter with its album', () => {
         assert.deepEqual(ending.remaining, photos.slice(3));
         assert.deepEqual([...ending.shared, ...ending.remaining], photos);
     });
+
+    test('fills a leaf that chapter alignment would otherwise leave blank', () => {
+        const photos = range(4);
+        const ending = endingAlbum(photos, {
+            remaining: usable,
+            usable,
+            page: 6,
+            fillChapterBlank: true
+        });
+        const leaves = albumSpread(ending.remaining, { pages: ending.pages });
+
+        assert.equal(ending.shared.length, 2);
+        assert.equal(leaves.length, 2);
+        assert.ok(leaves.every((leaf) => leaf.length > 0));
+        assert.deepEqual([...ending.shared, ...leaves.flat()], photos);
+    });
+
+    test('does not spend an extra leaf when chapter alignment needs no padding', () => {
+        const photos = range(4);
+        const ending = endingAlbum(photos, {
+            remaining: usable,
+            usable,
+            page: 7,
+            fillChapterBlank: true
+        });
+
+        assert.equal(ending.shared.length, 3);
+        assert.equal(ending.pages, 1);
+    });
+
+    test('does not move a lone photograph to fill a chapter leaf', () => {
+        const photos = range(1);
+        const ending = endingAlbum(photos, {
+            remaining: usable / 4,
+            usable,
+            page: 7,
+            fillChapterBlank: true
+        });
+
+        assert.equal(ending.pages, 1);
+        assert.deepEqual(ending.remaining, photos);
+    });
 });
 
 describe('laying photographs out in an album', () => {

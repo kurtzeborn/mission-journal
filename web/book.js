@@ -107,7 +107,9 @@
             `${status.pages} pages, made${made}.`;
 
         $('proof').href = `${url}/${encodeURIComponent(status.id)}/proof.pdf`;
-        $('print').href = `${url}/${encodeURIComponent(status.id)}/letters.pdf`;
+        const print = $('print');
+        print.hidden = !status.operator;
+        if (status.operator) print.href = `${url}/${encodeURIComponent(status.id)}/letters.pdf`;
         finished.hidden = false;
 
         // A checkout belongs to one book. Rebuilding replaces the book, so

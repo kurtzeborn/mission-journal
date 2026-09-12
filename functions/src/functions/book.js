@@ -33,7 +33,7 @@ const LINK_MINUTES = 15;
 // carries who asked for it, and that is nobody else's business -- two owners
 // share a site, and neither needs the other's address handed back by an
 // endpoint the browser polls every few seconds.
-const forThePage = (status) => ({
+const forThePage = (status, viaOperator = false) => ({
     id: status.id,
     state: status.state,
     requestedAt: status.requestedAt,
@@ -46,6 +46,10 @@ const forThePage = (status) => ({
     // alternative -- a button whose only possible answer is "printing is not
     // switched on yet" -- is a control that exists to apologize.
     printing: Boolean(setting('PEECHO_API_KEY')),
+    // The unmarked, press-resolution file is an operational diagnostic. The
+    // family reviews the marked proof and the printer receives its own signed
+    // URL through checkout, so only an operator needs this direct download.
+    operator: Boolean(viaOperator),
     // The message from a failed build, which is written by us and says things
     // like "there are no letters to print yet". Shown rather than swallowed:
     // a build that failed for a reason the owner can fix is the common case,
@@ -107,7 +111,7 @@ export async function progress({ request, context, store }) {
     const found = await wanted({ store, slug: gated.slug, id: request.params.id });
     if (!found) return json(404, { error: 'no book has been asked for yet' });
 
-    return json(200, forThePage(found));
+    return json(200, forThePage(found, gated.viaOperator));
 }
 
 /**
