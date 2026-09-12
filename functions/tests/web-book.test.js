@@ -19,11 +19,13 @@ describe('the finished book actions', () => {
         assert.doesNotMatch(html, /proof &middot; not for print/);
     });
 
-    const open = async (operator) => {
+    const open = async (operator, cover = null) => {
         const view = page({ html: 'book.html', path: '/book/elder.example' });
         const net = fetching(async (url) =>
             url.endsWith('/cover')
-                ? { status: 404 }
+                ? cover
+                    ? { body: cover }
+                    : { status: 404 }
                 : {
                       body: {
                           id: 'book-1',
@@ -52,5 +54,19 @@ describe('the finished book actions', () => {
         const view = await open(false);
 
         assert.equal(view.el('print').hidden, true);
+    });
+
+    test('shows the mission dates on the cover preview', async () => {
+        const view = await open(false, {
+            title: 'Elder Example',
+            mission: 'Example Mission',
+            dates: 'July 1, 2024 \u2013 January 15, 2026',
+            cloth: 'navy',
+            picture: '',
+            cloths: []
+        });
+
+        assert.equal(view.text('board-dates'), 'July 1, 2024 \u2013 January 15, 2026');
+        assert.equal(view.el('board-dates').hidden, false);
     });
 });

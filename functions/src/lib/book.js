@@ -91,6 +91,7 @@ const face = (name) =>
 // Read once per process. Together they are about 440 KB and every book uses
 // the same bytes.
 const FONTS = Object.fromEntries(Object.entries(FACES).map(([key, file]) => [key, face(file)]));
+const SITE_LOGO = readFileSync(new URL('../assets/reader/logo.png', import.meta.url));
 
 // Crimson sets small for its point size -- it is a Garamond descendant, and
 // those run about a size beneath a Times. Twelve on sixteen measures out to
@@ -170,6 +171,7 @@ const aspectOf = (photo) =>
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 const SITE_NAME = 'PDayLetters.com';
+const SITE_LOGO_SIZE = 30;
 
 // The word cloud on the back of the title page. These are the reader's own six
 // tones, lifted from `web/styles.css`, so a word is the same color in the book
@@ -208,11 +210,18 @@ const PROOF = {
     ink: '#8a8a8a',
     opacity: 0.22,
     angle: -32,
-    // Three courses down the page. One is easy to crop out of a screenshot;
-    // filling the page would make the letters unreadable, which defeats the
-    // point of showing somebody their book.
+    // Three warnings down the page. The two site names between them identify
+    // where the proof came from without making the letters unreadable.
     rows: [0.26, 0.5, 0.74]
 };
+
+export const proofMarks = [
+    { text: PROOF.text, row: PROOF.rows[0] },
+    { text: SITE_NAME, row: (PROOF.rows[0] + PROOF.rows[1]) / 2 },
+    { text: PROOF.text, row: PROOF.rows[1] },
+    { text: SITE_NAME, row: (PROOF.rows[1] + PROOF.rows[2]) / 2 },
+    { text: PROOF.text, row: PROOF.rows[2] }
+];
 
 const INDENT_STEP = 18;
 
@@ -302,6 +311,9 @@ export const coverDate = (stamp) => {
         timeZone: 'UTC'
     });
 };
+
+export const coverSpan = (profile = {}) =>
+    [profile.startDate, profile.returnDate].filter(Boolean).map(coverDate).join(' \u2013 ');
 
 // Oldest first. `presentPosts` sorts newest-first because that is what a
 // reader arriving at a live site wants; a book wants the mission in the order
@@ -525,8 +537,8 @@ function stampProof(doc) {
     // Started half a page to the left and given twice the page's width, so
     // that centering the line centers it on the page rather than on the part
     // of the rotated axis that happens to fall inside the sheet.
-    for (const row of PROOF.rows) {
-        doc.text(PROOF.text, -PAGE.width / 2, PAGE.height * row, {
+    for (const mark of proofMarks) {
+        doc.text(mark.text, -PAGE.width / 2, PAGE.height * mark.row, {
             width: PAGE.width * 2,
             align: 'center',
             lineBreak: false
@@ -1703,12 +1715,12 @@ function setNameplate(
     // that bound the whole thing. Both are optional and either may be
     // missing, which is why this is built from whatever survives the filter
     // rather than from a fixed pair.
-    const span = [profile.startDate, profile.returnDate].filter(Boolean).map(coverDate);
-    if (!span.length) return;
+    const span = coverSpan(profile);
+    if (!span) return;
 
     doc.moveDown(1.4);
     doc.font('regular').fontSize(size * 0.4);
-    doc.text(span.join(' \u2013 '), x, doc.y, { width, align: 'center' });
+    doc.text(span, x, doc.y, { width, align: 'center' });
 }
 
 /**
@@ -1780,7 +1792,7 @@ function setFrontCover(doc, { title, profile, cloth, picture, state }) {
     }
 
     // Below the picture when there is one, a fifth of the way down when there
-    // is not. Both leave the foot of the board clear for the wordmark.
+    // is not.
     doc.y = picture ? PLATE_HEIGHT + 46 : PAGE.height * 0.2;
 
     setNameplate(doc, {
@@ -1794,14 +1806,14 @@ function setFrontCover(doc, { title, profile, cloth, picture, state }) {
         quiet: cloth.quiet
     });
 
-    doc.font('italic').fontSize(11).fillColor(cloth.quiet);
-    doc.text(SITE_NAME, MARGIN.outside, PAGE.height - 44, {
-        width,
-        align: 'center',
-        lineBreak: false
-    });
-
     state.cover = false;
+}
+
+function setSiteLogo(doc, y) {
+    doc.image(SITE_LOGO, (PAGE.width - SITE_LOGO_SIZE) / 2, y, {
+        width: SITE_LOGO_SIZE,
+        height: SITE_LOGO_SIZE
+    });
 }
 
 /**
@@ -1821,8 +1833,11 @@ function setBackCover(doc, { slug, cloth, state }) {
 
     doc.save().rect(0, 0, PAGE.width, PAGE.height).fill(cloth.paper).restore();
 
+    const urlY = PAGE.height * 0.78;
+    setSiteLogo(doc, urlY - SITE_LOGO_SIZE - 8);
+
     doc.font('italic').fontSize(11).fillColor(cloth.quiet);
-    doc.text(`${SITE_NAME}/${slug}`, MARGIN.outside, PAGE.height * 0.78, {
+    doc.text(`${SITE_NAME}/${slug}`, MARGIN.outside, urlY, {
         width: PAGE.width - MARGIN.outside * 2,
         align: 'center',
         lineBreak: false
@@ -1857,6 +1872,7 @@ function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
 
     doc.font('italic').fontSize(10).fillColor(QUIET);
     doc.y = TEXT_BOTTOM - 36;
+    setSiteLogo(doc, doc.y - SITE_LOGO_SIZE - 8);
 
     for (const line of [
         `${SITE_NAME}/${slug}`,

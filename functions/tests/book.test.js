@@ -19,6 +19,7 @@ import {
     contentsPages,
     contentsSheets,
     coverDate,
+    coverSpan,
     dateLine,
     endingAlbum,
     endingPhotoCount,
@@ -28,6 +29,7 @@ import {
     monthLabel,
     photoBox,
     printPhoto,
+    proofMarks,
     reserve,
     runningHead,
     trailingPhotoIds
@@ -128,6 +130,26 @@ describe('the date over a letter', () => {
     test('writes an archive date with the month named', () => {
         assert.equal(coverDate('2026-09-12'), 'September 12, 2026');
     });
+
+    test('writes the cover date span once for every rendering', () => {
+        assert.equal(
+            coverSpan({ startDate: '2024-07-01', returnDate: '2026-01-15' }),
+            'July 1, 2024 \u2013 January 15, 2026'
+        );
+    });
+});
+
+test('the proof alternates three warnings with two site names', () => {
+    assert.deepEqual(
+        proofMarks.map((mark) => mark.text),
+        [
+            'PROOF \u00b7 NOT FOR PRINT',
+            'PDayLetters.com',
+            'PROOF \u00b7 NOT FOR PRINT',
+            'PDayLetters.com',
+            'PROOF \u00b7 NOT FOR PRINT'
+        ]
+    );
 });
 
 describe('characters outside the book face', () => {
@@ -903,8 +925,10 @@ describe('setting a whole book', () => {
 
         // pdfkit draws an image by scaling the unit square, so the matrix it
         // writes is the size on the page: `w 0 0 -h x y cm` and then the
-        // picture. One photograph, so one of them.
-        const drawn = [...drawnIn(bytes).matchAll(/([\d.]+) 0 0 -([\d.]+) [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)];
+        // picture. The two small site marks are images too, so only the
+        // full-sized archive photograph belongs in this assertion.
+        const drawn = [...drawnIn(bytes).matchAll(/([\d.]+) 0 0 -([\d.]+) [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)]
+            .filter((match) => Number(match[1]) > 100);
 
         assert.equal(drawn.length, 1);
 
@@ -972,11 +996,22 @@ describe('binding the book in a color', () => {
         // One picture, drawn at least as large as the band in both directions
         // -- which is what covering it means, and the opposite of stretching
         // to fit it.
-        const drawn = [...drawing.matchAll(/([\d.]+) 0 0 -([\d.]+) [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)];
+        const drawn = [...drawing.matchAll(/([\d.]+) 0 0 -([\d.]+) [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)]
+            .filter((match) => Number(match[1]) > 100);
 
         assert.equal(drawn.length, 1);
         assert.ok(Number(drawn[0][1]) >= PAGE.width - 0.5);
         assert.ok(Number(drawn[0][2]) >= PAGE.height * 0.52 - 0.5);
+    });
+
+    test('puts the site logo on the title page and back board, not the front board', async () => {
+        const { stream, done } = build();
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+        const logos = [
+            ...drawnIn(bytes).matchAll(/30 0 0 -30 [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)
+        ];
+
+        assert.equal(logos.length, 2);
     });
 
     test('does not move a single page by choosing a cover', async () => {

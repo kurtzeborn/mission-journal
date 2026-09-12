@@ -3,6 +3,7 @@ import { blobStore, mailer, tableStore } from '../lib/clients.js';
 import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { isPhotoType, MAX_UPLOAD_BYTES, overSizeClaim } from '../lib/photos.js';
 import { isOperator } from '../lib/operators.js';
+import { coverSpan } from '../lib/book.js';
 import { readProfile } from '../lib/profile.js';
 import {
     chooseCover,
@@ -197,6 +198,7 @@ export async function cover({ request, context, store }) {
         // The same fallback the book uses when nobody has named the archive.
         title: profile.displayName || gated.slug,
         mission: profile.mission ?? '',
+        dates: coverSpan(profile),
         cloths: Object.entries(CLOTHS).map(([name, colors]) => ({ name, ...colors }))
     });
 }

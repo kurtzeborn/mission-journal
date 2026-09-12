@@ -2438,7 +2438,8 @@ h3:target {
     text-align: center;
 }
 
-.cover__mission {
+.cover__mission,
+.cover__dates {
     position: absolute;
     left: 8%;
     right: 8%;
@@ -2447,6 +2448,11 @@ h3:target {
     font-size: 0.6rem;
     line-height: 1.2;
     text-align: center;
+}
+
+.cover__dates {
+    font-style: normal;
+    font-size: 0.56rem;
 }
 
 .cover__choices {

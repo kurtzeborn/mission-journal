@@ -19,7 +19,7 @@
 // What keeps that from being a lie rather than a lag: the palette, the trim,
 // the plate height, the faces and the date format are all *imported* from the
 // files that own them, so a color or a size can only ever be changed in one
-// place. Only the arithmetic of stacking four lines is duplicated, and this
+// place. Only the arithmetic of stacking three lines is duplicated, and this
 // image is a hundred pixels tall on the page it appears on.
 //
 // It is deliberately not pixel-exact. pdfkit's `moveDown` measures the
@@ -31,7 +31,7 @@
 
 import sharp from 'sharp';
 import { fileURLToPath } from 'node:url';
-import { PAGE, MARGIN, PLATE_HEIGHT, coverDate } from './book.js';
+import { PAGE, MARGIN, PLATE_HEIGHT, coverSpan } from './book.js';
 import { clothOf } from './cover.js';
 
 // One pixel to one point, so every measurement below is the same number it is
@@ -192,23 +192,18 @@ export async function coverImage({ title, profile = {}, cover = {}, log }) {
             })
         );
 
-        const span = [profile.startDate, profile.returnDate].filter(Boolean).map(coverDate);
-        if (span.length) {
+        const span = coverSpan(profile);
+        if (span) {
             y += 1.4 * size * 0.43 * LEADING;
             await place(
                 setLine({
                     face: FACES.regular,
                     size: size * 0.4,
                     color: cloth.quiet,
-                    text: span.join(' \u2013 ')
+                    text: span
                 })
             );
         }
-
-        y = BOARD.height - MARGIN.bottom - 14;
-        await place(
-            setLine({ face: FACES.italic, size: 11, color: cloth.quiet, text: 'pdayletters.com' })
-        );
 
         return await sharp({
             create: {
