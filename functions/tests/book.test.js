@@ -15,6 +15,7 @@ import {
     albumTarget,
     buildInterior,
     byMonth,
+    chapterSummary,
     contentsPages,
     contentsSheets,
     dateLine,
@@ -23,7 +24,8 @@ import {
     monthLabel,
     photoBox,
     printPhoto,
-    reserve
+    reserve,
+    runningHead
 } from '../src/lib/book.js';
 import { memoryStore } from './memory-store.js';
 
@@ -107,6 +109,16 @@ describe('the date over a letter', () => {
         assert.equal(dateLine({}), '');
         assert.equal(dateLine({ originalDate: 'sometime' }), '');
     });
+
+    test('continues a letter under its full date and subject', () => {
+        assert.equal(
+            runningHead({
+                originalDate: '2026-01-04T09:00:00.000Z',
+                subject: 'A week in the rain'
+            }),
+            'Sunday, January 4, 2026 \u2014 A week in the rain'
+        );
+    });
 });
 
 describe('which way the gutter faces', () => {
@@ -185,6 +197,15 @@ describe('gathering the letters into months', () => {
             ['December 2025', 'January 2026']
         );
         assert.equal(months[0].letters.length, 2);
+    });
+
+    test('summarizes both letters and pictures on a chapter page', () => {
+        const [month] = byMonth([
+            post('a', '2026-01-04', 'Week one', { photos: range(2) }),
+            post('b', '2026-01-11', 'Week two', { photos: range(1) })
+        ]);
+
+        assert.equal(chapterSummary(month), '2 letters \u2022 3 pictures');
     });
 });
 
@@ -339,6 +360,15 @@ describe('filling a leaf that has nothing else on it', () => {
 
         assert.ok(stacked(rows) > usable * 0.9, `used only ${Math.round(stacked(rows))} of ${usable}`);
         assert.ok(Math.min(...rows.map((row) => row.height)) > 250);
+    });
+
+    test('uses two rows rather than a narrow vertical strip for three portraits', () => {
+        const rows = albumPlan([tall, tall, tall], { height: usable });
+        const widest = Math.max(...widths(rows));
+
+        assert.equal(rows.length, 2);
+        assert.ok(widest > COLUMN * 0.6, `widest band used only ${Math.round(widest)} of ${COLUMN}`);
+        assert.ok(stacked(rows) > usable * 0.98, `used only ${Math.round(stacked(rows))} of ${usable}`);
     });
 
     test('makes a page of two far larger than a page of six', () => {

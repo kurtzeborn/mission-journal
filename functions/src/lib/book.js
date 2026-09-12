@@ -164,6 +164,7 @@ const aspectOf = (photo) =>
 
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
+const SITE_NAME = 'PDayLetters.com';
 
 // The word cloud on the back of the title page. These are the reader's own six
 // tones, lifted from `web/styles.css`, so a word is the same color in the book
@@ -246,7 +247,20 @@ export const dateLine = (post) => {
     });
 };
 
-const shortDate = (post) => String(post.originalDate ?? '').slice(0, 10);
+export const runningHead = (post) =>
+    [dateLine(post), post.subject || 'Untitled'].filter(Boolean).join(' \u2014 ');
+
+export const chapterSummary = (month) => {
+    const letters = month.letters.length;
+    const pictures = month.letters.reduce(
+        (total, letter) => total + (letter.post.photos?.length ?? 0),
+        0
+    );
+    const letterCount = letters === 1 ? 'One letter' : `${letters} letters`;
+    const pictureCount = pictures === 1 ? 'one picture' : `${pictures} pictures`;
+
+    return `${letterCount} \u2022 ${pictureCount}`;
+};
 
 // A calendar day for the cover: "June 15, 2025". `dateLine` names the weekday
 // too, which is what a letter wants over it and far more than a cover does.
@@ -598,7 +612,10 @@ function openBook({ title, state }) {
             // noise, and every printed book leaves it off.
             if (!state.opening) {
                 doc.font('italic').fontSize(9.5).fillColor(QUIET);
-                doc.text(recto ? state.head : title, LEFT, MARGIN.top - 30, {
+                const running = recto ? state.head : title;
+                const headWidth = doc.widthOfString(running);
+                if (headWidth > COLUMN) doc.fontSize((9.5 * COLUMN) / headWidth);
+                doc.text(running, LEFT, MARGIN.top - 30, {
                     width: COLUMN,
                     align: recto ? 'right' : 'left',
                     lineBreak: false
@@ -895,14 +912,12 @@ export function albumTarget(photos, { height, width = COLUMN }) {
  * height ever becomes the binding constraint and the only way a page of two
  * grows.
  *
- * The best is the one whose *smallest* picture is largest, rather than the
- * one covering the most paper. Covering the most paper sounds like the same
- * thing and is not: six photographs come out as two small and two large and
- * two small, because one picture blown up pays for two shrunk, and a page
- * with three sizes on it reads as a page that was arranged by an accident.
- * Judging a page by its worst picture equalises it, and lands on the answer
- * every photo album has used for a century -- six in three rows of two --
- * without having to name it.
+ * The best is the one that puts the most photograph on the paper. Page count
+ * has already been fixed by `albumPageCount`, so this is deliberately the
+ * second priority: among arrangements that cost the same number of leaves,
+ * use the leaf rather than leaving a broad empty band. Every candidate fills
+ * either the width or the height, and comparing their printed areas chooses
+ * the fuller of those two directions.
  *
  * Bands are never widened past the column and pictures are never enlarged
  * beyond it, so nothing here can reach into a margin.
@@ -914,7 +929,7 @@ export function albumTarget(photos, { height, width = COLUMN }) {
 export function albumPlan(photos, { height, width = COLUMN, gap = ALBUM_GAP }) {
     if (!photos.length) return [];
 
-    let best = null;
+    const candidates = [];
 
     for (let bands = 1; bands <= photos.length; bands += 1) {
         // `albumSpread` deals a list into runs of near-equal length keeping
@@ -928,20 +943,24 @@ export function albumPlan(photos, { height, width = COLUMN, gap = ALBUM_GAP }) {
         const stack = rows.reduce((sum, row) => sum + row.height, 0);
         const scale = Math.min(1, (height - gap * (bands - 1)) / stack);
 
-        const least = Math.min(
-            ...rows.flatMap((row) =>
+        const areas = rows
+            .flatMap((row) =>
                 row.photos.map((photo) => (row.height * scale) ** 2 * aspectOf(photo))
-            )
-        );
-
-        if (best && least <= best.least) continue;
-        best = {
-            least,
+            );
+        candidates.push({
+            area: areas.reduce((sum, value) => sum + value, 0),
+            least: Math.min(...areas),
             rows: rows.map((row) => ({ photos: row.photos, height: row.height * scale }))
-        };
+        });
     }
 
-    return best.rows;
+    const mostArea = Math.max(...candidates.map((candidate) => candidate.area));
+    return candidates
+        // A few percent more ink is not worth making one photograph half the
+        // size of its neighbours. Among effectively full pages, keep the most
+        // even arrangement.
+        .filter((candidate) => candidate.area >= mostArea * 0.95)
+        .sort((a, b) => b.least - a.least)[0].rows;
 }
 
 /**
@@ -1057,12 +1076,44 @@ function setMonth(doc, { month, state }) {
     doc.font('semibold').fontSize(30).fillColor(BLACK);
     doc.text(month.label, LEFT, MARGIN.top + PAGE.height * 0.22, { width: COLUMN, lineBreak: false });
 
-    const count = month.letters.length;
     doc.font('italic').fontSize(11).fillColor(QUIET);
-    doc.text(count === 1 ? 'One letter' : `${count} letters`, LEFT, doc.y + 10, {
+    doc.text(chapterSummary(month), LEFT, doc.y + 10, {
         width: COLUMN,
         lineBreak: false
     });
+
+    const headingY = doc.y + 34;
+    doc.font('semibold').fontSize(11).fillColor(BLACK);
+    doc.text('In this chapter', LEFT, headingY, { width: COLUMN, lineBreak: false });
+
+    const top = headingY + 24;
+    const rowHeight = 15;
+    const rowsPerColumn = Math.max(1, Math.floor((TEXT_BOTTOM - top) / rowHeight));
+    const columns = Math.ceil(month.letters.length / rowsPerColumn);
+    const columnGap = 22;
+    const columnWidth = (COLUMN - columnGap * (columns - 1)) / columns;
+
+    for (const [index, letter] of month.letters.entries()) {
+        const column = Math.floor(index / rowsPerColumn);
+        const row = index % rowsPerColumn;
+        const x = LEFT + column * (columnWidth + columnGap);
+        const y = top + row * rowHeight;
+
+        doc.font('regular').fontSize(9.5).fillColor(BLACK);
+        doc.text(letter.subject, x, y, {
+            width: columnWidth - 24,
+            lineBreak: false,
+            ellipsis: true,
+            height: rowHeight
+        });
+        doc.fillColor(QUIET);
+        doc.text(letter.page ? String(letter.page) : '', x, y, {
+            width: columnWidth,
+            align: 'right',
+            lineBreak: false,
+            height: rowHeight
+        });
+    }
 
     return opened;
 }
@@ -1084,7 +1135,7 @@ function setLetter(doc, { post, slug, images, state }) {
     // All three set before the page is added, because the handler draws the
     // furniture and places the text box the moment it is, and cannot be told
     // any of this afterwards.
-    state.head = shortDate(post) || post.subject || '';
+    state.head = runningHead(post);
     state.opening = true;
     state.indent = 0;
     doc.addPage();
@@ -1435,7 +1486,10 @@ function textAfter(blocks, from) {
  * consistently, so a dark cloth gets pale type throughout rather than a pale
  * name over a black date.
  */
-function setNameplate(doc, { title, profile, x, width, size, rule = false, ink = BLACK, quiet = QUIET }) {
+function setNameplate(
+    doc,
+    { title, profile, x, width, size, missionScale = 0.43, rule = false, ink = BLACK, quiet = QUIET }
+) {
     doc.font('semibold').fontSize(size).fillColor(ink);
     doc.text(title, x, doc.y, { width, align: 'center' });
 
@@ -1461,7 +1515,7 @@ function setNameplate(doc, { title, profile, x, width, size, rule = false, ink =
     // the mountains", and the field is free text on purpose -- so this does
     // not try to make grammar out of it.
     doc.moveDown(0.6);
-    doc.font('italic').fontSize(size * 0.43).fillColor(quiet);
+    doc.font('italic').fontSize(size * missionScale).fillColor(quiet);
     doc.text(profile.mission || 'Letters from the mission', x, doc.y, { width, align: 'center' });
 
     // Full dates rather than years. This is what a cover is for: the two days
@@ -1560,7 +1614,7 @@ function setFrontCover(doc, { title, profile, cloth, picture, state }) {
     });
 
     doc.font('italic').fontSize(11).fillColor(cloth.quiet);
-    doc.text('pdayletters.com', MARGIN.outside, PAGE.height - MARGIN.bottom - 14, {
+    doc.text(SITE_NAME, MARGIN.outside, PAGE.height - MARGIN.bottom - 14, {
         width,
         align: 'center',
         lineBreak: false
@@ -1587,7 +1641,7 @@ function setBackCover(doc, { slug, cloth, state }) {
     doc.save().rect(0, 0, PAGE.width, PAGE.height).fill(cloth.paper).restore();
 
     doc.font('italic').fontSize(11).fillColor(cloth.quiet);
-    doc.text(`pdayletters.com/${slug}`, MARGIN.outside, PAGE.height * 0.78, {
+    doc.text(`${SITE_NAME}/${slug}`, MARGIN.outside, PAGE.height * 0.78, {
         width: PAGE.width - MARGIN.outside * 2,
         align: 'center',
         lineBreak: false
@@ -1610,16 +1664,22 @@ function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
     state.indent = 0;
     doc.addPage();
 
-    doc.y = PAGE.height * 0.3;
-    setNameplate(doc, { title, profile, x: LEFT, width: COLUMN, size: 30 });
+    doc.y = PAGE.height * 0.25;
+    setNameplate(doc, {
+        title,
+        profile,
+        x: LEFT,
+        width: COLUMN,
+        size: 30,
+        missionScale: 0.58
+    });
 
     doc.font('italic').fontSize(10).fillColor(QUIET);
-    doc.y = PAGE.height * 0.78;
+    doc.y = TEXT_BOTTOM - 36;
 
     for (const line of [
-        `pdayletters.com/${slug}`,
-        `Printed from the archive on ${String(madeAt).slice(0, 10)}.`,
-        'Set in Crimson Text.'
+        `${SITE_NAME}/${slug}`,
+        `Printed from the archive on ${String(madeAt).slice(0, 10)}.`
     ]) {
         doc.text(line, LEFT, doc.y, { width: COLUMN, align: 'center' });
         doc.moveDown(0.4);
