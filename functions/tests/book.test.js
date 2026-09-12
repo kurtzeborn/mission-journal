@@ -18,14 +18,17 @@ import {
     chapterSummary,
     contentsPages,
     contentsSheets,
+    coverDate,
     dateLine,
+    emojiRuns,
     inReadingOrder,
     mirror,
     monthLabel,
     photoBox,
     printPhoto,
     reserve,
-    runningHead
+    runningHead,
+    trailingPhotoIds
 } from '../src/lib/book.js';
 import { memoryStore } from './memory-store.js';
 
@@ -117,6 +120,26 @@ describe('the date over a letter', () => {
                 subject: 'A week in the rain'
             }),
             'Sunday, January 4, 2026 \u2014 A week in the rain'
+        );
+    });
+
+    test('writes an archive date with the month named', () => {
+        assert.equal(coverDate('2026-09-12'), 'September 12, 2026');
+    });
+});
+
+describe('characters outside the book face', () => {
+    test('separates emoji so they can use the fallback font', () => {
+        assert.deepEqual(
+            emojiRuns([{ text: 'We love you \ud83d\udc97!', bold: false }]).map(({ text, emoji }) => [
+                text,
+                Boolean(emoji)
+            ]),
+            [
+                ['We love you ', false],
+                ['\ud83d\udc97', true],
+                ['!', false]
+            ]
         );
     });
 });
@@ -298,6 +321,29 @@ describe('laying photographs out in an album', () => {
                 10 * (row.photos.length - 1);
             assert.ok(Math.abs(used - COLUMN) < 0.01, `row came to ${used}`);
         }
+    });
+
+    describe('which photographs belong to the trailing album', () => {
+        test('collects a run of pictures after the letter prose', () => {
+            assert.deepEqual(
+                trailingPhotoIds([
+                    { kind: 'para', runs: [{ text: 'Love you' }] },
+                    { kind: 'photo', photoId: 'p1' },
+                    { kind: 'photo', photoId: 'p2' }
+                ]),
+                ['p1', 'p2']
+            );
+        });
+
+        test('does not collect a picture followed by prose', () => {
+            assert.deepEqual(
+                trailingPhotoIds([
+                    { kind: 'photo', photoId: 'p1' },
+                    { kind: 'para', runs: [{ text: 'Afterward' }] }
+                ]),
+                []
+            );
+        });
     });
 
     test('never stretches a lone leftover across the page', () => {
@@ -578,6 +624,19 @@ describe('setting a whole book', () => {
         // And the link is a link rather than blue words: the annotation is
         // written by hand now, so it is worth knowing it is still written.
         assert.match(bytes.toString('latin1'), /https:\/\/example\.org\/chapel/);
+    });
+
+    test('embeds the fallback face when a letter contains emoji', async () => {
+        const { stream, done } = build({
+            posts: [
+                post('a', '2026-01-04', 'Home MTC Week 1!', {
+                    bodyHtml: '<p>Love you \ud83d\udc97</p>'
+                })
+            ]
+        });
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+
+        assert.match(bytes.toString('latin1'), /NotoEmoji/);
     });
 
     test('opens the first letter of a month on a left-hand page', async () => {
