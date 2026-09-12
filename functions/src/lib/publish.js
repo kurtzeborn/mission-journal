@@ -169,10 +169,10 @@ const stale = (status, now) => {
 /**
  * Tell whoever asked for this book how it went.
  *
- * The book page says "you can close this page -- it carries on without you",
- * and this is the half of that sentence that makes it true. A long mission
- * takes minutes to set, which is long enough that the honest advice is to go
- * away, and an owner who took it has no way back to the news.
+ * The book page invites its owner to leave while the build runs, and this is
+ * the half of that invitation that makes it true. A long mission takes minutes
+ * to set, which is long enough that the honest advice is to go away, and an
+ * owner who took it has no way back to the news.
  *
  * **Only the person who pressed the button.** Two owners share a site and the
  * other one did not ask for a book; being emailed about one is being emailed

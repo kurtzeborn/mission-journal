@@ -4,11 +4,10 @@
 // shape and the constraints are settled and tested; the sentences are
 // placeholders.
 //
-// This message exists because of one sentence on the book page -- "you can
-// close this page, it carries on without you" -- which is only true if
-// something tells them afterwards. A build takes minutes on a long mission,
-// and an owner who took us at our word and closed the tab has no way to learn
-// the book finished except by remembering to come back.
+// This message exists because the book page invites its owner to leave while
+// the build runs. A build takes minutes on a long mission, and an owner who
+// took us at our word has no way to learn the book finished except by
+// remembering to come back.
 //
 // The constraints:
 //
