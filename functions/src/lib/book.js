@@ -79,10 +79,14 @@ const FACES = {
     regular: 'CrimsonText-Regular.ttf',
     bold: 'CrimsonText-Bold.ttf',
     italic: 'CrimsonText-Italic.ttf',
-    semibold: 'CrimsonText-SemiBold.ttf'
+    semibold: 'CrimsonText-SemiBold.ttf',
+    emoji: require.resolve('@fontsource/noto-emoji/files/noto-emoji-emoji-400-normal.woff')
 };
 
-const face = (name) => readFileSync(new URL(`../assets/book/${name}`, import.meta.url));
+const face = (name) =>
+    readFileSync(
+        name.includes('\\') || name.includes('/') ? name : new URL(`../assets/book/${name}`, import.meta.url)
+    );
 
 // Read once per process. Together they are about 440 KB and every book uses
 // the same bytes.
@@ -249,6 +253,26 @@ export const dateLine = (post) => {
 
 export const runningHead = (post) =>
     [dateLine(post), post.subject || 'Untitled'].filter(Boolean).join(' \u2014 ');
+
+const EMOJI =
+    /\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?)*/gu;
+
+export function emojiRuns(runs) {
+    return (runs ?? []).flatMap((run) => {
+        const text = String(run.text ?? '');
+        const parts = [];
+        let from = 0;
+
+        for (const match of text.matchAll(EMOJI)) {
+            if (match.index > from) parts.push({ ...run, text: text.slice(from, match.index) });
+            parts.push({ ...run, text: match[0], emoji: true });
+            from = match.index + match[0].length;
+        }
+
+        if (from < text.length) parts.push({ ...run, text: text.slice(from) });
+        return parts.length ? parts : [run];
+    });
+}
 
 export const chapterSummary = (month) => {
     const letters = month.letters.length;
@@ -611,14 +635,18 @@ function openBook({ title, state }) {
             // in large type an inch below it -- so on this one page it is
             // noise, and every printed book leaves it off.
             if (!state.opening) {
-                doc.font('italic').fontSize(9.5).fillColor(QUIET);
                 const running = recto ? state.head : title;
-                const headWidth = doc.widthOfString(running);
-                if (headWidth > COLUMN) doc.fontSize((9.5 * COLUMN) / headWidth);
-                doc.text(running, LEFT, MARGIN.top - 30, {
+                const headWidth = mixedWidth(doc, running, { font: 'italic', size: 9.5 });
+                const size = headWidth > COLUMN ? (9.5 * COLUMN) / headWidth : 9.5;
+                setMixedLine(doc, {
+                    text: running,
+                    x: LEFT,
+                    y: MARGIN.top - 30,
                     width: COLUMN,
                     align: recto ? 'right' : 'left',
-                    lineBreak: false
+                    font: 'italic',
+                    size,
+                    color: QUIET
                 });
             }
 
@@ -631,7 +659,7 @@ function openBook({ title, state }) {
             doc.font('regular').fontSize(10).fillColor(QUIET);
             doc.text(String(state.page), LEFT, PAGE.height - MARGIN.bottom + 26, {
                 width: COLUMN,
-                align: 'center',
+                align: recto ? 'right' : 'left',
                 lineBreak: false
             });
 
@@ -733,13 +761,19 @@ function setLines(doc, runs, options = {}) {
     const color = options.color ?? BLACK;
 
     const dress = (run) => {
-        const font = run?.bold ? 'bold' : run?.italic ? 'italic' : options.font ?? 'regular';
+        const font = run?.emoji
+            ? 'emoji'
+            : run?.bold
+              ? 'bold'
+              : run?.italic
+                ? 'italic'
+                : options.font ?? 'regular';
         doc.font(font).fontSize(run?.small ? size * 0.82 : size);
         return doc;
     };
 
     const measure = (text, run) => (text ? dress(run).widthOfString(text) : 0);
-    const pieces = segments(runs);
+    const pieces = segments(emojiRuns(runs));
     const room = () => reserve({ float: state.float, y: doc.y, height: leading, indent });
 
     // An orphan: the first line of a paragraph left alone at the foot of a
@@ -1082,11 +1116,7 @@ function setMonth(doc, { month, state }) {
         lineBreak: false
     });
 
-    const headingY = doc.y + 34;
-    doc.font('semibold').fontSize(11).fillColor(BLACK);
-    doc.text('In this chapter', LEFT, headingY, { width: COLUMN, lineBreak: false });
-
-    const top = headingY + 24;
+    const top = doc.y + 28;
     const rowHeight = 15;
     const rowsPerColumn = Math.max(1, Math.floor((TEXT_BOTTOM - top) / rowHeight));
     const columns = Math.ceil(month.letters.length / rowsPerColumn);
@@ -1099,18 +1129,13 @@ function setMonth(doc, { month, state }) {
         const x = LEFT + column * (columnWidth + columnGap);
         const y = top + row * rowHeight;
 
-        doc.font('regular').fontSize(9.5).fillColor(BLACK);
-        doc.text(letter.subject, x, y, {
-            width: columnWidth - 24,
-            lineBreak: false,
-            ellipsis: true,
-            height: rowHeight
-        });
-        doc.fillColor(QUIET);
-        doc.text(letter.page ? String(letter.page) : '', x, y, {
+        setLeaderRow(doc, {
+            label: letter.subject,
+            page: letter.page,
+            x,
+            y,
             width: columnWidth,
-            align: 'right',
-            lineBreak: false,
+            size: 9.5,
             height: rowHeight
         });
     }
@@ -1147,8 +1172,12 @@ function setLetter(doc, { post, slug, images, state }) {
     // that was starting anyway.
     doc.y = MARGIN.top + 40;
 
-    doc.font('semibold').fontSize(19).fillColor(BLACK);
-    doc.text(post.subject || 'Untitled', LEFT, doc.y, { width: COLUMN, lineGap: 3 });
+    setLines(doc, [{ text: post.subject || 'Untitled' }], {
+        state,
+        font: 'semibold',
+        size: 19,
+        leading: 23
+    });
 
     const written = dateLine(post);
     if (written) {
@@ -1162,6 +1191,7 @@ function setLetter(doc, { post, slug, images, state }) {
     const blocks = flowBody(post.bodyHtml ?? '', slug);
     const shot = (id) => (post.photos ?? []).find((photo) => photo.id === id) ?? { id };
     const placed = new Set();
+    const trailing = new Set(trailingPhotoIds(blocks));
 
     // Pictures alternate sides down a letter and the first one hangs left.
     state.side = 'left';
@@ -1182,10 +1212,16 @@ function setLetter(doc, { post, slug, images, state }) {
         const run = [];
         while (n < blocks.length && blocks[n].kind === 'photo') {
             run.push(shot(blocks[n].photoId));
-            placed.add(blocks[n].photoId);
             n += 1;
         }
         n -= 1;
+
+        // A run at the end of the letter is the attachment album represented
+        // in the HTML, not a plate embedded in the prose. Leave it unplaced so
+        // the full-page album below can optimize the whole leaf.
+        if (run.every((photo) => trailing.has(photo.id))) continue;
+
+        for (const photo of run) placed.add(photo.id);
 
         if (run.length > 1 || textAfter(blocks, n) < FLOW_MIN) {
             setPlate(doc, { photos: run, images, state });
@@ -1471,6 +1507,102 @@ function textAfter(blocks, from) {
     return count;
 }
 
+export function trailingPhotoIds(blocks) {
+    const ids = [];
+
+    for (let index = (blocks?.length ?? 0) - 1; index >= 0; index -= 1) {
+        if (blocks[index].kind !== 'photo') break;
+        ids.unshift(blocks[index].photoId);
+    }
+
+    return ids;
+}
+
+function setLeaderRow(
+    doc,
+    { label, page, x, y, width, size, height, font = 'regular', color = BLACK }
+) {
+    const folio = page ? String(page) : '';
+    doc.font('regular').fontSize(size);
+
+    const folioWidth = folio ? doc.widthOfString(folio) : 0;
+    const labelLimit = Math.max(width - folioWidth - 34, 0);
+    const labelWidth = Math.min(mixedWidth(doc, label, { font, size }), labelLimit);
+    const leaderFrom = x + labelWidth + 7;
+    const leaderTo = x + width - folioWidth - 7;
+    const leaderUnit = '.   ';
+    doc.font('regular');
+    const leaderCount = Math.max(0, Math.floor((leaderTo - leaderFrom) / doc.widthOfString(leaderUnit)));
+
+    setMixedLine(doc, {
+        text: label,
+        x,
+        y,
+        width: labelLimit,
+        font,
+        size,
+        color,
+        ellipsis: true,
+        height
+    });
+
+    if (leaderCount) {
+        doc.font('regular').fillColor(QUIET);
+        doc.text(`${leaderUnit.repeat(leaderCount - 1)}.`, leaderFrom, y, {
+            width: leaderTo - leaderFrom,
+            lineBreak: false,
+            height
+        });
+    }
+
+    doc.font('regular').fillColor(QUIET);
+    doc.text(folio, x, y, {
+        width,
+        align: 'right',
+        lineBreak: false,
+        height
+    });
+}
+
+function mixedWidth(doc, text, { font, size }) {
+    return emojiRuns([{ text }]).reduce((total, run) => {
+        doc.font(run.emoji ? 'emoji' : font).fontSize(size);
+        return total + doc.widthOfString(run.text);
+    }, 0);
+}
+
+function fitMixedLine(doc, text, { font, size, width }) {
+    if (mixedWidth(doc, text, { font, size }) <= width) return text;
+
+    const ellipsis = '\u2026';
+    const room = Math.max(width - mixedWidth(doc, ellipsis, { font, size }), 0);
+    const graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)];
+    let fitted = '';
+
+    for (const { segment } of graphemes) {
+        if (mixedWidth(doc, fitted + segment, { font, size }) > room) break;
+        fitted += segment;
+    }
+
+    return fitted + ellipsis;
+}
+
+function setMixedLine(
+    doc,
+    { text, x, y, width, align = 'left', font = 'regular', size, color, ellipsis = false, height }
+) {
+    const fitted = ellipsis ? fitMixedLine(doc, text, { font, size, width }) : text;
+    const runs = emojiRuns([{ text: fitted }]);
+    const used = mixedWidth(doc, fitted, { font, size });
+    let at = align === 'right' ? x + width - used : align === 'center' ? x + (width - used) / 2 : x;
+
+    for (const run of runs) {
+        doc.font(run.emoji ? 'emoji' : font).fontSize(size).fillColor(color);
+        doc.text(run.text, at, y, { lineBreak: false, height });
+        at += doc.widthOfString(run.text);
+    }
+}
+
 /**
  * The title, the mission and the dates, centered in a box.
  *
@@ -1614,7 +1746,7 @@ function setFrontCover(doc, { title, profile, cloth, picture, state }) {
     });
 
     doc.font('italic').fontSize(11).fillColor(cloth.quiet);
-    doc.text(SITE_NAME, MARGIN.outside, PAGE.height - MARGIN.bottom - 14, {
+    doc.text(SITE_NAME, MARGIN.outside, PAGE.height - 44, {
         width,
         align: 'center',
         lineBreak: false
@@ -1679,7 +1811,7 @@ function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
 
     for (const line of [
         `${SITE_NAME}/${slug}`,
-        `Printed from the archive on ${String(madeAt).slice(0, 10)}.`
+        `Printed from the archive on ${coverDate(String(madeAt).slice(0, 10))}.`
     ]) {
         doc.text(line, LEFT, doc.y, { width: COLUMN, align: 'center' });
         doc.moveDown(0.4);
@@ -1709,17 +1841,18 @@ function setContents(doc, { months, state }) {
 
         for (const row of sheet) {
             if (row.kind === 'month') {
-                doc.font('semibold').fontSize(11.5).fillColor(BLACK);
-                doc.text(row.label, LEFT, row.y, { width: COLUMN - 30, lineBreak: false });
-
                 // Blank during the measuring pass, when no chapter has a page
                 // number yet. The row still occupies its line, which is all
                 // the reservation needs it to do.
-                doc.font('regular').fontSize(11.5).fillColor(QUIET);
-                doc.text(row.page ? String(row.page) : '', LEFT, row.y, {
+                setLeaderRow(doc, {
+                    label: row.label,
+                    page: row.page,
+                    x: LEFT,
+                    y: row.y,
                     width: COLUMN,
-                    align: 'right',
-                    lineBreak: false
+                    size: 11.5,
+                    height: CONTENTS.month,
+                    font: 'semibold'
                 });
 
                 continue;
@@ -1728,12 +1861,15 @@ function setContents(doc, { months, state }) {
             // Truncated rather than wrapped. A subject long enough to wrap
             // would push the rest of the leaf down, and the heights the
             // reservation was computed from are one line apiece.
-            doc.font('regular').fontSize(8.5).fillColor(QUIET);
-            doc.text(row.letter.subject, LEFT + CONTENTS.indent, row.y, {
+            setLeaderRow(doc, {
+                label: row.letter.subject,
+                page: row.letter.page,
+                x: LEFT + CONTENTS.indent,
+                y: row.y,
                 width: COLUMN - CONTENTS.indent,
-                lineBreak: false,
-                ellipsis: true,
-                height: 11
+                size: 8.5,
+                height: 11,
+                color: QUIET
             });
         }
     }
@@ -1884,7 +2020,9 @@ function plainTextOf(post, slug) {
  * photograph soft, which no amount of memory saved is worth.
  */
 function printWidths(post, slug) {
-    const inline = new Set(inlinePhotoIds(flowBody(post.bodyHtml ?? '', slug)));
+    const blocks = flowBody(post.bodyHtml ?? '', slug);
+    const trailing = new Set(trailingPhotoIds(blocks));
+    const inline = new Set(inlinePhotoIds(blocks).filter((id) => !trailing.has(id)));
     const photos = post.photos ?? [];
     const widths = new Map();
 
