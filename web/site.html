@@ -270,6 +270,17 @@
         </form>
     </dialog>
 
+    <dialog class="purchase" id="purchase-dialog" aria-labelledby="purchase-title">
+        <button class="purchase__close" type="button" id="purchase-close"
+            aria-label="Cancel buying a book">&times;</button>
+        <h2 class="purchase__title" id="purchase-title">Buy a Book</h2>
+        <p>You are about to go to the printer&rsquo;s website to purchase this book.</p>
+        <p class="purchase__actions">
+            <a class="button" id="purchase-continue" href="#" target="_blank"
+                rel="noopener">Continue</a>
+        </p>
+    </dialog>
+
     <!--
         Classic scripts, not modules. The same reader has to run from a file://
         URL inside the downloaded zip, where module loading is blocked by CORS.

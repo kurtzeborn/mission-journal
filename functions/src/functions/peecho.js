@@ -2,7 +2,7 @@ import { app } from '@azure/functions';
 import { blobStore, signingKey } from '../lib/clients.js';
 import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../lib/claimtoken.js';
-import { noteOrder, readOrder } from '../lib/orders.js';
+import { noteOrder, readActiveCheckout, readOrder } from '../lib/orders.js';
 import {
     createPublication,
     publicationBody,
@@ -194,6 +194,19 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
 }
 
 /**
+ * Let any member of an archive reach a checkout page an owner has already
+ * created. This discloses no book files or controls and returns nothing once
+ * the printer's secure checkout has expired.
+ */
+export async function checkout({ request, context, store, now = () => new Date() }) {
+    const gated = await siteGate({ store, request, log: context });
+    if (gated.denied) return gated.denied;
+
+    const active = await readActiveCheckout({ store, slug: gated.slug, now });
+    return json(200, { checkoutUrl: active?.checkoutUrl ?? null });
+}
+
+/**
  * The printer fetching the book.
  *
  * The token names the site and the book, both inside the signature, so the
@@ -315,6 +328,13 @@ export const placed = (args) => heard({ ...args, kind: 'placed' });
 export const statusChanged = (args) => heard({ ...args, kind: 'status' });
 
 const secretKey = () => setting('PEECHO_SECRET_KEY');
+
+app.http('print-checkout', {
+    authLevel: 'anonymous',
+    methods: ['GET'],
+    route: 'print/{slug}/checkout',
+    handler: (request, context) => checkout({ request, context, store: blobStore() })
+});
 
 app.http('print-order', {
     // The Functions access key, not the identity check. The identity check is

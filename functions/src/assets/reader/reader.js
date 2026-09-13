@@ -2054,11 +2054,14 @@ window.Reader = (function () {
      * @param {object|null} [options.album] every photograph in the archive, as
      *   one page. Absent in the downloaded archive, which is where video would
      *   go and video is not going in the zip.
+     * @param {object|null} [options.book] opens an active printer checkout.
+     *   Absent in the downloaded archive.
      * @param {Function|null} [options.photoFailed] called when a displayed
      *   photograph fails. Absent in the downloaded archive.
      */
     function mount({
-        posts, photoSrc, elements, admin = null, help = null, album = null, photoFailed = null
+        posts, photoSrc, elements, admin = null, help = null, album = null, book = null,
+        photoFailed = null
     }) {
         const { list, state } = elements;
 
@@ -2124,10 +2127,12 @@ window.Reader = (function () {
         // all of it open and does not want to click eight times to get there.
         const many = posts.length > 1;
         const gallery = Boolean(album) && photoCount > 1;
+        const forSale = typeof book?.open === 'function';
 
-        if (many || gallery) {
+        if (many || gallery || forSale) {
             const toolbar = document.createElement('div');
             toolbar.className = 'toolbar';
+            let folding = null;
 
             if (many) {
                 // A control that alternates between opening and shutting, and
@@ -2162,7 +2167,7 @@ window.Reader = (function () {
                 // to get there buries that list under a screenful of prose
                 // apiece. Doubling the glyph is what says the second one is
                 // the first one taken further.
-                const folding = document.createElement('div');
+                folding = document.createElement('div');
                 folding.className = 'toolbar__group';
 
                 if (groups.length) {
@@ -2208,6 +2213,17 @@ window.Reader = (function () {
                 cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
 
                 toolbar.append(cloudButton, folding);
+            }
+
+            if (forSale) {
+                const buy = document.createElement('button');
+                buy.type = 'button';
+                buy.className = 'button button--compact button--buy';
+                buy.textContent = 'Buy a Book';
+                buy.addEventListener('click', book.open);
+
+                if (folding) toolbar.insertBefore(buy, folding);
+                else toolbar.append(buy);
             }
 
             // Beside the word cloud rather than beside the folding controls:
