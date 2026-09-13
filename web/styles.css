@@ -484,7 +484,7 @@ button:focus-visible {
     line-height: 1.5;
 }
 
-/* --- the dictionary entry that opens the landing page --- */
+/* --- the dictionary entry that explains the landing page's name --- */
 
 /* Borrowed wholesale from a printed dictionary, because the form itself does
    half the explaining: a reader who has never heard the word recognizes the
@@ -588,6 +588,14 @@ button:focus-visible {
     font-style: italic;
     color: var(--ink-soft);
     margin: 0.35rem 0 0;
+}
+
+.landing-steps {
+    padding-left: 1.4rem;
+}
+
+.landing-steps > li {
+    margin-bottom: 0.75rem;
 }
 
 @media (max-width: 30rem) {
