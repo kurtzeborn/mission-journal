@@ -37,21 +37,35 @@ const lower = (value) => String(value ?? '').trim().toLowerCase();
 
 export const DIGEST = { monthly: 'monthly', weekly: 'weekly', off: 'off' };
 
-/**
- * How long a cycle is.
- *
- * Days rather than calendar months, and the drift is deliberate. "One month
- * after January 31st" is a question with no good answer -- every language
- * runtime picks a different wrong one, and JavaScript's picks March 3rd --
- * while thirteen sends a year instead of twelve is invisible to somebody who
- * asked for mail roughly monthly. The word in the interface is what a person
- * means by it, not what a calendar means by it.
- */
-export const CYCLE_DAYS = { [DIGEST.monthly]: 30, [DIGEST.weekly]: 7 };
-
 /** Anything not offered is `off`, so a hand-edited row cannot start mail. */
 export const validFrequency = (value) =>
     value === DIGEST.monthly || value === DIGEST.weekly ? value : DIGEST.off;
+
+export const validDigestWeekday = (value) => Number.isInteger(value) && value >= 0 && value <= 6;
+export const validDigestWeek = (value) => Number.isInteger(value) && value >= 1 && value <= 4;
+
+const dateOf = (value) => {
+    const date = new Date(value ?? '');
+    return Number.isNaN(date.getTime()) ? null : date;
+};
+
+/**
+ * Calendar choices for a row.
+ *
+ * Rows written before these fields existed inherit the weekday and occurrence
+ * of their last digest. That turns the old rolling cycle into a stable calendar
+ * schedule without a migration or an arbitrary change to Monday.
+ */
+export function digestSchedule(row) {
+    const last = dateOf(row?.digestAt);
+    const fallbackWeekday = last?.getUTCDay() ?? 1;
+    const fallbackWeek = last ? Math.min(4, Math.ceil(last.getUTCDate() / 7)) : 1;
+
+    return {
+        weekday: validDigestWeekday(row?.digestWeekday) ? row.digestWeekday : fallbackWeekday,
+        week: validDigestWeek(row?.digestWeek) ? row.digestWeek : fallbackWeek
+    };
+}
 
 export async function readUser({ tables, email }) {
     const them = lower(email);
@@ -71,21 +85,44 @@ export async function readUser({ tables, email }) {
  * from monthly to weekly three weeks in has been waiting three weeks, and
  * restarting their clock would make the change look like it did nothing.
  */
-export async function setDigest({ tables, email, frequency, now = () => new Date() }) {
+export async function setDigest({
+    tables,
+    email,
+    frequency,
+    weekday,
+    week,
+    now = () => new Date()
+}) {
     const them = lower(email);
     if (!them) throw new Error('user: an address is required');
 
     const at = now().toISOString();
     const existing = await tables.getEntity(TABLES.users, them, ROW);
+    const current = digestSchedule(existing ?? { digestAt: at });
+    const wanted = {
+        weekday: validDigestWeekday(weekday) ? weekday : current.weekday,
+        week: validDigestWeek(week) ? week : current.week
+    };
+    const wantedFrequency = validFrequency(frequency);
+    const scheduleChanged = Boolean(
+        existing &&
+        (
+            validFrequency(existing.digestFrequency) !== wantedFrequency ||
+            current.weekday !== wanted.weekday ||
+            current.week !== wanted.week
+        )
+    );
 
     await tables.upsertEntity(TABLES.users, {
         partitionKey: them,
         rowKey: ROW,
-        digestFrequency: validFrequency(frequency),
-        ...(existing ? {} : { createdAt: at, digestAt: at })
+        digestFrequency: wantedFrequency,
+        digestWeekday: wanted.weekday,
+        digestWeek: wanted.week,
+        ...(existing ? (scheduleChanged ? { digestScheduleAt: at } : {}) : { createdAt: at, digestAt: at })
     });
 
-    return validFrequency(frequency);
+    return wantedFrequency;
 }
 
 /** The cycle is over, whether or not it had anything in it. */
@@ -105,18 +142,45 @@ export async function markDigested({ tables, email, at }) {
  * than this field, and the alternative is an address that silently never
  * hears from us and no way to tell it from one that is working.
  */
+const utcDay = (date) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+const weeklyOccurrence = (date, weekday) => {
+    const day = utcDay(date);
+    day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() - weekday + 7) % 7));
+    return day;
+};
+
+const monthlyOccurrence = (year, month, { weekday, week }) => {
+    const first = new Date(Date.UTC(year, month, 1));
+    const offset = (weekday - first.getUTCDay() + 7) % 7;
+    return new Date(Date.UTC(year, month, 1 + offset + ((week - 1) * 7)));
+};
+
+const latestOccurrence = ({ frequency, schedule, now }) => {
+    if (frequency === DIGEST.weekly) return weeklyOccurrence(now, schedule.weekday);
+
+    const today = utcDay(now);
+    const current = monthlyOccurrence(now.getUTCFullYear(), now.getUTCMonth(), schedule);
+    if (current <= today) return current;
+    return monthlyOccurrence(now.getUTCFullYear(), now.getUTCMonth() - 1, schedule);
+};
+
 export function digestDue({ row, now = () => new Date() }) {
     const frequency = validFrequency(row?.digestFrequency);
     if (frequency === DIGEST.off) return false;
 
-    const since = row?.digestAt;
+    const since = dateOf(row?.digestAt);
     if (!since) return true;
 
-    const due = new Date(since);
-    if (Number.isNaN(due.getTime())) return true;
-    due.setUTCDate(due.getUTCDate() + CYCLE_DAYS[frequency]);
+    const changed = dateOf(row?.digestScheduleAt);
+    const anchor = changed && changed > since ? changed : since;
+    const occurrence = latestOccurrence({
+        frequency,
+        schedule: digestSchedule(row),
+        now: now()
+    });
 
-    return now() >= due;
+    return occurrence > anchor;
 }
 
 /**

@@ -34,13 +34,23 @@ function offerSignIn() {
     show('signin');
 }
 
+function showSchedule() {
+    const frequency = $('digest').value;
+    $('digest-week-row').hidden = frequency !== 'monthly';
+    $('digest-weekday-row').hidden = frequency === 'off';
+}
+
 async function save(event) {
     event.preventDefault();
 
     const button = $('digest-submit');
     button.disabled = true;
 
-    const result = await call('PUT', { digestFrequency: $('digest').value });
+    const result = await call('PUT', {
+        digestFrequency: $('digest').value,
+        digestWeekday: Number($('digest-weekday').value),
+        digestWeek: Number($('digest-week').value)
+    });
 
     // A session can lapse while the page is open, and this page is one
     // somebody might leave sitting. Sending them back through sign-in is
@@ -80,9 +90,13 @@ async function start() {
     if (!result.ok) return show('failed');
 
     $('digest').value = result.body.digestFrequency ?? 'off';
+    $('digest-weekday').value = String(result.body.digestWeekday ?? 1);
+    $('digest-week').value = String(result.body.digestWeek ?? 1);
+    showSchedule();
     $('suppressed').hidden = !result.body.suppressed;
     $('digest-as').textContent = result.body.email ? `Signed in as ${result.body.email}.` : '';
     $('digest-form').addEventListener('submit', save);
+    $('digest').addEventListener('change', showSchedule);
     $('resume').addEventListener('click', resume);
 
     show('ready');
