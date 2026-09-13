@@ -4,13 +4,13 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Email settings — Pday Letters</title>
+    <title>Email summaries — Pday Letters</title>
     <!-- Deliberately not under /settings. That path is an archive's settings:
          it takes a slug, it names a missionary, and it is owners only. This
          page takes no slug and its whole audience is readers, who cannot open
          that one at all. Two pages a path segment apart answering unrelated
          questions is a trap for whoever edits them next. -->
-    <meta name="description" content="Choose how often Pday Letters emails you about new letters.">
+    <meta name="description" content="Choose when to receive summaries of new activity across your archives.">
     <meta name="robots" content="noindex">
     <link rel="icon" href="/logo.png">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -61,9 +61,9 @@
         </section>
 
         <section id="signin" hidden>
-            <h2>Sign in first</h2>
+            <h2>Sign in to manage email summaries</h2>
             <p class="lede">
-                This setting belongs to your email address, so we need to know which address you are.
+                Your summary schedule belongs to your email address.
             </p>
             <p><a class="button" id="signin-aad" href="#"><i class="fa-brands fa-microsoft" aria-hidden="true"></i>
                     Sign in with Microsoft</a></p>
@@ -72,17 +72,16 @@
         </section>
 
         <section id="ready" hidden>
-            <h2>New letter emails</h2>
+            <h2>Archive activity summaries</h2>
             <p class="lede">
-                When a letter arrives, we can send you a short summary with a link to read it.
+                Get one email summarizing new letters across every archive you can access.
             </p>
             <p>
-                One email covers every archive you have access to, so following two missionaries
-                does not mean twice the mail. We only write when there is something new.
+                Choose a schedule below. We send a summary only when new letters have arrived.
             </p>
             <form id="digest-form">
                 <p>
-                    <label for="digest">How often should we email you?</label><br>
+                    <label for="digest">How often do you want a summary?</label><br>
                     <select id="digest" name="digest">
                         <option value="monthly">Monthly</option>
                         <option value="weekly">Weekly</option>
@@ -90,7 +89,7 @@
                     </select>
                 </p>
                 <p id="digest-week-row" hidden>
-                    <label for="digest-week">Which week of the month?</label><br>
+                    <label for="digest-week">Which occurrence each month?</label><br>
                     <select id="digest-week" name="digest-week">
                         <option value="1">First</option>
                         <option value="2">Second</option>
@@ -99,7 +98,7 @@
                     </select>
                 </p>
                 <p id="digest-weekday-row" hidden>
-                    <label for="digest-weekday">Which day?</label><br>
+                    <label for="digest-weekday">Which day of the week?</label><br>
                     <select id="digest-weekday" name="digest-weekday">
                         <option value="1">Monday</option>
                         <option value="2">Tuesday</option>
@@ -110,7 +109,7 @@
                         <option value="0">Sunday</option>
                     </select>
                 </p>
-                <p><button class="button" type="submit" id="digest-submit">Save</button></p>
+                <p><button class="button" type="submit" id="digest-submit">Save schedule</button></p>
                 <p class="note" id="digest-as"></p>
             </form>
 
@@ -126,22 +125,21 @@
                  is a way of making the promise hard to withdraw. -->
             <div id="suppressed" hidden>
                 <p class="note">
-                    This address has asked us to stop emailing it entirely, so nothing will be
-                    sent whatever is chosen above &mdash; including an invitation from a family
-                    who wants you to read their letters.
+                    This address is unsubscribed from all email from Pday Letters. Scheduled summaries
+                    and archive invitations will not be delivered until you remove the block.
                 </p>
                 <p>
-                    <button class="button" type="button" id="resume">Start emailing me again</button>
+                    <button class="button" type="button" id="resume">Allow email again</button>
                 </p>
                 <p class="note">
-                    This only lifts the block. Nothing is sent until you choose weekly or
-                    monthly above, and invitations still have to be sent by somebody.
+                    This removes the block only. To receive summaries, choose
+                    <strong>Weekly</strong> or <strong>Monthly</strong> above and save.
                 </p>
                 <p class="note" id="resume-said" role="status" aria-live="polite"></p>
             </div>
 
             <p class="note">
-                <a href="/faq#new-letter-emails">What these emails contain</a>
+                <a href="/faq#new-letter-emails">What summary emails include</a>
             </p>
         </section>
 
