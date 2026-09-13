@@ -89,6 +89,27 @@
                         <option value="off">Never</option>
                     </select>
                 </p>
+                <p id="digest-week-row" hidden>
+                    <label for="digest-week">Which week of the month?</label><br>
+                    <select id="digest-week" name="digest-week">
+                        <option value="1">First</option>
+                        <option value="2">Second</option>
+                        <option value="3">Third</option>
+                        <option value="4">Fourth</option>
+                    </select>
+                </p>
+                <p id="digest-weekday-row" hidden>
+                    <label for="digest-weekday">Which day?</label><br>
+                    <select id="digest-weekday" name="digest-weekday">
+                        <option value="1">Monday</option>
+                        <option value="2">Tuesday</option>
+                        <option value="3">Wednesday</option>
+                        <option value="4">Thursday</option>
+                        <option value="5">Friday</option>
+                        <option value="6">Saturday</option>
+                        <option value="0">Sunday</option>
+                    </select>
+                </p>
                 <p><button class="button" type="submit" id="digest-submit">Save</button></p>
                 <p class="note" id="digest-as"></p>
             </form>

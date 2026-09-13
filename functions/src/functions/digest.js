@@ -1,11 +1,8 @@
 // The daily look for anybody whose digest is due.
 //
-// Daily rather than monthly, and that is not a contradiction. Cycles are
-// per person and start whenever each person answered the question, so
-// "monthly" means a thirtieth of the audience is due on any given day. That
-// is also the shape a sending domain wants: a steady trickle rather than one
-// morning a month where every message this service has ever sent goes out at
-// once.
+// Daily rather than weekly or monthly, and that is not a contradiction. Each
+// person chooses their own weekday -- and, for monthly mail, which occurrence
+// of it -- so a daily pass is what lets those calendars differ.
 //
 // 13:15 UTC, which is early morning across the United States, where the
 // families are. Deliberately not in the small hours with the purge and the

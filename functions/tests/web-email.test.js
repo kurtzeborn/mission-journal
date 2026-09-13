@@ -40,10 +40,19 @@ describe('the masthead', () => {
 
 describe('showing somebody what they chose', () => {
     test('the setting comes back selected, not guessed at', async () => {
-        const { view } = await open(loaded({ email: 'grandma@example.com', digestFrequency: 'monthly' }));
+        const { view } = await open(loaded({
+            email: 'grandma@example.com',
+            digestFrequency: 'monthly',
+            digestWeekday: 4,
+            digestWeek: 3
+        }));
 
         assert.equal(view.el('ready').hidden, false);
         assert.equal(view.el('digest').value, 'monthly');
+        assert.equal(view.el('digest-weekday').value, '4');
+        assert.equal(view.el('digest-week').value, '3');
+        assert.equal(view.el('digest-weekday-row').hidden, false);
+        assert.equal(view.el('digest-week-row').hidden, false);
         assert.match(view.text('digest-as'), /grandma@example\.com/);
     });
 
@@ -51,6 +60,8 @@ describe('showing somebody what they chose', () => {
         const { view } = await open(loaded({ email: 'grandma@example.com', digestFrequency: 'off' }));
 
         assert.equal(view.el('digest').value, 'off');
+        assert.equal(view.el('digest-weekday-row').hidden, true);
+        assert.equal(view.el('digest-week-row').hidden, true);
     });
 
     test('an address that pressed unsubscribe is told why nothing arrives', async () => {
@@ -90,14 +101,25 @@ describe('showing somebody what they chose', () => {
 
 describe('changing it', () => {
     test('the choice is sent as itself, not as a form post', async () => {
-        const { view, net } = await open(loaded({ email: 'grandma@example.com', digestFrequency: 'monthly' }));
+        const { view, net } = await open(loaded({
+            email: 'grandma@example.com',
+            digestFrequency: 'monthly',
+            digestWeekday: 1,
+            digestWeek: 1
+        }));
 
         view.el('digest').value = 'weekly';
+        view.el('digest-weekday').value = '5';
+        await view.el('digest').dispatch('change');
         await view.el('digest-form').dispatch('submit');
 
         const put = net.calls.find((call) => call.method === 'PUT');
         assert.equal(put.url, '/api/preferences');
         assert.equal(put.body.digestFrequency, 'weekly');
+        assert.equal(put.body.digestWeekday, 5);
+        assert.equal(put.body.digestWeek, 1);
+        assert.equal(view.el('digest-weekday-row').hidden, false);
+        assert.equal(view.el('digest-week-row').hidden, true);
         assert.match(view.text('digest-as'), /Saved/);
     });
 

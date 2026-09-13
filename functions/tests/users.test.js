@@ -11,8 +11,8 @@ import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
 import { TABLES } from '../src/lib/tables.js';
 import {
-    CYCLE_DAYS,
     DIGEST,
+    digestSchedule,
     digestDue,
     everyUser,
     markDigested,
@@ -50,12 +50,16 @@ describe('recording what somebody chose', () => {
             tables: store,
             email: '  GrandMa@Example.COM ',
             frequency: DIGEST.monthly,
+            weekday: 2,
+            week: 2,
             now: AT('2026-08-01T00:00:00Z')
         });
 
         const row = await readUser({ tables: store, email: THEM });
         assert.equal(row.partitionKey, THEM);
         assert.equal(row.digestFrequency, DIGEST.monthly);
+        assert.equal(row.digestWeekday, 2);
+        assert.equal(row.digestWeek, 2);
     });
 
     test('the window starts when they answered, not when the mission did', async () => {
@@ -72,24 +76,31 @@ describe('recording what somebody chose', () => {
         assert.equal(row.createdAt, '2026-08-01T00:00:00.000Z');
     });
 
-    test('changing the frequency does not restart the clock', async () => {
+    test('changing the schedule preserves the letter window and starts the new calendar now', async () => {
         const store = memoryStore();
         await setDigest({
             tables: store,
             email: THEM,
             frequency: DIGEST.monthly,
+            weekday: 1,
+            week: 1,
             now: AT('2026-08-01T00:00:00Z')
         });
         await setDigest({
             tables: store,
             email: THEM,
             frequency: DIGEST.weekly,
-            now: AT('2026-08-22T00:00:00Z')
+            weekday: 6,
+            week: 1,
+            now: AT('2026-08-09T00:00:00Z')
         });
 
         const row = await readUser({ tables: store, email: THEM });
         assert.equal(row.digestFrequency, DIGEST.weekly);
         assert.equal(row.digestAt, '2026-08-01T00:00:00.000Z');
+        assert.equal(row.digestScheduleAt, '2026-08-09T00:00:00.000Z');
+        assert.equal(digestDue({ row, now: AT('2026-08-10T13:15:00Z') }), false);
+        assert.equal(digestDue({ row, now: AT('2026-08-15T13:15:00Z') }), true);
     });
 
     test('an empty address is refused rather than filed under nothing', async () => {
@@ -114,19 +125,48 @@ describe('whether a cycle is over', () => {
         assert.equal(digestDue({ row, now: AT('2026-08-01T00:00:00Z') }), true);
     });
 
-    test('monthly means thirty days, not a calendar month', () => {
-        // The awkward date on purpose: "one month after January 31st" is a
-        // question with no good answer, and thirty days simply has one.
-        const row = { digestFrequency: DIGEST.monthly, digestAt: '2026-01-31T00:00:00.000Z' };
-        assert.equal(CYCLE_DAYS[DIGEST.monthly], 30);
-        assert.equal(digestDue({ row, now: AT('2026-03-02T00:00:00Z') }), true);
-        assert.equal(digestDue({ row, now: AT('2026-02-28T00:00:00Z') }), false);
+    test('weekly waits for the chosen weekday', () => {
+        const row = {
+            digestFrequency: DIGEST.weekly,
+            digestWeekday: 2,
+            digestWeek: 1,
+            digestAt: '2026-08-01T13:15:00.000Z'
+        };
+        assert.equal(digestDue({ row, now: AT('2026-08-03T13:15:00Z') }), false);
+        assert.equal(digestDue({ row, now: AT('2026-08-04T13:15:00Z') }), true);
     });
 
-    test('the day it comes due counts, so a daily run cannot step over it', () => {
-        const row = { digestFrequency: DIGEST.weekly, digestAt: '2026-08-01T06:00:00.000Z' };
-        assert.equal(digestDue({ row, now: AT('2026-08-08T06:00:00Z') }), true);
-        assert.equal(digestDue({ row, now: AT('2026-08-08T05:59:00Z') }), false);
+    test('a missed weekly run catches up once rather than waiting another week', () => {
+        const row = {
+            digestFrequency: DIGEST.weekly,
+            digestWeekday: 2,
+            digestWeek: 1,
+            digestAt: '2026-08-01T13:15:00.000Z'
+        };
+        assert.equal(digestDue({ row, now: AT('2026-08-05T13:15:00Z') }), true);
+        row.digestAt = '2026-08-05T13:15:00.000Z';
+        assert.equal(digestDue({ row, now: AT('2026-08-06T13:15:00Z') }), false);
+    });
+
+    test('monthly uses the selected occurrence of the weekday', () => {
+        const row = {
+            digestFrequency: DIGEST.monthly,
+            digestWeekday: 2,
+            digestWeek: 2,
+            digestAt: '2026-08-01T13:15:00.000Z'
+        };
+        assert.equal(digestDue({ row, now: AT('2026-08-10T13:15:00Z') }), false);
+        assert.equal(digestDue({ row, now: AT('2026-08-11T13:15:00Z') }), true);
+    });
+
+    test('old rows inherit the occurrence of their last digest', () => {
+        const row = {
+            digestFrequency: DIGEST.monthly,
+            digestAt: '2026-08-20T13:15:00.000Z'
+        };
+        assert.deepEqual(digestSchedule(row), { weekday: 4, week: 3 });
+        assert.equal(digestDue({ row, now: AT('2026-09-16T13:15:00Z') }), false);
+        assert.equal(digestDue({ row, now: AT('2026-09-17T13:15:00Z') }), true);
     });
 });
 

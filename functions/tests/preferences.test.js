@@ -40,6 +40,8 @@ describe('reading what somebody has asked for', () => {
 
         assert.equal(response.status, 200);
         assert.equal(response.jsonBody.digestFrequency, DIGEST.off);
+        assert.equal(response.jsonBody.digestWeekday, 1);
+        assert.equal(response.jsonBody.digestWeek, 1);
         assert.equal(response.jsonBody.email, THEM);
     });
 
@@ -75,11 +77,47 @@ describe('changing it', () => {
     test('each offered value is kept', async () => {
         for (const frequency of [DIGEST.monthly, DIGEST.weekly, DIGEST.off]) {
             const store = memoryStore();
-            const response = await write({ request: asking(THEM, { digestFrequency: frequency }), tables: store });
+            const response = await write({
+                request: asking(THEM, {
+                    digestFrequency: frequency,
+                    digestWeekday: 3,
+                    digestWeek: 2
+                }),
+                tables: store
+            });
 
             assert.equal(response.status, 200);
-            assert.equal((await readUser({ tables: store, email: THEM })).digestFrequency, frequency);
+            const row = await readUser({ tables: store, email: THEM });
+            assert.equal(row.digestFrequency, frequency);
+            assert.equal(row.digestWeekday, 3);
+            assert.equal(row.digestWeek, 2);
         }
+    });
+
+    test('an active schedule requires a real weekday', async () => {
+        const store = memoryStore();
+        const response = await write({
+            request: asking(THEM, { digestFrequency: DIGEST.weekly, digestWeekday: 8 }),
+            tables: store
+        });
+
+        assert.equal(response.status, 400);
+        assert.equal(await readUser({ tables: store, email: THEM }), null);
+    });
+
+    test('a monthly schedule requires the first through fourth week', async () => {
+        const store = memoryStore();
+        const response = await write({
+            request: asking(THEM, {
+                digestFrequency: DIGEST.monthly,
+                digestWeekday: 1,
+                digestWeek: 5
+            }),
+            tables: store
+        });
+
+        assert.equal(response.status, 400);
+        assert.equal(await readUser({ tables: store, email: THEM }), null);
     });
 
     test('an unrecognized value is refused rather than silently made off', async () => {

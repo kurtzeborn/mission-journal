@@ -3,7 +3,15 @@ import { hardened, jsonResponse as json } from '../lib/api.js';
 import { readPrincipal } from '../lib/principal.js';
 import { tableStore } from '../lib/clients.js';
 import { optedOut, forgetOptOut } from '../lib/optout.js';
-import { DIGEST, readUser, setDigest, validFrequency } from '../lib/users.js';
+import {
+    DIGEST,
+    digestSchedule,
+    readUser,
+    setDigest,
+    validDigestWeek,
+    validDigestWeekday,
+    validFrequency
+} from '../lib/users.js';
 
 // How often, if at all, we should write to the person signed in right now.
 //
@@ -24,10 +32,13 @@ export async function read({ request, tables }) {
     if (!principal?.email) return refuse();
 
     const row = await readUser({ tables, email: principal.email });
+    const schedule = digestSchedule(row);
 
     return json(200, {
         email: principal.email,
         digestFrequency: validFrequency(row?.digestFrequency),
+        digestWeekday: schedule.weekday,
+        digestWeek: schedule.week,
         // Reported separately rather than folded into the frequency, because
         // they are different statements and the page has to be able to say
         // which one is in force. Somebody who pressed an unsubscribe link and
@@ -52,9 +63,29 @@ export async function write({ request, tables }) {
         return json(400, { error: 'digestFrequency must be monthly, weekly or off' });
     }
 
-    await setDigest({ tables, email: principal.email, frequency: wanted });
+    const weekday = Number(body?.digestWeekday);
+    const week = Number(body?.digestWeek);
+    if (wanted !== DIGEST.off && !validDigestWeekday(weekday)) {
+        return json(400, { error: 'digestWeekday must be an integer from 0 through 6' });
+    }
+    if (wanted === DIGEST.monthly && !validDigestWeek(week)) {
+        return json(400, { error: 'digestWeek must be an integer from 1 through 4' });
+    }
 
-    return json(200, { digestFrequency: wanted });
+    await setDigest({
+        tables,
+        email: principal.email,
+        frequency: wanted,
+        weekday,
+        week
+    });
+
+    const saved = digestSchedule(await readUser({ tables, email: principal.email }));
+    return json(200, {
+        digestFrequency: wanted,
+        digestWeekday: saved.weekday,
+        digestWeek: saved.week
+    });
 }
 
 /**
