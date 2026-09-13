@@ -125,6 +125,14 @@ describe('what goes into the archive', () => {
         }
     });
 
+    test('does not offer the website-only book checkout', async () => {
+        const { files } = await archiveFor('reader');
+        const offline = files.get('offline.js').bytes.toString('utf8');
+
+        assert.equal(files.has('app.js'), false);
+        assert.doesNotMatch(offline, /\bbook\s*:/);
+    });
+
     test('raw email is never bundled, at any role', async () => {
         for (const role of ['reader', 'owner']) {
             const { files } = await archiveFor(role);

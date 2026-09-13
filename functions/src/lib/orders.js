@@ -47,6 +47,33 @@ export async function readOrder({ store, slug, id }) {
 }
 
 /**
+ * The newest checkout page for this archive that the printer still accepts.
+ *
+ * More than one generated book can have a listing, so search newest-first
+ * rather than assuming the latest build is the one an owner chose to sell.
+ */
+export async function readActiveCheckout({ store, slug, now = () => new Date() }) {
+    const prefix = `${slug}/`;
+    const suffix = '/order.json';
+    const names = await store.listBlobs(BOOKS, prefix);
+    const at = now().getTime();
+
+    for (const name of names.filter((candidate) => candidate.endsWith(suffix)).sort().reverse()) {
+        const id = name.slice(prefix.length, -suffix.length);
+        if (!id || id.includes('/')) continue;
+
+        const found = await readOrder({ store, slug, id });
+        const checkoutUrl = found?.order?.checkoutUrl;
+        const listedUntil = Date.parse(found?.order?.listedUntil ?? '');
+        if (typeof checkoutUrl === 'string' && checkoutUrl && listedUntil > at) {
+            return { checkoutUrl, listedUntil: found.order.listedUntil };
+        }
+    }
+
+    return null;
+}
+
+/**
  * Merge something we have just been told into the record.
  *
  * Read-modify-write under the ETag, retried once, because the two webhooks

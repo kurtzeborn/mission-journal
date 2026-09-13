@@ -25,7 +25,14 @@ import {
     readReference,
     signatureMatches
 } from '../src/lib/peecho.js';
-import { order, placed, statusChanged, fetchForPrint, fetchCoverForPrint } from '../src/functions/peecho.js';
+import {
+    checkout,
+    order,
+    placed,
+    statusChanged,
+    fetchForPrint,
+    fetchCoverForPrint
+} from '../src/functions/peecho.js';
 import { issueClaimToken, PURPOSE } from '../src/lib/claimtoken.js';
 import { createHash } from 'node:crypto';
 
@@ -400,6 +407,64 @@ describe('ordering a printed copy', () => {
             assert.equal(response.status, 200);
             assert.equal('thumbnail' in calls[0].body.order.product, false);
         });
+    });
+});
+
+describe('sharing an active checkout with archive readers', () => {
+    test('a reader receives the checkout an owner created', async () => {
+        const store = withABook();
+        store.blobs.set(`books/${SLUG}/${BOOK}/order.json`, {
+            bytes: Buffer.from(JSON.stringify({
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
+                listedUntil: '2099-01-01T00:00:00.000Z'
+            })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+
+        const response = await checkout({
+            request: request({ email: READER, params: { slug: SLUG } }),
+            context: silent,
+            store,
+            now: () => new Date('2026-09-12T12:00:00.000Z')
+        });
+
+        assert.equal(response.status, 200);
+        assert.equal(
+            response.jsonBody.checkoutUrl,
+            'https://www.peecho.com/checkout/print/en/a-book?token=secret'
+        );
+    });
+
+    test('an expired checkout is not offered', async () => {
+        const store = withABook();
+        store.blobs.set(`books/${SLUG}/${BOOK}/order.json`, {
+            bytes: Buffer.from(JSON.stringify({
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/expired?token=old',
+                listedUntil: '2026-09-11T00:00:00.000Z'
+            })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+
+        const response = await checkout({
+            request: request({ email: READER, params: { slug: SLUG } }),
+            context: silent,
+            store,
+            now: () => new Date('2026-09-12T12:00:00.000Z')
+        });
+
+        assert.deepEqual(response.jsonBody, { checkoutUrl: null });
+    });
+
+    test('somebody outside the archive cannot discover its checkout', async () => {
+        const response = await checkout({
+            request: request({ email: 'stranger@example.com', params: { slug: SLUG } }),
+            context: silent,
+            store: withABook()
+        });
+
+        assert.equal(response.status, 404);
     });
 });
 

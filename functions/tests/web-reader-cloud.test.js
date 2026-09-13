@@ -55,6 +55,29 @@ describe('getting to the cloud', () => {
         );
     });
 
+    describe('buying a finished book', () => {
+        test('the green button sits immediately after Word cloud and opens the handoff', () => {
+            const view = page();
+            let opened = 0;
+            view.mount({ posts: POSTS, book: { open: () => { opened += 1; } } });
+
+            const buttons = [...view.$('.toolbar').querySelectorAll('button')];
+            assert.deepEqual(
+                buttons.map((button) => button.getAttribute('aria-label') ?? button.textContent),
+                ['Word cloud', 'Buy a Book', 'Expand all']
+            );
+            assert.ok(view.button('Buy a Book').classList.contains('button--buy'));
+
+            view.click(view.button('Buy a Book'));
+            assert.equal(opened, 1);
+        });
+
+        test('the button is absent without an active checkout', () => {
+            const view = archive();
+            assert.equal(view.button('Buy a Book'), undefined);
+        });
+    });
+
     test('nothing is counted until somebody asks for it', () => {
         // Most readers never open it, and walking every letter on the way to
         // drawing a page they are not looking at is a cost they should not pay.

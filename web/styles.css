@@ -176,6 +176,11 @@ a {
     border: 1px solid var(--rule);
 }
 
+.button--buy {
+    background: #2f7d32;
+    color: #fff;
+}
+
 /* Destructive, and only ever reached after typing the archive's name.
 
    Red, but not the loudest thing on the page it lives on: the danger section
@@ -422,6 +427,47 @@ a {
     display: flex;
     justify-content: flex-end;
     margin-top: 1.25rem;
+}
+
+/* A short handoff before sending a reader to the printer's checkout. */
+.purchase {
+    position: relative;
+    width: min(28rem, 92vw);
+    margin: auto;
+    padding: 1.5rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    border-radius: var(--radius);
+    font-family: system-ui, sans-serif;
+}
+
+.purchase::backdrop {
+    background: rgba(28, 25, 23, 0.6);
+}
+
+.purchase__title {
+    margin: 0 2rem 0.75rem 0;
+    font-size: 1.2rem;
+}
+
+.purchase__close {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.75rem;
+    padding: 0.2rem 0.45rem;
+    color: var(--ink-soft);
+    background: transparent;
+    border: 0;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.purchase__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin: 1.25rem 0 0;
 }
 
 /* Visible focus everywhere. Removing it is not an option for this audience. */

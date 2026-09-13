@@ -429,6 +429,46 @@ describe('how long they have been out', () => {
     });
 });
 
+describe('the printer handoff', () => {
+    const checkoutUrl = 'https://www.peecho.com/checkout/print/en/a-book?token=secret';
+
+    const loaded = (checkout) =>
+        archive({
+            answer: async (url) => {
+                if (url === '/.auth/me') return signedIn('gran@example.com');
+                if (url === '/api/memberships') return { body: { memberships: [] } };
+                if (url.endsWith('/checkout')) return { body: { checkoutUrl: checkout } };
+                return { body: { slug: SLUG, role: 'reader', posts: [{ id: 'one' }] } };
+            }
+        });
+
+    test('offers an active checkout to a reader and explains the handoff first', async () => {
+        const view = await loaded(checkoutUrl);
+
+        assert.equal(typeof view.context.mounted.book.open, 'function');
+        view.context.mounted.book.open();
+
+        assert.equal(view.el('purchase-dialog').open, true);
+        assert.equal(view.el('purchase-continue').href, checkoutUrl);
+        assert.match(view.source, /about to go to the printer&rsquo;s website to purchase this book/);
+    });
+
+    test('the x cancels without leaving the archive', async () => {
+        const view = await loaded(checkoutUrl);
+        view.context.mounted.book.open();
+
+        await view.el('purchase-close').dispatch('click');
+
+        assert.equal(view.el('purchase-dialog').open, false);
+        assert.equal(view.el('purchase-close').getAttribute('aria-label'), 'Cancel buying a book');
+    });
+
+    test('offers no buying control when no checkout is active', async () => {
+        const view = await loaded(null);
+        assert.equal(view.context.mounted.book, null);
+    });
+});
+
 // Waiting for the archive list.
 //
 // It is a second round trip and not a fast one. It is fetched into a panel

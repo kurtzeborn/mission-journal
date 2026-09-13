@@ -19,6 +19,8 @@
     };
 
     const title = document.getElementById('site-title');
+    const purchaseDialog = document.getElementById('purchase-dialog');
+    const purchaseContinue = document.getElementById('purchase-continue');
 
     // The slug is the first path segment. Everything else about the site --
     // including whether it exists at all -- is decided by the API.
@@ -42,6 +44,35 @@
 
     const photoSrc = (photoId, size) =>
         `/api/photo/${encodeURIComponent(slug)}/${encodeURIComponent(photoId)}/${size}.webp`;
+
+    async function availableBook() {
+        try {
+            const response = await fetch(`/api/print/${encodeURIComponent(slug)}/checkout`, {
+                cache: 'no-store'
+            });
+            if (!response.ok) return null;
+
+            const body = await response.json();
+            return typeof body.checkoutUrl === 'string' && body.checkoutUrl
+                ? body.checkoutUrl
+                : null;
+        } catch {
+            // Buying is optional. A failed availability check must not prevent
+            // somebody from reading the archive they came for.
+            return null;
+        }
+    }
+
+    function openPurchase(checkoutUrl) {
+        purchaseContinue.href = checkoutUrl;
+        purchaseDialog.showModal();
+    }
+
+    document.getElementById('purchase-close').addEventListener('click', () => purchaseDialog.close());
+    purchaseContinue.addEventListener('click', () => purchaseDialog.close());
+    purchaseDialog.addEventListener('click', (event) => {
+        if (event.target === purchaseDialog) purchaseDialog.close();
+    });
 
     const contentUrl = `/api/content/${encodeURIComponent(slug)}/posts.json`;
 
@@ -1163,11 +1194,14 @@
                   }
                 : null;
 
+        const checkoutUrl = await availableBook();
+
         Reader.mount({
             posts: payload.posts,
             photoSrc,
             elements,
             admin,
+            book: checkoutUrl ? { open: () => openPurchase(checkoutUrl) } : null,
             // Off the window rather than a bare global, because unlike Reader
             // this one is genuinely optional -- the archive draws without it.
             album: window.Album ?? null,
