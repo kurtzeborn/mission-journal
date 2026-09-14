@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Validated
+> **Status:** Deployed
 
 Generated: 2026-09-13
 
@@ -90,9 +90,10 @@ No supporting service or infrastructure changes are required.
 - [x] Record validation proof below
 
 ### Phase 4: Deployment
-- [ ] Merge the pull request to `main`
-- [ ] Confirm the **Deploy web** workflow succeeds
-- [ ] Verify the live page and navigation
+- [x] Merge the pull request to `main`
+- [x] Confirm the **Deploy web** workflow succeeds
+- [x] Confirm the synchronized reader asset passes the **Deploy functions** workflow
+- [x] Verify the live page, photograph, and navigation
 
 ---
 
@@ -108,6 +109,20 @@ No supporting service or infrastructure changes are required.
 
 **Validated by:** azure-validate skill  
 **Validation timestamp:** 2026-09-14T04:57:23Z
+
+### Deployment Verification
+
+| Check | Result | Timestamp |
+|-------|--------|-----------|
+| **Deploy web** GitHub Actions run `34807969332` | Pass | 2026-09-14 |
+| **Deploy functions** GitHub Actions run `34807969176` | Pass | 2026-09-14 |
+| `https://pdayletters.com/about` | Public page returned the deployed prose | 2026-09-14 |
+| `https://pdayletters.com/who-made-this.jpg` | HTTP 200, `image/jpeg`, 208301 bytes | 2026-09-14 |
+| Homepage, Getting Started, and FAQ links | Each production page contains `href="/about"` | 2026-09-14 |
+
+### Live Role Verification
+
+No resources, managed identities, role assignments, or infrastructure were provisioned or changed by this static-content deployment. Live RBAC verification is not applicable.
 
 ---
 
@@ -130,7 +145,4 @@ No supporting service or infrastructure changes are required.
 
 ## 10. Next Steps
 
-1. Validate the prepared release.
-2. Merge to `main`.
-3. Let the existing **Deploy web** workflow publish the site.
-4. Verify `https://pdayletters.com/about`.
+Deployment is complete at `https://pdayletters.com/about`.
