@@ -63,6 +63,12 @@ describe('the questions page holds together', () => {
 });
 
 describe('links between pages', () => {
+    test('the public entry pages link to the about page', async () => {
+        for (const name of ['index.html', 'start.html', 'faq.html']) {
+            assert.ok(hrefsIn(read(name)).includes('/about'), `${name} does not link to /about`);
+        }
+    });
+
     test('no page links to an anchor another page does not have', async () => {
         const broken = [];
 
