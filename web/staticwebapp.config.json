@@ -154,6 +154,20 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The story behind the site and its photograph are public, like the landing and help pages that link here.",
+      "route": "/about",
+      "rewrite": "/about.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/about.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/who-made-this.jpg",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "Terms and privacy are one document, served at both addresses. /privacy exists because a privacy notice is asked for by URL -- by a sign-in provider's review, or by somebody who guessed -- and answering that with a 404 is the wrong answer to the right question. Anonymous is not a relaxation: this is read before deciding whether to sign in, and a privacy notice behind a sign-in wall discloses nothing to the people it is written for.",
       "route": "/terms",
       "rewrite": "/terms.html",

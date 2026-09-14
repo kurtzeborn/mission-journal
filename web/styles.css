@@ -1931,6 +1931,23 @@ h3:target {
     margin-bottom: 0;
 }
 
+/* --- who made this --- */
+
+.about-photo {
+    margin: 0 0 2rem;
+}
+
+.about-photo img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+}
+
+.about-copy {
+    margin-bottom: 2.5rem;
+}
+
 /* --- who can read an archive --- */
 
 .people {
