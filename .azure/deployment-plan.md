@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Validated
+> **Status:** Deployed
 
 Generated: 2026-09-13
 
@@ -91,11 +91,11 @@ No supporting service or infrastructure changes are required.
 - [x] Record validation proof below
 
 ### Phase 4: Deployment
-- [ ] Merge the pull request to `main`
-- [ ] Confirm the **Deploy web** workflow succeeds
-- [ ] Confirm the synchronized reader asset passes the **Deploy functions** workflow
-- [ ] Verify the live page no longer references the photograph
-- [ ] Verify the photograph URL no longer serves the image
+- [x] Merge the pull request to `main`
+- [x] Confirm the **Deploy web** workflow succeeds
+- [x] Confirm the synchronized reader asset passes the **Deploy functions** workflow
+- [x] Verify the live page no longer references the photograph
+- [x] Verify the photograph URL no longer serves the image
 
 ---
 
@@ -113,6 +113,19 @@ No supporting service or infrastructure changes are required.
 
 **Validated by:** azure-validate skill  
 **Validation timestamp:** 2026-09-14T05:55:18Z
+
+### Deployment Verification
+
+| Check | Result | Timestamp |
+|-------|--------|-----------|
+| **Deploy web** GitHub Actions run `34811471537` | Pass | 2026-09-14 |
+| **Deploy functions** GitHub Actions run `34811471513` | Pass | 2026-09-14 |
+| `https://pdayletters.com/about` | Public page contains no photograph reference | 2026-09-14 |
+| `https://pdayletters.com/who-made-this.jpg` | No image served; HTTP 401 from the authenticated catch-all | 2026-09-14 |
+
+### Live Role Verification
+
+No resources, managed identities, role assignments, or infrastructure were provisioned or changed by this static-content deployment. Live RBAC verification is not applicable.
 
 ---
 
@@ -135,8 +148,4 @@ No supporting service or infrastructure changes are required.
 
 ## 10. Next Steps
 
-1. Remove the photograph and related code.
-2. Validate the prepared release.
-3. Merge to `main`.
-4. Let the existing CI/CD workflows publish the removal.
-5. Verify the photograph is absent from production.
+Deployment is complete at `https://pdayletters.com/about`.
