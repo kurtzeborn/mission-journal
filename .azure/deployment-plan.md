@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Deployed
+> **Status:** Validated
 
 Generated: 2026-09-13
 
@@ -8,7 +8,7 @@ Generated: 2026-09-13
 
 ## 1. Project Overview
 
-**Goal:** Publish the new static `Who Made This?` page, optimized photograph, and navigation links.
+**Goal:** Remove the personal photograph from the public `Who Made This?` page and from the deployed site.
 
 **Path:** Modify an existing production application.
 
@@ -24,7 +24,7 @@ Generated: 2026-09-13
 | Subscription | Existing CI/CD target: MSDN Subscription (`41fbccc1-bb65-416d-816d-30cb2a41dd9b`) |
 | Location | Existing Static Web App: Central US |
 
-The user explicitly directed this release to use the established CI/CD deployment. No subscription, region, resource, SKU, or infrastructure decision is part of this change.
+The user explicitly directed ordinary releases to use the established CI/CD deployment. No subscription, region, resource, SKU, or infrastructure decision is part of this change.
 
 ---
 
@@ -80,7 +80,8 @@ No supporting service or infrastructure changes are required.
 - [x] User approved this deployment path
 
 ### Phase 2: Execution
-- [x] Add the static page, image, navigation, and styles
+- [x] Remove the photograph from the page and repository
+- [x] Remove its anonymous route and unused styles
 - [x] Preserve the packaged-reader stylesheet copy
 - [x] Verify internal links and packaged assets
 - [x] Set status to Ready for Validation
@@ -90,10 +91,11 @@ No supporting service or infrastructure changes are required.
 - [x] Record validation proof below
 
 ### Phase 4: Deployment
-- [x] Merge the pull request to `main`
-- [x] Confirm the **Deploy web** workflow succeeds
-- [x] Confirm the synchronized reader asset passes the **Deploy functions** workflow
-- [x] Verify the live page, photograph, and navigation
+- [ ] Merge the pull request to `main`
+- [ ] Confirm the **Deploy web** workflow succeeds
+- [ ] Confirm the synchronized reader asset passes the **Deploy functions** workflow
+- [ ] Verify the live page no longer references the photograph
+- [ ] Verify the photograph URL no longer serves the image
 
 ---
 
@@ -101,28 +103,16 @@ No supporting service or infrastructure changes are required.
 
 | Check | Command Run | Result | Timestamp |
 |-------|-------------|--------|-----------|
-| Vendored web assets | `npm run vendor:check` in `web/` | Pass: 10 files match | 2026-09-14T04:57:23Z |
-| Page links and packaged assets | `node --test tests/web-links.test.js tests/archive.test.js` in `functions/` | Pass: 22 tests | 2026-09-14T04:57:23Z |
-| Static Web Apps routes | Parse `web/staticwebapp.config.json` and assert `/about`, `/about.html`, and `/who-made-this.jpg` allow `anonymous` | Pass | 2026-09-14T04:57:23Z |
-| Diff integrity | `git diff --check` | Pass | 2026-09-14T04:57:23Z |
-| Static RBAC review | No infrastructure or role-assignment changes | Not applicable | 2026-09-14T04:57:23Z |
+| Vendored web assets | `npm run vendor:check` in `web/` | Pass: 10 files match | 2026-09-14T05:55:18Z |
+| Page links and packaged assets | `node --test tests/web-links.test.js tests/archive.test.js` in `functions/` | Pass: 22 tests | 2026-09-14T05:55:18Z |
+| Photograph removal | Assert no file or HTML/config/CSS reference remains | Pass | 2026-09-14T05:55:18Z |
+| Static Web Apps configuration | Parse `web/staticwebapp.config.json` | Pass | 2026-09-14T05:55:18Z |
+| Stylesheet synchronization | Compare SHA-256 hashes of both stylesheet copies | Pass | 2026-09-14T05:55:18Z |
+| Diff integrity | `git diff --check` | Pass | 2026-09-14T05:55:18Z |
+| Static RBAC review | No infrastructure or role-assignment changes | Not applicable | 2026-09-14T05:55:18Z |
 
 **Validated by:** azure-validate skill  
-**Validation timestamp:** 2026-09-14T04:57:23Z
-
-### Deployment Verification
-
-| Check | Result | Timestamp |
-|-------|--------|-----------|
-| **Deploy web** GitHub Actions run `34807969332` | Pass | 2026-09-14 |
-| **Deploy functions** GitHub Actions run `34807969176` | Pass | 2026-09-14 |
-| `https://pdayletters.com/about` | Public page returned the deployed prose | 2026-09-14 |
-| `https://pdayletters.com/who-made-this.jpg` | HTTP 200, `image/jpeg`, 208301 bytes | 2026-09-14 |
-| Homepage, Getting Started, and FAQ links | Each production page contains `href="/about"` | 2026-09-14 |
-
-### Live Role Verification
-
-No resources, managed identities, role assignments, or infrastructure were provisioned or changed by this static-content deployment. Live RBAC verification is not applicable.
+**Validation timestamp:** 2026-09-14T05:55:18Z
 
 ---
 
@@ -131,12 +121,12 @@ No resources, managed identities, role assignments, or infrastructure were provi
 | File | Purpose | Status |
 |------|---------|--------|
 | `web/about.html` | Public Who Made This page | Ready |
-| `web/who-made-this.jpg` | Optimized page photograph | Ready |
+| `web/who-made-this.jpg` | Remove personal photograph | Removed |
 | `web/index.html` | Footer link | Ready |
 | `web/faq.html` | Footer link | Ready |
 | `web/start.html` | Footer link | Ready |
-| `web/styles.css` | About-page image layout | Ready |
-| `web/staticwebapp.config.json` | Anonymous routes for the page and photograph | Ready |
+| `web/styles.css` | Remove unused photograph layout | Ready |
+| `web/staticwebapp.config.json` | Remove the photograph's anonymous route | Ready |
 | `functions/src/assets/reader/styles.css` | Required synchronized stylesheet copy | Ready |
 | `functions/tests/web-links.test.js` | Footer-link regression coverage | Ready |
 | `.github/copilot-instructions.md` | Persist the established CI/CD release convention | Ready |
@@ -145,4 +135,8 @@ No resources, managed identities, role assignments, or infrastructure were provi
 
 ## 10. Next Steps
 
-Deployment is complete at `https://pdayletters.com/about`.
+1. Remove the photograph and related code.
+2. Validate the prepared release.
+3. Merge to `main`.
+4. Let the existing CI/CD workflows publish the removal.
+5. Verify the photograph is absent from production.

@@ -154,17 +154,13 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
-      "comment": "The story behind the site and its photograph are public, like the landing and help pages that link here.",
+      "comment": "The story behind the site is public, like the landing and help pages that link here.",
       "route": "/about",
       "rewrite": "/about.html",
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
       "route": "/about.html",
-      "allowedRoles": ["anonymous", "authenticated"]
-    },
-    {
-      "route": "/who-made-this.jpg",
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
