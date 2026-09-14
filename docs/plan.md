@@ -129,9 +129,9 @@ Every surface carrying the product name — the public landing page, the site he
 
 ### Domains
 
-**One domain: `pdayletters.com`.** All web UI, auth, mail, and outbound links point here.
+**One canonical domain: `pdayletters.com`.** All web UI, auth, mail, and outbound links point here.
 
-Three other names were registered speculatively — `pdayemail.com`, `pday.email`, and `missionaryjournal.org` — and are **deliberately not used**. Serving them would mean a second MX path, a second entry in `ACCEPTED_INGEST_DOMAINS`, redirect rules to maintain, and a fourth spelling of the address for people to get wrong. None of that buys a user anything: everyone is told one address, and that address is the only one that has ever been advertised. They can be redirected later if a real need appears, or allowed to lapse.
+Three other registered names — `pdayemail.com`, `pday.email`, and `missionaryjournal.org` — are redirect-only aliases. Cloudflare terminates HTTPS and sends each request to the same path and query string on `https://pdayletters.com`; none has MX, enters `ACCEPTED_INGEST_DOMAINS`, serves application content, or creates another spelling users are asked to remember.
 
 **Why one canonical web domain rather than several?** Azure Static Web Apps scopes auth session cookies (and the OAuth relying-party redirect) to a single hostname. Sharing a signed-in session across sibling domains would require hand-rolling cross-domain token passing — fragile, extra security surface, no user benefit.
 
@@ -449,7 +449,7 @@ That restriction is what lets the rest of the design be simple. `rendered/` is t
 
 Plus two Azure Tables in the same storage account:
 
-- **`users`** — `PartitionKey = "user"`, `RowKey = lowercased email address`. Identity columns: `displayName`, `authProvider` (`google` | `microsoft`), `firstSeenAt`, `lastSignInAt`. Preference columns: `postAckEmails`, `dedupeAckEmails`, and `digestFrequency` (see [Notification preferences](#notification-preferences) and [New-letter notifications](#new-letter-notifications) for defaults, which differ by sender type); additional per-user preferences are just additional columns as they arrive. State columns: `claimEmailSentAt` and `claimEmailCount`, driving the tapering re-invitation schedule for a missionary whose own letters created a pending site — kept here rather than in `claim.json` so the schedule survives a pending-site purge and recreation.
+- **`users`** — `PartitionKey = lowercased email address`, `RowKey = "profile"`. Digest columns: `digestFrequency`, `digestWeekday`, `digestWeek`, `digestAt`, and `digestScheduleAt`; see [New-letter notifications](#new-letter-notifications). Additional per-user preferences can be added as columns. A row is created only when somebody saves email-summary settings, so no row means no summary mail.
 - **`memberships`** — `PartitionKey = lowercased email address`, `RowKey = slug`. Columns: `role`, `missionaryDisplayName`, `addedAt`, `lastPostAt`. Answers *"which sites does this person belong to?"* in one partition query. Without it that question requires opening `config/{slug}/acl.json` for every missionary in the service, because ACLs are stored per-slug with no reverse index.
 
 **`memberships` is a derived index, never the authority.** `acl.json` remains the source of truth and is what the content API checks on every request. The table is dual-written on invite, revoke, and claim, and can be rebuilt by scanning `config/*/acl.json` if it ever drifts. That ordering matters: a bug in the index produces a missing or stale entry in a switcher menu, never a wrong access decision. `lastPostAt` is denormalized from render for ordering — a fan-out write bounded by the size of one ACL, which is a handful of family members.
@@ -868,59 +868,41 @@ This is why **pending-site claim emails count as replies, not as self-originated
 
 ### Notification preferences
 
-**Built, minus two flags that were decided against.** The global opt-out shipped in Phase 9 and `digestFrequency` shipped in Phase 10, with a page at `/email` offering weekly, monthly or never. `postAckEmails` and `dedupeAckEmails` are deliberately not stored — an unused column would repeat the `alternateSenders` mistake described elsewhere in this plan. The rest of this section is the reasoning that produced that shape, kept because it is why the page asks one question instead of three.
+**Built.** Outbound preference state has two deliberately separate layers:
 
-Per-user (not per-missionary) preferences for outbound emails the service generates. Stored as columns on the user's row in the `users` Azure Table — same row that holds identity metadata (display name, auth provider, first-seen timestamp) so all per-user state lives in one place. Additional preferences are just additional columns.
+- The `users` table holds only the activity-summary choice: `digestFrequency`, the selected calendar fields, and the dates that bound the unread window and schedule changes. A row is created only when a signed-in person saves `/email`; absence means no summaries.
+- The `optouts` table is a global veto honored by invitations, acknowledgments, summaries, and other generated mail. Its signed one-click endpoint needs no sign-in, and saving `/email` cannot silently reverse it.
 
-A `users` row is **created by the ingest path**, not only by sign-in. The missionary at `elder.smith@missionary.org` receives acknowledgments and may never sign in with Google or Microsoft at all, but still needs somewhere to record that they'd rather not be emailed.
+Per-forward acknowledgments are intentionally not configurable. A successful or duplicate forward receives at most one acknowledgment per person, per archive, per day; mail promoted from a pending site receives none. The proposed `postAckEmails` and `dedupeAckEmails` columns were not built because they would add settings for a bounded courtesy rather than a subscription.
 
-> **As built, ingest creates no `users` row.** The only row-creating paths are the two sign-in flows and the preferences page, and that is the strictest possible reading of "asked, not assumed": **absence of a row means no mail**. It disposes of `@missionary.org` for free — those addresses never sign in, so they never get a row, so they never get a digest — and it will need revisiting only when an ack that a missionary can decline actually exists.
+The settings page is `/email`, not `/settings`. `/settings/{slug}` names an archive, changes its profile, and is owner-only; activity summaries belong to a person across every archive they can read. The account menu links to `/email`.
 
-Initial preferences:
-
-- **`postAckEmails`** — bool. Sends a short *"Posted — thanks!"* reply on every successfully published letter. **Default `true` for everyone except `@missionary.org` senders, where it defaults to `false`.** The two groups have genuinely different needs: a forwarder is actively managing a site and needs to know their forward landed, whereas a missionary adding `post@` to their weekly email should never hear from us again. A weekly ack is 104 interruptions across a mission, each one consuming scarce P-day computer time, in service of a site somebody else is watching: **the missionary isn't monitoring the site; the owner is.** If letters stop arriving, a parent notices first. Missionaries who *want* confirmation can turn it on from the settings page or the `claim@` reply.
-- **`dedupeAckEmails`** — bool, default `true`. Sends a *"we already have this one — thanks!"* reply when a forwarded email is de-duplicated against an existing post.
-- **`digestFrequency`** — `monthly` | `weekly` | `off`. One email summarizing what's new across every site this address belongs to. **Off for everybody until they ask for it**, from the account menu on any page; nothing on the way in asks, so `@missionary.org` rows — created by ingest, never signed in to — are off for free. See [New-letter notifications](#new-letter-notifications).
-
-**Neither ack fires for messages promoted out of a pending site**, and this is a property of the promotion path rather than a per-user preference — there is nothing to opt into. See step 6 of the [onboarding flow](#flow).
-
-Every generated email carries a one-click opt-out for its own category. The link is a **signed token** hitting a Function endpoint that flips the flag directly, with no sign-in required — it cannot point at the authenticated settings page, because acks go to `@missionary.org` senders who typically have no Google or Microsoft identity and cannot sign in at all.
-
-**Half of this shipped early, in Phase 9, as the invitation opt-out** — the token format, the `optouts` table, the `POST`-only endpoint, the RFC 8058 headers, and the page at `/optout`. What shipped is deliberately *not* per-category: it is a single global "stop emailing this address", because the only mail that existed to opt out of was the one kind nobody asked for. When digests and acks arrive, the per-category flags described here go on the `users` row and the global suppression stays above them as a veto — a preference is a choice about which mail to receive, an opt-out is a statement about receiving any, and collapsing the two would let a preferences page quietly re-subscribe somebody who said no.
-
-An authenticated settings page at `/settings` is for ACL members who would rather toggle preferences directly. It is not per-slug — these are columns on one `users` row spanning every site the address belongs to.
-
-> **As built the page is `/email`, not `/settings`.** `/settings/{slug}` already exists and is something else entirely: it names an archive, sets its display name and return date, and is owners only. The audience for a digest preference is *readers*, who cannot open that page at all. Two routes one path segment apart, answering unrelated questions for non-overlapping audiences, is a trap for whoever edits them next. It is linked from the front page rather than from an email, because everybody who joined before this existed has no row, which means no mail, which means no message to link it from.
-
-**Mail-loop protection.** Because the service replies to essentially every inbound message, a misconfigured autoresponder could ping-pong indefinitely. Three guards: outbound acks carry `Auto-Submitted: auto-replied` (RFC 3834); inbound messages carrying `Auto-Submitted` other than `no`, or `Precedence: bulk`/`list`/`junk`, are never acked; and no ack is ever sent to an address on one of our own ingest domains.
+**Mail-loop protection.** Automated replies carry `Auto-Submitted: auto-replied`; scheduled and system mail carries `Auto-Submitted: auto-generated`. Acknowledgments are never sent to one of the service's own ingest domains.
 
 ### New-letter notifications
 
-**Built in Phase 10.** A daily timer at 13:15 UTC, per-person cycles, one email across every archive.
+**Built in Phase 10.** A daily timer at 13:15 UTC checks each person's chosen calendar schedule and sends one email across every archive.
 
-As designed so far, the service publishes letters to a website and never tells anyone a new one exists. Grandparents are a core audience and will not remember to check a URL. Without a nudge, the archive gets built for readers who never arrive.
+This closed the gap where the service published letters but never told readers that something new had arrived. Grandparents are a core audience and should not have to remember to check a URL.
 
 #### The digest
 
 **One email per person, not per site.** A grandparent with two grandchildren serving gets a single message covering both. Per-site digests would put two near-identical emails in the same inbox on the same morning, and the count grows fastest for exactly the people most likely to find it tiresome.
 
-**Monthly by default, weekly on request.** Monthly is rare enough that nobody reaches for unsubscribe, and a three-week-old letter is not stale in an archive people read in batches. Weekly matches the publishing cadence, for the parents and grandparents who want it.
+**Monthly or weekly, only by request.** The email-settings page offers weekly delivery on a chosen weekday, monthly delivery on the first through fourth occurrence of a chosen weekday, or no summaries. Nothing is preselected on a user's behalf and joining or claiming an archive does not subscribe them.
 
-**The preference is asked, not assumed.** On a user's **first sign-in** — accepting an invitation, or claiming a site — a single question appears alongside the rest of that flow: *"How often should we email you when new letters arrive? Monthly / Weekly / Never."* Monthly is preselected, and the whole thing is one tap.
+**The preference is asked, not assumed.** A signed-in reader reaches `/email` from the account menu and explicitly saves a schedule. This keeps joining an archive short and prevents the service's first act toward a new grandparent from being an unrequested subscription. Missionary addresses created only by ingest never acquire a preference row and therefore never receive summaries.
 
-Asking beats either default. Opting everyone in silently makes the service's first act toward a new grandparent an unrequested subscription, which is what trains people to unsubscribe from a domain entirely. Defaulting to off means the feature doesn't exist for most people. Asking at first sign-in costs one line in a flow the user is already completing attentively.
-
-**`@missionary.org` addresses never see the question** — their row is created by the ingest path rather than by a sign-in, they typically have no Google or Microsoft identity to sign in with at all, and they wrote the letters. `off`, for the same reason `postAckEmails` is.
-
-**Changeable afterward** from `/settings`, and from the one-click opt-out link every digest carries.
+**Changeable afterward** from `/email`, with a separate one-click unsubscribe link in every digest.
 
 > **As built:**
 >
-> - **The cycle is 30 or 7 days, not a calendar month or week.** "One month after January 31st" is a question with no good answer, and thirteen sends a year instead of twelve is invisible to somebody who asked for mail roughly monthly.
-> - **Each person's cycle starts when they answered the question**, so a new reader's first digest is not the archive's entire back catalogue — and changing the frequency does not restart the clock, because somebody switching monthly to weekly three weeks in has been waiting three weeks.
+> - **Delivery follows the selected calendar schedule in UTC.** Weekly means the selected weekday. Monthly means the selected first, second, third, or fourth occurrence of a weekday. There is no per-user timezone setting; the daily job runs at 13:15 UTC.
+> - **Each person's unread window starts when they first save a preference**, so a new reader's first digest is not the archive's entire back catalogue. Changing the schedule preserves that unread window while preventing the new schedule from immediately catching up against the old cadence.
+> - **Rows from the earlier rolling-cycle implementation need no migration.** Until calendar fields are written, their last `digestAt` supplies the weekday and monthly occurrence.
 > - **The window advances over a quiet cycle**, whether or not mail went out. It is the end of the last cycle rather than the last send, which is what keeps the window contiguous.
 > - **A failed send is not retried and the window is not rolled back.** Putting it back would turn a provider having a bad hour into the same digest arriving every morning until it stops — the wrong failure mode for a message whose whole purpose is to be a nudge.
-> - **The timer runs daily, not monthly.** Cycles are per person, so a thirtieth of the audience is due on any given day. That is also the traffic shape a sending domain wants.
+> - **The timer runs daily and catches up a missed run once.** Calendar dates differ per person, and checking every day also means a skipped timer does not silently lose that occurrence.
 
 **If nothing published, nothing sends.** No "no new letters this month" email, ever. An empty digest is pure noise, and it would arrive most reliably during exactly the stretch — a transfer, a sick week, a missionary between areas — when the family is already uneasy about the silence.
 
@@ -932,7 +914,7 @@ Asking beats either default. Opting everyone in silently makes the service's fir
 >
 > The link is `/{slug}/#panel-{postId}`, and `web/reader.js` now opens and scrolls to the letter that fragment names. Without it every link in the message lands at the top of an archive whose letters are collapsed, and a reader who chose a subject line out of their inbox has to find it again in a list of dates.
 
-**Mechanically it is machinery that already exists.** A `digestFrequency` column on the `users` row, a timer-triggered Function, one `memberships` partition query per recipient, `lastPostAt` on each membership to decide what's new, the same self-originated sender as other generated mail, and the same one-click HMAC opt-out. The only genuinely new things are a column and a schedule.
+**Mechanically it is machinery that already exists.** The `users` row holds `digestFrequency`, `digestWeekday`, `digestWeek`, `digestAt`, and `digestScheduleAt`; a timer-triggered Function queries memberships per recipient, uses site activity as a fast skip before reading filtered posts, sends through the same self-originated sender as other generated mail, and carries the same one-click HMAC opt-out.
 
 > **As built, freshness is `receivedAt`, not `lastPostAt`.** Same distinction the operator's `/manage/last-received` view is built around, pointed at a reader instead of an operator: a family forwarding two years of backlog in one evening has just given everybody twenty letters to read, and on the letter's own date that is a digest covering 2024 which goes to nobody. `lastReceivedAt` on the site row is used only as a skip, to avoid reading `posts.json` for an archive that has been quiet all cycle.
 
@@ -1050,7 +1032,7 @@ Rationale: missionaries have limited P-day computer time; adding a pending-appro
   - Open `index.html` in any browser and it works, search included. Grandparents get their own copy without going through the owner.
   - **`raw/` is not included, at any role.** The export is a portable copy of the site, and the site is `rendered/`. See [Storage layout](#storage-layout) for why raw email never leaves the service.
 
-- **Order a printed book** — see [Journal Publish](#journal-publish). Any ACL member can order a copy for themselves.
+- **Order a printed book** — see [Journal Publish](#journal-publish). Once an owner creates an active checkout, any ACL member sees **Buy a Book** and can order a copy; the owner can also share the printer's checkout link with somebody who is not an archive member.
 
 **Owner-only actions:**
 
@@ -1072,17 +1054,18 @@ Assemble a physical hardcover photo book from a missionary's journal — all pos
 
 #### The flow
 
-1. Any ACL member clicks "Publish this journal as a book" in the reader UI.
-2. A book-assembly Function builds one print-ready PDF from the missionary's posts:
-   - Front cover, then title page and colophon.
+1. An owner opens **Print a book**, chooses the cover, optionally adds a Foreword or Afterword, and starts the build.
+2. A book-assembly Function builds one print-ready PDF from the reader-safe archive:
+   - Front cover, then title page, colophon, and optional Foreword.
    - Contents by date.
    - One chapter per letter, opening on a left-hand page, with inline photographs floated into the margin and unplaced ones given the facing leaf.
-   - Blank leaves as needed to reach Peecho's 24-page floor and an even count, then the back cover.
-3. The owner reviews a watermarked preview in the reader. The unwatermarked 300 dpi file never reaches the browser. Both renditions come out of the same layout pass, so the proof is a proof of the thing that will be bound rather than an approximation of it.
-4. On approval the PDF goes to Peecho's Print API as a product listing-publication, and the owner is sent to the checkout page it returns.
-5. Peecho takes the payment, prints, ships, and handles the customer. We are told the order exists and nothing more.
+   - Optional Afterword, then blank leaves as needed to reach Peecho's 24-page floor and an even count, and the back cover.
+3. The owner reviews a watermarked preview. Ordinary archive members never receive the unwatermarked 300 dpi file; an operator-only diagnostic route can download it when printer support requires the exact artifact. Both renditions come out of the same layout pass, so the proof is a proof of the thing that will be bound rather than an approximation of it.
+4. On approval the owner creates a Peecho product listing. This is when Peecho receives the book; the resulting secure checkout remains active for 180 days.
+5. While that listing is active, any signed-in archive member can discover it through **Buy a Book**, and the owner can share the Peecho URL with anyone else.
+6. Peecho takes payment, prints, ships, and supports the buyer. Signed webhooks report order and shipping status without sending us the buyer's payment details or delivery address.
 
-**Pricing model on our side:** the price shown in Peecho's checkout is ours to set; Peecho deducts production, shipping, tax and transaction fees and holds the remainder as withdrawable profit. Aim it at covering the Azure and Cloudflare bill, not at a margin.
+**Pricing model on our side:** the price shown in Peecho's checkout is ours to set; Peecho deducts production, shipping, tax and transaction fees and holds the remainder as withdrawable profit. The small margin is intended to help cover the Azure and Cloudflare bill rather than turn book sales into a separate business.
 
 #### What their specification settles
 
@@ -1097,29 +1080,29 @@ Read off Peecho's own upload requirements, and all of it is already in `function
 
 And the distinction that decides the integration: a **product listing-publication** returns an id whose checkout page the buyer pays on, while **create-order plus order-payment** runs on prepaid credits and would make us the merchant. The first is the one we want; the second is the one whose endpoint names look obvious.
 
-#### Before this can ship
+#### Shipping prerequisites — completed
 
-- A line in the site's own terms backing the intellectual-property and portrait-rights warranty Peecho's seller terms require. A book of somebody else's letters containing photographs of somebody else's children needs this to be explicit.
-- A VAT number, or a support ticket explaining why there is not one. Peecho's company-details form will not save without it, which blocks the webhook settings and makes the API return `APP_NO_COMP_DETAILS`.
-- A gate for the interior PDF that survives Peecho refetching it for a reprint, which rules out a short-lived SAS URL on its own.
+- The site's terms explain the intellectual-property and portrait-rights assurance Peecho requires, and the owner confirms it immediately before creating a checkout.
+- Peecho production billing, product, API credentials, and webhooks are configured. The apparent VAT block was resolved through Billing Information and Billing Address; the separate Company details form accepted the non-VAT placeholder needed to save webhook settings.
+- Peecho receives a signed URL on our domain that can survive a later reprint and redirects each authorized fetch to a fresh, short-lived SAS URL.
 
 #### Implementation notes
 
 - Assembly cannot happen inside an HTTP request — a book of four hundred photographs will not finish inside the 230-second ceiling. It is a queue trigger writing a status blob, in the same shape as the archive export.
 - Reuse the *same rendered content* the reader UI uses. Regeneration is idempotent; if new posts arrive after publish, the owner can regenerate.
-- Cover design and layout: start with a single "classic" template. Expand to multiple templates only if there's demand.
+- Cover design and layout use one classic template with eight cloth colors and an optional front-board photograph. Additional templates remain demand-driven.
 - Use Peecho's test environment for CI and any trial orders. It is a separate account at `test.www.peecho.com` with its own API key, and orders placed there never print and are never charged. Their terms are explicit that orders not meant to be printed must not be sent to production.
 - Webhooks post JSON carrying `signature`, `order_id`, `order_reference`, `old_status`, `new_status` and tracking fields. The signature is `sha256(secretKey + order_id)` — the same shape as the invite links, so the verification helper is already written.
 
 #### Data-model additions
 
-- `books/{missionary-slug}/{book-id}/` blob path stores the generated PDF and a `manifest.json` recording which posts + photos were included and which provider + order ID was used.
-- Per-book records in the missionary's profile for order history: `bookOrders: [{ id, provider, orderId, orderedAt, status, trackingUrl }]`.
+- `books/{missionary-slug}/{book-id}/` stores `book.pdf`, `proof.pdf`, `cover.jpg`, `manifest.json`, and `status.json`.
+- Checkout and webhook state lives beside the build in `order.json`. It records the publication, checkout lifetime, provider order status, tracking data, and a bounded status history; it is not written into the missionary profile.
 
-#### Open questions for this feature
+#### Decisions for this feature
 
-- Pass-through pricing, or add a small service fee?
-- One trim size or several? Peecho binds six other shapes, and a landscape Letter would suit photograph-heavy missions better. Letter portrait first, and only branch if somebody asks.
+- **Pricing:** the checkout price includes a small margin to help cover the service's Azure and Cloudflare costs.
+- **Trim:** Letter portrait only. Peecho binds six other shapes, and landscape Letter may suit photograph-heavy missions, but additional formats remain demand-driven.
 
 ---
 
@@ -1640,14 +1623,14 @@ Shipped since, and previously listed here as outstanding:
   - **`google-client-secret` and `claim-token-key` deliberately carry no date.** Google OAuth client secrets do not expire, and rotating the claim key would invalidate every outstanding claim link — including ones sitting unread with days left on a 60-day window. Setting a date on either would manufacture a false alarm.
 
 ### Phase 10 — New-letter notifications
-**Done.** A daily timer sends a digest to everybody whose cycle is over, one email across every archive they belong to.
+**Done.** A daily timer sends a summary to everybody whose selected calendar occurrence is due, one email across every archive they belong to.
 
-**Built:** the preferences table (`functions/src/lib/users.js`) — one row per address, holding `digestFrequency` and the end of the last cycle; the composer and run (`functions/src/lib/digest.js`) — what is new since a moment, across every archive, as a subject line, plain text and HTML, with the `List-Unsubscribe` pair and `Auto-Submitted: auto-generated`; the timer (`functions/src/functions/digest.js`) at 13:15 UTC daily; the preferences endpoint (`functions/src/functions/preferences.js`) and the page at `/email`, linked from the account menu on every page; and the `#panel-{postId}` deep link in `web/reader.js`, so a link in the email opens the letter it names.
+**Built:** the preferences table (`functions/src/lib/users.js`) — one row per address, holding the frequency, selected weekday, selected monthly week, unread-window boundary, and schedule-change boundary; the composer and run (`functions/src/lib/digest.js`) — what is new since a moment, across every archive, as a subject line, plain text and HTML, with the `List-Unsubscribe` pair and `Auto-Submitted: auto-generated`; the timer (`functions/src/functions/digest.js`) at 13:15 UTC daily; the preferences endpoint (`functions/src/functions/preferences.js`) and the page at `/email`, linked from the account menu on every page; and the `#panel-{postId}` deep link in `web/reader.js`, so a link in the email opens the letter it names.
 
-- **Monthly digest** per [New-letter notifications](#new-letter-notifications): timer-triggered Function, one email per user spanning all of their sites, and the existing one-click HMAC opt-out. Carries `List-Unsubscribe` and `List-Unsubscribe-Post` headers, which bulk mail now needs for inbox placement.
+- **Weekly or monthly summary** per [New-letter notifications](#new-letter-notifications): the reader chooses a weekday for weekly delivery or the first through fourth occurrence of a weekday for monthly delivery. The timer sends one email per user spanning all of their sites and uses the existing one-click HMAC opt-out. It carries `List-Unsubscribe` and `List-Unsubscribe-Post` headers, which bulk mail now needs for inbox placement.
 - **`digestFrequency` is off until somebody asks for it** — the monthly/weekly/never question is on the page at `/email`, reached from the account menu on every page, and nowhere else. It was on the claim and invitation forms until the menu existed to hold it; taking it off those forms is what got joining down to two steps. Nothing else creates a row, so an address that has never asked is never written to.
 - **Empty digests are never sent**, and the cycle ends anyway. There is nothing in a quiet window to miss.
-- **Deviations from the design above** are recorded inline under [New-letter notifications](#new-letter-notifications): the page is `/email` rather than `/settings`, there is no thumbnail, freshness is arrival rather than the letter's own date, cycles are 30 and 7 days, and a failed send is not retried.
+- **Deviations from the original design** are recorded inline under [New-letter notifications](#new-letter-notifications): the page is `/email` rather than `/settings`, there is no thumbnail, freshness is arrival rather than the letter's own date, delivery follows user-selected calendar dates in UTC, and a failed send is not retried.
 - **SMS is cut**, on cost, A2P registration, `STOP` handling and the fact that it would introduce phone numbers. See [Text messages](#text-messages--not-doing-this).
 
 ### Phase 11 — Journal Publish
@@ -1657,7 +1640,7 @@ Shipped since, and previously listed here as outstanding:
 - Built from the same filtered payload the reader UI receives, so hidden posts are excluded without a rule of its own — see [Editing and hiding posts](#editing-and-hiding-posts).
 - Full design in [Journal Publish](#journal-publish); the provider comparison, and why the wholesale APIs were all ruled out, is in [printing.md](printing.md).
 
-**Done:** the book layout engine (`functions/src/lib/book.js`), sized and paginated to Peecho's hardcover specification, and able to render a marked screen-resolution proof of the same layout; the publish pipeline (`functions/src/lib/publish.js`) and its endpoints (`functions/src/functions/book.js`) — request, poll, fetch either rendition — with the build running on the `book` queue and its state in `books/{slug}/{id}/status.json`; the owner-only page at `/book/{slug}` that asks for a book, watches it build, and links to the proof; the email that tells whoever pressed the button how it went (`functions/src/lib/bookmail.js`), sent from the queue worker on success and on failure alike, and linking to the page rather than to a rendition whose link dies in fifteen minutes; the cover (`functions/src/lib/cover.js`) — eight bound cloths, none of them white, and an optional photograph across the front board taken from the archive or uploaded, chosen on the book page against a live preview and remembered on the profile so next year's book is bound like this one; the Peecho client (`functions/src/lib/peecho.js`) and its endpoints (`functions/src/functions/peecho.js`) — a secure-checkout product listing, a durable signed URL the printer fetches the PDF through, and both webhooks, verified by their `sha256(secretKey + order_id)` and recorded in `books/{slug}/{id}/order.json`; and the order button on the book page, which turns a finished book into a checkout link the owner can use or pass on.
+**Done:** the book layout engine (`functions/src/lib/book.js`), sized and paginated to Peecho's hardcover specification, able to include optional Foreword and Afterword sections, and able to render a marked screen-resolution proof of the same layout; the publish pipeline (`functions/src/lib/publish.js`) and its endpoints (`functions/src/functions/book.js`) — request, poll, fetch either rendition — with the build running on the `book` queue and its state in `books/{slug}/{id}/status.json`; the owner-only page at `/book/{slug}` that asks for a book, watches it build, and links to the proof; the email that tells whoever pressed the button how it went (`functions/src/lib/bookmail.js`), sent from the queue worker on success and on failure alike, and linking to the page rather than to a rendition whose link dies in fifteen minutes; the cover (`functions/src/lib/cover.js`) — eight bound cloths, none of them white, and an optional photograph across the front board taken from the archive or uploaded, chosen on the book page against a live preview and remembered on the profile so next year's book is bound like this one; the Peecho client (`functions/src/lib/peecho.js`) and its endpoints (`functions/src/functions/peecho.js`) — a secure-checkout product listing, a durable signed URL the printer fetches the PDF through, and both webhooks, verified by their `sha256(secretKey + order_id)` and recorded in `books/{slug}/{id}/order.json`; the owner control that creates a checkout from a finished book; and the reader-safe checkout lookup that shows every signed-in archive member **Buy a Book** while that checkout remains active.
 
 - **The listing is the only API shape that keeps us out of the money.** A publication returns a checkout page the buyer pays Peecho on; create-order-plus-payment would make us the merchant, holding the card, the refunds and a stranger's postal address. The endpoint names make the wrong one look obvious, which is why this is written down twice.
 - **Secure checkout, not the plain `peecho.com/print/{id}` page.** That id is a small integer, and these are a family's letters and photographs of their children. Secure checkout swaps it for a UUID and a token with an expiry, which is the difference between a private page and a page that merely is not linked to.
@@ -1667,7 +1650,7 @@ Shipped since, and previously listed here as outstanding:
 - **The button makes a link rather than a redirect.** Peecho's secure checkout is good for six months and works for anybody holding it, so what comes back is shown and left on screen: a grandmother buys her own copy from a link she was sent, without an account here and without the owner ordering on her behalf. It is hidden entirely where `PEECHO_API_KEY` does not resolve — the status endpoint says whether there is a printer — because a control whose only possible answer is "printing is not switched on yet" is a control that exists to apologize.
 - **The keys are provisioned out of band**, by `infra/provision-peecho.ps1`, for the reason `provision-claim.ps1` exists: a Bicep-declared secret takes its value as a parameter, and parameters are kept in the deployment history in plain text. Bicep declares all four settings and the two Key Vault references; the script writes only the secrets, restarts the app so the references are resolved rather than left as text for the best part of a day, and prints the two webhook URLs, which have to be typed into their dashboard by hand because those are their calls to us.
 - **The cover is drawn twice, and the second one is a picture.** Peecho's configurator will not show a preview without `order.product.thumbnail`, and nothing here can rasterise page one of the PDF without a PDF renderer — pdfium, poppler, mupdf — that is either a heavy native dependency or licensed in a way that reaches into the whole service. So `functions/src/lib/thumbnail.js` redraws the front board with sharp. The duplication is real and is bounded on purpose: the palette, the trim, the plate height, the faces and the date format are all imported from the files that own them, so only the stacking of four lines exists in two places. It is rendered once at the end of a build, stored beside the book, served on the same signed print route, and allowed to fail — a bound book already in storage must not be undone by an image nobody has asked for yet, and a listing with an empty frame is what every listing had until now.
-- **The rights warranty is asked for in front of the button, not in a document.** Peecho's seller terms make the merchant answerable for having the right to print what is printed, and the merchant is us — but nobody here has ever read a letter or knows who is in a photograph, so the only person who can give that assurance is the owner. It is therefore a sentence above the order button, in the words a person would use, with the detail in [the questions page](../web/faq.html) under *Whose book is it?* — which also says plainly who takes the money, who prints it, and that the margin on a book is the only revenue this site has.
+- **The rights warranty is asked for in front of the button and explained in the terms.** Peecho's seller terms make the merchant answerable for having the right to print what is printed, and the merchant is us. The service does not review archive contents to establish authorship, ownership, or consent; operators can access an archive for the limited support, safety, and legal purposes disclosed in the privacy policy, but that access cannot establish who appears in every photograph. The owner is therefore the person who must give the assurance. The book page asks in ordinary language immediately before checkout creation, with the detail in [the questions page](../web/faq.html) under *Whose book is it?* — which also says plainly who takes the money, who prints it, and that the margin on a book is the only revenue this site has.
 
 **Next:** nothing outstanding. Phase 11 ends when a real book has been ordered and arrives.
 
