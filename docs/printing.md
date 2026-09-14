@@ -1,6 +1,6 @@
 # Getting a book printed
 
-Journal Publish assembles a hardcover book from a missionary's letters and photographs. Assembling it is our problem; printing, binding and posting it is somebody else's. This is the record of who that somebody should be, and — more usefully in a year's time — why the ones we did not pick were not picked.
+Journal Publish assembles a hardcover book from a missionary's letters and photographs. Assembling it is our problem; printing, binding and posting it is somebody else's. This records why Peecho was selected and — more usefully in a year's time — why the alternatives were not.
 
 An earlier version of this comparison lived in [plan.md](plan.md) and recommended Lulu. It was written before the constraint that decides the whole question, and it is wrong. This file replaces it.
 
@@ -42,7 +42,7 @@ A referral link into somebody's consumer photo-book builder. The owner starts ag
 
 ## The candidates
 
-### Peecho — recommended
+### Peecho — selected
 
 A Dutch print-on-demand platform, now part of the Prodigi group. Category A, and built for exactly this: an app that has content its users want on paper.
 
@@ -50,11 +50,11 @@ A Dutch print-on-demand platform, now part of the Prodigi group. Category A, and
 - **Integration.** A Print API for uploading the PDF and creating the product, plus a hosted checkout. Their words on the checkout: *"Supports all major payment methods, handles taxes, and comes with promotional discount codes as standard."* That sentence is the entire reason to choose them — every clause in it is work we are not doing.
 - **The money.** Their seller terms define *Profit* as *"the amount of money per order to be paid to the client after the cost of production, shipping, relevant VAT and sales tax charges, and transaction fees have been deducted from the final price displayed in the checkout"*, withdrawn on request from their dashboard. We set the price, they take their costs, the rest is ours. No affiliate approval, no cookie window, no attribution to lose.
 - **Support.** Their terms: *"PEECHO will provide PEECHO Customer Services to Client and Customer... PEECHO addresses case issues regarding Items and/or Orders with the Printer and communicates the outcome to the Customer."* A book that arrives damaged is not an email to us.
-- **Precedent.** Polarsteps — a travel-journal app whose users wanted their journals printed — runs on Peecho's Print API, and says photo books now account for all of the revenue the feature generates. Their co-founder on the integration: *"We only added the Peecho checkout to our website and app, and then implemented a couple of push notifications to let users know they can order a travel book... That's the only thing we did."* That is the same feature we are building, described by somebody who already built it.
+- **Precedent.** Polarsteps — a travel-journal app whose users wanted their journals printed — runs on Peecho's Print API, and says photo books now account for all of the revenue the feature generates. Their co-founder on the integration: *"We only added the Peecho checkout to our website and app, and then implemented a couple of push notifications to let users know they can order a travel book... That's the only thing we did."* That is the same integration shape used here, described by somebody who already built it.
 
 **What it costs us in obligations:**
 
-- **A warranty we have to be able to make.** Their terms require the client to hold *"all rights, titles and interest including, without limitation, any intellectual property rights"* and *"portrait rights"* in what is printed, and to indemnify them. A book of letters somebody else wrote, containing photographs of other people's children, needs a matching line in pdayletters.com's own terms before this ships. This is a real piece of work, not a formality.
+- **A warranty we have to be able to make.** Their terms require the client to hold *"all rights, titles and interest including, without limitation, any intellectual property rights"* and *"portrait rights"* in what is printed, and to indemnify them. Pdayletters.com's terms now carry the matching provision, and an owner confirms the assurance immediately before creating a checkout.
 - **Files are kept.** *"PEECHO reserves the right to maintain files in storage for the purpose of creating reprints."* So the PDF cannot be handed over behind a fifteen-minute SAS URL and forgotten about; the gating has to survive their fetching it again later.
 - **Non-competition for two years** after the term, covering their printers. Irrelevant unless we ever wanted to go direct, which we do not.
 - **Liability capped at EUR 10,000**, Dutch law, Amsterdam courts. Fine at this scale.
@@ -158,7 +158,7 @@ Shape is the column that is not here, because it is the one that decides everyth
 
 | Provider | US-based | Money back to us | API — quality and fit | Things to consider |
 | --- | --- | --- | --- | --- |
-| **Peecho** — recommended | No. Netherlands, Prodigi group | Margin over their cost; no fixed percentage, no cookie window, no approval | Purpose-built for this: Print API plus hosted checkout, test environment | Letter portrait, 24–500 even pages, no bleed, one PDF including covers. Their terms need a matching IP and portrait-rights warranty in ours, and the VAT field blocks the account today |
+| **Peecho** — selected | No. Netherlands, Prodigi group | Margin over their cost; no fixed percentage, no cookie window, no approval | Production integration is live: Print API, secure hosted checkout, webhooks, and a separate test environment | Letter portrait, 24–500 even pages, no bleed, one PDF including covers. The terms carry the required IP and portrait-rights provision; billing and webhook configuration are complete |
 | **Blurb Bookstore** — fallback | Yes. San Francisco | "100% of profits" — our own markup over their cost | No usable order API; the listing is created by hand in a browser | Good economics, manual step. Amazon and Ingram routes make the book public |
 | **Lulu Bookstore** | Yes. Raleigh | 80% royalty, free to publish, no ISBN needed | None for this route | Public storefront. Fatal for family letters |
 | **Lulu Print API** | Yes. Raleigh | None. We would mark up and bill | Excellent — documented, free, sandboxed, thousands of configurations. Wrong shape | Payload demands the reader's full address and their card charges ours. Markets "Retain Customer Data" as a feature |
