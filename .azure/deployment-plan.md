@@ -1,18 +1,14 @@
 # Azure Deployment Plan
 
-> **Status:** Deployed
+> **Status:** Validated
 
-Generated: 2026-09-13
-
----
+Generated: 2026-09-14
 
 ## 1. Project Overview
 
-**Goal:** Remove the personal photograph from the public `Who Made This?` page and from the deployed site.
+**Goal:** Replace the inline “invited as …” text on the People page with the same compact, accessible information disclosure used on the Settings page.
 
 **Path:** Modify an existing production application.
-
----
 
 ## 2. Requirements
 
@@ -24,128 +20,82 @@ Generated: 2026-09-13
 | Subscription | Existing CI/CD target: MSDN Subscription (`41fbccc1-bb65-416d-816d-30cb2a41dd9b`) |
 | Location | Existing Static Web App: Central US |
 
-The user explicitly directed ordinary releases to use the established CI/CD deployment. No subscription, region, resource, SKU, or infrastructure decision is part of this change.
-
----
+The user explicitly approved merging and deploying this UI change. The established GitHub Actions deployment target and infrastructure remain unchanged.
 
 ## 3. Components Detected
 
 | Component | Type | Technology | Path |
 |-----------|------|------------|------|
-| Public website | Frontend | Static HTML, CSS, and assets | `web/` |
-| Deployment workflow | CI/CD | GitHub Actions and Azure Static Web Apps deploy action | `.github/workflows/deploy-web.yml` |
-
----
+| People page | Frontend | Static HTML, CSS, and JavaScript | `web/people.html`, `web/people.js`, `web/styles.css` |
+| Packaged reader assets | Function asset | Synchronized CSS copy | `functions/src/assets/reader/styles.css` |
+| Regression tests | Tests | Node test runner and lightweight DOM | `functions/tests/web-people.test.js` |
+| Deployment workflows | CI/CD | GitHub Actions | `.github/workflows/` |
 
 ## 4. Recipe Selection
 
-**Selected:** Existing CI/CD
+**Selected:** Existing CI/CD.
 
-**Rationale:** A push to `main` that changes `web/**` automatically runs the established **Deploy web** workflow. It validates vendored browser dependencies and uploads `web/` to the existing Azure Static Web App without rebuilding or provisioning infrastructure.
-
----
+A merge to `main` changing `web/**` runs **Deploy web**. The synchronized stylesheet under `functions/**` also runs **Deploy functions**. No Azure resources are provisioned or changed.
 
 ## 5. Architecture
-
-**Stack:** Static Web Apps
 
 | Component | Azure Service | SKU |
 |-----------|---------------|-----|
 | Public website | Azure Static Web Apps (`mj-swa-utfe5uagkbz7q`) | Standard |
-
-No supporting service or infrastructure changes are required.
-
----
+| Existing API and packaged assets | Azure Functions | Existing |
 
 ## 6. Provisioning Limit Checklist
 
-| Resource Type | Number to Deploy | Total After Deployment | Limit/Quota | Notes |
-|---------------|------------------|------------------------|-------------|-------|
-| Azure resources | 0 | Unchanged | Not applicable | Static content upload to an existing resource; no provisioning |
-
-**Status:** No quota or capacity change.
-
----
+| Resource Type | Number to Deploy | Total After Deployment | Limit/Quota |
+|---------------|------------------|------------------------|-------------|
+| Azure resources | 0 | Unchanged | Not applicable |
 
 ## 7. Execution Checklist
 
 ### Phase 1: Planning
-- [x] Analyze workspace
-- [x] Gather requirements
-- [x] Confirm existing CI/CD target with user
-- [x] Confirm no resources will be provisioned
-- [x] Scan codebase
-- [x] Select existing CI/CD recipe
-- [x] Confirm architecture remains unchanged
-- [x] User approved this deployment path
+- [x] Analyze workspace and existing disclosure pattern
+- [x] Confirm existing CI/CD deployment target
+- [x] Confirm no infrastructure or access changes
+- [x] Record user approval
 
 ### Phase 2: Execution
-- [x] Remove the photograph from the page and repository
-- [x] Remove its anonymous route and unused styles
-- [x] Preserve the packaged-reader stylesheet copy
-- [x] Verify internal links and packaged assets
+- [x] Replace inline invitation address with an accessible information disclosure
+- [x] Keep synchronized stylesheets byte-identical
+- [x] Add regression coverage
+- [x] Run focused validation
 - [x] Set status to Ready for Validation
 
 ### Phase 3: Validation
 - [x] Invoke azure-validate
-- [x] Record validation proof below
+- [x] Record validation proof
 
 ### Phase 4: Deployment
-- [x] Merge the pull request to `main`
-- [x] Confirm the **Deploy web** workflow succeeds
-- [x] Confirm the synchronized reader asset passes the **Deploy functions** workflow
-- [x] Verify the live page no longer references the photograph
-- [x] Verify the photograph URL no longer serves the image
-
----
+- [ ] Merge the pull request to `main`
+- [ ] Confirm automatic GitHub Actions deployments succeed
+- [ ] Verify production behavior
 
 ## 8. Validation Proof
 
 | Check | Command Run | Result | Timestamp |
 |-------|-------------|--------|-----------|
-| Vendored web assets | `npm run vendor:check` in `web/` | Pass: 10 files match | 2026-09-14T05:55:18Z |
-| Page links and packaged assets | `node --test tests/web-links.test.js tests/archive.test.js` in `functions/` | Pass: 22 tests | 2026-09-14T05:55:18Z |
-| Photograph removal | Assert no file or HTML/config/CSS reference remains | Pass | 2026-09-14T05:55:18Z |
-| Static Web Apps configuration | Parse `web/staticwebapp.config.json` | Pass | 2026-09-14T05:55:18Z |
-| Stylesheet synchronization | Compare SHA-256 hashes of both stylesheet copies | Pass | 2026-09-14T05:55:18Z |
-| Diff integrity | `git diff --check` | Pass | 2026-09-14T05:55:18Z |
-| Static RBAC review | No infrastructure or role-assignment changes | Not applicable | 2026-09-14T05:55:18Z |
+| Automated tests | `npm --prefix functions test` | Pass: 1,828 passed, 11 skipped, 0 failed | 2026-09-15T02:04:00Z |
+| Vendored web assets | `npm --prefix web run vendor:check` | Pass: 10 files match | 2026-09-15T02:04:00Z |
+| Stylesheet synchronization | Compare SHA-256 hashes of both stylesheet copies | Pass: identical | 2026-09-15T02:04:00Z |
+| Diff integrity | `git diff --check` | Pass | 2026-09-15T02:04:00Z |
+| Static RBAC review | No infrastructure, identity, or role-assignment changes | Not applicable | 2026-09-15T02:04:00Z |
 
 **Validated by:** azure-validate skill  
-**Validation timestamp:** 2026-09-14T05:55:18Z
-
-### Deployment Verification
-
-| Check | Result | Timestamp |
-|-------|--------|-----------|
-| **Deploy web** GitHub Actions run `34811471537` | Pass | 2026-09-14 |
-| **Deploy functions** GitHub Actions run `34811471513` | Pass | 2026-09-14 |
-| `https://pdayletters.com/about` | Public page contains no photograph reference | 2026-09-14 |
-| `https://pdayletters.com/who-made-this.jpg` | No image served; HTTP 401 from the authenticated catch-all | 2026-09-14 |
-
-### Live Role Verification
-
-No resources, managed identities, role assignments, or infrastructure were provisioned or changed by this static-content deployment. Live RBAC verification is not applicable.
-
----
+**Validation timestamp:** 2026-09-15T02:04:00Z
 
 ## 9. Files
 
-| File | Purpose | Status |
-|------|---------|--------|
-| `web/about.html` | Public Who Made This page | Ready |
-| `web/who-made-this.jpg` | Remove personal photograph | Removed |
-| `web/index.html` | Footer link | Ready |
-| `web/faq.html` | Footer link | Ready |
-| `web/start.html` | Footer link | Ready |
-| `web/styles.css` | Remove unused photograph layout | Ready |
-| `web/staticwebapp.config.json` | Remove the photograph's anonymous route | Ready |
-| `functions/src/assets/reader/styles.css` | Required synchronized stylesheet copy | Ready |
-| `functions/tests/web-links.test.js` | Footer-link regression coverage | Ready |
-| `.github/copilot-instructions.md` | Persist the established CI/CD release convention | Ready |
-
----
+| File | Purpose |
+|------|---------|
+| `web/people.js` | Render the invitation-address disclosure |
+| `web/styles.css` | Anchor the existing disclosure panel within a People row |
+| `functions/src/assets/reader/styles.css` | Required synchronized stylesheet copy |
+| `functions/tests/web-people.test.js` | Verify compact and accessible rendering |
 
 ## 10. Next Steps
 
-Deployment is complete at `https://pdayletters.com/about`.
+Implement, validate, merge, and verify the automatic production deployment.

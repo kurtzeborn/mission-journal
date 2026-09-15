@@ -106,17 +106,27 @@
             who.appendChild(bad);
         }
 
-        // The address the invitation was sent to, when the person signed in
-        // with a different one. Without this the row is unidentifiable: an
-        // owner who invited grandma@aol.com has no way to tell that the
-        // gmail address in front of them is her, and Remove is a button you
-        // have to be sure about before you press it.
+        // Keep the original invitation address available without making every
+        // mismatched sign-in consume a second line in this deliberately compact
+        // list. This is the same disclosure used beside labels on Settings.
         if (person.invitedEmail) {
-            const was = document.createElement('span');
-            was.className = 'people__was';
-            was.textContent = `invited as ${person.invitedEmail}`;
-            who.appendChild(document.createElement('br'));
-            who.appendChild(was);
+            const invitedAs = `invited as ${person.invitedEmail}`;
+            const hint = document.createElement('details');
+            hint.className = 'hint';
+            hint.setAttribute('name', 'invitation-address');
+
+            const mark = document.createElement('summary');
+            mark.className = 'hint__mark';
+            mark.setAttribute('aria-label', invitedAs);
+            mark.textContent = 'i';
+
+            const panel = document.createElement('div');
+            panel.className = 'hint__panel';
+            panel.textContent = invitedAs;
+
+            hint.appendChild(mark);
+            hint.appendChild(panel);
+            who.appendChild(hint);
         }
 
         item.appendChild(who);
