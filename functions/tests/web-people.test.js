@@ -173,7 +173,7 @@ describe('inviting a whole family in one sitting', () => {
 });
 
 describe('reading the list of who has access', () => {
-    test('an unfamiliar address is shown next to the one it was invited as', async () => {
+    test('an unfamiliar address keeps its invitation address behind an information mark', async () => {
         const view = await people({
             answer: listing({
                 members: [
@@ -189,11 +189,19 @@ describe('reading the list of who has access', () => {
             })
         });
 
-        const rows = view.lines('people');
-        assert.match(rows[1], /g\.example@gmail\.com/);
-        assert.match(rows[1], /invited as grandma@aol\.com/);
-        // And the one that never changed says it once.
-        assert.doesNotMatch(rows[0], /invited as/);
+        const rows = view.el('people').children;
+        const hint = rows[1].descendants().find((child) => child.className === 'hint');
+        const mark = hint.children[0];
+        const panel = hint.children[1];
+
+        assert.match(rows[1].textContent, /g\.example@gmail\.com/);
+        assert.equal(mark.className, 'hint__mark');
+        assert.equal(mark.textContent, 'i');
+        assert.equal(mark.getAttribute('aria-label'), 'invited as grandma@aol.com');
+        assert.equal(panel.className, 'hint__panel');
+        assert.equal(panel.textContent, 'invited as grandma@aol.com');
+        // And the one that never changed has no unnecessary disclosure.
+        assert.equal(rows[0].descendants().some((child) => child.className === 'hint'), false);
     });
 
     test('a pending invitation is marked as an offer, not as access', async () => {

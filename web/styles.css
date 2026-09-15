@@ -1980,6 +1980,7 @@ h3:target {
    the whole point of the row is the address, and an address elided in the
    middle is one somebody cannot check before pressing Remove. */
 .people__who {
+    position: relative;
     flex: 1 1 12rem;
     overflow-wrap: anywhere;
 }
@@ -2024,12 +2025,6 @@ h3:target {
     font-size: 0.72rem;
 }
 
-/* The address an invitation went to, under the identity that accepted it. */
-.people__was {
-    color: var(--ink-soft);
-    font-size: 0.72rem;
-}
-
 .people__controls {
     display: flex;
     align-items: center;
@@ -2052,7 +2047,6 @@ h3:target {
    full contrast -- Resend is very often the thing to press next, and dimming
    the remedy along with the problem would be the wrong half. */
 .people__row--undelivered .people__address,
-.people__row--undelivered .people__was,
 .people__row--undelivered .people__aside {
     opacity: 0.55;
 }
