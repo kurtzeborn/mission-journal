@@ -1,6 +1,6 @@
 # Azure Deployment Plan
 
-> **Status:** Validated
+> **Status:** Deployed
 
 Generated: 2026-09-14
 
@@ -70,9 +70,9 @@ A merge to `main` changing `web/**` runs **Deploy web**. The synchronized styles
 - [x] Record validation proof
 
 ### Phase 4: Deployment
-- [ ] Merge the pull request to `main`
-- [ ] Confirm automatic GitHub Actions deployments succeed
-- [ ] Verify production behavior
+- [x] Merge the pull request to `main`
+- [x] Confirm automatic GitHub Actions deployments succeed
+- [x] Verify the authenticated production surface and API health check
 
 ## 8. Validation Proof
 
@@ -87,6 +87,19 @@ A merge to `main` changing `web/**` runs **Deploy web**. The synchronized styles
 **Validated by:** azure-validate skill  
 **Validation timestamp:** 2026-09-15T02:04:00Z
 
+### Deployment Verification
+
+| Check | Result | Timestamp |
+|-------|--------|-----------|
+| Pull request merge | Merge commit `a0a953c11baa7eaabe9284ec9b450e997d3b183a` | 2026-09-15T02:04:52Z |
+| **Deploy web** run `34919792727` | Pass | 2026-09-15 |
+| **Deploy functions** run `34919792713` | Pass, including tests and API health check | 2026-09-15 |
+| `https://pdayletters.com/people.js` anonymous request | Correctly protected by sign-in redirect | 2026-09-15 |
+
+### Live Role Verification
+
+No resources, managed identities, role assignments, or infrastructure were provisioned or changed. Live RBAC verification is not applicable.
+
 ## 9. Files
 
 | File | Purpose |
@@ -98,4 +111,4 @@ A merge to `main` changing `web/**` runs **Deploy web**. The synchronized styles
 
 ## 10. Next Steps
 
-Implement, validate, merge, and verify the automatic production deployment.
+Deployment is complete at `https://pdayletters.com`.
