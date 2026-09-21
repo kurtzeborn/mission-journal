@@ -119,9 +119,27 @@ Validated: 2026-09-21 15:42:48 -07:00
 - [x] Set status to Validated
 
 ### Deployment
-- [ ] Merge the pull request to `main`
-- [ ] Confirm infrastructure, Functions, and web deployments
-- [ ] Verify the production QR invitation flow
+- [x] Merge the pull request to `main`
+- [x] Confirm infrastructure, Functions, and web deployments
+- [x] Verify the production QR invitation flow
+
+### Deployment Evidence
+
+Deployed: 2026-09-21
+
+| Check | Result |
+|-------|--------|
+| Pull request | Merged as commit `5a32393966ec25c9f29e8c8f34a8e50c3a147002` |
+| Deploy infrastructure | Succeeded; created `qrInvites` and `qrRedemptions` and passed service health checks |
+| Deploy functions | Succeeded; tests, dependency audit, publish, and API checks passed |
+| Deploy web | Succeeded; vendored asset check and Static Web Apps deployment passed |
+| Join page | `https://pdayletters.com/join` returns 200 |
+| Join script | `https://pdayletters.com/join.js` returns 200 and contains the exchange flow |
+| Anonymous exchange | Invalid-token probe returns the expected `{\"status\":\"invalid\"}` response |
+| Protected People page | Anonymous request returns 401 |
+| Function registration | All five QR invitation Functions are registered |
+| Storage | Both QR invitation tables exist |
+| Live RBAC | Function identity has `Storage Table Data Contributor` on the storage account |
 
 ## 9. Files
 
@@ -136,4 +154,4 @@ Validated: 2026-09-21 15:42:48 -07:00
 
 ## 10. Next Steps
 
-Release approval was confirmed on 2026-09-21. Merge the pull request and verify all three production workflows and the live site.
+The feature is deployed. Complete an authenticated phone scan during normal use to exercise the full owner-to-reader flow with a real archive.
