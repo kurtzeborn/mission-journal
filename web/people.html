@@ -59,10 +59,34 @@
                 <p class="note" id="invite-said" role="status" aria-live="polite"></p>
                 <ul class="note" id="invite-trouble" hidden></ul>
             </form>
+
+            <hr>
+            <h3>Invite in person</h3>
+            <p class="note">
+                At a family gathering, show a temporary QR code that adds anyone who scans it as a reader.
+            </p>
+            <p><button class="button button--quiet" type="button" id="qr-open">Invite by QR code</button></p>
         </section>
     </main>
 
+    <dialog class="ask qr-invite" id="qr-dialog" aria-labelledby="qr-title">
+        <h2 class="ask__question" id="qr-title">Scan to join this archive</h2>
+        <p class="ask__detail">
+            Anyone who scans this code can join as a reader. Keep this window open while people sign in.
+        </p>
+        <div class="qr-invite__code">
+            <img id="qr-image" alt="QR code for joining this archive">
+        </div>
+        <p class="note note--small" id="qr-status" role="status" aria-live="polite">
+            Creating a temporary code&hellip;
+        </p>
+        <form method="dialog" class="ask__buttons">
+            <button class="ask__button" type="submit">End invitations</button>
+        </form>
+    </dialog>
+
     <script src="/confirm.js"></script>
+    <script src="/vendor/qrcode.js"></script>
     <script src="/people.js"></script>
 </body>
 

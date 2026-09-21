@@ -134,6 +134,15 @@ export function memoryStore() {
             rows(table).set(key, { ...entity });
             return true;
         },
+        async insertEntities(table, entities) {
+            const target = rows(table);
+            const keys = entities.map((entity) => `${entity.partitionKey}/${entity.rowKey}`);
+            if (keys.some((key) => target.has(key))) return false;
+            for (const [index, entity] of entities.entries()) {
+                target.set(keys[index], { ...entity });
+            }
+            return true;
+        },
         async listEntities(table, { partitionKey } = {}) {
             return [...rows(table).values()].filter(
                 (row) => !partitionKey || row.partitionKey === partitionKey

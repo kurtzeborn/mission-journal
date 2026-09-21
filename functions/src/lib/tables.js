@@ -32,6 +32,14 @@ export const TABLES = {
     // token: an owner listing invitations is shown the hash, which is a handle
     // for revoking one and not a credential for accepting it.
     invites: 'invites',
+    // One active row per archive. The rotating QR code names the session id
+    // inside this row; replacing it invalidates every code from the previous
+    // gathering without retaining bearer credentials in storage.
+    qrInvites: 'qrInvites',
+    // PartitionKey = '{slug}:{sessionId}', RowKey = the one-time ticket hash.
+    // Insert-only redemption rows make each ticket single-use under concurrent
+    // requests and provide the successful-join count for the session cap.
+    qrRedemptions: 'qrRedemptions',
     // PartitionKey = '{slug}:{YYYY-MM-DD}', RowKey = the message's ULID. One
     // row per letter that arrived, partitioned by the day it arrived on, so
     // counting a day's traffic for one archive is a single-partition list
@@ -120,6 +128,23 @@ export function createTableStore({ accountName, credential = new DefaultAzureCre
         async insertEntity(table, entity) {
             try {
                 await client(table).createEntity(entity);
+                return true;
+            } catch (err) {
+                if (err?.statusCode === 409) return false;
+                throw err;
+            }
+        },
+
+        // Atomically create several rows in one partition. Azure Table
+        // transactions are limited to a single partition, which is exactly
+        // the shape used by a QR gathering: one capacity slot and one ticket
+        // redemption either both exist or neither does.
+        async insertEntities(table, entities) {
+            if (!entities.length) return true;
+            try {
+                await client(table).submitTransaction(
+                    entities.map((entity) => ['create', entity])
+                );
                 return true;
             } catch (err) {
                 if (err?.statusCode === 409) return false;

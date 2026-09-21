@@ -1,14 +1,14 @@
 # Azure Deployment Plan
 
-> **Status:** Deployed
+> **Status:** Validated
 
-Generated: 2026-09-14
+Generated: 2026-09-21
 
 ## 1. Project Overview
 
-**Goal:** Replace the inline “invited as …” text on the People page with the same compact, accessible information disclosure used on the Settings page.
+**Goal:** Add secure, reader-only QR invitations to the People page for in-person family gatherings.
 
-**Path:** Modify an existing production application.
+**Path:** Modify the existing production web, Functions, and storage-table configuration.
 
 ## 2. Requirements
 
@@ -18,97 +18,122 @@ Generated: 2026-09-14
 | Scale | Small |
 | Budget | Cost-optimized |
 | Subscription | Existing CI/CD target: MSDN Subscription (`41fbccc1-bb65-416d-816d-30cb2a41dd9b`) |
-| Location | Existing Static Web App: Central US |
+| Location | Existing resources: Central US |
 
-The user explicitly approved merging and deploying this UI change. The established GitHub Actions deployment target and infrastructure remain unchanged.
+The established GitHub Actions workflows remain the deployment path. No new Azure service, SKU, region, identity, or secret is introduced.
 
-## 3. Components Detected
+## 3. Security Design
 
-| Component | Type | Technology | Path |
-|-----------|------|------------|------|
-| People page | Frontend | Static HTML, CSS, and JavaScript | `web/people.html`, `web/people.js`, `web/styles.css` |
-| Packaged reader assets | Function asset | Synchronized CSS copy | `functions/src/assets/reader/styles.css` |
-| Regression tests | Tests | Node test runner and lightweight DOM | `functions/tests/web-people.test.js` |
-| Deployment workflows | CI/CD | GitHub Actions | `.github/workflows/` |
+- Only a current archive owner can start, rotate, or close a QR invitation.
+- QR invitations always grant reader access; ownership remains an explicit later action.
+- The displayed signed bearer credential expires after 30 seconds.
+- A scan exchanges that credential for a one-time, tab-scoped ticket lasting up to 10 minutes for sign-in.
+- The ticket is usable only while the owner-controlled session remains active.
+- Closing the dialog revokes the session immediately; an abandoned session expires after 90 seconds.
+- Atomic Azure Table transactions reserve one of 50 session slots and create the redemption together.
+- Completed tickets cannot restore access after an owner removes the reader.
+- The signed token stays in the URL fragment, is moved into `sessionStorage`, and is stripped from the address bar.
+- QR rendering is local; no invitation URL is sent to a third-party service.
 
-## 4. Recipe Selection
+## 4. Components
 
-**Selected:** Existing CI/CD.
+| Component | Technology | Change |
+|-----------|------------|--------|
+| People page | Static HTML/CSS/JavaScript | Reader-only QR invitation dialog and rotation |
+| Join page | Static HTML/JavaScript | Anonymous exchange, sign-in, and ticket acceptance |
+| Invitation API | Azure Functions, Node.js | Owner session lifecycle, exchange, and acceptance |
+| State | Azure Table Storage | `qrInvites` and `qrRedemptions` tables |
+| Infrastructure | Bicep | Provision the two tables |
+| Browser dependency | `qrcode-generator` | Vendored local QR rendering |
 
-A merge to `main` changing `web/**` runs **Deploy web**. The synchronized stylesheet under `functions/**` also runs **Deploy functions**. No Azure resources are provisioned or changed.
+## 5. Deployment Recipe
 
-## 5. Architecture
+**Selected:** Existing GitHub Actions CI/CD.
 
-| Component | Azure Service | SKU |
-|-----------|---------------|-----|
-| Public website | Azure Static Web Apps (`mj-swa-utfe5uagkbz7q`) | Standard |
-| Existing API and packaged assets | Azure Functions | Existing |
+- `infra/**` provisions the two table resources through **Deploy infrastructure** when permitted.
+- `functions/**` deploys the API through **Deploy functions**.
+- `web/**` deploys the interface through **Deploy web**.
 
-## 6. Provisioning Limit Checklist
+Infrastructure must complete before the new Functions endpoints receive production traffic.
 
-| Resource Type | Number to Deploy | Total After Deployment | Limit/Quota |
-|---------------|------------------|------------------------|-------------|
-| Azure resources | 0 | Unchanged | Not applicable |
+## 6. Provisioning Limits
 
-## 7. Execution Checklist
+| Resource Type | New | Total Impact | Limit/Quota |
+|---------------|-----|--------------|-------------|
+| Azure Storage tables | 2 | Two tables in the existing storage account | No meaningful quota impact |
 
-### Phase 1: Planning
-- [x] Analyze workspace and existing disclosure pattern
-- [x] Confirm existing CI/CD deployment target
-- [x] Confirm no infrastructure or access changes
-- [x] Record user approval
+## 7. Validation Proof
 
-### Phase 2: Execution
-- [x] Replace inline invitation address with an accessible information disclosure
-- [x] Keep synchronized stylesheets byte-identical
-- [x] Add regression coverage
-- [x] Run focused validation
+Validated: 2026-09-21 15:42:48 -07:00
+
+| Check | Command | Result |
+|-------|---------|--------|
+| Bicep compilation | `az bicep build --file infra\main.bicep --stdout` | Passed |
+| Bicep lint | `az bicep lint --file infra\main.bicep` | Passed |
+| ARM validation | `az deployment group validate --resource-group mission-journal --template-file infra\main.bicep --parameters infra\main.bicepparam` | `Succeeded` |
+| ARM what-if | `az deployment group what-if ... --result-format ResourceIdOnly` | Passed; creates only `qrInvites` and `qrRedemptions`, with the template's existing deployment noise |
+| Azure authentication | `az account show` | Authenticated to the established MSDN Subscription |
+| Azure policy | `az policy assignment list ...`; `az policy state summarize --resource-group mission-journal` | No assignments or reported noncompliance |
+| Full Functions suite | `npm --prefix functions test` | 1,847 passed, 11 skipped, 0 failed |
+| Focused QR and store tests | `node --test functions\tests\qr-invite.test.js functions\tests\web-join.test.js functions\tests\web-people.test.js functions\tests\store-contract.test.js` | 54 passed, 0 failed |
+| Functions dependencies | `npm --prefix functions run audit` | 0 advisories |
+| Web dependencies | `npm audit --prefix web --audit-level=high` | 0 vulnerabilities |
+| Vendored assets | `npm --prefix web run vendor:check` | 11 files match |
+| Stylesheet synchronization | SHA-256 comparison | Passed |
+| Static Web Apps config | PowerShell `ConvertFrom-Json` | Passed |
+| Diff integrity | `git diff --check` | Passed |
+
+### Role Assignment Verification
+
+- **Identity:** System-assigned identity of `mj-fn-utfe5uagkbz7q`.
+- **Required operation:** Read and write invitation/session entities in Azure Table Storage.
+- **Declared role:** `Storage Table Data Contributor`, scoped to the existing storage account.
+- **Live role:** The same data-plane role is already assigned at storage-account scope, so it covers the two new tables.
+- **Other identities:** No new identity or role assignment is introduced by this feature.
+
+## 8. Execution Checklist
+
+### Planning and implementation
+- [x] Review existing authentication, invitation, and ACL behavior
+- [x] Confirm reader-only QR access with the user
+- [x] Implement owner-controlled rotating sessions
+- [x] Implement single-use sign-in tickets
+- [x] Add local QR rendering and join UI
+- [x] Add Bicep table resources
+- [x] Run a focused security review
+- [x] Fix replay-after-removal and concurrent-cap findings
+- [x] Run focused and full automated tests
 - [x] Set status to Ready for Validation
 
-### Phase 3: Validation
+### Validation
 - [x] Invoke azure-validate
+- [x] Bicep compilation
+- [x] Template validation
+- [x] What-if preview
+- [x] Authentication
+- [x] Bicep lint
+- [x] Azure policy validation
+- [x] Build and test verification
+- [x] Static role verification
 - [x] Record validation proof
+- [x] Set status to Validated
 
-### Phase 4: Deployment
-- [x] Merge the pull request to `main`
-- [x] Confirm automatic GitHub Actions deployments succeed
-- [x] Verify the authenticated production surface and API health check
-
-## 8. Validation Proof
-
-| Check | Command Run | Result | Timestamp |
-|-------|-------------|--------|-----------|
-| Automated tests | `npm --prefix functions test` | Pass: 1,828 passed, 11 skipped, 0 failed | 2026-09-15T02:04:00Z |
-| Vendored web assets | `npm --prefix web run vendor:check` | Pass: 10 files match | 2026-09-15T02:04:00Z |
-| Stylesheet synchronization | Compare SHA-256 hashes of both stylesheet copies | Pass: identical | 2026-09-15T02:04:00Z |
-| Diff integrity | `git diff --check` | Pass | 2026-09-15T02:04:00Z |
-| Static RBAC review | No infrastructure, identity, or role-assignment changes | Not applicable | 2026-09-15T02:04:00Z |
-
-**Validated by:** azure-validate skill  
-**Validation timestamp:** 2026-09-15T02:04:00Z
-
-### Deployment Verification
-
-| Check | Result | Timestamp |
-|-------|--------|-----------|
-| Pull request merge | Merge commit `a0a953c11baa7eaabe9284ec9b450e997d3b183a` | 2026-09-15T02:04:52Z |
-| **Deploy web** run `34919792727` | Pass | 2026-09-15 |
-| **Deploy functions** run `34919792713` | Pass, including tests and API health check | 2026-09-15 |
-| `https://pdayletters.com/people.js` anonymous request | Correctly protected by sign-in redirect | 2026-09-15 |
-
-### Live Role Verification
-
-No resources, managed identities, role assignments, or infrastructure were provisioned or changed. Live RBAC verification is not applicable.
+### Deployment
+- [ ] Merge the pull request to `main`
+- [ ] Confirm infrastructure, Functions, and web deployments
+- [ ] Verify the production QR invitation flow
 
 ## 9. Files
 
-| File | Purpose |
-|------|---------|
-| `web/people.js` | Render the invitation-address disclosure |
-| `web/styles.css` | Anchor the existing disclosure panel within a People row |
-| `functions/src/assets/reader/styles.css` | Required synchronized stylesheet copy |
-| `functions/tests/web-people.test.js` | Verify compact and accessible rendering |
+- `web/people.html`, `web/people.js`, `web/styles.css`
+- `web/join.html`, `web/join.js`
+- `web/vendor/qrcode.js`, `web/package.json`, `web/package-lock.json`
+- `web/staticwebapp.config.json`
+- `functions/src/functions/qrinvite.js`
+- `functions/src/lib/qrinvite.js`, `claimtoken.js`, `tables.js`
+- `functions/tests/qr-invite.test.js`, `web-join.test.js`, `web-people.test.js`
+- `infra/main.bicep`, `infra/provision-claim.ps1`
 
 ## 10. Next Steps
 
-Deployment is complete at `https://pdayletters.com`.
+Release approval was confirmed on 2026-09-21. Merge the pull request and verify all three production workflows and the live site.

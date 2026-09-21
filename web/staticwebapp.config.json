@@ -70,6 +70,24 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "A QR invitation is scanned before the visitor has signed in. The page and exchange endpoint are anonymous; accepting the exchanged ticket falls through to authenticated.",
+      "route": "/join",
+      "rewrite": "/join.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/join.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/join.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/vendor/qrcode.js",
+      "allowedRoles": ["authenticated"]
+    },
+    {
       "comment": "Managing an archive's audience. Authenticated, and the API refuses anyone who is not an owner of the named slug -- this rule only decides who may load the markup.",
       "route": "/people/*",
       "rewrite": "/people.html",
@@ -211,6 +229,12 @@
     {
       "comment": "Same as claim/describe: the invitation page has to say who invited whom before anybody signs in. Accepting is not listed, so it falls through to authenticated.",
       "route": "/api/invite/describe",
+      "methods": ["POST"],
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "comment": "The rotating QR credential must be exchanged before sign-in. It discloses only the inviter and archive display name, then returns a single-use ticket.",
+      "route": "/api/qr-invite/exchange",
       "methods": ["POST"],
       "allowedRoles": ["anonymous", "authenticated"]
     },
