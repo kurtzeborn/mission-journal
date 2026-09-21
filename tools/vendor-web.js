@@ -45,7 +45,8 @@ const NOTES = {
         'The package is UMD and puts WordCloud on the global, which is all a plain',
         'script tag needs. It ships no built file, so this is its source, which is what',
         'the published package intends -- the repository builds nothing else.'
-    ]
+    ],
+    'qrcode.js': []
 };
 
 const COPIES = [
@@ -53,6 +54,8 @@ const COPIES = [
     { package: 'minisearch', from: 'LICENSE.txt', to: 'LICENSE-minisearch.txt' },
     { package: 'wordcloud', from: 'src/wordcloud2.js', to: 'wordcloud2.js', header: true, license: 'LICENSE-wordcloud2.txt' },
     { package: 'wordcloud', from: 'LICENSE', to: 'LICENSE-wordcloud2.txt' },
+    // This file already carries its own copyright and MIT license notice.
+    { package: 'qrcode-generator', from: 'dist/qrcode.js', to: 'qrcode.js' },
 
     // Two families out of the six the package ships. Brands are the provider
     // logos on the sign-in buttons; solid is the owner's controls on a letter.

@@ -39,7 +39,17 @@ else {
 }
 
 # --- tables -----------------------------------------------------------------
-foreach ($table in @('memberships', 'users', 'sites', 'nudges', 'invites', 'optouts', 'arrivals')) {
+foreach ($table in @(
+    'memberships',
+    'users',
+    'sites',
+    'nudges',
+    'invites',
+    'qrInvites',
+    'qrRedemptions',
+    'optouts',
+    'arrivals'
+)) {
     az storage table create --name $table --account-name $Account `
         --auth-mode login --subscription $Subscription -o none
     Write-Host "table ${table}: ready"

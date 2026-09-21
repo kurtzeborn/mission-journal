@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Join an archive — Pday Letters</title>
+    <meta name="description" content="Join a private archive of missionary letters from an in-person invitation.">
+    <meta name="robots" content="noindex">
+    <link rel="icon" href="/logo.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
+</head>
+
+<body>
+    <header class="masthead">
+        <div class="masthead__inner">
+            <a class="wordmark" href="/"><img class="wordmark__mark" src="/logo.png" alt="" width="192" height="192">Pday Letters</a>
+            <span class="beta">beta</span>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <section id="loading">
+            <h2>Checking the invitation&hellip;</h2>
+        </section>
+
+        <section id="ready" hidden>
+            <h2>Join this archive</h2>
+            <p class="lede" id="ready-lede"></p>
+            <p>You will be added as a reader. An archive owner can make you an owner later.</p>
+
+            <div id="signin-block" hidden>
+                <p><a class="button" id="signin-aad" href="#"><i class="fa-brands fa-microsoft"
+                            aria-hidden="true"></i> Continue with Microsoft</a></p>
+                <p><a class="button" id="signin-google" href="#"><i class="fa-brands fa-google"
+                            aria-hidden="true"></i> Continue with Google</a></p>
+                <p class="note">
+                    Sign in with the account you want to use for this archive.
+                    Pday Letters receives only your name and email address.
+                </p>
+            </div>
+
+            <form id="accept-form" hidden>
+                <p><button class="button" type="submit" id="accept-submit">Join as a reader</button></p>
+                <p class="note" id="accept-as"></p>
+            </form>
+        </section>
+
+        <section id="working" hidden>
+            <h2>Adding you&hellip;</h2>
+            <p class="note">This only takes a moment.</p>
+        </section>
+
+        <section id="failed" hidden>
+            <h2 id="failed-title">This invitation cannot be used</h2>
+            <p class="lede" id="failed-detail"></p>
+            <p class="note" id="failed-help"></p>
+        </section>
+    </main>
+
+    <script src="/page.js"></script>
+    <script src="/join.js"></script>
+</body>
+
+</html>

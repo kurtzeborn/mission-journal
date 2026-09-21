@@ -2072,6 +2072,33 @@ h3:target {
     margin: 0 0 0.5rem;
 }
 
+.qr-invite {
+    width: min(26rem, 92vw);
+    text-align: center;
+}
+
+.qr-invite .ask__detail {
+    text-align: left;
+}
+
+.qr-invite__code {
+    display: grid;
+    place-items: center;
+    min-height: 18rem;
+    margin: 1rem 0 0.5rem;
+    padding: 0.75rem;
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+}
+
+.qr-invite__code img {
+    display: block;
+    width: min(100%, 18rem);
+    height: auto;
+    image-rendering: pixelated;
+}
+
 /* The address box on the people page. Wide and tall enough that a pasted
    list of a dozen relatives is visible as a list, which is what makes a typo
    findable before it is sent. */

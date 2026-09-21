@@ -321,6 +321,13 @@ var tableNames = [
   // so that nothing `resolveRole` reads can confuse an offer of access with
   // access.
   'invites'
+  // One active, owner-controlled in-person invitation per archive. The row
+  // carries only the session id and expiry; rotating bearer tokens are signed
+  // and never stored.
+  'qrInvites'
+  // One partition per in-person session. Atomic slot and ticket rows enforce
+  // both one-time redemption and the fifty-reader gathering cap.
+  'qrRedemptions'
   // Authoritative too, and the one whose loss would be visible to strangers:
   // nothing else records that somebody asked us to stop emailing them, so an
   // empty table silently resumes mail to people who said no.
@@ -1564,4 +1571,3 @@ output appInsightsName string = appInsights.name
 output staticWebAppName string = staticWebApp.name
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
 output functionAppName string = workerApp.name
-

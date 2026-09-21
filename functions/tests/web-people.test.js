@@ -17,9 +17,10 @@ const OWNER_ONLY = {
 };
 
 /** A page with the script loaded and its first render finished. */
-async function people({ answer }) {
+async function people({ answer, qrcode = null }) {
     const view = page({ html: 'people.html', path: `/people/${SLUG}` });
     const net = fetching(answer);
+    if (qrcode) view.context.qrcode = qrcode;
     run('people.js', { context: view.context, fetch: net.fetch });
     await settled();
     return { ...view, calls: net.calls };
@@ -369,6 +370,81 @@ describe('reading the list of who has access', () => {
 
         const deleted = view.calls.find((c) => c.method === 'DELETE');
         assert.equal(deleted.url, `/api/members/${SLUG}/the-hash`);
+    });
+});
+
+describe('inviting people in person', () => {
+    const qr = () => ({
+        addData(value) {
+            this.value = value;
+        },
+        make() {},
+        createDataURL() {
+            return `data:image/gif;base64,${this.value}`;
+        }
+    });
+
+    test('opens a reader-only QR invitation and refreshes it before expiry', async () => {
+        let generation = 0;
+        const view = await people({
+            qrcode: qr,
+            answer: async (url, init) => {
+                if (url.endsWith('/qr') && init?.method === 'POST') {
+                    generation++;
+                    return {
+                        body: {
+                            id: 'gathering',
+                            url: `https://pdayletters.com/join#code-${generation}`
+                        }
+                    };
+                }
+                if (url.endsWith('/qr/gathering') && init?.method === 'POST') {
+                    generation++;
+                    return {
+                        body: {
+                            id: 'gathering',
+                            url: `https://pdayletters.com/join#code-${generation}`
+                        }
+                    };
+                }
+                return { body: OWNER_ONLY };
+            }
+        });
+
+        await view.el('qr-open').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('qr-dialog').open, true);
+        assert.match(view.el('qr-image').getAttribute('src'), /code-1/);
+        assert.equal(view.context.timers[0].every, 25000);
+
+        await view.context.timers[0].handler();
+        await settled();
+
+        assert.match(view.el('qr-image').getAttribute('src'), /code-2/);
+    });
+
+    test('closing the dialog revokes the gathering session', async () => {
+        const view = await people({
+            qrcode: qr,
+            answer: async (url, init) => {
+                if (url.endsWith('/qr') && init?.method === 'POST') {
+                    return { body: { id: 'gathering', url: 'https://pdayletters.com/join#code' } };
+                }
+                if (url.endsWith('/qr/gathering') && init?.method === 'DELETE') return { body: { ok: true } };
+                return { body: OWNER_ONLY };
+            }
+        });
+
+        await view.el('qr-open').dispatch('click');
+        await settled();
+        view.el('qr-dialog').close();
+        await settled();
+
+        assert.ok(view.calls.some(
+            (call) => call.url.endsWith('/qr/gathering') && call.method === 'DELETE'
+        ));
+        assert.equal(view.context.timers[0].cleared, true);
     });
 });
 

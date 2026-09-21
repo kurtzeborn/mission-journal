@@ -61,6 +61,8 @@ const NONCE_BYTES = 24;
 export const PURPOSE = {
     claim: 'claim',
     invite: 'invite',
+    qrCode: 'qr-code',
+    qrTicket: 'qr-ticket',
     optout: 'optout',
     relay: 'relay',
     print: 'print'
