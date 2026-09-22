@@ -4,6 +4,8 @@ import { describe, test } from 'node:test';
 
 const source = readFileSync(new URL('../../web/index.html', import.meta.url), 'utf8')
     .replace(/<!--[\s\S]*?-->/g, '');
+const startSource = readFileSync(new URL('../../web/start.html', import.meta.url), 'utf8')
+    .replace(/<!--[\s\S]*?-->/g, '');
 
 describe('the public landing page', () => {
     test('opens with the short promise and two direct choices', () => {
@@ -41,11 +43,22 @@ describe('the public landing page', () => {
         assert.ok(
             source.indexOf('id="how-it-works"') < source.indexOf('class="landing-features"')
         );
-        assert.match(source, /Works before they leave or after they are already out\./);
+        assert.match(
+            source,
+            /These steps work before they leave, or after they&rsquo;re already in the field\./
+        );
+        assert.match(
+            source,
+            /<strong>Forward one letter as an <a href="\/faq#forward-did-nothing">attachment<\/a><\/strong>/
+        );
+        assert.match(
+            source,
+            /<strong>Ask the missionary to include<\/strong>\s*<span class="address">post@pdayletters\.com<\/span>/
+        );
         assert.match(source, /From then on, letters and photos are filed automatically\./);
         assert.match(
             source,
-            /class="note note--small">Older letters can be forwarded later\. Owners can add pictures from a phone or Google Photos\./
+            /<br>\s*<span class="note note--small">Older letters can be forwarded later\. Owners can add pictures from a phone or Google Photos\./
         );
         assert.match(source, /No ads\. No clutter\. Just letters\./);
         assert.doesNotMatch(source, /landing-benefits/);
@@ -58,5 +71,10 @@ describe('the public landing page', () => {
         const footer = source.slice(source.indexOf('<p class="note">'));
         assert.doesNotMatch(footer, /href="\/start"/);
         assert.doesNotMatch(footer, /href="\/faq"/);
+    });
+
+    test('spells the missionary setup instructions correctly', () => {
+        assert.match(startSource, /their weekly letter/);
+        assert.doesNotMatch(startSource, /\bthier\b/i);
     });
 });
