@@ -8,6 +8,7 @@
 
 const CODE_KEY = 'qr-invite-code';
 const READY_KEY = 'qr-invite-ready';
+const JOIN_AFTER_SIGNIN_KEY = 'qr-invite-join-after-signin';
 
 const { $, show, takeToken, aimSignIn } = Page;
 
@@ -80,6 +81,7 @@ function fail(status) {
     $('failed-help').textContent = copy.help;
     sessionStorage.removeItem(CODE_KEY);
     sessionStorage.removeItem(READY_KEY);
+    sessionStorage.removeItem(JOIN_AFTER_SIGNIN_KEY);
     show('failed');
 }
 
@@ -91,23 +93,33 @@ function renderReady(ready, principal) {
         `${ready.invitedBy || 'An archive owner'} is inviting people here to read ${whose}.`;
 
     if (principal) {
+        if (sessionStorage.getItem(JOIN_AFTER_SIGNIN_KEY) === ready.ticket) {
+            void accept(null, ready);
+            return;
+        }
         $('accept-form').hidden = false;
         $('accept-as').textContent = `You are signed in as ${principal}. This account will get access.`;
     } else {
         aimSignIn();
+        for (const id of ['signin-aad', 'signin-google']) {
+            $(id).addEventListener('click', () => {
+                sessionStorage.setItem(JOIN_AFTER_SIGNIN_KEY, ready.ticket);
+            });
+        }
         $('signin-block').hidden = false;
     }
     show('ready');
 }
 
 async function accept(event, ready) {
-    event.preventDefault();
+    event?.preventDefault();
     $('accept-submit').disabled = true;
     show('working');
 
     const result = await post('/api/qr-invite/accept', { ticket: ready.ticket });
     if (!result.ok || result.body.status !== 'ok') {
         if (result.status === 401) {
+            sessionStorage.setItem(JOIN_AFTER_SIGNIN_KEY, ready.ticket);
             location.href = `/login.html?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`;
             return;
         }
@@ -116,6 +128,7 @@ async function accept(event, ready) {
     }
 
     sessionStorage.removeItem(READY_KEY);
+    sessionStorage.removeItem(JOIN_AFTER_SIGNIN_KEY);
     location.href = `/${result.body.slug}/`;
 }
 
