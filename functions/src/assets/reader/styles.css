@@ -131,6 +131,18 @@ body {
     flex: 1 1 auto;
 }
 
+.masthead__links {
+    display: flex;
+    gap: 0.75rem;
+}
+
+.masthead__links,
+.masthead__link {
+    font-family: system-ui, sans-serif;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
 /* The mark for the identity provider, inside the menu trigger. */
 .account__icon {
     font-size: 0.85rem;

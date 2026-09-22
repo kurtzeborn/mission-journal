@@ -10,11 +10,18 @@ describe('the public landing page', () => {
         assert.match(source, /Keep every missionary letter in one private place\./);
         assert.match(
             source,
-            /Add one address, or forward one letter\. Photos stay with the letters\. Nothing is public\./
+            /Add one address, or forward one letter\. Photos stay with the letters\. The archive is private\./
         );
-        assert.match(source, /href="\/start">Get Started<\/a>/);
+        assert.match(source, /href="\/start">Get started<\/a>/);
         assert.match(source, /href="#reading-an-archive">I was invited<\/a>/);
         assert.doesNotMatch(source, /Choose where to start/);
+        assert.match(source, /class="masthead__links"[\s\S]*href="\/start">Start<\/a>/);
+        assert.match(source, /class="masthead__links"[\s\S]*href="\/faq">Questions<\/a>/);
+        assert.match(
+            source,
+            /class="masthead__link" id="signed-out"[^>]*>Sign in<\/a>/
+        );
+        assert.doesNotMatch(source, /id="signed-out"[^>]*class="button/);
     });
 
     test('summarizes the archive before defining the name', () => {
@@ -28,14 +35,28 @@ describe('the public landing page', () => {
             assert.match(source, new RegExp(`<strong>${feature}</strong>`));
         }
 
-        assert.match(source, /Order a keepsake containing letters &amp; photos\./);
+        assert.match(source, /Only invited family can see it\./);
+        assert.match(source, /Kept with the letter they arrived with\./);
+        assert.match(source, /Print the archive when you want a book\./);
         assert.ok(
             source.indexOf('id="how-it-works"') < source.indexOf('class="landing-features"')
+        );
+        assert.match(source, /Works before they leave or after they are already out\./);
+        assert.match(source, /From then on, letters and photos are filed automatically\./);
+        assert.match(
+            source,
+            /class="note note--small">Older letters can be forwarded later\. Owners can add pictures from a phone or Google Photos\./
         );
         assert.match(source, /No ads\. No clutter\. Just letters\./);
         assert.doesNotMatch(source, /landing-benefits/);
         assert.ok(source.indexOf('<h2>Cost</h2>') < source.indexOf('id="pday"'));
-        assert.match(source, /Missionary archives are free to set up and use\./);
-        assert.doesNotMatch(source, /These missionary archives are free/);
+        assert.match(source, /<h2 id="reading-an-archive">If you were invited<\/h2>/);
+        assert.match(source, /We can email you when new letters arrive\./);
+        assert.doesNotMatch(source, /After your missionary returns home/);
+        assert.match(source, /The archive is free\. No subscription\./);
+        assert.match(source, /href="\/about">Who made this\?<\/a>/);
+        const footer = source.slice(source.indexOf('<p class="note">'));
+        assert.doesNotMatch(footer, /href="\/start"/);
+        assert.doesNotMatch(footer, /href="\/faq"/);
     });
 });
