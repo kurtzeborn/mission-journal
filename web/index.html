@@ -59,12 +59,11 @@
                     </ul>
                 </div>
             </details>
-            <!-- Compact like the menu it replaces, and the only green thing in
-                 the masthead. The color is what makes it findable, not the
-                 size -- it sits alone in the corner when it shows, against
-                 nothing but a wordmark, so building it larger bought emphasis
-                 the page was not short of. -->
-            <a class="button button--compact" id="signed-out" href="/login.html?post_login_redirect_uri=/">Sign in</a>
+            <nav class="masthead__links" aria-label="Site">
+                <a href="/start">Start</a>
+                <a href="/faq">Questions</a>
+            </nav>
+            <a class="masthead__link" id="signed-out" href="/login.html?post_login_redirect_uri=/">Sign in</a>
         </div>
     </header>
 
@@ -72,19 +71,16 @@
         <h1>Keep every missionary letter in one private place.</h1>
 
         <p class="lede">
-            Add one address, or forward one letter. Photos stay with the letters. Nothing is public.
+            Add one address, or forward one letter. Photos stay with the letters. The archive is private.
         </p>
 
         <nav class="landing-actions" aria-label="Get started">
-            <a class="button" href="/start">Get Started</a>
+            <a class="button" href="/start">Get started</a>
             <a class="button button--quiet" href="#reading-an-archive">I was invited</a>
         </nav>
 
         <h2 id="how-it-works">How it works</h2>
-        <p>
-            You can set up an archive before a missionary leaves or after they are already
-            serving in the mission field.
-        </p>
+        <p>Works before they leave or after they are already out.</p>
         <ol class="landing-steps">
             <li>
                 <strong>Forward one letter as an attachment</strong> to
@@ -98,15 +94,14 @@
             </li>
         </ol>
         <p>
-            From then on, letters and attached photos are filed automatically. You can forward
-            older letters at any time, and archive owners can add pictures from their device or
-            Google Photos.
+            From then on, letters and photos are filed automatically.
+            <span class="note note--small">Older letters can be forwarded later. Owners can add pictures from a phone or Google Photos.</span>
         </p>
         <ul class="landing-features" aria-label="Archive features">
             <li>
                 <i class="fa-solid fa-lock" aria-hidden="true"></i>
                 <strong>Private</strong>
-                <span>Only you and invited family can see it.</span>
+                <span>Only invited family can see it.</span>
             </li>
             <li>
                 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -116,12 +111,12 @@
             <li>
                 <i class="fa-solid fa-image" aria-hidden="true"></i>
                 <strong>Photos saved</strong>
-                <span>Photos stay with the letters, not lost in email.</span>
+                <span>Kept with the letter they arrived with.</span>
             </li>
             <li>
                 <i class="fa-solid fa-book" aria-hidden="true"></i>
                 <strong>Hardcover book</strong>
-                <span>Order a keepsake containing letters &amp; photos.</span>
+                <span>Print the archive when you want a book.</span>
             </li>
             <li>
                 <i class="fa-solid fa-heart" aria-hidden="true"></i>
@@ -130,32 +125,24 @@
             </li>
         </ul>
 
-        <h2 id="reading-an-archive">Reading an archive</h2>
+        <h2 id="reading-an-archive">If you were invited</h2>
         <p>
-            Archives are not public and are not listed anywhere. If someone has invited
-            you to one, click the link in the email that was sent to you and sign in with
-            a Microsoft or Google account to view it.
+            If someone invited you, open the link in that email and sign in with Google or Microsoft.
+            Archives are not public and are not listed anywhere.
         </p>
         <!-- Nobody is asked on the way in and nobody is sent anything, so this
              is the one place the offer gets made. The setting lives in the
              account menu. -->
         <p>
-            As new letters arrive, we can also email you periodically to notify you of new
-            activity. <a href="/email">Choose how often</a> you&rsquo;d like to receive these
-            emails (requires login).
-        </p>
-        <p>
-            After your missionary returns home, you can purchase a printed <a
-            href="/faq#printing-book">hardcover book</a> containing the letters and photos
-            collected in the archive.
+            We can email you when new letters arrive. <a href="/email">Choose how often</a>
+            (requires sign-in).
         </p>
 
         <h2>Cost</h2>
         <p>
-            Missionary archives are free to set up and use. There are no subscription
-            fees or hidden costs. The only optional purchase is a printed hardcover book
-            containing the letters and photos from the archive. This site was created and is
-            maintained as a labor of love by a father of a missionary.
+            The archive is free. No subscription. The only optional purchase is a printed
+            hardcover keepsake containing all letters and photos. This is built and maintained
+            as a labor of love by a father of a missionary.
         </p>
 
         <section class="entry" aria-labelledby="pday">
@@ -184,8 +171,7 @@
         </section>
 
         <p class="note">
-            <a href="/start">Getting started</a> &middot; <a href="/faq">Questions</a>
-            &middot; <a href="/about">Who Made This?</a>
+            <a href="/about">Who made this?</a>
             &middot; <a href="/terms">Terms &amp; privacy</a>
         </p>
     </main>
