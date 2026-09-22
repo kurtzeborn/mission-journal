@@ -22,14 +22,18 @@ describe('the public landing page', () => {
             'Private',
             'Searchable',
             'Photos saved',
-            'Optional hardcover book'
+            'Hardcover book',
+            'Calm and simple'
         ]) {
             assert.match(source, new RegExp(`<strong>${feature}</strong>`));
         }
 
+        assert.match(source, /Order a keepsake containing letters &amp; photos\./);
         assert.ok(
             source.indexOf('id="how-it-works"') < source.indexOf('class="landing-features"')
         );
+        assert.match(source, /No ads\. No clutter\. Just letters\./);
+        assert.doesNotMatch(source, /landing-benefits/);
         assert.ok(source.indexOf('<h2>Cost</h2>') < source.indexOf('id="pday"'));
         assert.match(source, /Missionary archives are free to set up and use\./);
         assert.doesNotMatch(source, /These missionary archives are free/);
