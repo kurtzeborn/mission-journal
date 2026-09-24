@@ -170,6 +170,11 @@ export function digestEmail({ baseUrl, archives, optOutToken = '' }) {
     const optOut = optOutToken ? `${root}/optout#${optOutToken}` : '';
     const count = archives.reduce((total, archive) => total + archive.letters.length, 0);
     const letters = count === 1 ? '1 new letter' : `${count} new letters`;
+    const arrival =
+        archives.length === 1
+            ? `Your missionary has sent ${letters}, which you can view on PdayLetters.com.`
+            : `Your missionaries have sent ${letters}, which you can view on PdayLetters.com.`;
+    const arrivalHtml = `${archives.length === 1 ? 'Your missionary has' : 'Your missionaries have'} sent <strong>${count}</strong> new ${count === 1 ? 'letter' : 'letters'}, which you can view on PdayLetters.com.`;
 
     // The missionary is named in the subject, which is the opposite of the
     // rule the claim and invitation emails follow -- and the rule is about
@@ -189,7 +194,9 @@ export function digestEmail({ baseUrl, archives, optOutToken = '' }) {
         letter.photos === 0 ? '' : letter.photos === 1 ? '1 photograph' : `${letter.photos} photographs`;
 
     const text = [
-        count === 1 ? 'A new letter has arrived.' : `${count} new letters have arrived.`,
+        'PdayLetters.com',
+        '',
+        arrival,
         ...archives.flatMap((archive) => [
             '',
             `${archive.name}`,
@@ -219,7 +226,8 @@ export function digestEmail({ baseUrl, archives, optOutToken = '' }) {
 
     const html = [
         '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
-        `<p>${count === 1 ? 'A new letter has arrived.' : `<strong>${count}</strong> new letters have arrived.`}</p>`,
+        '<p style="margin:0 0 8px;color:#1f4e79;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em">PdayLetters.com</p>',
+        `<p style="margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.45">${arrivalHtml}</p>`,
         ...archives.map((archive) =>
             [
                 `<h2 style="font-size:18px;margin:24px 0 8px">${escape(archive.name)}</h2>`,
@@ -237,14 +245,20 @@ export function digestEmail({ baseUrl, archives, optOutToken = '' }) {
                         '</div>'
                     ].join('');
                 }),
-                `<p><a href="${escape(link(archive))}" style="display:inline-block;padding:10px 18px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Read ${escape(archive.name)}&rsquo;s letters</a></p>`
+                '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 24px;border-collapse:separate">',
+                '<tr>',
+                '<td bgcolor="#1f4e79" style="background:#1f4e79;border:1px solid #173b5c;border-radius:6px;mso-padding-alt:11px 20px">',
+                `<a href="${escape(link(archive))}" style="display:inline-block;padding:11px 20px;color:#fff;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:600;line-height:1.2;text-decoration:none">Read ${escape(archive.name)}&rsquo;s letters</a>`,
+                '</td>',
+                '</tr>',
+                '</table>'
             ].join('')
         ),
-        `<p style="color:#666;font-size:14px">You are getting this because you asked us to tell you when letters arrive. <a href="${escape(`${root}/email`)}">Change how often, or stop it.</a></p>`,
+        `<p style="color:#666;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5">You are getting this because you asked us to tell you when letters arrive. <a href="${escape(`${root}/email`)}">Change how often, or stop it.</a></p>`,
         optOut
-            ? `<p style="color:#666;font-size:14px">Or <a href="${escape(optOut)}">stop all of our email to this address</a>.</p>`
+            ? `<p style="color:#666;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5">Or <a href="${escape(optOut)}">stop all of our email to this address</a>.</p>`
             : '',
-        `<p>&mdash; ${SIGNATURE}</p>`,
+        `<p style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5">&mdash; ${SIGNATURE}</p>`,
         '</div>'
     ].join('');
 

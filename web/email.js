@@ -34,10 +34,32 @@ function offerSignIn() {
     show('signin');
 }
 
+function selectedFrequency() {
+    if ($('digest-weekly').checked) return 'weekly';
+    if ($('digest-monthly').checked) return 'monthly';
+    return 'off';
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKS = ['', 'first', 'second', 'third', 'fourth'];
+
 function showSchedule() {
-    const frequency = $('digest').value;
+    const frequency = selectedFrequency();
     $('digest-week-row').hidden = frequency !== 'monthly';
     $('digest-weekday-row').hidden = frequency === 'off';
+
+    if (frequency === 'off') {
+        $('digest-preview').textContent = 'We won\u2019t send email summaries.';
+        return;
+    }
+
+    const weekday = WEEKDAYS[Number($('digest-weekday').value)] ?? 'Monday';
+    const when =
+        frequency === 'monthly'
+            ? `on the ${WEEKS[Number($('digest-week').value)] ?? 'first'} ${weekday} of each month`
+            : `every ${weekday}`;
+    $('digest-preview').textContent =
+        `We\u2019ll check ${when}. If no new letters have arrived, we won\u2019t send anything.`;
 }
 
 async function save(event) {
@@ -47,7 +69,7 @@ async function save(event) {
     button.disabled = true;
 
     const result = await call('PUT', {
-        digestFrequency: $('digest').value,
+        digestFrequency: selectedFrequency(),
         digestWeekday: Number($('digest-weekday').value),
         digestWeek: Number($('digest-week').value)
     });
@@ -89,14 +111,19 @@ async function start() {
     if (result.status === 401) return offerSignIn();
     if (!result.ok) return show('failed');
 
-    $('digest').value = result.body.digestFrequency ?? 'off';
+    const frequency = result.body.digestFrequency ?? 'off';
+    $(`digest-${frequency}`).checked = true;
     $('digest-weekday').value = String(result.body.digestWeekday ?? 1);
     $('digest-week').value = String(result.body.digestWeek ?? 1);
     showSchedule();
     $('suppressed').hidden = !result.body.suppressed;
     $('digest-as').textContent = result.body.email ? `Signed in as ${result.body.email}.` : '';
     $('digest-form').addEventListener('submit', save);
-    $('digest').addEventListener('change', showSchedule);
+    $('digest-weekly').addEventListener('change', showSchedule);
+    $('digest-monthly').addEventListener('change', showSchedule);
+    $('digest-off').addEventListener('change', showSchedule);
+    $('digest-weekday').addEventListener('change', showSchedule);
+    $('digest-week').addEventListener('change', showSchedule);
     $('resume').addEventListener('click', resume);
 
     show('ready');

@@ -16,6 +16,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/styles.css">
     <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/solid.min.css">
     <link rel="stylesheet" href="/vendor/fontawesome/css/brands.min.css">
 </head>
 
@@ -72,22 +73,42 @@
         </section>
 
         <section id="ready" hidden>
-            <h2>Archive activity summaries</h2>
+            <h2>New-letter email summaries</h2>
             <p class="lede">
                 Get one email summarizing new letters across every archive you can access.
             </p>
-            <p>
-                Choose a schedule below. We send a summary only when new letters have arrived.
-            </p>
+            <div class="email-summary__promise">
+                <i class="fa-solid fa-envelope-circle-check" aria-hidden="true"></i>
+                <div>
+                    <p><strong>No new letters means no email.</strong></p>
+                    <p>Weekly or monthly determines when we check for new letters&mdash;not how often we fill your inbox.</p>
+                </div>
+            </div>
             <form id="digest-form">
-                <p>
-                    <label for="digest">How often do you want a summary?</label><br>
-                    <select id="digest" name="digest">
-                        <option value="monthly">Monthly</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="off">Never</option>
-                    </select>
-                </p>
+                <fieldset class="email-summary__choices">
+                    <legend>When should we check for new letters?</legend>
+                    <label class="email-summary__choice" for="digest-weekly">
+                        <input id="digest-weekly" name="digest" type="radio" value="weekly">
+                        <span>
+                            <strong>Weekly</strong>
+                            <small>Check once a week. Send an email only if something new arrived.</small>
+                        </span>
+                    </label>
+                    <label class="email-summary__choice" for="digest-monthly">
+                        <input id="digest-monthly" name="digest" type="radio" value="monthly">
+                        <span>
+                            <strong>Monthly</strong>
+                            <small>Check once a month. Send an email only if something new arrived.</small>
+                        </span>
+                    </label>
+                    <label class="email-summary__choice" for="digest-off">
+                        <input id="digest-off" name="digest" type="radio" value="off">
+                        <span>
+                            <strong>Off</strong>
+                            <small>Don&rsquo;t send email summaries.</small>
+                        </span>
+                    </label>
+                </fieldset>
                 <p id="digest-week-row" hidden>
                     <label for="digest-week">Which week each month?</label><br>
                     <select id="digest-week" name="digest-week">
@@ -109,6 +130,7 @@
                         <option value="0">Sunday</option>
                     </select>
                 </p>
+                <p class="email-summary__preview" id="digest-preview" aria-live="polite"></p>
                 <p><button class="button" type="submit" id="digest-submit">Save schedule</button></p>
                 <p class="note" id="digest-as"></p>
             </form>
