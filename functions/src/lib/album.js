@@ -22,6 +22,7 @@
 // puts the real host after an `@` and still matches here -- which is why
 // anything recorded is parsed and checked below.
 const URL_SOURCE = String.raw`https?:\/\/(?:photos\.app\.goo\.gl|photos\.google\.com)[^\s"'<>]*`;
+const DRIVE_URL_SOURCE = String.raw`https?:\/\/drive\.google\.com\/file\/d\/[^\s"'<>]*`;
 
 const HOSTS = ['photos.app.goo.gl', 'photos.google.com'];
 
@@ -100,7 +101,8 @@ const BETWEEN = String.raw`(?:\s|<\/?(?:p|div|span|br|b|i|u|em|strong|font)\b[^>
 // The link itself, as an anchor with everything it wraps, or bare in text. The
 // anchor form has to take the whole element: its visible text is the URL
 // again, and leaving that behind would remove the link and print it anyway.
-const LINK = `(?:<a\\b[^>]*href\\s*=\\s*["']?${URL_SOURCE}["']?[^>]*>[\\s\\S]*?<\\/a>|${URL_SOURCE})`;
+const linkFor = (source) =>
+    `(?:<a\\b[^>]*href\\s*=\\s*["']?${source}["']?[^>]*>[\\s\\S]*?<\\/a>|<${source}>|${source})`;
 
 // Group one is the text since the last tag, which is exactly "the line before"
 // in markup that has no lines. It cannot run past a tag boundary, so it can
@@ -109,7 +111,27 @@ const LINK = `(?:<a\\b[^>]*href\\s*=\\s*["']?${URL_SOURCE}["']?[^>]*>[\\s\\S]*?<
 // the run would reach back to the greeting and no label would ever be short
 // enough to recognise.
 const RUN = String.raw`(?:(?!\n\s*\n)[^<>])*`;
-const LABEL_AND_LINK = `(${RUN})(${BETWEEN})(${LINK})`;
+const labelAndLinkFor = (source) => `(${RUN})(${BETWEEN})(${linkFor(source)})`;
+
+// Gmail's Drive chips become two plain-text lines in the alternative MIME
+// part: an icon URL, then a filename and the same Drive URL. Both are generated
+// furniture rather than prose. The HTML form needs no filename rule because
+// the filename sits inside the anchor and leaves with it.
+const DRIVE_FILENAME = /(?:^|\s)[^\s<>]+\.(?:jpe?g|png|gif|webp|heic|mp4|mov)\s*:?\s*$/i;
+const DRIVE_ICON = /^\s*\[[^\]\n]*drive-thirdparty\.googleusercontent\.com[^\]\n]*\]\s*$/i;
+
+const stripLinks = (value, source, labelIsFurniture, onRemove) =>
+    String(value).replace(
+        new RegExp(labelAndLinkFor(source), 'gi'),
+        (whole, label, between, link) => {
+            const drop = labelIsFurniture(label);
+            onRemove?.({ label: drop ? label.trim() : '', link });
+
+            return drop
+                ? between.replace(/>\s+</g, '><').trim()
+                : `${soften(label)}${between}`;
+        }
+    );
 
 /**
  * Remove album links, and the labels that introduce them, from a letter.
@@ -133,17 +155,11 @@ const LABEL_AND_LINK = `(${RUN})(${BETWEEN})(${LINK})`;
 export function stripAlbumLinks(value, { onRemove = null } = {}) {
     if (value == null) return value;
 
-    return String(value).replace(
-        new RegExp(LABEL_AND_LINK, 'gi'),
-        (whole, label, between, link) => {
-            const drop = isLabel(label);
-            onRemove?.({ label: drop ? label.trim() : '', link });
-
-            return drop
-                ? // Whitespace around the tags goes with the label. Left in, it
-                  // would hold open the very block the label used to fill.
-                  between.replace(/>\s+</g, '><').trim()
-                : `${soften(label)}${between}`;
-        }
+    const withoutAlbums = stripLinks(value, URL_SOURCE, isLabel, onRemove);
+    return stripLinks(
+        withoutAlbums,
+        DRIVE_URL_SOURCE,
+        (label) => isLabel(label) || DRIVE_FILENAME.test(label.trim()) || DRIVE_ICON.test(label),
+        onRemove
     );
 }

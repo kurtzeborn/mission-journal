@@ -92,6 +92,19 @@ test('style attributes are stripped even from allowed tags', () => {
     assert.equal(out, '<p>x</p>');
 });
 
+test('Google Drive chips leave neither filenames nor trailing blank space', () => {
+    const drive = 'https://drive.google.com/file/d/1example/view?usp=drivesdk';
+    const chip = [
+        '<div class="gmail_drive_chip">',
+        `<div><a href="${drive}"><img src="https://drive-thirdparty.googleusercontent.com/256/type/image/jpeg"></a></div>`,
+        `<div><a href="${drive}"><span>196.jpg</span></a></div>`,
+        '</div><div><br></div><br>'
+    ].join('');
+    const out = sanitizeBody(`<p>Love, Elder Example</p>${chip}`);
+
+    assert.equal(out, '<p>Love, Elder Example</p>');
+});
+
 test('cid references become photo URLs and everything else loses its image', () => {
     const cidMap = new Map([['abc123@outlook', photoUrl(SLUG, 'p_deadbeef0001', 'large')]]);
 

@@ -144,6 +144,7 @@ const EMPTY_BLOCKS = new Set(['p', 'div', 'span']);
 // found -- `<div><div><br /></div></div>` has a closing tag after the block
 // that matters, not the end of the string.
 const TRAILING_BLANK = /<(p|div|span)>(?:\s|<br \/>)*<\/\1>(?=(?:\s*<\/(?:p|div|span)>)*\s*$)/;
+const TRAILING_BREAK = /<br \/>(?=(?:\s*<\/(?:p|div|span)>)*\s*$)/;
 
 // Closing what a cut left open. The rules are the ones above, so re-parsing
 // already-sanitized output can only ever take more away, never let more in.
@@ -414,7 +415,7 @@ export function sanitizeBody(
     let trimmed = clean.trim();
     for (let previous = ''; previous !== trimmed; ) {
         previous = trimmed;
-        trimmed = trimmed.replace(TRAILING_BLANK, '').trim();
+        trimmed = trimmed.replace(TRAILING_BREAK, '').replace(TRAILING_BLANK, '').trim();
     }
     return trimmed;
 }
