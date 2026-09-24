@@ -48,20 +48,23 @@ describe('showing somebody what they chose', () => {
         }));
 
         assert.equal(view.el('ready').hidden, false);
-        assert.equal(view.el('digest').value, 'monthly');
+        assert.equal(view.el('digest-monthly').checked, true);
         assert.equal(view.el('digest-weekday').value, '4');
         assert.equal(view.el('digest-week').value, '3');
         assert.equal(view.el('digest-weekday-row').hidden, false);
         assert.equal(view.el('digest-week-row').hidden, false);
+        assert.match(view.text('digest-preview'), /third Thursday of each month/);
+        assert.match(view.text('digest-preview'), /won\u2019t send anything/);
         assert.match(view.text('digest-as'), /grandma@example\.com/);
     });
 
     test('somebody who has never asked sees never, which is what they are getting', async () => {
         const { view } = await open(loaded({ email: 'grandma@example.com', digestFrequency: 'off' }));
 
-        assert.equal(view.el('digest').value, 'off');
+        assert.equal(view.el('digest-off').checked, true);
         assert.equal(view.el('digest-weekday-row').hidden, true);
         assert.equal(view.el('digest-week-row').hidden, true);
+        assert.equal(view.text('digest-preview'), 'We won\u2019t send email summaries.');
     });
 
     test('an address that pressed unsubscribe is told why nothing arrives', async () => {
@@ -108,9 +111,9 @@ describe('changing it', () => {
             digestWeek: 1
         }));
 
-        view.el('digest').value = 'weekly';
+        view.el('digest-weekly').checked = true;
         view.el('digest-weekday').value = '5';
-        await view.el('digest').dispatch('change');
+        await view.el('digest-weekly').dispatch('change');
         await view.el('digest-form').dispatch('submit');
 
         const put = net.calls.find((call) => call.method === 'PUT');
@@ -120,6 +123,7 @@ describe('changing it', () => {
         assert.equal(put.body.digestWeek, 1);
         assert.equal(view.el('digest-weekday-row').hidden, false);
         assert.equal(view.el('digest-week-row').hidden, true);
+        assert.match(view.text('digest-preview'), /every Friday/);
         assert.match(view.text('digest-as'), /Saved/);
     });
 

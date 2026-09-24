@@ -484,7 +484,9 @@ a {
 
 /* Visible focus everywhere. Removing it is not an option for this audience. */
 a:focus-visible,
-button:focus-visible {
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
     outline: 3px solid var(--accent);
     outline-offset: 2px;
 }
@@ -1635,6 +1637,93 @@ button:focus-visible {
 /* For a note that explains a field rather than making a point of its own. */
 .note--small {
     font-size: 0.8rem;
+}
+
+/* --- email summaries --- */
+
+.email-summary__promise {
+    display: grid;
+    grid-template-columns: 1.5rem 1fr;
+    gap: 0.8rem;
+    align-items: start;
+    margin: 1.5rem 0;
+    padding: 1rem 1.1rem;
+    background: #f3f7f5;
+    border: 1px solid #b9cec7;
+    border-radius: var(--radius);
+}
+
+.email-summary__promise i {
+    margin-top: 0.25rem;
+    color: var(--accent);
+}
+
+.email-summary__promise p {
+    margin: 0;
+}
+
+.email-summary__promise p + p {
+    margin-top: 0.2rem;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+}
+
+.email-summary__choices {
+    display: grid;
+    gap: 0.65rem;
+    margin: 1.75rem 0 1.25rem;
+    padding: 0;
+    border: 0;
+}
+
+.email-summary__choices legend {
+    margin-bottom: 0.65rem;
+    font-weight: 700;
+}
+
+.email-summary__choice {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem;
+    align-items: start;
+    min-height: 44px;
+    padding: 0.8rem 0.9rem;
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.email-summary__choice:has(input:checked) {
+    background: #f3f7f5;
+    border-color: var(--accent);
+}
+
+.email-summary__choice input {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0.25rem 0 0;
+    accent-color: var(--accent);
+}
+
+.email-summary__choice strong,
+.email-summary__choice small {
+    display: block;
+}
+
+.email-summary__choice small {
+    margin-top: 0.1rem;
+    color: var(--ink-soft);
+    font-family: system-ui, sans-serif;
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.email-summary__preview {
+    margin: 1.25rem 0;
+    padding-left: 0.9rem;
+    border-left: 3px solid var(--accent);
+    font-weight: 600;
 }
 
 /* --- the mark beside a label --- */

@@ -239,6 +239,32 @@ describe('the message itself', () => {
         assert.equal(count, 2);
     });
 
+    test('the opening identifies the site and agrees with the number of missionaries', () => {
+        const one = digestEmail({ baseUrl: BASE, archives: [archives[0]] });
+        assert.ok(one.text.startsWith('PdayLetters.com\n\nYour missionary has sent 1 new letter'));
+        assert.ok(one.html.includes('Your missionary has sent <strong>1</strong> new letter'));
+
+        const several = digestEmail({ baseUrl: BASE, archives });
+        assert.ok(several.text.startsWith('PdayLetters.com\n\nYour missionaries have sent 2 new letters'));
+        assert.ok(several.html.includes('Your missionaries have sent <strong>2</strong> new letters'));
+    });
+
+    test('archive links are padded table buttons for Outlook', () => {
+        const { html } = digestEmail({ baseUrl: BASE, archives });
+        assert.ok(html.includes('<table role="presentation"'));
+        assert.ok(html.includes('mso-padding-alt:11px 20px'));
+        assert.ok(html.includes('border-radius:6px'));
+        assert.ok(html.includes('border:1px solid #173b5c'));
+    });
+
+    test('the closing text declares the same font family as the opening', () => {
+        const { html } = digestEmail({ baseUrl: BASE, archives });
+        assert.match(
+            html,
+            /<p style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1\.5">&mdash; Pday Letters<\/p>/
+        );
+    });
+
     test('every letter is a link to that letter, not to the top of the archive', () => {
         const { text, html } = digestEmail({ baseUrl: BASE, archives });
         assert.ok(text.includes(`${BASE}/${ONE}/#panel-2026-08-02-abc`));
