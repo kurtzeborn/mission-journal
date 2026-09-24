@@ -15,6 +15,7 @@ import { recordAlbumUrls, sitesBySlug, touchSiteActivity } from '../src/lib/site
 import { memoryStore } from './memory-store.js';
 
 const ALBUM = 'https://photos.app.goo.gl/k3EgCuLhqBygsxHU8';
+const DRIVE = 'https://drive.google.com/file/d/1uqR3ZqMW0yKAcBOQXOKq5GrEHmn-TUrc/view?usp=drivesdk';
 
 // --- finding the URL -------------------------------------------------------
 
@@ -146,6 +147,43 @@ test('a link that is not an album is left entirely alone', () => {
     const html = '<p>See <a href="https://example.com/photos">the photos</a></p>';
 
     assert.equal(stripAlbumLinks(html), html);
+});
+
+test('a Gmail Drive chip loses both its external icon and filename', () => {
+    const html = [
+        '<div class="gmail_drive_chip">',
+        `<div><a href="${DRIVE}"><img src="https://drive-thirdparty.googleusercontent.com/256/type/image/jpeg"></a></div>`,
+        `<div title="file_name"><a href="${DRIVE}"><span>196.jpg</span></a></div>`,
+        '</div>',
+        '<p>Love, Elder Example</p>'
+    ].join('');
+
+    const after = stripAlbumLinks(html);
+    assert.doesNotMatch(after, /drive\.google\.com|drive-thirdparty|196\.jpg/);
+    assert.match(after, /Love, Elder Example/);
+});
+
+test('a plain-text Drive chip loses its generated icon and filename lines', () => {
+    const text = [
+        'Love, Elder Example',
+        '',
+        `[https://drive-thirdparty.googleusercontent.com/256/type/image/jpeg] <${DRIVE}>`,
+        `196.jpg <${DRIVE}>`
+    ].join('\n');
+
+    assert.equal(stripAlbumLinks(text), 'Love, Elder Example\n');
+});
+
+test('a sentence before a Drive file is kept while the link goes', () => {
+    const html = `<p>I recorded the parade here: <a href="${DRIVE}">parade.mp4</a></p>`;
+    const after = stripAlbumLinks(html);
+
+    assert.match(after, /I recorded the parade here\./);
+    assert.doesNotMatch(after, /drive\.google\.com|parade\.mp4/);
+});
+
+test('Drive files are removed from letters but not recorded as photo albums', () => {
+    assert.deepEqual(albumUrls(`<a href="${DRIVE}">196.jpg</a>`), []);
 });
 
 test('running it twice changes nothing the second time', () => {
