@@ -38,6 +38,11 @@ function opened(posts = POSTS) {
     return view;
 }
 
+const toolbarLabels = (view) =>
+    [...view.$('.toolbar').querySelectorAll('button')]
+        .filter((button) => !button.closest('[hidden]'))
+        .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+
 const sizeOf = (view, word) =>
     Number.parseFloat(view.$(`.cloud__word[data-word="${word}"]`).style.fontSize);
 
@@ -47,12 +52,8 @@ describe('getting to the cloud', () => {
         const toolbar = view.$('.toolbar');
 
         // Expand all sits on the right, over the Expand buttons it works on.
-        assert.deepEqual(
-            [...toolbar.querySelectorAll('button')].map(
-                (el) => el.getAttribute('aria-label') ?? el.textContent
-            ),
-            ['Word cloud', 'Expand all']
-        );
+        assert.deepEqual(toolbarLabels(view), ['Word cloud', 'Search', 'Expand all']);
+        assert.equal(view.$('.search').closest('.toolbar'), toolbar);
     });
 
     describe('buying a finished book', () => {
@@ -61,11 +62,12 @@ describe('getting to the cloud', () => {
             let opened = 0;
             view.mount({ posts: POSTS, book: { open: () => { opened += 1; } } });
 
-            const buttons = [...view.$('.toolbar').querySelectorAll('button')];
-            assert.deepEqual(
-                buttons.map((button) => button.getAttribute('aria-label') ?? button.textContent),
-                ['Word cloud', 'Buy a Book', 'Expand all']
-            );
+            assert.deepEqual(toolbarLabels(view), [
+                'Word cloud',
+                'Buy a Book',
+                'Search',
+                'Expand all'
+            ]);
             assert.ok(view.button('Buy a Book').classList.contains('button--buy'));
 
             view.click(view.button('Buy a Book'));
@@ -86,10 +88,10 @@ describe('getting to the cloud', () => {
         assert.equal(view.cloud(), null);
     });
 
-    test('a single letter is not an archive, so it gets no toolbar at all', () => {
+    test('a single letter gets search without archive-wide cloud or folding actions', () => {
         const view = archive([POSTS[0]]);
 
-        assert.equal(view.$('.toolbar'), null);
+        assert.deepEqual(toolbarLabels(view), ['Search']);
     });
 
     test('opening it puts a modal over the letters', () => {

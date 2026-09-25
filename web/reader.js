@@ -1788,6 +1788,19 @@ window.Reader = (function () {
         const fields = document.createElement('div');
         fields.className = 'search__fields';
 
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'button button--quiet button--compact search__toggle';
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-controls', searchInput.id);
+        toggle.setAttribute('aria-label', 'Search');
+        const toggleIcon = magnifier();
+        toggleIcon.setAttribute('class', 'search__toggle-icon');
+        const toggleText = document.createElement('span');
+        toggleText.className = 'search__toggle-text';
+        toggleText.textContent = 'Search';
+        toggle.append(toggleIcon, toggleText);
+
         // The magnifier says what the box is for in the width of a glyph,
         // which is cheaper than the label it replaces -- a whole line of
         // vertical space, on a bar that never scrolls away.
@@ -1833,11 +1846,20 @@ window.Reader = (function () {
         position.setAttribute('aria-live', 'polite');
 
         nav.append(position, previous, next);
-        searchForm.append(fields, nav);
+        searchForm.append(toggle, fields, nav);
 
         let marks = [];
         let at = -1;
         let letters = 0;
+
+        const setSearchOpen = (open, focus = false) => {
+            searchForm.classList.toggle('search--collapsed', !open);
+            searchForm.closest('.toolbar')?.classList.toggle('toolbar--searching', open);
+            toggle.hidden = open;
+            toggle.setAttribute('aria-expanded', String(open));
+            fields.hidden = !open;
+            if (open && focus) searchInput.focus();
+        };
 
         const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -1907,6 +1929,8 @@ window.Reader = (function () {
                 return;
             }
 
+            setSearchOpen(true);
+
             // Prefix and fuzzy matching both on: the audience types partial
             // words and misspells place names, and an archive this small can
             // afford a generous match far better than it can afford an empty
@@ -1968,7 +1992,20 @@ window.Reader = (function () {
 
         clear.addEventListener('click', () => {
             clearSearch();
-            searchInput.focus();
+            setSearchOpen(false);
+            toggle.focus();
+        });
+
+        toggle.addEventListener('click', () => setSearchOpen(true, true));
+        searchInput.addEventListener('focus', () => setSearchOpen(true));
+
+        // An empty search has no reason to keep occupying the viewport once
+        // focus leaves it. relatedTarget distinguishes leaving the form from
+        // moving to its clear or navigation buttons.
+        searchForm.addEventListener('focusout', (event) => {
+            if (searchInput.value) return;
+            if (event.relatedTarget && searchForm.contains(event.relatedTarget)) return;
+            setSearchOpen(false);
         });
 
         // Escape leaves searching altogether rather than only emptying the
@@ -1983,7 +2020,7 @@ window.Reader = (function () {
         // those should also wipe the search behind it.
         document.addEventListener('keydown', (event) => {
             if (event.key !== 'Escape' || event.defaultPrevented) return;
-            if (!searchInput.value) return;
+            if (searchForm.classList.contains('search--collapsed')) return;
             if (document.querySelector('dialog[open]')) return;
 
             const focused = document.activeElement;
@@ -1993,8 +2030,9 @@ window.Reader = (function () {
                 (focused.isContentEditable || focused.matches('input, textarea, select'));
             if (elsewhere) return;
 
-            clearSearch();
+            if (searchInput.value) clearSearch();
             searchInput.blur();
+            setSearchOpen(false);
         });
 
         // Up and down walk the matches, exactly as the two buttons do, so the
@@ -2027,6 +2065,7 @@ window.Reader = (function () {
             goTo(at + 1);
         });
 
+        setSearchOpen(false);
         searchForm.hidden = false;
 
         // Handed back so the word cloud can search for the word it was given.
@@ -2034,6 +2073,7 @@ window.Reader = (function () {
         // the box, and it goes through the same path a person typing does.
         return {
             pick(word) {
+                setSearchOpen(true);
                 searchInput.value = word;
                 apply();
                 searchInput.focus();
@@ -2129,7 +2169,7 @@ window.Reader = (function () {
         const gallery = Boolean(album) && photoCount > 1;
         const forSale = typeof book?.open === 'function';
 
-        if (many || gallery || forSale) {
+        if (many || gallery || forSale || search) {
             const toolbar = document.createElement('div');
             toolbar.className = 'toolbar';
             let folding = null;
@@ -2248,6 +2288,11 @@ window.Reader = (function () {
                 }));
 
                 toolbar.prepend(photos);
+            }
+
+            if (search) {
+                if (folding) folding.prepend(elements.searchForm);
+                else toolbar.append(elements.searchForm);
             }
 
             list.parentNode.insertBefore(toolbar, list);
