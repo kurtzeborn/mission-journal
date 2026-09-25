@@ -80,7 +80,8 @@ describe('the shape of the page', () => {
         const view = page();
         view.mount({ posts: [THREE[0]] });
 
-        assert.equal(view.$('.toolbar'), null);
+        assert.equal(view.button('Expand all'), undefined);
+        assert.ok(view.$('.toolbar').contains(view.$('.search')));
     });
 });
 

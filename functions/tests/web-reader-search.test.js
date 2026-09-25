@@ -263,12 +263,43 @@ describe('stepping between matches', () => {
 });
 
 describe('the shape of the search bar', () => {
-    test('the box is on screen from the moment the archive arrives', () => {
+    test('a compact search pill is on screen from the moment the archive arrives', () => {
         const view = archive();
 
         assert.equal(view.elements.searchForm.hidden, false);
-        assert.equal(view.$('.search__input').hidden, false);
+        assert.ok(view.elements.searchForm.closest('.toolbar'));
+        assert.equal(view.$('.search__input').parentElement.hidden, true);
+        assert.equal(view.$('.search__toggle').hidden, false);
         assert.ok(view.$('.search__icon'));
+    });
+
+    test('the pill expands the field and puts the caret in it', () => {
+        const view = archive();
+
+        view.click(view.$('.search__toggle'));
+
+        assert.equal(view.$('.search__toggle').hidden, true);
+        assert.equal(view.$('.search__input').parentElement.hidden, false);
+        assert.equal(view.document.activeElement, view.elements.searchInput);
+        assert.ok(view.$('.toolbar').classList.contains('toolbar--searching'));
+    });
+
+    test('a focused field cannot remain in the compact layout', () => {
+        const view = archive();
+
+        view.elements.searchInput.focus();
+
+        assert.equal(view.elements.searchForm.classList.contains('search--collapsed'), false);
+        assert.equal(view.$('.search__toggle').hidden, true);
+        assert.equal(view.$('.search__input').parentElement.hidden, false);
+    });
+
+    test('an active query keeps the search expanded', () => {
+        const view = archive();
+        view.search('Antigua');
+
+        assert.equal(view.$('.search__toggle').hidden, true);
+        assert.equal(view.$('.search__input').parentElement.hidden, false);
     });
 
     test('the label is read but not seen, so the bar stays one line high', () => {
@@ -288,6 +319,7 @@ describe('the shape of the search bar', () => {
 
         assert.equal(view.elements.searchInput.value, '');
         assert.deepEqual(shown(view), POSTS.map((post) => post.id));
+        assert.equal(view.$('.search__toggle').hidden, false);
     });
 
     test('escape works from wherever the reader happens to be reading', () => {
@@ -339,7 +371,7 @@ describe('clearing the box', () => {
         assert.equal(clear.hidden, false);
     });
 
-    test('clearing empties the box and leaves it ready for the next search', () => {
+    test('clearing empties the box and returns to the compact pill', () => {
         const view = archive();
         view.search('Antigua');
 
@@ -347,7 +379,8 @@ describe('clearing the box', () => {
 
         assert.equal(view.elements.searchInput.value, '');
         assert.equal(view.$('.search__clear').hidden, true);
-        assert.equal(view.document.activeElement, view.elements.searchInput);
+        assert.equal(view.document.activeElement, view.$('.search__toggle'));
+        assert.equal(view.$('.search__toggle').hidden, false);
         assert.deepEqual(shown(view), POSTS.map((post) => post.id));
     });
 });

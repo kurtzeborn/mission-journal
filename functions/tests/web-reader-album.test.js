@@ -40,25 +40,34 @@ function archive({ posts = POSTS, withAlbum = true } = {}) {
 // carry a glyph and are named in an attribute, which is what a screen reader
 // and a tooltip both read.
 const labels = (view) =>
-    [...view.$('.toolbar').querySelectorAll('button')].map(
-        (el) => el.getAttribute('aria-label') ?? el.textContent
-    );
+    [...view.$('.toolbar').querySelectorAll('button')]
+        .filter((el) => !el.closest('[hidden]'))
+        .map((el) => el.getAttribute('aria-label') ?? el.textContent);
 
 describe('getting to the album', () => {
     test('its button sits with the word cloud, not with Expand all', () => {
         // Both of these open a window over the archive. Expand all rearranges
         // the archive itself and stays at the other end of the row.
-        assert.deepEqual(labels(archive()), ['Photo Album', 'Word cloud', 'Expand all']);
+        assert.deepEqual(labels(archive()), [
+            'Photo Album',
+            'Word cloud',
+            'Search',
+            'Expand all'
+        ]);
     });
 
     test('the downloaded archive is given no album and offers no button', () => {
-        assert.deepEqual(labels(archive({ withAlbum: false })), ['Word cloud', 'Expand all']);
+        assert.deepEqual(labels(archive({ withAlbum: false })), [
+            'Word cloud',
+            'Search',
+            'Expand all'
+        ]);
     });
 
     test('an archive with no photographs in it does not offer one either', () => {
         const view = archive({ posts: [POSTS[1], letter('2026-03-09-R32V', para(400))] });
 
-        assert.deepEqual(labels(view), ['Word cloud', 'Expand all']);
+        assert.deepEqual(labels(view), ['Word cloud', 'Search', 'Expand all']);
     });
 
     test('one photograph in the whole archive is not an album', () => {
@@ -73,13 +82,13 @@ describe('getting to the album', () => {
             ]
         });
 
-        assert.deepEqual(labels(view), ['Word cloud', 'Expand all']);
+        assert.deepEqual(labels(view), ['Word cloud', 'Search', 'Expand all']);
     });
 
     test('a single letter carrying pictures still gets one', () => {
-        // Expand all and the word cloud have nothing to act on, so what
-        // appears is the album button by itself rather than no toolbar.
-        assert.deepEqual(labels(archive({ posts: [POSTS[0]] })), ['Photo Album']);
+        // Expand all and the word cloud have nothing to act on, so the album
+        // shares the row only with the search that applies to every archive.
+        assert.deepEqual(labels(archive({ posts: [POSTS[0]] })), ['Photo Album', 'Search']);
     });
 
     test('opening it from the toolbar hands over the whole archive', () => {
