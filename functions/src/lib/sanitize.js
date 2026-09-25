@@ -145,6 +145,9 @@ const EMPTY_BLOCKS = new Set(['p', 'div', 'span']);
 // that matters, not the end of the string.
 const TRAILING_BLANK = /<(p|div|span)>(?:\s|<br \/>)*<\/\1>(?=(?:\s*<\/(?:p|div|span)>)*\s*$)/;
 const TRAILING_BREAK = /<br \/>(?=(?:\s*<\/(?:p|div|span)>)*\s*$)/;
+const REPEATED_BREAKS = /(?:<br \/>\s*){2,}/g;
+const BREAK_ONLY_BLOCK = String.raw`(?:<p>\s*<br \/>\s*<\/p>|<div>\s*<br \/>\s*<\/div>|<span>\s*<br \/>\s*<\/span>)`;
+const REPEATED_BREAK_BLOCKS = new RegExp(`(${BREAK_ONLY_BLOCK})(?:\\s*${BREAK_ONLY_BLOCK})+`, 'g');
 
 // Closing what a cut left open. The rules are the ones above, so re-parsing
 // already-sanitized output can only ever take more away, never let more in.
@@ -412,7 +415,16 @@ export function sanitizeBody(
     // of the letter is coming, so the only place to answer that is here, on
     // finished output. Repeated until stable because removing an inner block
     // leaves an empty wrapper that is now itself last.
-    let trimmed = clean.trim();
+    // Mail clients use both adjacent <br> tags and adjacent blocks containing
+    // one <br> apiece to create arbitrary vertical gaps. One break still
+    // matters -- Gmail mobile uses it as the paragraph separator -- but a run
+    // adds only empty space. Canonical sanitized markup makes these exact
+    // patterns safe to collapse without reaching across text, photos or any
+    // other element.
+    let trimmed = clean
+        .replace(REPEATED_BREAK_BLOCKS, '$1')
+        .replace(REPEATED_BREAKS, '<br />')
+        .trim();
     for (let previous = ''; previous !== trimmed; ) {
         previous = trimmed;
         trimmed = trimmed.replace(TRAILING_BREAK, '').replace(TRAILING_BLANK, '').trim();

@@ -69,6 +69,29 @@ describe('empty block removal', () => {
         );
     });
 
+    test('several consecutive Gmail paragraph separators become one', () => {
+        assert.equal(
+            sanitizeBody(
+                '<div>One.</div><div><br></div><div><br></div><div><br></div><div>Two.</div>'
+            ),
+            '<div>One.</div><div><br /></div><div>Two.</div>'
+        );
+    });
+
+    test('several consecutive bare line breaks become one', () => {
+        assert.equal(
+            sanitizeBody('<p>One.<br><br /><br>Two.</p>'),
+            '<p>One.<br />Two.</p>'
+        );
+    });
+
+    test('line breaks separated by content are not combined', () => {
+        assert.equal(
+            sanitizeBody('<p>One.<br><b>Middle.</b><br>Two.</p>'),
+            '<p>One.<br /><b>Middle.</b><br />Two.</p>'
+        );
+    });
+
     test('the same shape survives Gmail opening with a bare text node', () => {
         // The letter's first line is a text node inside the wrapper rather
         // than a block of its own, so the break after it is judged before any
