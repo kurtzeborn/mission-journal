@@ -15,13 +15,14 @@ import { fetching, page, run, settled } from './web-dom.js';
 
 const SLUG = 'elder.example';
 
-async function archive({ answer, path = `/${SLUG}/`, device }) {
+async function archive({ answer, path = `/${SLUG}/`, device, qrcode = null }) {
     const view = page({ html: 'site.html', path, device });
     // The reader itself is not under test here; only what happens instead of
     // it when the letters never arrive.
     view.context.Reader = { mount(options) { view.context.mounted = options; } };
+    if (qrcode) view.context.qrcode = qrcode;
     const net = fetching(answer);
-    run('app.js', { context: view.context, fetch: net.fetch });
+    run(['quick-join.js', 'app.js'], { context: view.context, fetch: net.fetch });
     await settled();
     return { ...view, calls: net.calls };
 }
@@ -175,6 +176,59 @@ describe('being turned away from an archive', () => {
 
         assert.equal(view.el('people').hidden, false);
         assert.equal(view.el('people').href, `/people/${SLUG}`);
+    });
+
+    test('an owner can open the same Quick join dialog from below People', async () => {
+        const qr = () => ({
+            addData(value) {
+                this.value = value;
+            },
+            make() {},
+            createDataURL() {
+                return `data:image/gif;base64,${this.value}`;
+            }
+        });
+        const view = await archive({
+            qrcode: qr,
+            answer: async (url, init) => {
+                if (url === '/.auth/me') return signedIn('mum@example.com');
+                if (url.endsWith('/qr') && init?.method === 'POST') {
+                    return {
+                        body: {
+                            id: 'gathering',
+                            url: 'https://pdayletters.com/join#code'
+                        }
+                    };
+                }
+                return { status: 200, body: { slug: SLUG, role: 'owner', posts: [] } };
+            }
+        });
+
+        assert.equal(view.el('quick-join-item').hidden, false);
+        assert.match(
+            view.source,
+            /id="quick-join">\s*Quick join <i class="fa-solid fa-qrcode" aria-hidden="true"><\/i>/
+        );
+
+        await view.el('quick-join').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('qr-dialog').open, true);
+        assert.match(view.el('qr-image').getAttribute('src'), /code/);
+        assert.ok(view.calls.some(
+            (call) => call.url === `/api/members/${SLUG}/qr` && call.method === 'POST'
+        ));
+    });
+
+    test('a reader is not offered Quick join', async () => {
+        const view = await archive({
+            answer: async (url) =>
+                url === '/.auth/me'
+                    ? signedIn('gran@example.com')
+                    : { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } }
+        });
+
+        assert.equal(view.el('quick-join-item').hidden, true);
     });
 });
 

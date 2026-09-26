@@ -5,7 +5,7 @@
 // handling an expired session. The drawing is Reader.mount(), which the
 // downloaded zip calls with exactly the same arguments.
 
-/* global Reader, Confirm, Taken */
+/* global Reader, Confirm, Taken, QuickJoin */
 
 (function () {
     'use strict';
@@ -1088,6 +1088,12 @@
         if (people && payload.role === 'owner') {
             people.href = `/people/${encodeURIComponent(payload.slug)}`;
             people.hidden = false;
+
+            const quickJoin = document.getElementById('quick-join-item');
+            if (quickJoin) {
+                quickJoin.hidden = false;
+                QuickJoin.mount(payload.slug, 'quick-join');
+            }
         }
 
         const settings = document.getElementById('settings');
