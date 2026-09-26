@@ -1756,6 +1756,40 @@ window.Reader = (function () {
         return svg;
     }
 
+    function wordCloudIcon() {
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '1.8');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+
+        const cloud = document.createElementNS(SVG_NS, 'path');
+        cloud.setAttribute(
+            'd',
+            'M6.2 18.2h11.2a4.1 4.1 0 0 0 .8-8.1 5.1 5.1 0 0 0-9.5-2.7A4.4 4.4 0 0 0 6.2 18.2Z'
+        );
+
+        const words = document.createElementNS(SVG_NS, 'path');
+        words.setAttribute('d', 'M8 11h3.1M13.2 11H16M8 14h2M12 14h4');
+
+        svg.append(cloud, words);
+        return svg;
+    }
+
+    function toolbarLabel(text, icon) {
+        icon.classList.add('toolbar__icon');
+        icon.setAttribute('aria-hidden', 'true');
+
+        const label = document.createElement('span');
+        label.className = 'toolbar__label';
+        label.textContent = text;
+
+        return [icon, label];
+    }
+
     // Search runs entirely in the browser over the payload already in memory.
     // Nothing is sent back, which means a half-typed search for a grandchild's
     // name never leaves the device and there is no query log to protect. It is
@@ -2248,8 +2282,11 @@ window.Reader = (function () {
                 // should not land on the other.
                 const cloudButton = document.createElement('button');
                 cloudButton.type = 'button';
-                cloudButton.className = 'button button--quiet button--compact';
-                cloudButton.textContent = 'Word cloud';
+                cloudButton.className =
+                    'button button--quiet button--compact toolbar__icon-button';
+                cloudButton.title = 'Word cloud';
+                cloudButton.setAttribute('aria-label', 'Word cloud');
+                cloudButton.append(...toolbarLabel('Word cloud', wordCloudIcon()));
                 cloudButton.addEventListener('click', () => openCloud(posts, search?.pick));
 
                 toolbar.append(cloudButton, folding);
@@ -2274,8 +2311,14 @@ window.Reader = (function () {
             if (gallery) {
                 const photos = document.createElement('button');
                 photos.type = 'button';
-                photos.className = 'button button--quiet button--compact';
-                photos.textContent = 'Photo Album';
+                photos.className =
+                    'button button--quiet button--compact toolbar__icon-button';
+                photos.title = 'Photo Album';
+                photos.setAttribute('aria-label', 'Photo Album');
+
+                const photoIcon = document.createElement('i');
+                photoIcon.className = 'fa-solid fa-images';
+                photos.append(...toolbarLabel('Photo Album', photoIcon));
                 // Handed an id and left to find the view, so the album holds
                 // no reference to anything on the page.
                 photos.addEventListener('click', () => album.open({
