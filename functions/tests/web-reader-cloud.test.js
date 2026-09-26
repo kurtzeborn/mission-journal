@@ -56,6 +56,15 @@ describe('getting to the cloud', () => {
         assert.equal(view.$('.search').closest('.toolbar'), toolbar);
     });
 
+    test('its mobile icon is a cloud made of word strokes', () => {
+        const view = archive();
+        const button = view.button('Word cloud');
+
+        assert.ok(button.querySelector('svg.toolbar__icon'));
+        assert.equal(button.querySelectorAll('svg path').length, 2);
+        assert.equal(button.querySelector('.toolbar__label').textContent, 'Word cloud');
+    });
+
     describe('buying a finished book', () => {
         test('the green button sits immediately after Word cloud and opens the handoff', () => {
             const view = page();

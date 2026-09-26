@@ -1002,6 +1002,12 @@ select:focus-visible {
     gap: 0.5rem;
 }
 
+.toolbar .toolbar__icon {
+    display: none;
+    width: 1rem;
+    height: 1rem;
+}
+
 .toolbar--searching > :not(.search):not(.toolbar__group),
 .toolbar--searching .toolbar__group > :not(.search) {
     display: none;
@@ -2521,14 +2527,27 @@ h3:target {
 }
 
 @media (max-width: 520px) {
+    .toolbar__icon-button,
+    .toolbar .button--glyph,
+    .search__toggle {
+        flex: 0 0 34px;
+        width: 34px;
+        min-width: 34px;
+        padding: 0.25rem;
+        justify-content: center;
+    }
+
+    .toolbar .toolbar__icon {
+        display: inline-block;
+    }
+
+    .toolbar__label,
     .search__toggle-text {
         display: none;
     }
 
-    .search__toggle {
-        width: 34px;
-        padding: 0.25rem;
-        justify-content: center;
+    .toolbar .button--glyph {
+        letter-spacing: 0;
     }
 }
 

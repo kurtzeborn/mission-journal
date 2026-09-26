@@ -56,6 +56,14 @@ describe('getting to the album', () => {
         ]);
     });
 
+    test('its mobile icon is an image gallery while its accessible name stays intact', () => {
+        const view = archive();
+        const button = view.button('Photo Album');
+
+        assert.ok(button.querySelector('.fa-images'));
+        assert.equal(button.querySelector('.toolbar__label').textContent, 'Photo Album');
+    });
+
     test('the downloaded archive is given no album and offers no button', () => {
         assert.deepEqual(labels(archive({ withAlbum: false })), [
             'Word cloud',
