@@ -86,7 +86,7 @@ async function owner({ posts = LETTERS, chose = null, maxPhotos = 48, refuseAt =
         return { status: 200, body: { slug: SLUG, role: 'owner', posts, maxPhotos } };
     });
 
-    run(['taken.js', 'app.js'], { context: view.context, fetch: net.fetch });
+    run(['taken.js', 'quick-join.js', 'app.js'], { context: view.context, fetch: net.fetch });
     await settled();
 
     const uploads = () => net.calls.filter((call) => call.method === 'POST' && call.url.endsWith('/photos'));
@@ -441,7 +441,7 @@ describe('a picture the server cannot read', () => {
             return { status: 200, body: { slug: SLUG, role: 'owner', posts: LETTERS, maxPhotos: 48 } };
         });
 
-        run(['taken.js', 'app.js'], { context: view.context, fetch: net.fetch });
+        run(['taken.js', 'quick-join.js', 'app.js'], { context: view.context, fetch: net.fetch });
         await settled();
         await admin.addPhotos('b', pile(5), () => {});
 

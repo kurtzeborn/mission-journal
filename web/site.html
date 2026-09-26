@@ -61,6 +61,11 @@
                         <p class="menu__label">This archive</p>
                         <ul class="menu__list">
                             <li><a id="people" href="#" hidden>People</a></li>
+                            <li id="quick-join-item" hidden>
+                                <button type="button" class="menu__act" id="quick-join">
+                                    Quick join <i class="fa-solid fa-qrcode" aria-hidden="true"></i>
+                                </button>
+                            </li>
                             <li><a id="settings" href="#" hidden>Settings</a></li>
                             <li><a id="book" href="#" hidden>Make a book</a></li>
                             <li><a id="download" href="#" hidden>Download the letters</a></li>
@@ -281,6 +286,22 @@
         </p>
     </dialog>
 
+    <dialog class="ask qr-invite" id="qr-dialog" aria-labelledby="qr-title">
+        <h2 class="ask__question" id="qr-title">Scan to join this archive</h2>
+        <p class="ask__detail">
+            Anyone who scans this code can join as a reader. Keep this window open while people sign in.
+        </p>
+        <div class="qr-invite__code">
+            <img id="qr-image" alt="QR code for joining this archive">
+        </div>
+        <p class="note note--small" id="qr-status" role="status" aria-live="polite">
+            Creating a temporary code&hellip;
+        </p>
+        <form method="dialog" class="ask__buttons">
+            <button class="ask__button" type="submit">End invitations</button>
+        </form>
+    </dialog>
+
     <!--
         Classic scripts, not modules. The same reader has to run from a file://
         URL inside the downloaded zip, where module loading is blocked by CORS.
@@ -291,6 +312,8 @@
     <script src="/taken.js"></script>
     <script src="/reader.js"></script>
     <script src="/album.js"></script>
+    <script src="/vendor/qrcode.js"></script>
+    <script src="/quick-join.js"></script>
     <script src="/app.js"></script>
 </body>
 

@@ -7,7 +7,7 @@
 // re-checks all of it on every call regardless; this decides what to draw, not
 // who is allowed to do it.
 
-/* global Confirm, qrcode */
+/* global Confirm, QuickJoin */
 
 (() => {
     'use strict';
@@ -441,85 +441,12 @@
         await load();
     }
 
-    let qrSession = '';
-    let qrTimer = null;
-    let qrOpen = false;
-
-    function drawQr(url) {
-        const code = qrcode(0, 'M');
-        code.addData(url);
-        code.make();
-        $('qr-image').setAttribute('src', code.createDataURL(6, 4));
-    }
-
-    async function closeQrSession() {
-        qrOpen = false;
-        if (qrTimer) clearInterval(qrTimer);
-        qrTimer = null;
-
-        const id = qrSession;
-        qrSession = '';
-        if (!id) return;
-
-        try {
-            await api(`/qr/${encodeURIComponent(id)}`, {
-                method: 'DELETE',
-                keepalive: true
-            });
-        } catch {
-            // The server expires an abandoned session after ninety seconds.
-        }
-    }
-
-    async function refreshQr() {
-        const path = qrSession ? `/qr/${encodeURIComponent(qrSession)}` : '/qr';
-        const response = await api(path, { method: 'POST' });
-        const body = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(body.error ?? 'could not create the code');
-
-        if (!qrOpen) {
-            qrSession = body.id;
-            await closeQrSession();
-            return;
-        }
-
-        qrSession = body.id;
-        drawQr(body.url);
-        $('qr-status').textContent = 'The code refreshes every 30 seconds. Closing this window ends the invitation.';
-    }
-
-    async function openQr() {
-        const dialog = $('qr-dialog');
-        qrOpen = true;
-        $('qr-image').removeAttribute('src');
-        $('qr-status').textContent = 'Creating a temporary code\u2026';
-        dialog.showModal();
-
-        try {
-            await refreshQr();
-            qrTimer = setInterval(async () => {
-                try {
-                    await refreshQr();
-                } catch {
-                    $('qr-image').removeAttribute('src');
-                    $('qr-status').textContent = 'The code could not be refreshed. Close this window and try again.';
-                }
-            }, 25000);
-        } catch {
-            $('qr-status').textContent = 'The code could not be created. Close this window and try again.';
-        }
-    }
-
     if (!slug) {
         show('No archive was named.');
     } else {
         $('back').href = `/${encodeURIComponent(slug)}/`;
         $('invite').addEventListener('submit', invite);
-        $('qr-open').addEventListener('click', openQr);
-        $('qr-dialog').addEventListener('close', closeQrSession);
-        $('qr-dialog').addEventListener('click', (event) => {
-            if (event.target === $('qr-dialog')) $('qr-dialog').close();
-        });
+        QuickJoin.mount(slug);
         load();
     }
 })();

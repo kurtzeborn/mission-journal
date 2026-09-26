@@ -21,7 +21,7 @@ async function people({ answer, qrcode = null }) {
     const view = page({ html: 'people.html', path: `/people/${SLUG}` });
     const net = fetching(answer);
     if (qrcode) view.context.qrcode = qrcode;
-    run('people.js', { context: view.context, fetch: net.fetch });
+    run(['quick-join.js', 'people.js'], { context: view.context, fetch: net.fetch });
     await settled();
     return { ...view, calls: net.calls };
 }
@@ -30,6 +30,12 @@ const listing = (payload) => async (url, init) =>
     init?.method === 'POST' ? { status: 200, body: {} } : { status: 200, body: payload };
 
 describe('inviting a whole family in one sitting', () => {
+    test('calls the in-person invitation Quick join', async () => {
+        const view = await people({ answer: listing(OWNER_ONLY) });
+
+        assert.match(view.source, /<h3>Quick join<\/h3>/);
+    });
+
     test('one address per invitation, however they were pasted', async () => {
         const view = await people({ answer: listing(OWNER_ONLY) });
 
