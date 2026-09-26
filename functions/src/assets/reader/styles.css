@@ -719,8 +719,8 @@ select:focus-visible {
 }
 
 /* Quieter than a letter's summary line in every way it can be -- smaller, sans
-   serif, a shorter row. It is scaffolding, and it has to lose to the thing it
-   is holding up. */
+   serif, a shorter row. A soft gold shadow at the top fades back to the page
+   beneath it, separating months without lifting the control like a card. */
 .month__toggle {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -731,9 +731,15 @@ select:focus-visible {
     min-height: 44px;
     padding: 0.4rem 1.6rem 0.4rem 0;
     margin: 0;
-    background: none;
+    background: linear-gradient(
+        to bottom,
+        rgb(202 166 91 / 18%) 0,
+        rgb(202 166 91 / 5%) 16%,
+        var(--paper) 36%
+    );
     border: 0;
-    border-radius: var(--radius);
+    border-radius: 0;
+    box-shadow: none;
     font-family: system-ui, sans-serif;
     color: inherit;
     text-align: left;
