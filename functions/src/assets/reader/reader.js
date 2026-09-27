@@ -1256,20 +1256,26 @@ window.Reader = (function () {
     // search: the letters are already in memory and nothing has to leave the
     // device to be told what is in them. It works from file:// too.
 
-    // The words that are in every letter because they are in every sentence.
-    // Deliberately shorter than a proper stopword list -- these are somebody's
-    // letters, not a corpus, and "home", "week" and "love" earn their place
-    // even though a search engine would throw all three away.
+    // Sentence glue, including common single-word English prepositions.
+    // Deliberately shorter than a general search-engine stopword list -- these
+    // are somebody's letters, not a corpus, and "home" and "love" earn their
+    // place. "Week" does not: it is routine missionary-letter vocabulary
+    // rather than a useful theme.
     const NOISE = new Set(
-        `a about after all also am an and any are as at be because been before
-         being but by can could did do does doing done down each even ever
-         every few for from get got had has have having he her here hers him
-         his how i if in into is it its just like me more most much my no nor
-         not now of off on once one only or other our out over own said same
-         she should so some such than that the their them then there these
-         they thing things this those though through to too under until up us
-         very was we well were what when where which while who why will with
-         would yet you your
+        `a aboard about above absent across after against all along alongside
+         also am amid amidst among amongst an and any are around as astride at
+         atop be because been before behind being below beneath beside besides
+         between beyond but by can circa concerning considering could did
+         despite do does doing done down during each even ever every except few
+         following for from get given got had has have having he her here hers
+         him his how i if in inside into is it its just like me minus more most
+         much my near no nor not now of off on once one only onto opposite or
+         other our out outside over own past pending per plus round said same
+         sans save she should since so some such than that the their them then
+         there these they thing things this those though through till to too
+         toward towards under until unto up upon us very versus via was we week
+         well were what when where which while
+         who why will with within without worth would yet you your
          cant didnt dont hes im isnt its ive id ill shes thats theres theyre
          wasnt weve wont youre`
             .trim()

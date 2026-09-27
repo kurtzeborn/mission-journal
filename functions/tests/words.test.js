@@ -85,6 +85,32 @@ describe('the countable words of a letter', () => {
         ]);
     });
 
+    test('drops routine weekly language and common prepositions but keeps meaningful themes', () => {
+        assert.deepEqual(
+            wordsIn('Week aboard across amid beneath between during inside outside toward via without home love'),
+            ['home', 'love']
+        );
+    });
+
+    test('keeps less common prepositions available as themes', () => {
+        assert.deepEqual(
+            wordsIn(
+                'notwithstanding underneath excepting excluding failing including regarding unlike throughout'
+            ),
+            [
+                'notwithstanding',
+                'underneath',
+                'excepting',
+                'excluding',
+                'failing',
+                'including',
+                'regarding',
+                'unlike',
+                'throughout'
+            ]
+        );
+    });
+
     test('drops years, house numbers and two-letter scraps', () => {
         assert.deepEqual(wordsIn('In 2026 we moved to 14 Rua do Sol'), ['moved', 'rua', 'sol']);
     });
@@ -116,7 +142,9 @@ describe('tallying a whole archive', () => {
     });
 
     test('breaks a tie on the word, so the same archive always sets the same', () => {
-        const [first, second] = countWords(letters).filter(([, count]) => count === 2);
+        const [first, second] = countWords(['Zebra zebra amber amber']).filter(
+            ([, count]) => count === 2
+        );
         assert.ok(first[0] < second[0], `${first[0]} came before ${second[0]}`);
     });
 
