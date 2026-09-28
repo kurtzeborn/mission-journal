@@ -292,7 +292,8 @@
             Anyone who scans this code can join as a reader. Keep this window open while people sign in.
         </p>
         <div class="qr-invite__code">
-            <img id="qr-image" alt="QR code for joining this archive">
+            <span class="qr-invite__loading" id="qr-loading" aria-hidden="true"></span>
+            <img id="qr-image" alt="QR code for joining this archive" hidden>
         </div>
         <p class="note note--small" id="qr-status" role="status" aria-live="polite">
             Creating a temporary code&hellip;

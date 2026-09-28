@@ -2277,6 +2277,15 @@ h3:target {
     image-rendering: pixelated;
 }
 
+.qr-invite__loading {
+    width: 2rem;
+    height: 2rem;
+    border: 3px solid rgb(47 93 80 / 24%);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: lightbox-spin 0.8s linear infinite;
+}
+
 /* The address box on the people page. Wide and tall enough that a pasted
    list of a dozen relatives is visible as a list, which is what makes a typo
    findable before it is sent. */

@@ -13,8 +13,9 @@
         const trigger = document.getElementById(triggerId);
         const dialog = document.getElementById('qr-dialog');
         const image = document.getElementById('qr-image');
+        const loading = document.getElementById('qr-loading');
         const status = document.getElementById('qr-status');
-        if (!slug || !trigger || !dialog || !image || !status) return;
+        if (!slug || !trigger || !dialog || !image || !loading || !status) return;
 
         let session = '';
         let timer = null;
@@ -31,6 +32,14 @@
             code.addData(url);
             code.make();
             image.setAttribute('src', code.createDataURL(6, 4));
+            image.hidden = false;
+            loading.hidden = true;
+        }
+
+        function clearCode() {
+            image.hidden = true;
+            image.removeAttribute('src');
+            loading.hidden = true;
         }
 
         async function closeSession() {
@@ -72,7 +81,9 @@
 
         async function show() {
             open = true;
+            image.hidden = true;
             image.removeAttribute('src');
+            loading.hidden = false;
             status.textContent = 'Creating a temporary code\u2026';
 
             const menu = trigger.closest?.('details');
@@ -85,12 +96,13 @@
                     try {
                         await refresh();
                     } catch {
-                        image.removeAttribute('src');
+                        clearCode();
                         status.textContent =
                             'The code could not be refreshed. Close this window and try again.';
                     }
                 }, 25000);
             } catch {
+                clearCode();
                 status.textContent =
                     'The code could not be created. Close this window and try again.';
             }

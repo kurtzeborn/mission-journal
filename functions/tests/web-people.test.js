@@ -430,6 +430,38 @@ describe('inviting people in person', () => {
         assert.match(view.el('qr-image').getAttribute('src'), /code-2/);
     });
 
+    test('shows a spinner instead of an empty image while a cold function starts', async () => {
+        let answerQr;
+        const waitingForQr = new Promise((resolve) => {
+            answerQr = resolve;
+        });
+        const view = await people({
+            qrcode: qr,
+            answer: async (url, init) => {
+                if (url.endsWith('/qr') && init?.method === 'POST') return waitingForQr;
+                return { body: OWNER_ONLY };
+            }
+        });
+
+        const opening = view.el('qr-open').dispatch('click');
+
+        assert.equal(view.el('qr-loading').hidden, false);
+        assert.equal(view.el('qr-image').hidden, true);
+        assert.equal(view.el('qr-image').getAttribute('src'), null);
+
+        answerQr({
+            body: {
+                id: 'gathering',
+                url: 'https://pdayletters.com/join#code'
+            }
+        });
+        await opening;
+
+        assert.equal(view.el('qr-loading').hidden, true);
+        assert.equal(view.el('qr-image').hidden, false);
+        assert.match(view.el('qr-image').getAttribute('src'), /code/);
+    });
+
     test('closing the dialog revokes the gathering session', async () => {
         const view = await people({
             qrcode: qr,
