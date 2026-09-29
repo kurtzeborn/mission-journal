@@ -22,7 +22,7 @@
     "heic-decode": "^2.1.0",
     "htmlparser2": "^12.0.0",
     "linebreak": "^1.1.0",
-    "mailauth": "^5.0.3",
+    "mailauth": "^7.1.0",
     "pdfkit": "^0.20.2",
     "postal-mime": "^3.0.0",
     "sanitize-html": "^2.17.7",
