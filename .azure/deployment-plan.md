@@ -229,6 +229,7 @@ Update `web/staticwebapp.config.json`:
 
 ```json
 "facebook": {
+  "userDetailsClaim": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
   "registration": {
     "appIdSettingName": "FACEBOOK_APP_ID",
     "appSecretSettingName": "FACEBOOK_APP_SECRET"
@@ -239,11 +240,12 @@ Update `web/staticwebapp.config.json`:
 }
 ```
 
-The explicit `email` scope is required for Azure Static Web Apps to complete
-the Facebook identity. Without it, Facebook consent succeeds but the Azure
-callback returns `403 Forbidden` at `/.auth/complete`. Google and Microsoft
-remain configured. Adding Facebook must not change route authorization or the
-linked-backend trust boundary.
+The explicit `email` scope and email-address `userDetailsClaim` are required
+for Azure Static Web Apps to complete the Facebook identity with the
+email-shaped `userDetails` PdayLetters uses. Without them, Facebook consent can
+succeed while the Azure callback returns `403 Forbidden` or no usable
+principal. Google and Microsoft remain configured. Adding Facebook must not
+change route authorization or the linked-backend trust boundary.
 
 ### 5.3 Sign-in UI
 
