@@ -549,7 +549,7 @@
             ['Archives', totals.archives, ''],
             ['Letters', totals.letters, totals.hidden ? `${totals.hidden} hidden` : ''],
             ['Photographs', totals.photos, ''],
-            ['People', totals.people, 'counted once each'],
+            ['People', totals.people, 'unique across archives'],
             // Beside the membership figure on purpose. That number only ever
             // grows; these two can fall, which is the whole reason to look.
             ['Reading today', totals.daily, ''],
