@@ -46,7 +46,7 @@
     // cannot disagree about what a 403 means.
     function refused(response) {
         if (response.status === 401) {
-            // Through the chooser, never straight at a provider: there are two
+            // Through the chooser, never straight at a provider: there are several
             // and guessing strands people on an account no archive has heard
             // of.
             location.href = `/login.html?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`;

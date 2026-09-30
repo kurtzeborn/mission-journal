@@ -21,7 +21,8 @@
 
     const PROVIDERS = {
         aad: { glyph: 'fa-microsoft', name: 'Microsoft' },
-        google: { glyph: 'fa-google', name: 'Google' }
+        google: { glyph: 'fa-google', name: 'Google' },
+        facebook: { glyph: 'fa-facebook', name: 'Facebook' }
     };
 
     async function showAccount() {
@@ -42,6 +43,14 @@
 
         if (!principal) return;
 
+        const details = String(principal.userDetails ?? '').trim();
+        const hasEmail = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(details);
+        if (principal.identityProvider === 'facebook' && !hasEmail) {
+            const back = encodeURIComponent(location.pathname);
+            location.href = `/login.html?post_login_redirect_uri=${back}`;
+            return;
+        }
+
         // An unrecognized provider still gets the address, just without a mark.
         const provider = PROVIDERS[principal.identityProvider];
         if (provider) {
@@ -52,8 +61,8 @@
 
         // Twice over: the trigger can only ever show it truncated, and the
         // address in full is the whole point of saying it.
-        document.getElementById('account-email').textContent = principal.userDetails;
-        document.getElementById('menu-address').textContent = principal.userDetails;
+        document.getElementById('account-email').textContent = details;
+        document.getElementById('menu-address').textContent = details;
 
         if (signedOut) signedOut.hidden = true;
         menu.hidden = false;

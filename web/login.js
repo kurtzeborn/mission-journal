@@ -18,8 +18,8 @@
 // It also gets most people past this page without reading it. The platform's
 // session is short, its length is neither published nor ours to set, and
 // owning it would mean validating tokens inside every Function -- the one
-// simplification the whole private-content design rests on. But Google's and
-// Microsoft's own sessions are long and both have already been consented to,
+// simplification the whole private-content design rests on. But the providers'
+// own sessions are long and have already been consented to,
 // so the trip back out to whichever one was used last returns without asking
 // anything at all. The only thing ever missing was which one that was, and
 // this page is where that gets learned.
@@ -28,7 +28,8 @@
 
     const PROVIDERS = {
         aad: { button: 'signin-aad', route: '/.auth/login/aad' },
-        google: { button: 'signin-google', route: '/.auth/login/google' }
+        google: { button: 'signin-google', route: '/.auth/login/google' },
+        facebook: { button: 'signin-facebook', route: '/.auth/login/facebook' }
     };
 
     // The name of a door, not a credential and not a session. Nothing here is
@@ -107,6 +108,34 @@
         }
     }
 
+    const email = (value) => {
+        const candidate = String(value ?? '').trim().toLowerCase();
+        if (!candidate || candidate.length > 254) return null;
+        return /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(candidate) ? candidate : null;
+    };
+
+    async function facebookWithoutEmail(target) {
+        let principal;
+        try {
+            const response = await fetch('/.auth/me', { cache: 'no-store' });
+            if (!response.ok) return false;
+            principal = (await response.json()).clientPrincipal;
+        } catch {
+            return false;
+        }
+
+        if (principal?.identityProvider !== 'facebook' || email(principal.userDetails)) return false;
+
+        forget();
+        document.getElementById('signin-options').hidden = true;
+        document.getElementById('facebook-email-required').hidden = false;
+
+        const back = `/login.html?signedout=1&post_login_redirect_uri=${encodeURIComponent(target)}`;
+        document.getElementById('facebook-email-switch').href =
+            `/.auth/logout?post_logout_redirect_uri=${encodeURIComponent(back)}`;
+        return true;
+    }
+
     /** True the second time a destination is tried, and wherever storage is refused. */
     function tried(where) {
         try {
@@ -121,6 +150,7 @@
     const params = new URLSearchParams(window.location.search);
     const asked = params.get('post_login_redirect_uri');
     const target = safeReturn(asked) ?? safeReturn(window.location.pathname) ?? HOME;
+    document.getElementById('signin-facebook').hidden = !params.has('facebook_test');
 
     for (const [name, { button, route }] of Object.entries(PROVIDERS)) {
         const link = document.getElementById(button);
@@ -133,15 +163,21 @@
     // Signing out has to mean it. Remembered, the next archive they opened
     // would send them silently back to the account they just left, which is
     // the exact opposite of what "try another account" offers.
-    if (params.has('signedout')) {
-        forget();
-        return;
+    async function start() {
+        if (params.has('signedout')) {
+            forget();
+            return;
+        }
+
+        if (await facebookWithoutEmail(target)) return;
+
+        const provider = recall();
+        if (provider && !tried(target)) {
+            // replace(), so Back from the letter does not land on a page whose
+            // only behavior is to throw them forward again.
+            window.location.replace(`${provider.route}?post_login_redirect_uri=${encodeURIComponent(target)}`);
+        }
     }
 
-    const provider = recall();
-    if (provider && !tried(target)) {
-        // replace(), so Back from the letter does not land on a page whose
-        // only behavior is to throw them forward again.
-        window.location.replace(`${provider.route}?post_login_redirect_uri=${encodeURIComponent(target)}`);
-    }
+    void start();
 })();

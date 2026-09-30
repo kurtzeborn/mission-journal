@@ -728,7 +728,7 @@ describe('how big the service is', () => {
             ['Archives', '2'],
             ['Letters', '12', '3 hidden'],
             ['Photographs', '40'],
-            ['People', '7', 'counted once each'],
+            ['People', '7', 'unique across archives'],
             ['Reading today', '2'],
             ['Reading this month', '6', 'past 30 days']
         ]);
