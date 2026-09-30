@@ -48,13 +48,14 @@
         return sessionStorage.getItem(key) ?? '';
     };
 
-    // Point the two provider buttons back at this page. Only the hrefs --
+    // Point the provider buttons back at this page. Only the hrefs --
     // revealing them differs by page, and so does what else has to happen
     // first, so that stays with the caller.
     const aimSignIn = () => {
         const back = encodeURIComponent(location.pathname);
         $('signin-aad').href = `/.auth/login/aad?post_login_redirect_uri=${back}`;
         $('signin-google').href = `/.auth/login/google?post_login_redirect_uri=${back}`;
+        $('signin-facebook').href = `/.auth/login/facebook?post_login_redirect_uri=${back}`;
     };
 
     window.Page = { $, show, takeToken, aimSignIn };

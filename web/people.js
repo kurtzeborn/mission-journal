@@ -285,7 +285,7 @@
         }
 
         if (response.status === 401) {
-            // Through the chooser, never straight at a provider. There are two
+            // Through the chooser, never straight at a provider. There are several
             // now, and sending a Google owner to Microsoft strands them on an
             // account that has never heard of this archive -- with a page that
             // then tells them, correctly and uselessly, that they are not the

@@ -130,6 +130,7 @@ describe('accepting', () => {
         assert.equal(view.el('accept-form').hidden, true);
         assert.match(view.el('signin-aad').href, /post_login_redirect_uri=%2Finvite/);
         assert.match(view.el('signin-google').href, /post_login_redirect_uri=%2Finvite/);
+        assert.match(view.el('signin-facebook').href, /post_login_redirect_uri=%2Finvite/);
     });
 
     test('a signed-in visitor is told which account is about to be granted access', async () => {
