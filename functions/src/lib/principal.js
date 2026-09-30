@@ -26,12 +26,11 @@ export function readPrincipal(header) {
         return null;
     }
 
-    // `userDetails` is the email address for the providers this service uses,
-    // but Facebook can authenticate an account without returning one. Reject a
-    // display name or other non-address value here rather than letting it
-    // become an ACL key.
+    // `userDetails` is the email address for both providers this service
+    // uses. Lowercased here, once, because the ACL is matched case-insensitively
+    // and doing it at each call site is how one of them gets forgotten.
     const email = typeof parsed?.userDetails === 'string' ? parsed.userDetails.toLowerCase() : null;
-    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email)) return null;
+    if (!email) return null;
 
     return {
         email,

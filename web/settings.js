@@ -36,7 +36,7 @@
     // the save so the two cannot disagree about what a 403 means.
     function refused(response) {
         if (response.status === 401) {
-            // Through the chooser, never straight at a provider. There are several
+            // Through the chooser, never straight at a provider. There are two
             // now, and sending a Google owner to Microsoft strands them on an
             // account that has never heard of this archive -- with a page that
             // then tells them, correctly and uselessly, that they are not the

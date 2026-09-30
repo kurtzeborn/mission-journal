@@ -90,13 +90,9 @@ param aadClientId string = '3d78e421-0373-4026-be5d-909bc07d455a'
 @description('OAuth client ID of the Google Cloud client used for Google sign-in.')
 param googleClientId string = '708556118044-3fmn941npk65g8pbkivsg15l0bs4o4ap.apps.googleusercontent.com'
 
-@description('App ID of the Meta application used for Facebook Login.')
-param facebookAppId string = '1144678524889057'
-
-@description('Key Vault secret names holding the OAuth client secrets.')
+@description('Key Vault secret names holding the two OAuth client secrets.')
 param aadClientSecretName string = 'aad-client-secret'
 param googleClientSecretName string = 'google-client-secret'
-param facebookAppSecretName string = 'facebook-app-secret'
 
 @description('Key Vault secret holding the HMAC key that signs claim links.')
 param claimTokenKeyName string = 'claim-token-key'
@@ -924,8 +920,6 @@ resource staticWebAppSettings 'Microsoft.Web/staticSites/config@2023-12-01' = {
     AZURE_CLIENT_SECRET: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${aadClientSecretName}/)'
     GOOGLE_CLIENT_ID: googleClientId
     GOOGLE_CLIENT_SECRET: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${googleClientSecretName}/)'
-    FACEBOOK_APP_ID: facebookAppId
-    FACEBOOK_APP_SECRET: '@Microsoft.KeyVault(SecretUri=${keyVault.properties.vaultUri}secrets/${facebookAppSecretName}/)'
   }
 }
 

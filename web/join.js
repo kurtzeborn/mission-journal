@@ -101,7 +101,7 @@ function renderReady(ready, principal) {
         $('accept-as').textContent = `You are signed in as ${principal}. This account will get access.`;
     } else {
         aimSignIn();
-        for (const id of ['signin-aad', 'signin-google', 'signin-facebook']) {
+        for (const id of ['signin-aad', 'signin-google']) {
             $(id).addEventListener('click', () => {
                 sessionStorage.setItem(JOIN_AFTER_SIGNIN_KEY, ready.ticket);
             });

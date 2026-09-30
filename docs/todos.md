@@ -19,7 +19,7 @@ The organising principle: **a task nobody is reminded of is a task that fails si
 | **2027-08-31** | `cloudflare-api-token` | Key Vault `mj-kv-utfe5uagkbz7q` | **All outbound mail, silently.** Claim and invite emails simply stop arriving |
 | **2028-08-04** | `aad-client-secret` | Key Vault `mj-kv-utfe5uagkbz7q` | Microsoft sign-in, silently — Google keeps working |
 
-Nothing else has a date. `claim-token-key`, `google-client-secret`, `facebook-app-secret`, `AZURE_STATIC_WEB_APPS_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are covered under [what never rotates](#what-never-rotates).
+Nothing else has a date. `claim-token-key`, `google-client-secret`, `AZURE_STATIC_WEB_APPS_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are covered under [what never rotates](#what-never-rotates).
 
 **⚠️ Two different credentials are called `CLOUDFLARE_API_TOKEN`.** The one in GitHub deploys the Worker; the one in Key Vault sends mail. They are deliberately separate — the deploy token can rewrite the code that receives every inbound letter, and the sending token must never be able to. The shared name means a rotation done by name rather than by location updates the wrong one and appears to work. **Always check which of the two you are holding.**
 
@@ -95,7 +95,6 @@ Every rotation is the same two moves: reissue at the provider, then store in *on
 
 - **`claim-token-key`** — ours, not a provider's, so nothing forces a date. Rotating it **invalidates every outstanding claim link**, including ones sitting unread in a missionary's inbox with days left on a 60-day window. That makes it a user-visible event, not maintenance. The right cadence is *never, unless compromised*. Recorded here so a future tidying pass does not rotate it for symmetry.
 - **`google-client-secret`** — **checked in the Google Cloud console on 2026-08-05: no expiry is set.** Recorded as a checked fact rather than an assumption, because "we checked and there is no date" and "we never checked" look identical in a table. Re-check if the client is ever recreated; Google has been tightening this area.
-- **`facebook-app-secret`** — Meta App Secrets have no configured expiry. Resetting the secret in the Meta dashboard invalidates the current value immediately, so update Key Vault in the same maintenance window and redeploy or restart the Static Web App configuration if authentication does not pick up the new version promptly.
 - **`AZURE_STATIC_WEB_APPS_API_TOKEN`** — no expiry. It changes only if the Static Web App is recreated, in which case read the new one with `az staticwebapp secrets list --name mj-swa-utfe5uagkbz7q`.
 - **`CLOUDFLARE_ACCOUNT_ID`** — not a secret, and inert without a token.
 - **`pdayletters.com`** — auto-renew is on at Namecheap. See the [annual check](#annually); the risk is the card behind it, not the date.

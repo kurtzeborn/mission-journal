@@ -33,35 +33,19 @@
             Use the account that matches the email address you were invited with.
         </p>
 
-        <!-- No way to register: an account only reaches an
+        <!-- Two providers, and no way to register: an account only reaches an
              archive if the family has already added its address by name. The
              links start out plain so that they still work with no JavaScript;
              login.js only adds the return address. -->
-        <div id="signin-options">
-            <p><a class="button" id="signin-aad" href="/.auth/login/aad"><i class="fa-brands fa-microsoft"
-                        aria-hidden="true"></i> Continue with Microsoft</a></p>
-            <p><a class="button" id="signin-google" href="/.auth/login/google"><i class="fa-brands fa-google"
-                        aria-hidden="true"></i> Continue with Google</a></p>
-            <p><a class="button" id="signin-facebook" href="/.auth/login/facebook" hidden><i
-                        class="fa-brands fa-facebook" aria-hidden="true"></i> Continue with Facebook</a></p>
+        <p><a class="button" id="signin-aad" href="/.auth/login/aad"><i class="fa-brands fa-microsoft"
+                    aria-hidden="true"></i> Continue with Microsoft</a></p>
+        <p><a class="button" id="signin-google" href="/.auth/login/google"><i class="fa-brands fa-google"
+                    aria-hidden="true"></i> Continue with Google</a></p>
 
-            <p class="note">
-                Signing in does not request access to your email, contacts, or photos &mdash;
-                only your name and email address, so we can tell which archive is yours.
-            </p>
-        </div>
-
-        <section id="facebook-email-required" hidden>
-            <h2>Facebook did not provide an email address</h2>
-            <p class="lede">
-                Pday Letters needs an email address to match invitations and archive access.
-            </p>
-            <p>
-                Add a verified email address to Facebook, or sign out and continue with Google
-                or Microsoft.
-            </p>
-            <p><a class="button" id="facebook-email-switch" href="/.auth/logout">Sign out and choose another account</a></p>
-        </section>
+        <p class="note">
+            Signing in does not request access to your email, contacts, or photos &mdash;
+            only your name and email address, so we can tell which archive is yours.
+        </p>
     </main>
 
     <script src="/login.js"></script>

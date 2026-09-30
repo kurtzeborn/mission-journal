@@ -1024,7 +1024,7 @@
             // The session expired mid-visit. Send them back through login and
             // return them to the page they were actually reading.
             //
-            // Via the chooser, not straight at a provider: there are several now,
+            // Via the chooser, not straight at a provider: there are two now,
             // and guessing means occasionally offering someone the wrong one
             // and stranding them on an account no archive has ever heard of.
             signIn();
@@ -1341,8 +1341,7 @@
     // down with it.
     const PROVIDER_ICONS = {
         aad: { glyph: 'fa-microsoft', name: 'Microsoft' },
-        google: { glyph: 'fa-google', name: 'Google' },
-        facebook: { glyph: 'fa-facebook', name: 'Facebook' }
+        google: { glyph: 'fa-google', name: 'Google' }
     };
 
     async function showAccount() {
