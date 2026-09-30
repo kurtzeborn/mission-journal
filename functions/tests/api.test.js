@@ -79,16 +79,6 @@ describe('principal decoding', () => {
         assert.equal(readPrincipal(Buffer.from('{"userId":"x"}').toString('base64')), null);
     });
 
-    test('a Facebook principal without an email is not mistaken for an address', () => {
-        const encoded = Buffer.from(JSON.stringify({
-            userDetails: 'Grandma Example',
-            identityProvider: 'facebook',
-            userId: '123'
-        })).toString('base64');
-
-        assert.equal(readPrincipal(encoded), null);
-    });
-
     test('the address is lowercased once, here', () => {
         assert.equal(readPrincipal(header('Gran@Example.COM')).email, 'gran@example.com');
     });

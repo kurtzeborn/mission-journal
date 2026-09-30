@@ -323,16 +323,6 @@
           "clientIdSettingName": "GOOGLE_CLIENT_ID",
           "clientSecretSettingName": "GOOGLE_CLIENT_SECRET"
         }
-      },
-      "facebook": {
-        "userDetailsClaim": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-        "registration": {
-          "appIdSettingName": "FACEBOOK_APP_ID",
-          "appSecretSettingName": "FACEBOOK_APP_SECRET"
-        },
-        "login": {
-          "scopes": ["public_profile", "email"]
-        }
       }
     }
   },

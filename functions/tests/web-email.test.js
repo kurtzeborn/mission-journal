@@ -90,7 +90,6 @@ describe('showing somebody what they chose', () => {
 
         assert.equal(view.el('signin').hidden, false);
         assert.match(view.el('signin-aad').href, /post_login_redirect_uri=%2Femail/);
-        assert.match(view.el('signin-facebook').href, /post_login_redirect_uri=%2Femail/);
     });
 
     test('an outage says it is ours, and does not send anybody to sign in again', async () => {

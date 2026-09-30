@@ -58,7 +58,6 @@ async function signIn(store, principal) {
 describe('naming a sign-in', () => {
     test('the provider is part of the key', () => {
         assert.equal(identityKey(who(OWNER, 'google', 'abc')), 'google:abc');
-        assert.equal(identityKey(who(OWNER, 'facebook', '123')), 'facebook:123');
         assert.notEqual(
             identityKey(who(OWNER, 'google', 'abc')),
             identityKey(who(OWNER, 'aad', 'abc'))
