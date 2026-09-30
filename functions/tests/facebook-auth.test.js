@@ -13,6 +13,9 @@ describe('Facebook authentication configuration', () => {
             registration: {
                 appIdSettingName: 'FACEBOOK_APP_ID',
                 appSecretSettingName: 'FACEBOOK_APP_SECRET'
+            },
+            login: {
+                scopes: ['public_profile', 'email']
             }
         });
     });
