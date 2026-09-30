@@ -10,6 +10,7 @@ describe('Facebook authentication configuration', () => {
         const config = JSON.parse(read('web/staticwebapp.config.json'));
 
         assert.deepEqual(config.auth.identityProviders.facebook, {
+            userDetailsClaim: 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
             registration: {
                 appIdSettingName: 'FACEBOOK_APP_ID',
                 appSecretSettingName: 'FACEBOOK_APP_SECRET'
