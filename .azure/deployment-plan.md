@@ -232,12 +232,18 @@ Update `web/staticwebapp.config.json`:
   "registration": {
     "appIdSettingName": "FACEBOOK_APP_ID",
     "appSecretSettingName": "FACEBOOK_APP_SECRET"
+  },
+  "login": {
+    "scopes": ["public_profile", "email"]
   }
 }
 ```
 
-Google and Microsoft remain configured. Adding Facebook must not change route
-authorization or the linked-backend trust boundary.
+The explicit `email` scope is required for Azure Static Web Apps to complete
+the Facebook identity. Without it, Facebook consent succeeds but the Azure
+callback returns `403 Forbidden` at `/.auth/complete`. Google and Microsoft
+remain configured. Adding Facebook must not change route authorization or the
+linked-backend trust boundary.
 
 ### 5.3 Sign-in UI
 
