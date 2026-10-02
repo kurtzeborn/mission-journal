@@ -36,13 +36,13 @@ const baseUrl = () => setting('PUBLIC_BASE_URL', 'https://pdayletters.com');
 // this is reachable from a test. The wrapper below is the only thing that knows
 // where a real store comes from, and it is kept free of decisions for the same
 // reason: whatever it does cannot be checked by anything.
-export async function describe({ request, context, store, tables, key }) {
+export async function describe({ request, context, store, tables, key, now }) {
     if (!key) return json(503, { status: 'unavailable' });
 
     const { token } = await body(request);
     if (!token) return json(400, { status: 'invalid' });
 
-    const described = await describeClaim({ store, tables, token, key });
+    const described = await describeClaim({ store, tables, token, key, now });
 
     // Always 200. The status in the body says what happened, and an HTTP code
     // that varied with it would let a scanner distinguish a live token from a
@@ -50,7 +50,7 @@ export async function describe({ request, context, store, tables, key }) {
     return json(200, described);
 }
 
-export async function redeem({ request, context, store, tables, key }) {
+export async function redeem({ request, context, store, tables, key, now }) {
     if (!key) return json(503, { status: 'unavailable' });
 
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
@@ -74,6 +74,7 @@ export async function redeem({ request, context, store, tables, key }) {
         // Trimmed and bounded here rather than trusted: it is the one piece of
         // attacker-supplied text that ends up on the site's own pages.
         displayName: String(displayName ?? '').trim().slice(0, 80),
+        now,
         log: context
     });
 

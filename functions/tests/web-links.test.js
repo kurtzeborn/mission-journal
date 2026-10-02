@@ -38,11 +38,8 @@ describe('the questions page holds together', () => {
     test('every question has an id, so it can be linked to from elsewhere', async () => {
         // The whole argument for anchors over collapsible panels. A question
         // without an id is one a refusal message cannot point at.
-        const unnamed = [...source.matchAll(/<h3(?![^>]*\bid=)[^>]*>([\s\S]*?)<\/h3>/g)]
-            .map((m) => m[1].replace(/<[^>]*>/g, '').trim())
-            // The contents list uses h3 for its topic groups, which are
-            // labels rather than questions and are not linked to.
-            .filter((text) => !['General', 'Setting up', 'Reading', 'Access', 'Privacy', 'Printing'].includes(text));
+        const questions = source.replace(/<nav\b[\s\S]*?<\/nav>/, '');
+        const unnamed = [...questions.matchAll(/<h3(?![^>]*\bid=)[^>]*>/g)];
 
         assert.deepEqual(unnamed, []);
     });
@@ -64,9 +61,37 @@ describe('the questions page holds together', () => {
 
 describe('links between pages', () => {
     test('the public entry pages link to the about page', async () => {
-        for (const name of ['index.html', 'start.html', 'faq.html']) {
+        for (const name of ['index.html', 'start.html', 'faq.html', 'resources.html']) {
             assert.ok(hrefsIn(read(name)).includes('/about'), `${name} does not link to /about`);
         }
+    });
+
+    test('the public entry pages link to resources', async () => {
+        for (const name of ['index.html', 'start.html', 'faq.html', 'about.html', 'terms.html']) {
+            assert.ok(hrefsIn(read(name)).includes('/resources'), `${name} does not link to /resources`);
+        }
+    });
+
+    test('the resources page links to MissionCall', async () => {
+        const source = read('resources.html');
+
+        assert.ok(hrefsIn(source).includes('https://missioncall.app'));
+    });
+
+    test('the resources page is public at its clean URL and file URL', async () => {
+        const config = JSON.parse(readFileSync(new URL('staticwebapp.config.json', WEB), 'utf8'));
+        const route = (path) => config.routes.find((entry) => entry.route === path);
+
+        assert.deepEqual(route('/resources'), {
+            comment: 'The resources page is a public directory of independent, free tools for missionaries and their families.',
+            route: '/resources',
+            rewrite: '/resources.html',
+            allowedRoles: ['anonymous', 'authenticated']
+        });
+        assert.deepEqual(route('/resources.html'), {
+            route: '/resources.html',
+            allowedRoles: ['anonymous', 'authenticated']
+        });
     });
 
     test('no page links to an anchor another page does not have', async () => {

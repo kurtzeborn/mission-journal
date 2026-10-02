@@ -100,7 +100,8 @@ describe('the claim redeem handler', () => {
             context: silent,
             store,
             tables: store,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         assert.equal(response.status, 200);
@@ -120,7 +121,8 @@ describe('the claim redeem handler', () => {
             context: silent,
             store,
             tables: store,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         assert.equal(response.status, 401);
@@ -136,7 +138,8 @@ describe('the claim redeem handler', () => {
             context: silent,
             store,
             tables: store,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         // 401 rather than 409. The claim page redirects on 401 and shows "this
@@ -151,7 +154,8 @@ describe('the claim redeem handler', () => {
             context: silent,
             store: null,
             tables: null,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         assert.equal(response.status, 400);
@@ -166,7 +170,8 @@ describe('the claim redeem handler', () => {
             context: silent,
             store,
             tables: store,
-            key: null
+            key: null,
+            now: NOW
         });
 
         assert.equal(response.status, 503);
@@ -182,7 +187,8 @@ describe('the claim describe handler', () => {
             request: request({ body: { token } }),
             context: silent,
             store,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         assert.equal(response.status, 200);
@@ -197,7 +203,8 @@ describe('the claim describe handler', () => {
             request: request({ body: { token: 'not-a-token' } }),
             context: silent,
             store,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         assert.equal(response.status, 200);
@@ -214,7 +221,8 @@ describe('the memberships handler', () => {
             context: silent,
             store,
             tables: store,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         const response = await memberships({
@@ -273,7 +281,8 @@ describe('the memberships handler', () => {
             context: silent,
             store,
             tables: store,
-            key: KEY
+            key: KEY,
+            now: NOW
         });
 
         await memberships({ request: request({ principal }), store, tables: store });

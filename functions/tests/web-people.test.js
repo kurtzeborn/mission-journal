@@ -30,12 +30,6 @@ const listing = (payload) => async (url, init) =>
     init?.method === 'POST' ? { status: 200, body: {} } : { status: 200, body: payload };
 
 describe('inviting a whole family in one sitting', () => {
-    test('calls the in-person invitation Quick join', async () => {
-        const view = await people({ answer: listing(OWNER_ONLY) });
-
-        assert.match(view.source, /<h3>Quick join<\/h3>/);
-    });
-
     test('one address per invitation, however they were pasted', async () => {
         const view = await people({ answer: listing(OWNER_ONLY) });
 

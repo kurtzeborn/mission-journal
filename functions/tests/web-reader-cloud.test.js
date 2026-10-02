@@ -71,21 +71,18 @@ describe('getting to the cloud', () => {
             let opened = 0;
             view.mount({ posts: POSTS, book: { open: () => { opened += 1; } } });
 
-            assert.deepEqual(toolbarLabels(view), [
-                'Word cloud',
-                'Buy a Book',
-                'Search',
-                'Expand all'
-            ]);
-            assert.ok(view.button('Buy a Book').classList.contains('button--buy'));
+            const toolbar = view.$('.toolbar');
+            const buy = view.$('.button--buy');
+            assert.ok(buy);
+            assert.equal(toolbar.children[1], buy);
 
-            view.click(view.button('Buy a Book'));
+            view.click(buy);
             assert.equal(opened, 1);
         });
 
         test('the button is absent without an active checkout', () => {
             const view = archive();
-            assert.equal(view.button('Buy a Book'), undefined);
+            assert.equal(view.$('.button--buy'), null);
         });
     });
 

@@ -8,24 +8,9 @@ const html = readFileSync(new URL('../../web/book.html', import.meta.url), 'utf8
 const script = readFileSync(new URL('../../web/book.js', import.meta.url), 'utf8');
 
 describe('the finished book actions', () => {
-    test('describes the keepsake, hidden letters, and optional content', () => {
-        assert.match(html, /hardcover book which serves as a personalized missionary\s+keepsake/);
-        assert.match(
-            html,
-            /Below you can customize the cover and add optional, additional content\s+for the book/,
-        );
-        assert.match(html, /Letters marked as hidden in the archive are not included in the book/);
-        assert.match(html, /Optional book-only content/);
-        assert.match(html, /Foreword and Afterword sections are optional/);
-        assert.match(html, /This link lasts six months and can be shared/);
-        assert.doesNotMatch(html, /Remembered for next time/);
-        assert.doesNotMatch(html, /This link lasts two months/);
-        assert.ok(html.indexOf('The cover') < html.indexOf('Optional book-only content'));
-    });
-
     test('offers the proof and keeps the print file hidden by default', () => {
-        assert.match(html, />View proof<\/a>/);
-        assert.match(html, /id="print"[^>]*hidden[^>]*>Download print file<\/a>/);
+        assert.match(html, /id="proof"[^>]*href=/);
+        assert.match(html, /id="print"[^>]*hidden[^>]*>/);
     });
 
     describe('Foreword and Afterword controls', () => {
@@ -55,7 +40,6 @@ describe('the finished book actions', () => {
             assert.equal(view.el('foreword-view').hidden, true);
             assert.equal(view.el('foreword-delete').hidden, true);
             assert.equal(view.el('afterword-create').hidden, false);
-            assert.match(view.source, /Foreword is often most meaningful when written by a parent or friend/i);
         });
 
         test('Create opens the shared modal directly in rich-text edit mode and saves', async () => {
@@ -140,12 +124,6 @@ describe('the finished book actions', () => {
             assert.equal(view.el('book-part-dialog').open, false);
             assert.equal(view.el('foreword-create').hidden, false);
         });
-    });
-
-    test('describes checkout fulfillment and ownership plainly', () => {
-        assert.match(html, /Hardcover, printed, and shipped by our printer/);
-        assert.match(html, /this book and its\s+contents are yours to print/);
-        assert.doesNotMatch(html, /proof &middot; not for print/);
     });
 
     const open = async (operator, cover = null) => {

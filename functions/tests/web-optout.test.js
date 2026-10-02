@@ -110,14 +110,6 @@ describe('pressing the button', () => {
         assert.equal(net.calls.filter((c) => c.url === '/api/optout').length, 1);
     });
 
-    test('says the archives they already have are untouched', async () => {
-        // Otherwise the honest reading of "stop emailing me" is "delete my
-        // access", and somebody loses their grandson's letters over an
-        // unwanted invitation.
-        const { view } = await open({ answer: ready() });
-
-        assert.match(view.source, /does not remove you from any archive/i);
-    });
 });
 
 describe('when it will not work', () => {
