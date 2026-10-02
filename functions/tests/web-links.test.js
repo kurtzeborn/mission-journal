@@ -80,8 +80,8 @@ describe('links between pages', () => {
 
         assert.match(source, /<h1>Resources<\/h1>/);
         assert.match(source, /href="https:\/\/missioncall\.app">MissionCall\.app<\/a>/);
-        assert.match(source, /mission-call guessing game for missionaries expecting their mission call/i);
-        assert.match(source, /mission boundaries around the world/i);
+        assert.match(source, /mission-call guessing game for missionaries expecting their mission\s+call/i);
+        assert.match(source, /mission boundaries\s+around the world/i);
         assert.match(source, /These are independent sites and are not operated by Pday Letters\./);
     });
 
