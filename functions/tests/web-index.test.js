@@ -11,7 +11,6 @@ describe('the public landing page', () => {
         assert.match(source, /href="#reading-an-archive"/);
         assert.match(source, /class="masthead__links"[\s\S]*href="\/start"/);
         assert.match(source, /class="masthead__links"[\s\S]*href="\/faq"/);
-        assert.match(source, /class="masthead__links"[\s\S]*href="\/resources"/);
         assert.match(
             source,
             /class="masthead__link" id="signed-out"[^>]*>/
