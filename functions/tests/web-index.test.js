@@ -19,6 +19,7 @@ describe('the public landing page', () => {
         assert.doesNotMatch(source, /Choose where to start/);
         assert.match(source, /class="masthead__links"[\s\S]*href="\/start">Start<\/a>/);
         assert.match(source, /class="masthead__links"[\s\S]*href="\/faq">Questions<\/a>/);
+        assert.match(source, /class="masthead__links"[\s\S]*href="\/resources">Resources<\/a>/);
         assert.match(
             source,
             /class="masthead__link" id="signed-out"[^>]*>Sign in<\/a>/
@@ -68,6 +69,7 @@ describe('the public landing page', () => {
         assert.doesNotMatch(source, /After your missionary returns home/);
         assert.match(source, /The archive is free\. No subscription\./);
         assert.match(source, /href="\/about">Who made this\?<\/a>/);
+        assert.match(source, /href="\/resources">Resources<\/a>/);
         const footer = source.slice(source.indexOf('<p class="note">'));
         assert.doesNotMatch(footer, /href="\/start"/);
         assert.doesNotMatch(footer, /href="\/faq"/);

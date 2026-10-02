@@ -64,9 +64,41 @@ describe('the questions page holds together', () => {
 
 describe('links between pages', () => {
     test('the public entry pages link to the about page', async () => {
-        for (const name of ['index.html', 'start.html', 'faq.html']) {
+        for (const name of ['index.html', 'start.html', 'faq.html', 'resources.html']) {
             assert.ok(hrefsIn(read(name)).includes('/about'), `${name} does not link to /about`);
         }
+    });
+
+    test('the public entry pages link to resources', async () => {
+        for (const name of ['index.html', 'start.html', 'faq.html', 'about.html', 'terms.html']) {
+            assert.ok(hrefsIn(read(name)).includes('/resources'), `${name} does not link to /resources`);
+        }
+    });
+
+    test('the resources page describes and links to MissionCall', async () => {
+        const source = read('resources.html');
+
+        assert.match(source, /<h1>Resources<\/h1>/);
+        assert.match(source, /href="https:\/\/missioncall\.app"/);
+        assert.match(source, /mission-call guessing game/i);
+        assert.match(source, /mission boundaries around the world/i);
+        assert.match(source, /independent site/i);
+    });
+
+    test('the resources page is public at its clean URL and file URL', async () => {
+        const config = JSON.parse(readFileSync(new URL('staticwebapp.config.json', WEB), 'utf8'));
+        const route = (path) => config.routes.find((entry) => entry.route === path);
+
+        assert.deepEqual(route('/resources'), {
+            comment: 'The resources page is a public directory of independent, free tools for missionaries and their families.',
+            route: '/resources',
+            rewrite: '/resources.html',
+            allowedRoles: ['anonymous', 'authenticated']
+        });
+        assert.deepEqual(route('/resources.html'), {
+            route: '/resources.html',
+            allowedRoles: ['anonymous', 'authenticated']
+        });
     });
 
     test('no page links to an anchor another page does not have', async () => {

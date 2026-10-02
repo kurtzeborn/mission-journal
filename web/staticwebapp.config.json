@@ -172,6 +172,16 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The resources page is a public directory of independent, free tools for missionaries and their families.",
+      "route": "/resources",
+      "rewrite": "/resources.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
+      "route": "/resources.html",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "The story behind the site is public, like the landing and help pages that link here.",
       "route": "/about",
       "rewrite": "/about.html",
