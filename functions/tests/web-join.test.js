@@ -39,8 +39,8 @@ describe('opening a scanned invitation', () => {
         assert.equal(view.context.location.hash, '');
         assert.match(view.text('ready-lede'), /parent@example\.com/);
         assert.equal(view.el('signin-block').hidden, false);
-        assert.match(view.source, /Join with Microsoft/);
-        assert.match(view.source, /Join with Google/);
+        assert.equal(view.el('signin-aad').hidden, false);
+        assert.equal(view.el('signin-google').hidden, false);
     });
 
     test('a refreshed code tells the person to scan the current one', async () => {

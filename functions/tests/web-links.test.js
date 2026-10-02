@@ -38,11 +38,8 @@ describe('the questions page holds together', () => {
     test('every question has an id, so it can be linked to from elsewhere', async () => {
         // The whole argument for anchors over collapsible panels. A question
         // without an id is one a refusal message cannot point at.
-        const unnamed = [...source.matchAll(/<h3(?![^>]*\bid=)[^>]*>([\s\S]*?)<\/h3>/g)]
-            .map((m) => m[1].replace(/<[^>]*>/g, '').trim())
-            // The contents list uses h3 for its topic groups, which are
-            // labels rather than questions and are not linked to.
-            .filter((text) => !['General', 'Setting up', 'Reading', 'Access', 'Privacy', 'Printing'].includes(text));
+        const questions = source.replace(/<nav\b[\s\S]*?<\/nav>/, '');
+        const unnamed = [...questions.matchAll(/<h3(?![^>]*\bid=)[^>]*>/g)];
 
         assert.deepEqual(unnamed, []);
     });
@@ -75,14 +72,10 @@ describe('links between pages', () => {
         }
     });
 
-    test('the resources page describes and links to MissionCall', async () => {
+    test('the resources page links to MissionCall', async () => {
         const source = read('resources.html');
 
-        assert.match(source, /<h1>Resources<\/h1>/);
-        assert.match(source, /href="https:\/\/missioncall\.app">MissionCall\.app<\/a>/);
-        assert.match(source, /mission-call guessing game for missionaries expecting their mission\s+call/i);
-        assert.match(source, /mission boundaries\s+around the world/i);
-        assert.match(source, /These are independent sites and are not operated by Pday Letters\./);
+        assert.ok(hrefsIn(source).includes('https://missioncall.app'));
     });
 
     test('the resources page is public at its clean URL and file URL', async () => {

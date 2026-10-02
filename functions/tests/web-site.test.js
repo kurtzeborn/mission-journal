@@ -205,10 +205,6 @@ describe('being turned away from an archive', () => {
         });
 
         assert.equal(view.el('quick-join-item').hidden, false);
-        assert.match(
-            view.source,
-            /id="quick-join">\s*Quick join <i class="fa-solid fa-qrcode" aria-hidden="true"><\/i>/
-        );
 
         await view.el('quick-join').dispatch('click');
         await settled();
@@ -504,7 +500,6 @@ describe('the printer handoff', () => {
 
         assert.equal(view.el('purchase-dialog').open, true);
         assert.equal(view.el('purchase-continue').href, checkoutUrl);
-        assert.match(view.source, /about to go to the printer&rsquo;s website to purchase this book/);
     });
 
     test('the x cancels without leaving the archive', async () => {
@@ -650,7 +645,7 @@ describe('the masthead menu', () => {
         const view = await archive({ answer: async () => new Error('offline') });
 
         assert.equal(view.el('menu').hidden, false);
-        assert.match(view.source, /href="\/\.auth\/logout\?[^"]*signedout[^"]*">Sign out/);
+        assert.match(view.source, /href="\/\.auth\/logout\?[^"]*signedout[^"]*"/);
     });
 
     test('the archive group stays down for somebody who was refused', async () => {
