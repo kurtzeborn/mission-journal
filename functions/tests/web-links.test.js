@@ -79,10 +79,10 @@ describe('links between pages', () => {
         const source = read('resources.html');
 
         assert.match(source, /<h1>Resources<\/h1>/);
-        assert.match(source, /href="https:\/\/missioncall\.app"/);
-        assert.match(source, /mission-call guessing game/i);
+        assert.match(source, /href="https:\/\/missioncall\.app">MissionCall\.app<\/a>/);
+        assert.match(source, /mission-call guessing game for missionaries expecting their mission call/i);
         assert.match(source, /mission boundaries around the world/i);
-        assert.match(source, /independent site/i);
+        assert.match(source, /These are independent sites and are not operated by Pday Letters\./);
     });
 
     test('the resources page is public at its clean URL and file URL', async () => {
