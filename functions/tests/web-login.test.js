@@ -32,6 +32,8 @@ describe('coming back after the session has gone', () => {
         const view = chooser();
 
         assert.equal(wentTo(view), null);
+        assert.equal(view.el('login-checking').hidden, true);
+        assert.equal(view.el('login-options').hidden, false);
         assert.match(view.el('signin-google').href, /^\/\.auth\/login\/google\?/);
         assert.match(view.el('signin-aad').href, /^\/\.auth\/login\/aad\?/);
     });
@@ -50,6 +52,8 @@ describe('coming back after the session has gone', () => {
         const view = chooser({ remembered: 'google' });
 
         assert.match(wentTo(view), /^\/\.auth\/login\/google\?/);
+        assert.equal(view.el('login-checking').hidden, false);
+        assert.equal(view.el('login-options').hidden, true);
     });
 
     test('and it still lands on the letter that was asked for', async () => {
@@ -99,6 +103,7 @@ describe('coming back after the session has gone', () => {
 
         assert.equal(wentTo(view), null);
         assert.equal(view.context.localStorage.getItem('mj.provider'), null);
+        assert.equal(view.el('login-options').hidden, false);
     });
 
     test('a remembered name nobody recognises is ignored', async () => {

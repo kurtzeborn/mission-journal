@@ -1,0 +1,7 @@
+#login-checking {
+    display: none;
+}
+
+#login-options[hidden] {
+    display: block !important;
+}
