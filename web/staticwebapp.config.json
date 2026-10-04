@@ -33,6 +33,11 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "The no-JavaScript fallback for the public login chooser must load before there is a session.",
+      "route": "/login-noscript.css",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "route": "/account.js",
       "allowedRoles": ["anonymous", "authenticated"]
     },
