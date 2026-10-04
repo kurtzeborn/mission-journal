@@ -51,6 +51,11 @@
     // wherever they came from -- and where they came from is this page.
     const HOME = '/';
 
+    function offerChoice() {
+        document.getElementById('login-checking').hidden = true;
+        document.getElementById('login-options').hidden = false;
+    }
+
     /**
      * A return address is only usable if it points back into this site.
      *
@@ -135,6 +140,7 @@
     // the exact opposite of what "try another account" offers.
     if (params.has('signedout')) {
         forget();
+        offerChoice();
         return;
     }
 
@@ -143,5 +149,8 @@
         // replace(), so Back from the letter does not land on a page whose
         // only behavior is to throw them forward again.
         window.location.replace(`${provider.route}?post_login_redirect_uri=${encodeURIComponent(target)}`);
+        return;
     }
+
+    offerChoice();
 })();
