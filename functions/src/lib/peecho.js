@@ -143,7 +143,7 @@ export function publicationBody({
     // the field and logs `thumbnailUrl Required` -- but a book built before
     // there were any cover images has none, and a listing with an empty
     // frame is better than one with a broken picture in it.
-    if (thumbnailUrl) body.order.product.thumbnail = thumbnailUrl;
+    if (thumbnailUrl) body.order.product.thumbnail = { src: thumbnailUrl };
 
     // Either the exact product at a price we set, or a category the buyer
     // chooses within at the markup on the account. The first is what we want
