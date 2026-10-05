@@ -204,7 +204,9 @@ describe('what the printer is told about a book', () => {
     test('the buyer is shown the cover of the book they are buying', () => {
         const body = listing({ thumbnailUrl: 'https://pdayletters.com/api/print/x/y/cover.jpg?t=abc' });
 
-        assert.equal(body.order.product.thumbnail, 'https://pdayletters.com/api/print/x/y/cover.jpg?t=abc');
+        assert.deepEqual(body.order.product.thumbnail, {
+            src: 'https://pdayletters.com/api/print/x/y/cover.jpg?t=abc'
+        });
     });
 
     test('a book with no cover picture is listed without a broken one', () => {
@@ -388,7 +390,10 @@ describe('ordering a printed copy', () => {
             await order({ request: asOwner(), context: silent, store, key: KEY, fetchImpl });
 
             const thumbnail = calls[0].body.order.product.thumbnail;
-            assert.match(thumbnail, /\/api\/print\/elder\.example\/20260819T055521Z-dd3c9494\/cover\.jpg\?t=/);
+            assert.match(
+                thumbnail.src,
+                /\/api\/print\/elder\.example\/20260819T055521Z-dd3c9494\/cover\.jpg\?t=/
+            );
         });
     });
 
