@@ -47,12 +47,13 @@ export async function readOrder({ store, slug, id }) {
 }
 
 /**
- * The newest checkout page for this archive that the printer still accepts.
+ * The newest checkout page for this archive that the printer still accepts,
+ * including one its owner has hidden from the archive toolbar.
  *
  * More than one generated book can have a listing, so search newest-first
  * rather than assuming the latest build is the one an owner chose to sell.
  */
-export async function readActiveCheckout({ store, slug, now = () => new Date() }) {
+export async function readLiveCheckout({ store, slug, now = () => new Date() }) {
     const prefix = `${slug}/`;
     const suffix = '/order.json';
     const names = await store.listBlobs(BOOKS, prefix);
@@ -66,15 +67,29 @@ export async function readActiveCheckout({ store, slug, now = () => new Date() }
         const checkoutUrl = found?.order?.checkoutUrl;
         const listedUntil = Date.parse(found?.order?.listedUntil ?? '');
         if (typeof checkoutUrl === 'string' && checkoutUrl && listedUntil > at) {
-            // The newest live listing decides whether the archive offers a
-            // book. Do not fall back to an older listing when its owner has
-            // deliberately hidden this one from the toolbar.
-            if (found.order.checkoutHiddenAt) return null;
-            return { checkoutUrl, listedUntil: found.order.listedUntil };
+            return {
+                id,
+                checkoutUrl,
+                listedUntil: found.order.listedUntil,
+                visible: !found.order.checkoutHiddenAt
+            };
         }
     }
 
     return null;
+}
+
+/**
+ * The checkout archive members may open.
+ *
+ * The newest live listing decides whether the archive offers a book. Do not
+ * fall back to an older listing when its owner has deliberately hidden this
+ * one from the toolbar.
+ */
+export async function readActiveCheckout(args) {
+    const live = await readLiveCheckout(args);
+    if (!live?.visible) return null;
+    return { checkoutUrl: live.checkoutUrl, listedUntil: live.listedUntil };
 }
 
 /**

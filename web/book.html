@@ -143,6 +143,10 @@
             <p>
                 <button class="button" type="button" id="make">Make the book</button>
             </p>
+            <p class="note" id="make-note" hidden>
+                This creates a separate draft. The checkout continues to sell the version shown
+                under <strong>Currently for sale</strong>.
+            </p>
 
             <!--
                 One line, and it is the only thing on the page that changes.
@@ -152,10 +156,44 @@
             -->
             <p class="note" id="said" role="status" aria-live="polite"></p>
 
+            <div id="sale" hidden>
+                <hr class="rule">
+
+                <h2>Currently for sale</h2>
+                <p id="sale-about"></p>
+
+                <p>
+                    <a class="button" id="sale-proof" href="/" target="_blank" rel="noopener">
+                        View checkout proof
+                    </a>
+                    <a class="button button--quiet" id="sale-print" href="/" hidden>
+                        Download print file
+                    </a>
+                </p>
+
+                <p>
+                    <a class="button" id="buy" href="/" target="_blank" rel="noopener">
+                        Go to the checkout
+                    </a>
+                    <button class="button button--quiet" type="button" id="close-checkout">
+                        Close
+                    </button>
+                    <button class="button button--quiet" type="button" id="restore-checkout" hidden>
+                        Restore
+                    </button>
+                </p>
+                <p class="note" id="checkout-expires"></p>
+                <p class="note">
+                    Closing only hides <strong>Buy a Book</strong> from the archive.
+                    A checkout link already shared will still work until it expires.
+                </p>
+                <p class="note" id="sale-said" role="status" aria-live="polite"></p>
+            </div>
+
             <div id="finished" hidden>
                 <hr class="rule">
 
-                <h2>Your book</h2>
+                <h2 id="book-heading">Your book</h2>
                 <p id="about"></p>
 
                 <p>
@@ -174,53 +212,33 @@
                         address.
                     </p>
 
-                    <!--
-                        Two steps rather than one, and not because a redirect
-                        is hard. What comes back is a link that works for six
-                        months and can be sent to anybody, so a grandmother can
-                        buy her own copy without an account here. Opening it
-                        and throwing it away would hide the most useful thing
-                        about it.
-                    -->
-                    <!--
-                        The warranty, in front of the button rather than
-                        behind a link to a page nobody opens. Peecho's seller
-                        terms make the merchant responsible for having the
-                        rights to whatever is printed, and the merchant is us
-                        -- but the only person who can possibly know whether
-                        the family is happy to see itself in a book is the
-                        owner pressing this. So it is said here, in the
-                        sentence before the act, and it is said in plain words
-                        because "you warrant that you hold all necessary
-                        intellectual property and personality rights" is a
-                        sentence that has never once been read.
-                    -->
-                    <p class="note">
-                        By creating a checkout page you are confirming that this book and its
-                        contents are yours to print. <a href="/faq#printing-rights">More about
-                        that</a>.
+                    <p class="note" id="checkout-blocked" hidden>
+                        The checkout above continues to sell its original version. This revised
+                        version cannot have another checkout until that one expires.
                     </p>
+                    <p class="note" id="checkout-expired" hidden></p>
 
-                    <p>
-                        <button class="button" type="button" id="order">Make a checkout page</button>
-                    </p>
-
-                    <div id="checkout" hidden>
-                        <p>
-                            <a class="button" id="buy" href="/" target="_blank" rel="noopener">
-                                Go to the checkout
-                            </a>
-                            <button class="button button--quiet" type="button" id="close-checkout">
-                                Close
-                            </button>
-                            <button class="button button--quiet" type="button" id="restore-checkout" hidden>
-                                Restore
-                            </button>
-                        </p>
-                        <p class="note" id="checkout-expires"></p>
+                    <div id="order-controls">
+                        <!--
+                            The warranty, in front of the button rather than
+                            behind a link to a page nobody opens. Peecho's seller
+                            terms make the merchant responsible for having the
+                            rights to whatever is printed, and the merchant is us
+                            -- but the only person who can possibly know whether
+                            the family is happy to see itself in a book is the
+                            owner pressing this. So it is said here, in the
+                            sentence before the act, and it is said in plain words.
+                        -->
                         <p class="note">
-                            Closing only hides <strong>Buy a Book</strong> from the archive.
-                            A checkout link already shared will still work until it expires.
+                            By creating a checkout page you are confirming that this book and its
+                            contents are yours to print. <a href="/faq#printing-rights">More about
+                            that</a>.
+                        </p>
+
+                        <p>
+                            <button class="button" type="button" id="order">
+                                Make a checkout page
+                            </button>
                         </p>
                     </div>
 
