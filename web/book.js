@@ -32,6 +32,64 @@
     // page made for one build is not left on screen beside another.
     let newest = '';
 
+    function remaining(expires) {
+        const days = Math.max(
+            1,
+            Math.ceil((expires.getTime() - Date.now()) / (24 * 60 * 60 * 1000))
+        );
+        if (days >= 60) return `about ${Math.round(days / 30)} months remaining`;
+        if (days >= 14) return `about ${Math.round(days / 7)} weeks remaining`;
+        return `${days} day${days === 1 ? '' : 's'} remaining`;
+    }
+
+    function drawCheckout(checkout) {
+        const panel = $('checkout');
+        const buy = $('buy');
+        const order = $('order');
+        const close = $('close-checkout');
+        const restore = $('restore-checkout');
+        const expires = new Date(checkout?.listedUntil ?? '');
+
+        if (!checkout || Number.isNaN(expires.getTime())) {
+            panel.hidden = true;
+            buy.hidden = true;
+            order.hidden = false;
+            close.hidden = true;
+            restore.hidden = true;
+            $('checkout-expires').textContent = '';
+            return;
+        }
+
+        const date = expires.toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+        const active = checkout.active === true &&
+            typeof checkout.checkoutUrl === 'string' &&
+            checkout.checkoutUrl &&
+            expires.getTime() > Date.now();
+
+        panel.hidden = false;
+        buy.hidden = !active;
+        order.hidden = active;
+        close.hidden = !active || checkout.visible === false;
+        restore.hidden = !active || checkout.visible !== false;
+        $('checkout-expires').setAttribute('data-listed-until', expires.toISOString());
+
+        if (active) {
+            buy.href = checkout.checkoutUrl;
+            $('checkout-expires').textContent =
+                checkout.visible === false
+                    ? `Available until ${date} (${remaining(expires)}), but hidden from the archive toolbar.`
+                    : `Available until ${date} (${remaining(expires)}). This link can be shared; ` +
+                      'anybody who has it can order their own copy.';
+        } else {
+            $('checkout-expires').textContent =
+                `The previous checkout page expired on ${date}. You can make a new one.`;
+        }
+    }
+
     const show = (message) => {
         state.textContent = message;
         state.hidden = false;
@@ -118,9 +176,9 @@
         // under a different set of letters.
         if (status.id !== newest) {
             newest = status.id;
-            $('checkout').hidden = true;
             $('order-said').textContent = '';
         }
+        drawCheckout(status.checkout);
 
         // Hidden entirely where the printer is not configured, rather than
         // shown and then apologetic. An environment without the keys has no
@@ -656,14 +714,59 @@
             return;
         }
 
-        $('buy').href = body.checkoutUrl;
-        $('checkout').hidden = false;
+        drawCheckout({
+            active: true,
+            checkoutUrl: body.checkoutUrl,
+            listedUntil: body.listedUntil,
+            visible: body.visible !== false
+        });
         // Said out loud rather than only shown, because pressing the button a
         // second time when a checkout already exists gives back the same link
         // and would otherwise look like nothing happened.
         orderSaid.textContent = body.reused
             ? 'This book already had a checkout page, so here it is again.'
             : '';
+    }
+
+    async function changeCheckoutVisibility(visible) {
+        if (!newest) return;
+
+        const button = visible ? $('restore-checkout') : $('close-checkout');
+        const orderSaid = $('order-said');
+        button.disabled = true;
+        orderSaid.textContent = visible ? 'Restoring\u2026' : 'Closing\u2026';
+
+        let response;
+        try {
+            response = await fetch(`/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(newest)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ visible })
+            });
+        } catch {
+            button.disabled = false;
+            orderSaid.textContent = 'Could not reach the server. Nothing has changed.';
+            return;
+        }
+
+        if (refused(response)) return;
+
+        button.disabled = false;
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            orderSaid.textContent = body.error ?? 'That did not work. Nothing has changed.';
+            return;
+        }
+
+        drawCheckout({
+            active: true,
+            checkoutUrl: body.checkoutUrl,
+            listedUntil: body.listedUntil,
+            visible: body.visible
+        });
+        orderSaid.textContent = visible
+            ? 'Buy a Book is visible in the archive again.'
+            : 'Buy a Book is now hidden from the archive.';
     }
 
     // Polling stops while the tab is in the background and picks up again
@@ -676,6 +779,8 @@
 
     $('make').addEventListener('click', make);
     $('order').addEventListener('click', orderOne);
+    $('close-checkout').addEventListener('click', () => changeCheckoutVisibility(false));
+    $('restore-checkout').addEventListener('click', () => changeCheckoutVisibility(true));
     for (const name of SECTION_NAMES) {
         $(`${name}-create`).addEventListener('click', () => openSection(name, true));
         $(`${name}-view`).addEventListener('click', () => openSection(name, false));

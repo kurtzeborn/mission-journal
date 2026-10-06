@@ -126,54 +126,144 @@ describe('the finished book actions', () => {
         });
     });
 
-    const open = async (operator, cover = null) => {
+    const open = async ({
+        operator = false,
+        cover = null,
+        checkout = null,
+        order = null,
+        visibility = null
+    } = {}) => {
         const view = page({ html: 'book.html', path: '/book/elder.example' });
-        const net = fetching(async (url) =>
-            url.endsWith('/cover')
-                ? cover
-                    ? { body: cover }
-                    : { status: 404 }
-                : {
-                      body: {
-                          id: 'book-1',
-                          state: 'ready',
-                          builtAt: '2026-09-12T12:00:00.000Z',
-                          pages: 24,
-                          letters: 3,
-                          printing: true,
-                          operator
-                      }
-                  }
-        );
+        const net = fetching(async (url, init) => {
+            if (url.endsWith('/cover')) return cover ? { body: cover } : { status: 404 };
+            if (init.method === 'POST' && url.includes('/api/print/')) return { body: order };
+            if (init.method === 'PUT' && url.includes('/api/print/')) {
+                return {
+                    body: {
+                        ...visibility,
+                        visible: JSON.parse(init.body).visible
+                    }
+                };
+            }
+            return {
+                body: {
+                    id: 'book-1',
+                    state: 'ready',
+                    builtAt: '2026-09-12T12:00:00.000Z',
+                    pages: 24,
+                    letters: 3,
+                    printing: true,
+                    operator,
+                    checkout
+                }
+            };
+        });
         run('book.js', { context: view.context, fetch: net.fetch });
         await settled();
         return view;
     };
 
     test('shows the print file to an operator', async () => {
-        const view = await open(true);
+        const view = await open({ operator: true });
 
         assert.equal(view.el('print').hidden, false);
         assert.match(view.el('print').href, /\/letters\.pdf$/);
     });
 
     test('does not show the print file to an archive owner', async () => {
-        const view = await open(false);
+        const view = await open();
 
         assert.equal(view.el('print').hidden, true);
     });
 
     test('shows the mission dates on the cover preview', async () => {
-        const view = await open(false, {
-            title: 'Elder Example',
-            mission: 'Example Mission',
-            dates: 'July 1, 2024 \u2013 January 15, 2026',
-            cloth: 'navy',
-            picture: '',
-            cloths: []
+        const view = await open({
+            cover: {
+                title: 'Elder Example',
+                mission: 'Example Mission',
+                dates: 'July 1, 2024 \u2013 January 15, 2026',
+                cloth: 'navy',
+                picture: '',
+                cloths: []
+            }
         });
 
         assert.equal(view.text('board-dates'), 'July 1, 2024 \u2013 January 15, 2026');
         assert.equal(view.el('board-dates').hidden, false);
+    });
+
+    test('shows an active checkout immediately with its expiration', async () => {
+        const listedUntil = '2099-04-03T23:54:54.009Z';
+        const view = await open({
+            checkout: {
+                active: true,
+                visible: true,
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
+                listedUntil
+            }
+        });
+
+        assert.equal(view.el('checkout').hidden, false);
+        assert.equal(view.el('buy').hidden, false);
+        assert.match(view.el('buy').href, /peecho\.com\/checkout/);
+        assert.equal(view.el('order').hidden, true);
+        assert.equal(view.el('close-checkout').hidden, false);
+        assert.equal(view.el('restore-checkout').hidden, true);
+        assert.equal(view.el('checkout-expires').getAttribute('data-listed-until'), listedUntil);
+        assert.match(view.text('checkout-expires'), /remaining/);
+    });
+
+    test('an expired checkout is not presented as an active link', async () => {
+        const listedUntil = '2020-04-03T23:54:54.009Z';
+        const view = await open({ checkout: { active: false, listedUntil } });
+
+        assert.equal(view.el('checkout').hidden, false);
+        assert.equal(view.el('buy').hidden, true);
+        assert.equal(view.el('order').hidden, false);
+        assert.equal(view.el('checkout-expires').getAttribute('data-listed-until'), listedUntil);
+        assert.match(view.text('checkout-expires'), /expired/);
+    });
+
+    test('a newly created checkout updates the existing status panel', async () => {
+        const listedUntil = '2099-04-03T23:54:54.009Z';
+        const view = await open({
+            order: {
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/new-book?token=secret',
+                listedUntil,
+                reused: false
+            }
+        });
+
+        await view.el('order').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('checkout').hidden, false);
+        assert.equal(view.el('buy').hidden, false);
+        assert.equal(view.el('order').hidden, true);
+        assert.equal(view.el('checkout-expires').getAttribute('data-listed-until'), listedUntil);
+    });
+
+    test('closes and restores only the archive toolbar entry', async () => {
+        const listedUntil = '2099-04-03T23:54:54.009Z';
+        const checkoutUrl = 'https://www.peecho.com/checkout/print/en/a-book?token=secret';
+        const view = await open({
+            checkout: { active: true, visible: true, checkoutUrl, listedUntil },
+            visibility: { checkoutUrl, listedUntil }
+        });
+
+        await view.el('close-checkout').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('buy').hidden, false);
+        assert.equal(view.el('close-checkout').hidden, true);
+        assert.equal(view.el('restore-checkout').hidden, false);
+        assert.match(view.text('checkout-expires'), /hidden from the archive toolbar/);
+
+        await view.el('restore-checkout').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('close-checkout').hidden, false);
+        assert.equal(view.el('restore-checkout').hidden, true);
+        assert.match(view.text('order-said'), /visible in the archive again/);
     });
 });

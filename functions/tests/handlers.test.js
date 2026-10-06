@@ -32,6 +32,7 @@ import { holdPending } from '../src/lib/pending.js';
 import { attachClaimToken } from '../src/lib/claim.js';
 import { deliveryKey, recordDelivery } from '../src/lib/delivery.js';
 import { BOOKS, bookName, proofName, statusName } from '../src/lib/publish.js';
+import { orderName } from '../src/lib/orders.js';
 import { TABLES } from '../src/lib/tables.js';
 
 const KEY = 'a-signing-key-from-key-vault';
@@ -416,6 +417,91 @@ describe('the book handlers', () => {
             if (was === undefined) delete process.env.PEECHO_API_KEY;
             else process.env.PEECHO_API_KEY = was;
         }
+    });
+
+    test('an active checkout is included without exposing the printer record', async () => {
+        const store = printable();
+        const started = await publish({ request: asOwner(), context: silent, store });
+        store.blobs.set(`${BOOKS}/${orderName(SLUG, started.jsonBody.id)}`, {
+            bytes: Buffer.from(JSON.stringify({
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
+                listedUntil: '2027-02-01T12:00:00.000Z',
+                publicationId: 'private-provider-id',
+                status: 'PAID'
+            })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+
+        const response = await progress({
+            request: asOwner(),
+            context: silent,
+            store,
+            now: () => new Date('2026-10-01T12:00:00.000Z')
+        });
+
+        assert.deepEqual(response.jsonBody.checkout, {
+            active: true,
+            visible: true,
+            checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
+            listedUntil: '2027-02-01T12:00:00.000Z'
+        });
+        assert.equal('publicationId' in response.jsonBody.checkout, false);
+        assert.equal('status' in response.jsonBody.checkout, false);
+    });
+
+    test('an expired checkout is identified without offering its old link', async () => {
+        const store = printable();
+        const started = await publish({ request: asOwner(), context: silent, store });
+        store.blobs.set(`${BOOKS}/${orderName(SLUG, started.jsonBody.id)}`, {
+            bytes: Buffer.from(JSON.stringify({
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/expired?token=old',
+                listedUntil: '2026-09-30T12:00:00.000Z'
+            })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+
+        const response = await progress({
+            request: asOwner(),
+            context: silent,
+            store,
+            now: () => new Date('2026-10-01T12:00:00.000Z')
+        });
+
+        assert.deepEqual(response.jsonBody.checkout, {
+            active: false,
+            visible: true,
+            listedUntil: '2026-09-30T12:00:00.000Z'
+        });
+    });
+
+    test('a locally closed checkout is still shown to its owner', async () => {
+        const store = printable();
+        const started = await publish({ request: asOwner(), context: silent, store });
+        store.blobs.set(`${BOOKS}/${orderName(SLUG, started.jsonBody.id)}`, {
+            bytes: Buffer.from(JSON.stringify({
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/closed?token=secret',
+                listedUntil: '2027-02-01T12:00:00.000Z',
+                checkoutHiddenAt: '2026-10-01T12:00:00.000Z'
+            })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+
+        const response = await progress({
+            request: asOwner(),
+            context: silent,
+            store,
+            now: () => new Date('2026-10-02T12:00:00.000Z')
+        });
+
+        assert.deepEqual(response.jsonBody.checkout, {
+            active: true,
+            visible: false,
+            checkoutUrl: 'https://www.peecho.com/checkout/print/en/closed?token=secret',
+            listedUntil: '2027-02-01T12:00:00.000Z'
+        });
     });
 
     test('an unfinished book cannot be fetched in either form', async () => {
