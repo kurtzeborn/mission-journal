@@ -176,7 +176,7 @@
 
                     <!--
                         Two steps rather than one, and not because a redirect
-                        is hard. What comes back is a link that works for two
+                        is hard. What comes back is a link that works for six
                         months and can be sent to anybody, so a grandmother can
                         buy her own copy without an account here. Opening it
                         and throwing it away would hide the most useful thing
@@ -207,11 +207,20 @@
 
                     <div id="checkout" hidden>
                         <p>
-                            <a class="button" id="buy" href="/" target="_blank" rel="noopener">Go to the checkout</a>
+                            <a class="button" id="buy" href="/" target="_blank" rel="noopener">
+                                Go to the checkout
+                            </a>
+                            <button class="button button--quiet" type="button" id="close-checkout">
+                                Close
+                            </button>
+                            <button class="button button--quiet" type="button" id="restore-checkout" hidden>
+                                Restore
+                            </button>
                         </p>
+                        <p class="note" id="checkout-expires"></p>
                         <p class="note">
-                            This link lasts six months and can be shared &mdash; anybody who has it
-                            can order their own copy.
+                            Closing only hides <strong>Buy a Book</strong> from the archive.
+                            A checkout link already shared will still work until it expires.
                         </p>
                     </div>
 

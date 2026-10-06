@@ -28,6 +28,7 @@ import {
     runBook,
     STATE
 } from '../lib/publish.js';
+import { readOrder } from '../lib/orders.js';
 import { setting } from '../lib/settings.js';
 
 const CONFIG = 'config';
@@ -40,7 +41,23 @@ const LINK_MINUTES = 15;
 // carries who asked for it, and that is nobody else's business -- two owners
 // share a site, and neither needs the other's address handed back by an
 // endpoint the browser polls every few seconds.
-const forThePage = (status, viaOperator = false) => ({
+const checkoutForThePage = (found, now) => {
+    const checkoutUrl = found?.order?.checkoutUrl;
+    const listedUntil = found?.order?.listedUntil;
+    const expires = Date.parse(listedUntil ?? '');
+
+    if (typeof checkoutUrl !== 'string' || !checkoutUrl || !Number.isFinite(expires)) return null;
+
+    const active = expires > now.getTime();
+    return {
+        active,
+        visible: !found.order.checkoutHiddenAt,
+        listedUntil,
+        ...(active ? { checkoutUrl } : {})
+    };
+};
+
+const forThePage = (status, viaOperator = false, checkout = null) => ({
     id: status.id,
     state: status.state,
     requestedAt: status.requestedAt,
@@ -53,6 +70,7 @@ const forThePage = (status, viaOperator = false) => ({
     // alternative -- a button whose only possible answer is "printing is not
     // switched on yet" -- is a control that exists to apologize.
     printing: Boolean(setting('PEECHO_API_KEY')),
+    checkout,
     // The unmarked, press-resolution file is an operational diagnostic. The
     // family reviews the marked proof and the printer receives its own signed
     // URL through checkout, so only an operator needs this direct download.
@@ -111,17 +129,22 @@ export async function publish({ request, context, store }) {
 /**
  * How the build is going.
  */
-export async function progress({ request, context, store }) {
+export async function progress({ request, context, store, now = () => new Date() }) {
     const gated = await siteGate({ store, request, ownersOnly: true, log: context });
     if (gated.denied) return gated.denied;
 
     const found = await wanted({ store, slug: gated.slug, id: request.params.id });
     if (!found) return json(404, { error: 'no book has been asked for yet' });
 
+    const order = await readOrder({ store, slug: gated.slug, id: found.id });
+
     // `viaOperator` is intentionally false when an operator is also an owner
     // in this archive's ACL. This control is about who the person is, not which
     // of their two permissions happened to admit them.
-    return json(200, forThePage(found, isOperator(gated.principal.email)));
+    return json(
+        200,
+        forThePage(found, isOperator(gated.principal.email), checkoutForThePage(order, now()))
+    );
 }
 
 /**

@@ -28,6 +28,7 @@ import {
 import {
     checkout,
     order,
+    setCheckoutVisibility,
     placed,
     statusChanged,
     fetchForPrint,
@@ -327,6 +328,7 @@ describe('ordering a printed copy', () => {
 
             assert.equal(response.status, 200);
             assert.match(response.jsonBody.checkoutUrl, /checkout\/print\/en\/pub-1\?token=tok-1$/);
+            assert.equal(response.jsonBody.listedUntil, orderOf(store).listedUntil);
 
             // The link the printer will fetch is ours and signed, not a
             // storage URL -- that is the whole reason this endpoint exists.
@@ -348,6 +350,7 @@ describe('ordering a printed copy', () => {
 
             assert.equal(calls.length, 1, 'two listings would mean two prices for one book');
             assert.equal(again.jsonBody.reused, true);
+            assert.equal(again.jsonBody.listedUntil, orderOf(store).listedUntil);
         });
     });
 
@@ -462,6 +465,28 @@ describe('sharing an active checkout with archive readers', () => {
         assert.deepEqual(response.jsonBody, { checkoutUrl: null });
     });
 
+    test('a locally closed checkout is not offered', async () => {
+        const store = withABook();
+        store.blobs.set(`books/${SLUG}/${BOOK}/order.json`, {
+            bytes: Buffer.from(JSON.stringify({
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/closed?token=secret',
+                listedUntil: '2099-01-01T00:00:00.000Z',
+                checkoutHiddenAt: '2026-09-12T12:00:00.000Z'
+            })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+
+        const response = await checkout({
+            request: request({ email: READER, params: { slug: SLUG } }),
+            context: silent,
+            store,
+            now: () => new Date('2026-09-13T12:00:00.000Z')
+        });
+
+        assert.deepEqual(response.jsonBody, { checkoutUrl: null });
+    });
+
     test('somebody outside the archive cannot discover its checkout', async () => {
         const response = await checkout({
             request: request({ email: 'stranger@example.com', params: { slug: SLUG } }),
@@ -470,6 +495,83 @@ describe('sharing an active checkout with archive readers', () => {
         });
 
         assert.equal(response.status, 404);
+    });
+});
+
+describe('locally closing a checkout', () => {
+    const checkoutUrl = 'https://www.peecho.com/checkout/print/en/a-book?token=secret';
+    const listedUntil = '2027-03-01T00:00:00.000Z';
+
+    const listed = () => {
+        const store = withABook();
+        store.blobs.set(`books/${SLUG}/${BOOK}/order.json`, {
+            bytes: Buffer.from(JSON.stringify({ checkoutUrl, listedUntil })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+        return store;
+    };
+
+    test('an owner can close and restore the archive button without changing the link', async () => {
+        const store = listed();
+        const now = () => new Date('2026-10-05T12:00:00.000Z');
+
+        const closed = await setCheckoutVisibility({
+            request: request({
+                email: OWNER,
+                params: { slug: SLUG, id: BOOK },
+                body: { visible: false }
+            }),
+            context: silent,
+            store,
+            now
+        });
+
+        assert.deepEqual(closed.jsonBody, { checkoutUrl, listedUntil, visible: false });
+        assert.equal(orderOf(store).checkoutHiddenAt, '2026-10-05T12:00:00.000Z');
+
+        const restored = await setCheckoutVisibility({
+            request: request({
+                email: OWNER,
+                params: { slug: SLUG, id: BOOK },
+                body: { visible: true }
+            }),
+            context: silent,
+            store,
+            now
+        });
+
+        assert.deepEqual(restored.jsonBody, { checkoutUrl, listedUntil, visible: true });
+        assert.equal(orderOf(store).checkoutHiddenAt, null);
+    });
+
+    test('an expired checkout cannot be restored', async () => {
+        const response = await setCheckoutVisibility({
+            request: request({
+                email: OWNER,
+                params: { slug: SLUG, id: BOOK },
+                body: { visible: true }
+            }),
+            context: silent,
+            store: listed(),
+            now: () => new Date('2027-03-02T00:00:00.000Z')
+        });
+
+        assert.equal(response.status, 409);
+    });
+
+    test('a reader cannot close the archive button', async () => {
+        const response = await setCheckoutVisibility({
+            request: request({
+                email: READER,
+                params: { slug: SLUG, id: BOOK },
+                body: { visible: false }
+            }),
+            context: silent,
+            store: listed()
+        });
+
+        assert.equal(response.status, 403);
     });
 });
 

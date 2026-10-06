@@ -66,6 +66,10 @@ export async function readActiveCheckout({ store, slug, now = () => new Date() }
         const checkoutUrl = found?.order?.checkoutUrl;
         const listedUntil = Date.parse(found?.order?.listedUntil ?? '');
         if (typeof checkoutUrl === 'string' && checkoutUrl && listedUntil > at) {
+            // The newest live listing decides whether the archive offers a
+            // book. Do not fall back to an older listing when its owner has
+            // deliberately hidden this one from the toolbar.
+            if (found.order.checkoutHiddenAt) return null;
             return { checkoutUrl, listedUntil: found.order.listedUntil };
         }
     }

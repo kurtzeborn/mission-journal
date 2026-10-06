@@ -131,7 +131,12 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
     // book is two prices, two pages and two ways to buy the same object.
     const existing = await readOrder({ store, slug, id });
     if (existing?.order?.checkoutUrl && Date.parse(existing.order.listedUntil ?? '') > Date.now()) {
-        return json(200, { checkoutUrl: existing.order.checkoutUrl, reused: true });
+        return json(200, {
+            checkoutUrl: existing.order.checkoutUrl,
+            listedUntil: existing.order.listedUntil,
+            visible: !existing.order.checkoutHiddenAt,
+            reused: true
+        });
     }
 
     const { profile } = await readProfile({ store, slug });
@@ -151,6 +156,7 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
     // broken frame instead of an empty one.
     const hasPicture = Boolean(await store.readBlob(BOOKS, coverImageName(slug, id)));
 
+    const listedUntil = inDays(CHECKOUT_DAYS);
     const listed = await createPublication({
         base: shop.base,
         log: context,
@@ -168,7 +174,7 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
             offeringPrice: shop.offeringPrice,
             category: shop.category,
             baseUrl: baseUrl(),
-            expiresAt: inDays(CHECKOUT_DAYS)
+            expiresAt: listedUntil
         })
     });
 
@@ -184,13 +190,68 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
             publicationId: listed.publicationId,
             checkoutUrl: listed.checkoutUrl,
             listedAt: new Date().toISOString(),
-            listedUntil: inDays(CHECKOUT_DAYS).toISOString()
+            listedUntil: listedUntil.toISOString(),
+            checkoutHiddenAt: null
         }
     });
 
     context.log('peecho.listed', { slug, id, publication: listed.publicationId });
 
-    return json(200, { checkoutUrl: listed.checkoutUrl, reused: false });
+    return json(200, {
+        checkoutUrl: listed.checkoutUrl,
+        listedUntil: listedUntil.toISOString(),
+        visible: true,
+        reused: false
+    });
+}
+
+/**
+ * Hide or restore the archive's Buy a Book button.
+ *
+ * This deliberately changes only our own order record. The Peecho listing and
+ * any checkout URL somebody already has remain usable until their original
+ * expiration.
+ */
+export async function setCheckoutVisibility({ request, context, store, now = () => new Date() }) {
+    const gated = await siteGate({ store, request, ownersOnly: true, log: context });
+    if (gated.denied) return gated.denied;
+
+    let body = {};
+    try {
+        body = await request.json();
+    } catch {
+        return json(400, { error: 'that was not valid JSON' });
+    }
+    if (typeof body.visible !== 'boolean') {
+        return json(400, { error: 'visible must be true or false' });
+    }
+
+    const { slug } = gated;
+    const id = request.params.id;
+    const found = await readOrder({ store, slug, id });
+    const checkoutUrl = found?.order?.checkoutUrl;
+    const listedUntil = found?.order?.listedUntil;
+    const expires = Date.parse(listedUntil ?? '');
+    const at = now();
+
+    if (typeof checkoutUrl !== 'string' || !checkoutUrl || !Number.isFinite(expires)) {
+        return json(404, { error: 'this book does not have a checkout page' });
+    }
+    if (expires <= at.getTime()) {
+        return json(409, { error: 'this checkout page has expired' });
+    }
+
+    const noted = await noteOrder({
+        store,
+        slug,
+        id,
+        log: context,
+        patch: { checkoutHiddenAt: body.visible ? null : at.toISOString() }
+    });
+    if (noted.error) return json(409, { error: noted.error });
+
+    context.log('peecho.visibilityChanged', { slug, id, visible: body.visible });
+    return json(200, { checkoutUrl, listedUntil, visible: body.visible });
 }
 
 /**
@@ -340,10 +401,14 @@ app.http('print-order', {
     // The Functions access key, not the identity check. The identity check is
     // the principal header the gate reads, and this route is owners only.
     authLevel: 'anonymous',
-    methods: ['POST'],
+    methods: ['POST', 'PUT'],
     route: 'print/{slug}/{id}',
-    handler: (request, context) =>
-        order({ request, context, store: blobStore(), key: signingKey('peecho', context) })
+    handler: (request, context) => {
+        if (request.method === 'PUT') {
+            return setCheckoutVisibility({ request, context, store: blobStore() });
+        }
+        return order({ request, context, store: blobStore(), key: signingKey('peecho', context) });
+    }
 });
 
 app.http('print-file', {
