@@ -48,6 +48,8 @@ export const manifestName = (slug, id) => `${bookFolder(slug, id)}/manifest.json
 // wanted again every time that page is loaded for the next six months.
 export const coverImageName = (slug, id) => `${bookFolder(slug, id)}/cover.jpg`;
 
+const orderName = (slug, id) => `${bookFolder(slug, id)}/order.json`;
+
 // The states a book can be in, and there are only three. Ordered is not among
 // them and never will be: it lives on the order record in `orders.js`,
 // because this file's job ends when there are bytes to look at, while an
@@ -116,6 +118,72 @@ export async function latestBook({ store, slug }) {
 
 export async function readBook({ store, slug, id }) {
     return readJson(store, BOOKS, statusName(slug, id));
+}
+
+/**
+ * Remove drafts made obsolete by a successfully completed newer book.
+ *
+ * Book ids sort by request time, so only folders below `id` are previous
+ * drafts. A newer folder may belong to a replacement for a stale build and
+ * must not be touched when the stale worker eventually finishes.
+ *
+ * Checkout metadata makes a book permanent. Peecho may fetch its PDF again
+ * for a reprint, even after its checkout page expires, so age and checkout
+ * visibility do not make such a folder disposable.
+ *
+ * Cleanup is housekeeping rather than part of rendering. Storage trouble is
+ * logged and leaves extra bytes behind; it must never turn a finished book
+ * into a failed one.
+ */
+export async function cleanOlderDrafts({ store, slug, id, log = console }) {
+    const prefix = `${slug}/`;
+    let names;
+
+    try {
+        names = await store.listBlobs(BOOKS, prefix);
+    } catch (error) {
+        log.error?.('book.cleanupFailed', { slug, id, error: error.message });
+        return { deleted: 0, failed: 1 };
+    }
+
+    const folders = new Map();
+    for (const name of names) {
+        const rest = name.slice(prefix.length);
+        const slash = rest.indexOf('/');
+        if (slash <= 0) continue;
+
+        const candidate = rest.slice(0, slash);
+        if (candidate >= id) continue;
+
+        if (!folders.has(candidate)) folders.set(candidate, []);
+        folders.get(candidate).push(name);
+    }
+
+    let deleted = 0;
+    let failed = 0;
+
+    for (const [candidate, files] of folders) {
+        try {
+            // Read immediately before deleting instead of trusting the
+            // listing alone. A checkout could have been created while the
+            // new book was rendering.
+            if (await store.readBlob(BOOKS, orderName(slug, candidate))) continue;
+
+            for (const name of files) await store.deleteBlob(BOOKS, name);
+            deleted += 1;
+            log.info?.('book.draftDeleted', { slug, id: candidate, replacedBy: id });
+        } catch (error) {
+            failed += 1;
+            log.error?.('book.cleanupFailed', {
+                slug,
+                id,
+                draftId: candidate,
+                error: error.message
+            });
+        }
+    }
+
+    return { deleted, failed };
 }
 
 /**
@@ -341,6 +409,7 @@ export async function runBook({
         };
 
         await writeStatus(store, done);
+        await cleanOlderDrafts({ store, slug, id, log });
 
         // After the status, always. The page is the thing an owner will
         // actually look at, and an email arriving before the blob it points

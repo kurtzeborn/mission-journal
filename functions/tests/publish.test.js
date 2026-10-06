@@ -263,6 +263,67 @@ describe('building the book', () => {
 
         assert.equal(result.status, 'rejected');
     });
+
+    test('removes older drafts but keeps books with checkout metadata and newer builds', async () => {
+        const store = seed(letters);
+        const old = '20260101T000000Z-old';
+        const listed = '20260201T000000Z-listed';
+        const newer = '99991231T235959Z-newer';
+
+        for (const id of [old, listed, newer]) {
+            await store.writeBlob(BOOKS, statusName(SLUG, id), Buffer.from('{}'));
+            await store.writeBlob(BOOKS, bookName(SLUG, id), Buffer.from('print'));
+            await store.writeBlob(BOOKS, proofName(SLUG, id), Buffer.from('proof'));
+        }
+        await store.writeBlob(
+            BOOKS,
+            `${SLUG}/${listed}/order.json`,
+            Buffer.from(JSON.stringify({ checkoutUrl: 'https://example.com/checkout' }))
+        );
+
+        const { id } = await requestBook({
+            store,
+            slug: SLUG,
+            now: new Date('2026-06-01T00:00:00.000Z'),
+            log: quiet
+        });
+        const result = await runBook({ message: { slug: SLUG, id }, store, log: quiet });
+
+        assert.equal(result.status, 'built');
+        assert.equal((await store.listBlobs(BOOKS, `${SLUG}/${old}/`)).length, 0);
+        assert.ok((await store.listBlobs(BOOKS, `${SLUG}/${listed}/`)).length > 0);
+        assert.ok((await store.listBlobs(BOOKS, `${SLUG}/${id}/`)).length > 0);
+        assert.ok((await store.listBlobs(BOOKS, `${SLUG}/${newer}/`)).length > 0);
+    });
+
+    test('does not fail a finished book when draft cleanup cannot reach storage', async () => {
+        const store = seed(letters);
+        const old = '20260101T000000Z-old';
+        await store.writeBlob(BOOKS, statusName(SLUG, old), Buffer.from('{}'));
+
+        const remove = store.deleteBlob.bind(store);
+        store.deleteBlob = async (container, name) => {
+            if (container === BOOKS && name.startsWith(`${SLUG}/${old}/`)) {
+                throw new Error('storage is unavailable');
+            }
+            return remove(container, name);
+        };
+
+        const errors = [];
+        const log = { ...quiet, error: (message, details) => errors.push({ message, details }) };
+        const { id } = await requestBook({
+            store,
+            slug: SLUG,
+            now: new Date('2026-06-01T00:00:00.000Z'),
+            log
+        });
+        const result = await runBook({ message: { slug: SLUG, id }, store, log });
+
+        assert.equal(result.status, 'built');
+        assert.equal((await readBook({ store, slug: SLUG, id })).state, STATE.ready);
+        assert.equal(errors[0].message, 'book.cleanupFailed');
+        assert.equal(errors[0].details.draftId, old);
+    });
 });
 
 describe('telling the owner the book is done', () => {
