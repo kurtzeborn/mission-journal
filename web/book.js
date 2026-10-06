@@ -28,9 +28,10 @@
     let watchingSince = 0;
     let timer = null;
 
-    // Which book the finished panel is currently describing, so a checkout
-    // page made for one build is not left on screen beside another.
     let newest = '';
+    let current = null;
+    let sale = null;
+    let operator = false;
 
     function remaining(expires) {
         const days = Math.max(
@@ -42,52 +43,48 @@
         return `${days} day${days === 1 ? '' : 's'} remaining`;
     }
 
-    function drawCheckout(checkout) {
-        const panel = $('checkout');
-        const buy = $('buy');
-        const order = $('order');
-        const close = $('close-checkout');
-        const restore = $('restore-checkout');
-        const expires = new Date(checkout?.listedUntil ?? '');
+    function bookAbout(book) {
+        const when = new Date(book?.builtAt ?? '');
+        const made = Number.isNaN(when.getTime())
+            ? ''
+            : ` on ${when.toLocaleDateString(undefined, {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+              })}`;
+        return (
+            `${book.letters} letter${book.letters === 1 ? '' : 's'}, ` +
+            `${book.pages} pages, made${made}.`
+        );
+    }
 
-        if (!checkout || Number.isNaN(expires.getTime())) {
-            panel.hidden = true;
-            buy.hidden = true;
-            order.hidden = false;
-            close.hidden = true;
-            restore.hidden = true;
-            $('checkout-expires').textContent = '';
+    function drawSale() {
+        if (!sale) {
+            $('sale').hidden = true;
             return;
         }
 
+        const checkout = sale.checkout;
+        const expires = new Date(checkout.listedUntil);
         const date = expires.toLocaleDateString(undefined, {
             year: 'numeric',
             month: 'long',
             day: 'numeric'
         });
-        const active = checkout.active === true &&
-            typeof checkout.checkoutUrl === 'string' &&
-            checkout.checkoutUrl &&
-            expires.getTime() > Date.now();
-
-        panel.hidden = false;
-        buy.hidden = !active;
-        order.hidden = active;
-        close.hidden = !active || checkout.visible === false;
-        restore.hidden = !active || checkout.visible !== false;
+        $('sale-about').textContent = bookAbout(sale);
+        $('sale-proof').href = `${url}/${encodeURIComponent(sale.id)}/proof.pdf`;
+        $('sale-print').hidden = !operator;
+        if (operator) $('sale-print').href = `${url}/${encodeURIComponent(sale.id)}/letters.pdf`;
+        $('buy').href = checkout.checkoutUrl;
+        $('close-checkout').hidden = checkout.visible === false;
+        $('restore-checkout').hidden = checkout.visible !== false;
         $('checkout-expires').setAttribute('data-listed-until', expires.toISOString());
-
-        if (active) {
-            buy.href = checkout.checkoutUrl;
-            $('checkout-expires').textContent =
-                checkout.visible === false
-                    ? `Available until ${date} (${remaining(expires)}), but hidden from the archive toolbar.`
-                    : `Available until ${date} (${remaining(expires)}). This link can be shared; ` +
-                      'anybody who has it can order their own copy.';
-        } else {
-            $('checkout-expires').textContent =
-                `The previous checkout page expired on ${date}. You can make a new one.`;
-        }
+        $('checkout-expires').textContent =
+            checkout.visible === false
+                ? `Available until ${date} (${remaining(expires)}), but hidden from the archive toolbar.`
+                : `Available until ${date} (${remaining(expires)}). This link can be shared; ` +
+                  'anybody who has it can order their own copy.';
+        $('sale').hidden = false;
     }
 
     const show = (message) => {
@@ -128,6 +125,21 @@
         const finished = $('finished');
         const make = $('make');
 
+        if ('sale' in status) {
+            if (status.sale?.id !== sale?.id) $('sale-said').textContent = '';
+            sale = status.sale;
+        }
+        if (typeof status.operator === 'boolean') operator = status.operator;
+        if (status.id) {
+            if (newest && status.id !== newest) $('order-said').textContent = '';
+            newest = status.id;
+            current = { ...current, ...status };
+        }
+
+        drawSale();
+        $('make-note').hidden = !sale;
+        make.textContent = sale ? 'Make a revised version' : 'Make the book';
+
         if (status.state === 'building') {
             said.textContent =
                 'Assembling your book from the archive. This takes a few minutes. You can leave this page and return shortly to review the proof.';
@@ -153,17 +165,15 @@
 
         said.textContent = '';
 
-        const when = new Date(status.builtAt);
-        const made = Number.isNaN(when.getTime())
-            ? ''
-            : ` on ${when.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}`;
+        // The live checkout owns this exact build. Its proof is pinned in the
+        // sale panel rather than duplicated as the latest draft.
+        if (sale?.id === status.id) {
+            finished.hidden = true;
+            return;
+        }
 
-        // Sheets rather than leaves, because that is what the printer counts
-        // and what the book will physically be. Short archives are padded up
-        // to two dozen, so this is often more than the letters account for.
-        $('about').textContent =
-            `${status.letters} letter${status.letters === 1 ? '' : 's'}, ` +
-            `${status.pages} pages, made${made}.`;
+        $('book-heading').textContent = sale ? 'Latest draft' : 'Your book';
+        $('about').textContent = bookAbout(status);
 
         $('proof').href = `${url}/${encodeURIComponent(status.id)}/proof.pdf`;
         const print = $('print');
@@ -171,24 +181,27 @@
         if (status.operator) print.href = `${url}/${encodeURIComponent(status.id)}/letters.pdf`;
         finished.hidden = false;
 
-        // A checkout belongs to one book. Rebuilding replaces the book, so
-        // the link from the last one is put away rather than left sitting
-        // under a different set of letters.
-        if (status.id !== newest) {
-            newest = status.id;
-            $('order-said').textContent = '';
-        }
-        drawCheckout(status.checkout);
-
         // Hidden entirely where the printer is not configured, rather than
         // shown and then apologetic. An environment without the keys has no
         // way to sell a book and should not offer to.
         $('printing').hidden = !status.printing;
+        $('checkout-blocked').hidden = !sale;
+        $('order-controls').hidden = Boolean(sale);
 
-        // The button stays live and still says "make the book", because a
-        // book made before the last three letters arrived is exactly the
-        // thing an owner comes back here to redo.
-        $('make').textContent = 'Make it again';
+        const expired = status.checkout && status.checkout.active === false
+            ? new Date(status.checkout.listedUntil)
+            : null;
+        $('checkout-expired').hidden = !expired || Number.isNaN(expired.getTime());
+        if (expired && !Number.isNaN(expired.getTime())) {
+            $('checkout-expired').textContent =
+                `The previous checkout expired on ${expired.toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                })}. You can make a new one.`;
+        }
+
+        make.textContent = sale ? 'Make a revised version' : 'Make it again';
     }
 
     function stopWatching() {
@@ -714,12 +727,21 @@
             return;
         }
 
-        drawCheckout({
-            active: true,
-            checkoutUrl: body.checkoutUrl,
-            listedUntil: body.listedUntil,
-            visible: body.visible !== false
-        });
+        sale = {
+            id: newest,
+            builtAt: current.builtAt,
+            pages: current.pages,
+            letters: current.letters,
+            checkout: {
+                active: true,
+                checkoutUrl: body.checkoutUrl,
+                listedUntil: body.listedUntil,
+                visible: body.visible !== false
+            }
+        };
+        $('sale-said').textContent = '';
+        current = { ...current, sale };
+        draw(current);
         // Said out loud rather than only shown, because pressing the button a
         // second time when a checkout already exists gives back the same link
         // and would otherwise look like nothing happened.
@@ -729,23 +751,23 @@
     }
 
     async function changeCheckoutVisibility(visible) {
-        if (!newest) return;
+        if (!sale?.id) return;
 
         const button = visible ? $('restore-checkout') : $('close-checkout');
-        const orderSaid = $('order-said');
+        const saleSaid = $('sale-said');
         button.disabled = true;
-        orderSaid.textContent = visible ? 'Restoring\u2026' : 'Closing\u2026';
+        saleSaid.textContent = visible ? 'Restoring\u2026' : 'Closing\u2026';
 
         let response;
         try {
-            response = await fetch(`/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(newest)}`, {
+            response = await fetch(`/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(sale.id)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ visible })
             });
         } catch {
             button.disabled = false;
-            orderSaid.textContent = 'Could not reach the server. Nothing has changed.';
+            saleSaid.textContent = 'Could not reach the server. Nothing has changed.';
             return;
         }
 
@@ -754,17 +776,21 @@
         button.disabled = false;
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
-            orderSaid.textContent = body.error ?? 'That did not work. Nothing has changed.';
+            saleSaid.textContent = body.error ?? 'That did not work. Nothing has changed.';
             return;
         }
 
-        drawCheckout({
-            active: true,
-            checkoutUrl: body.checkoutUrl,
-            listedUntil: body.listedUntil,
-            visible: body.visible
-        });
-        orderSaid.textContent = visible
+        sale = {
+            ...sale,
+            checkout: {
+                ...sale.checkout,
+                checkoutUrl: body.checkoutUrl,
+                listedUntil: body.listedUntil,
+                visible: body.visible
+            }
+        };
+        drawSale();
+        saleSaid.textContent = visible
             ? 'Buy a Book is visible in the archive again.'
             : 'Buy a Book is now hidden from the archive.';
     }

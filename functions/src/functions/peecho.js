@@ -2,7 +2,7 @@ import { app } from '@azure/functions';
 import { blobStore, signingKey } from '../lib/clients.js';
 import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../lib/claimtoken.js';
-import { noteOrder, readActiveCheckout, readOrder } from '../lib/orders.js';
+import { noteOrder, readActiveCheckout, readLiveCheckout, readOrder } from '../lib/orders.js';
 import {
     createPublication,
     publicationBody,
@@ -136,6 +136,13 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
             listedUntil: existing.order.listedUntil,
             visible: !existing.order.checkoutHiddenAt,
             reused: true
+        });
+    }
+
+    const live = await readLiveCheckout({ store, slug });
+    if (live) {
+        return json(409, {
+            error: 'another version of this book already has an active checkout page'
         });
     }
 

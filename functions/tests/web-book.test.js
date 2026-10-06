@@ -130,10 +130,14 @@ describe('the finished book actions', () => {
         operator = false,
         cover = null,
         checkout = null,
+        sale = null,
+        book = {},
         order = null,
         visibility = null
     } = {}) => {
         const view = page({ html: 'book.html', path: '/book/elder.example' });
+        view.context.setTimeout = () => 1;
+        view.context.clearTimeout = () => {};
         const net = fetching(async (url, init) => {
             if (url.endsWith('/cover')) return cover ? { body: cover } : { status: 404 };
             if (init.method === 'POST' && url.includes('/api/print/')) return { body: order };
@@ -154,7 +158,9 @@ describe('the finished book actions', () => {
                     letters: 3,
                     printing: true,
                     operator,
-                    checkout
+                    checkout,
+                    sale,
+                    ...book
                 }
             };
         });
@@ -194,34 +200,41 @@ describe('the finished book actions', () => {
 
     test('shows an active checkout immediately with its expiration', async () => {
         const listedUntil = '2099-04-03T23:54:54.009Z';
+        const checkout = {
+            active: true,
+            visible: true,
+            checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
+            listedUntil
+        };
         const view = await open({
-            checkout: {
-                active: true,
-                visible: true,
-                checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
-                listedUntil
+            checkout,
+            sale: {
+                id: 'book-1',
+                builtAt: '2026-09-12T12:00:00.000Z',
+                pages: 24,
+                letters: 3,
+                checkout
             }
         });
 
-        assert.equal(view.el('checkout').hidden, false);
-        assert.equal(view.el('buy').hidden, false);
+        assert.equal(view.el('sale').hidden, false);
+        assert.equal(view.el('finished').hidden, true);
         assert.match(view.el('buy').href, /peecho\.com\/checkout/);
-        assert.equal(view.el('order').hidden, true);
         assert.equal(view.el('close-checkout').hidden, false);
         assert.equal(view.el('restore-checkout').hidden, true);
         assert.equal(view.el('checkout-expires').getAttribute('data-listed-until'), listedUntil);
         assert.match(view.text('checkout-expires'), /remaining/);
+        assert.equal(view.text('make'), 'Make a revised version');
     });
 
     test('an expired checkout is not presented as an active link', async () => {
         const listedUntil = '2020-04-03T23:54:54.009Z';
         const view = await open({ checkout: { active: false, listedUntil } });
 
-        assert.equal(view.el('checkout').hidden, false);
-        assert.equal(view.el('buy').hidden, true);
-        assert.equal(view.el('order').hidden, false);
-        assert.equal(view.el('checkout-expires').getAttribute('data-listed-until'), listedUntil);
-        assert.match(view.text('checkout-expires'), /expired/);
+        assert.equal(view.el('sale').hidden, true);
+        assert.equal(view.el('checkout-expired').hidden, false);
+        assert.equal(view.el('order-controls').hidden, false);
+        assert.match(view.text('checkout-expired'), /expired/);
     });
 
     test('a newly created checkout updates the existing status panel', async () => {
@@ -237,24 +250,30 @@ describe('the finished book actions', () => {
         await view.el('order').dispatch('click');
         await settled();
 
-        assert.equal(view.el('checkout').hidden, false);
-        assert.equal(view.el('buy').hidden, false);
-        assert.equal(view.el('order').hidden, true);
+        assert.equal(view.el('sale').hidden, false);
+        assert.equal(view.el('finished').hidden, true);
         assert.equal(view.el('checkout-expires').getAttribute('data-listed-until'), listedUntil);
     });
 
     test('closes and restores only the archive toolbar entry', async () => {
         const listedUntil = '2099-04-03T23:54:54.009Z';
         const checkoutUrl = 'https://www.peecho.com/checkout/print/en/a-book?token=secret';
+        const checkout = { active: true, visible: true, checkoutUrl, listedUntil };
         const view = await open({
-            checkout: { active: true, visible: true, checkoutUrl, listedUntil },
+            checkout,
+            sale: {
+                id: 'book-1',
+                builtAt: '2026-09-12T12:00:00.000Z',
+                pages: 24,
+                letters: 3,
+                checkout
+            },
             visibility: { checkoutUrl, listedUntil }
         });
 
         await view.el('close-checkout').dispatch('click');
         await settled();
 
-        assert.equal(view.el('buy').hidden, false);
         assert.equal(view.el('close-checkout').hidden, true);
         assert.equal(view.el('restore-checkout').hidden, false);
         assert.match(view.text('checkout-expires'), /hidden from the archive toolbar/);
@@ -264,6 +283,64 @@ describe('the finished book actions', () => {
 
         assert.equal(view.el('close-checkout').hidden, false);
         assert.equal(view.el('restore-checkout').hidden, true);
-        assert.match(view.text('order-said'), /visible in the archive again/);
+        assert.match(view.text('sale-said'), /visible in the archive again/);
+    });
+
+    test('keeps the sale proof pinned beside a newer draft', async () => {
+        const listedUntil = '2099-04-03T23:54:54.009Z';
+        const checkout = {
+            active: true,
+            visible: true,
+            checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
+            listedUntil
+        };
+        const view = await open({
+            book: {
+                id: 'book-2',
+                builtAt: '2026-10-05T12:00:00.000Z',
+                pages: 30,
+                letters: 4
+            },
+            sale: {
+                id: 'book-1',
+                builtAt: '2026-09-12T12:00:00.000Z',
+                pages: 24,
+                letters: 3,
+                checkout
+            }
+        });
+
+        assert.match(view.el('sale-proof').href, /\/book-1\/proof\.pdf$/);
+        assert.match(view.el('proof').href, /\/book-2\/proof\.pdf$/);
+        assert.equal(view.el('sale').hidden, false);
+        assert.equal(view.el('finished').hidden, false);
+        assert.equal(view.text('book-heading'), 'Latest draft');
+        assert.equal(view.el('checkout-blocked').hidden, false);
+        assert.equal(view.el('order-controls').hidden, true);
+        assert.equal(view.text('make'), 'Make a revised version');
+    });
+
+    test('keeps the sale proof available while a revised version is building', async () => {
+        const checkout = {
+            active: true,
+            visible: true,
+            checkoutUrl: 'https://www.peecho.com/checkout/print/en/a-book?token=secret',
+            listedUntil: '2099-04-03T23:54:54.009Z'
+        };
+        const view = await open({
+            book: { id: 'book-2', state: 'building' },
+            sale: {
+                id: 'book-1',
+                builtAt: '2026-09-12T12:00:00.000Z',
+                pages: 24,
+                letters: 3,
+                checkout
+            }
+        });
+
+        assert.equal(view.el('sale').hidden, false);
+        assert.match(view.el('sale-proof').href, /\/book-1\/proof\.pdf$/);
+        assert.equal(view.el('finished').hidden, true);
+        assert.equal(view.el('make').disabled, true);
     });
 });

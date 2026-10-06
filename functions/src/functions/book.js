@@ -28,7 +28,7 @@ import {
     runBook,
     STATE
 } from '../lib/publish.js';
-import { readOrder } from '../lib/orders.js';
+import { readLiveCheckout, readOrder } from '../lib/orders.js';
 import { setting } from '../lib/settings.js';
 
 const CONFIG = 'config';
@@ -57,7 +57,7 @@ const checkoutForThePage = (found, now) => {
     };
 };
 
-const forThePage = (status, viaOperator = false, checkout = null) => ({
+const forThePage = (status, viaOperator = false, checkout = null, sale = null) => ({
     id: status.id,
     state: status.state,
     requestedAt: status.requestedAt,
@@ -71,6 +71,7 @@ const forThePage = (status, viaOperator = false, checkout = null) => ({
     // switched on yet" -- is a control that exists to apologize.
     printing: Boolean(setting('PEECHO_API_KEY')),
     checkout,
+    sale,
     // The unmarked, press-resolution file is an operational diagnostic. The
     // family reviews the marked proof and the printer receives its own signed
     // URL through checkout, so only an operator needs this direct download.
@@ -136,14 +137,42 @@ export async function progress({ request, context, store, now = () => new Date()
     const found = await wanted({ store, slug: gated.slug, id: request.params.id });
     if (!found) return json(404, { error: 'no book has been asked for yet' });
 
-    const order = await readOrder({ store, slug: gated.slug, id: found.id });
+    const at = now();
+    const [order, live] = await Promise.all([
+        readOrder({ store, slug: gated.slug, id: found.id }),
+        readLiveCheckout({ store, slug: gated.slug, now: () => at })
+    ]);
+    const saleBook = live
+        ? live.id === found.id
+            ? found
+            : await readBook({ store, slug: gated.slug, id: live.id })
+        : null;
+    const sale = saleBook?.state === STATE.ready
+        ? {
+              id: saleBook.id,
+              builtAt: saleBook.builtAt,
+              pages: saleBook.pages,
+              letters: saleBook.letters,
+              checkout: {
+                  active: true,
+                  visible: live.visible,
+                  checkoutUrl: live.checkoutUrl,
+                  listedUntil: live.listedUntil
+              }
+          }
+        : null;
 
     // `viaOperator` is intentionally false when an operator is also an owner
     // in this archive's ACL. This control is about who the person is, not which
     // of their two permissions happened to admit them.
     return json(
         200,
-        forThePage(found, isOperator(gated.principal.email), checkoutForThePage(order, now()))
+        forThePage(
+            found,
+            isOperator(gated.principal.email),
+            checkoutForThePage(order, at),
+            sale
+        )
     );
 }
 

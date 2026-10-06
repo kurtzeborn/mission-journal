@@ -354,6 +354,48 @@ describe('ordering a printed copy', () => {
         });
     });
 
+    test('a revised book cannot create a second checkout while the first is live', async () => {
+        await withPrinting(async () => {
+            const store = withABook();
+            const revised = '20261005T120000Z-revised';
+            store.blobs.set(`books/${SLUG}/${revised}/status.json`, {
+                bytes: Buffer.from(JSON.stringify({
+                    id: revised,
+                    slug: SLUG,
+                    state: 'ready',
+                    pages: 52,
+                    letters: 13
+                })),
+                metadata: {},
+                etag: 'etag-revised'
+            });
+            store.blobs.set(`books/${SLUG}/${BOOK}/order.json`, {
+                bytes: Buffer.from(JSON.stringify({
+                    checkoutUrl: 'https://www.peecho.com/checkout/print/en/original?token=secret',
+                    listedUntil: '2099-01-01T00:00:00.000Z',
+                    checkoutHiddenAt: '2026-10-05T12:00:00.000Z'
+                })),
+                metadata: {},
+                etag: 'etag-order'
+            });
+            const { fetchImpl, calls } = answering({
+                secure_publication_id: 'should-not-exist',
+                token: 'unused'
+            });
+
+            const response = await order({
+                request: request({ email: OWNER, params: { slug: SLUG, id: revised } }),
+                context: silent,
+                store,
+                key: KEY,
+                fetchImpl
+            });
+
+            assert.equal(response.status, 409);
+            assert.equal(calls.length, 0);
+        });
+    });
+
     test('a reader cannot put the family into a shop', async () => {
         await withPrinting(async () => {
             const response = await order({

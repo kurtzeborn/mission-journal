@@ -504,6 +504,58 @@ describe('the book handlers', () => {
         });
     });
 
+    test('a live checkout keeps its own proof pinned when a newer draft exists', async () => {
+        const store = printable();
+        const saleId = '20261001T120000Z-sale';
+        const draftId = '20261005T120000Z-draft';
+        for (const [id, builtAt, pages, letters] of [
+            [saleId, '2026-10-01T12:00:00.000Z', 24, 3],
+            [draftId, '2026-10-05T12:00:00.000Z', 30, 4]
+        ]) {
+            store.blobs.set(`${BOOKS}/${statusName(SLUG, id)}`, {
+                bytes: Buffer.from(JSON.stringify({
+                    id,
+                    slug: SLUG,
+                    state: 'ready',
+                    builtAt,
+                    pages,
+                    letters
+                })),
+                metadata: {},
+                etag: `etag-${id}`
+            });
+        }
+        store.blobs.set(`${BOOKS}/${orderName(SLUG, saleId)}`, {
+            bytes: Buffer.from(JSON.stringify({
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/sale?token=secret',
+                listedUntil: '2027-02-01T12:00:00.000Z'
+            })),
+            metadata: {},
+            etag: 'etag-order'
+        });
+
+        const response = await progress({
+            request: asOwner(),
+            context: silent,
+            store,
+            now: () => new Date('2026-10-05T13:00:00.000Z')
+        });
+
+        assert.equal(response.jsonBody.id, draftId);
+        assert.deepEqual(response.jsonBody.sale, {
+            id: saleId,
+            builtAt: '2026-10-01T12:00:00.000Z',
+            pages: 24,
+            letters: 3,
+            checkout: {
+                active: true,
+                visible: true,
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/sale?token=secret',
+                listedUntil: '2027-02-01T12:00:00.000Z'
+            }
+        });
+    });
+
     test('an unfinished book cannot be fetched in either form', async () => {
         const store = printable();
         await publish({ request: asOwner(), context: silent, store });
