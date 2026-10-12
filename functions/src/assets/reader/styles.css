@@ -61,6 +61,31 @@ body {
     line-height: 1.6;
 }
 
+.manager-strip {
+    display: none;
+}
+
+@media (min-width: 64rem) {
+    .manager-strip {
+        min-height: 1rem;
+        padding: 0.05rem 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: #e7e5e4;
+        border-bottom: 1px solid #d6d3d1;
+        color: #292524;
+        font: 11px/1.2 Arial, sans-serif;
+    }
+
+    .manager-strip__link {
+        color: inherit;
+        font-size: 12px;
+        line-height: 1;
+        text-decoration: none;
+    }
+}
+
 .wrap {
     max-width: var(--measure);
     margin: 0 auto;

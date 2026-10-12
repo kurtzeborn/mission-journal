@@ -26,11 +26,13 @@ import { app } from '@azure/functions';
 import { blobStore, tableStore } from '../lib/clients.js';
 import { jsonResponse as json, operatorGate } from '../lib/api.js';
 import { pendingDeletions, restoreSite } from '../lib/deletion.js';
-import { serviceFlow } from '../lib/flow.js';
-import { serviceStats } from '../lib/stats.js';
+import { serviceFlow, STATE } from '../lib/flow.js';
+import { serviceAudience, serviceStats } from '../lib/stats.js';
 import { validSlug } from '../lib/paths.js';
 
 const account = () => process.env.STORAGE_ACCOUNT_NAME;
+const SUMMARY_CACHE_MS = 60 * 1000;
+let summaryCache = null;
 
 async function list(request, context) {
     const gated = operatorGate({ request, log: context });
@@ -53,6 +55,45 @@ export async function stats(request, context, store = blobStore(), tables = tabl
     if (gated.denied) return gated.denied;
 
     return json(200, await serviceStats({ store, tables, log: context }));
+}
+
+export async function summary(
+    request,
+    context,
+    store = blobStore(),
+    tables = tableStore(),
+    now = () => new Date()
+) {
+    const gated = operatorGate({ request, log: context });
+    if (gated.denied) return gated.denied;
+
+    const current = now();
+    const at = current.getTime();
+    if (
+        summaryCache?.store === store &&
+        summaryCache?.tables === tables &&
+        summaryCache.expiresAt > at
+    ) {
+        return json(200, summaryCache.value);
+    }
+
+    const [flow, audience] = await Promise.all([
+        serviceFlow({ store, tables }),
+        serviceAudience({ tables, log: context, now: () => current })
+    ]);
+
+    const count = (state) => flow.archives.filter((archive) => archive.state === state).length;
+
+    const value = {
+        archives: count(STATE.live),
+        pending: count(STATE.pending),
+        deleted: count(STATE.deleted),
+        users: audience.totals.people,
+        monthlyActive: audience.totals.monthly
+    };
+
+    summaryCache = { store, tables, expiresAt: at + SUMMARY_CACHE_MS, value };
+    return json(200, value);
 }
 
 async function restore(request, context) {
@@ -98,6 +139,13 @@ app.http('service-stats', {
     authLevel: 'anonymous',
     route: 'manage/stats',
     handler: stats
+});
+
+app.http('service-summary', {
+    methods: ['GET'],
+    authLevel: 'anonymous',
+    route: 'manage/summary',
+    handler: summary
 });
 
 app.http('deletions-restore', {

@@ -11,11 +11,13 @@ import assert from 'node:assert/strict';
 
 import { memoryStore } from './memory-store.js';
 import { serviceStats } from '../src/lib/stats.js';
-import { stats } from '../src/functions/deletions.js';
+import { stats, summary } from '../src/functions/deletions.js';
 import { touchSiteActivity } from '../src/lib/sites.js';
 import { recordMembership } from '../src/lib/memberships.js';
 import { recordVisit } from '../src/lib/visits.js';
 import { ROLE } from '../src/lib/acl.js';
+import { DELETION_RECORD } from '../src/lib/deletion.js';
+import { TABLES } from '../src/lib/tables.js';
 
 const OPERATOR = 'scott@example.org';
 const silent = { info() {}, warn() {}, error() {} };
@@ -196,6 +198,125 @@ describe('the stats route', () => {
         const response = await ask(OPERATOR, memoryStore());
 
         assert.match(response.headers['Cache-Control'], /no-store/);
+    });
+});
+
+describe('the manager strip summary', () => {
+    const signedIn = (email) =>
+        email
+            ? Buffer.from(JSON.stringify({ userDetails: email, identityProvider: 'google' })).toString('base64')
+            : null;
+
+    const asking = (email) => ({
+        method: 'GET',
+        url: 'https://example.org/api/manage/summary',
+        headers: { get: (name) => (name === 'x-ms-client-principal' ? signedIn(email) : null) }
+    });
+
+    const ask = async (email, store) => {
+        const before = process.env.OPERATOR_EMAILS;
+        process.env.OPERATOR_EMAILS = OPERATOR;
+        try {
+            return await summary(asking(email), silent, store, store);
+        } finally {
+            if (before === undefined) delete process.env.OPERATOR_EMAILS;
+            else process.env.OPERATOR_EMAILS = before;
+        }
+    };
+
+    test('returns only the five existing management counts', async () => {
+        const store = memoryStore();
+        await archive(store, 'elder.live', [letter()]);
+        await archive(store, 'elder.deleted', [letter()]);
+        await store.upsertEntity(TABLES.deletions, {
+            partitionKey: 'elder.deleted',
+            rowKey: DELETION_RECORD,
+            deletedAt: '2026-08-01T00:00:00.000Z',
+            purgeAfter: '2026-08-31T00:00:00.000Z'
+        });
+        await store.writeBlob('pending', 'elder.pending/01.eml', Buffer.from('raw'));
+        await store.writeBlob(
+            'pending',
+            'elder.pending/claim.json',
+            Buffer.from(JSON.stringify({
+                slug: 'elder.pending',
+                lastMessageAt: '2026-08-10T00:00:00.000Z',
+                expiresAt: '2026-09-10T00:00:00.000Z'
+            }))
+        );
+        await recordMembership({
+            tables: store,
+            email: 'mum@example.com',
+            slug: 'elder.live',
+            role: ROLE.owner
+        });
+        await recordMembership({
+            tables: store,
+            email: 'gran@example.com',
+            slug: 'elder.live',
+            role: ROLE.reader
+        });
+        await recordVisit({
+            tables: store,
+            slug: 'elder.live',
+            email: 'gran@example.com',
+            now: () => new Date()
+        });
+
+        const response = await ask(OPERATOR, store);
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(response.jsonBody, {
+            archives: 1,
+            pending: 1,
+            deleted: 1,
+            users: 2,
+            monthlyActive: 1
+        });
+    });
+
+    test('sends no counts to somebody who is signed out or not a manager', async () => {
+        const store = memoryStore();
+        await archive(store, 'elder.live', [letter()]);
+        await ask(OPERATOR, store);
+
+        assert.equal((await ask(null, store)).status, 401);
+        assert.equal((await ask('mum@example.com', store)).status, 404);
+    });
+
+    test('reuses the strip summary for one minute, then refreshes it', async () => {
+        const store = memoryStore();
+        await archive(store, 'elder.live', [letter()]);
+        let now = new Date('2026-08-16T12:00:00.000Z');
+
+        const before = process.env.OPERATOR_EMAILS;
+        process.env.OPERATOR_EMAILS = OPERATOR;
+        try {
+            const first = await summary(asking(OPERATOR), silent, store, store, () => now);
+
+            await store.writeBlob('pending', 'elder.pending/01.eml', Buffer.from('raw'));
+            await store.writeBlob(
+                'pending',
+                'elder.pending/claim.json',
+                Buffer.from(JSON.stringify({
+                    slug: 'elder.pending',
+                    lastMessageAt: '2026-08-16T12:00:10.000Z',
+                    expiresAt: '2026-09-16T12:00:10.000Z'
+                }))
+            );
+
+            now = new Date('2026-08-16T12:00:30.000Z');
+            const cached = await summary(asking(OPERATOR), silent, store, store, () => now);
+            now = new Date('2026-08-16T12:01:01.000Z');
+            const refreshed = await summary(asking(OPERATOR), silent, store, store, () => now);
+
+            assert.equal(first.jsonBody.pending, 0);
+            assert.equal(cached.jsonBody.pending, 0);
+            assert.equal(refreshed.jsonBody.pending, 1);
+        } finally {
+            if (before === undefined) delete process.env.OPERATOR_EMAILS;
+            else process.env.OPERATOR_EMAILS = before;
+        }
     });
 });
 
