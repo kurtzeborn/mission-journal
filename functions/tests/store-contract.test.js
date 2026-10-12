@@ -46,41 +46,23 @@ const TEST_ONLY = new Set(['acl', 'blobs', 'conflictOnce', 'json', 'queues', 'se
 const NOT_FAKED = new Set([]);
 
 describe('the memory store and the real store agree', () => {
-    test('every method production code can reach on the fake exists on the real store', () => {
+    test('the fake and production stores expose compatible production surfaces', () => {
         const real = realSurface();
+        const fake = new Set(Object.keys(memoryStore()));
         const missing = Object.keys(memoryStore())
             .filter((name) => !TEST_ONLY.has(name))
             .filter((name) => !real.has(name));
-
-        assert.deepEqual(
-            missing,
-            [],
-            `the fake offers ${missing.join(', ')}, which the real store does not. ` +
-                'Tests calling it will pass and production will throw.'
-        );
-    });
-
-    test('the fake is missing nothing except what is listed as unfaked', () => {
-        const fake = new Set(Object.keys(memoryStore()));
         const unfaked = [...realSurface()].filter((name) => !fake.has(name)).sort();
-
-        assert.deepEqual(
-            unfaked,
-            [...NOT_FAKED].sort(),
-            'a real store method is untestable and not declared. Either implement it ' +
-                'on the fake or add it to NOT_FAKED, having decided which.'
-        );
-    });
-
-    test('a test-only helper cannot be quietly promoted to a real method name', () => {
-        const real = realSurface();
         const collisions = [...TEST_ONLY].filter((name) => real.has(name));
 
-        assert.deepEqual(
-            collisions,
-            [],
-            `${collisions.join(', ')} is exempted as a test helper but is now a real ` +
-                'store method, so the exemption is hiding it from the first check.'
-        );
+        assert.deepEqual({
+            fakeOnlyProductionMethods: missing,
+            unfakedProductionMethods: unfaked,
+            helperNameCollisions: collisions
+        }, {
+            fakeOnlyProductionMethods: [],
+            unfakedProductionMethods: [...NOT_FAKED].sort(),
+            helperNameCollisions: []
+        });
     });
 });

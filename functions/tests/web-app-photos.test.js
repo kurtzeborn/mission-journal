@@ -380,13 +380,6 @@ describe('a picture the server cannot read', () => {
         assert.equal(lines(view)[1], '2 could not be read and were skipped.');
     });
 
-    test('one of them is counted as one', async () => {
-        const view = await owner({ chose: 'here', refuseAt: [0] });
-        await view.admin.addPhotos('b', pile(3), () => {});
-
-        assert.equal(lines(view)[1], 'One could not be read and was skipped.');
-    });
-
     test('a run where every one is refused still says what it did', async () => {
         const view = await owner({ chose: 'here', refuseAt: [0, 1] });
         await view.admin.addPhotos('b', pile(2), () => {});

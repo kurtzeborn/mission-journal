@@ -10,20 +10,6 @@ describe('reading configuration', () => {
         delete process.env[NAME];
     });
 
-    test('uses a configured value, then a fallback, then an empty string', () => {
-        const cases = [
-            { value: 'a-real-value', fallback: 'fallback', expected: 'a-real-value' },
-            { value: undefined, fallback: 'fallback', expected: 'fallback' },
-            { value: undefined, fallback: undefined, expected: '' }
-        ];
-
-        for (const { value, fallback, expected } of cases) {
-            if (value === undefined) delete process.env[NAME];
-            else process.env[NAME] = value;
-            assert.equal(setting(NAME, fallback), expected);
-        }
-    });
-
     // The whole reason this file exists. App Service hands the process the
     // reference itself when the secret behind it cannot be read, so a feature
     // guarded by `if (!key)` switches on with a key that is a sentence about

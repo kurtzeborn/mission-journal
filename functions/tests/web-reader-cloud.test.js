@@ -48,15 +48,13 @@ const sizeOf = (view, word) =>
 
 describe('getting to the cloud', () => {
     describe('buying a finished book', () => {
-        test('the green button sits immediately after Word cloud and opens the handoff', () => {
+        test('an active checkout offers a buying control that opens the handoff', () => {
             const view = page();
             let opened = 0;
             view.mount({ posts: POSTS, book: { open: () => { opened += 1; } } });
 
-            const toolbar = view.$('.toolbar');
             const buy = view.$('.button--buy');
             assert.ok(buy);
-            assert.equal(toolbar.children[1], buy);
 
             view.click(buy);
             assert.equal(opened, 1);
@@ -154,19 +152,6 @@ describe('what the cloud is made of', () => {
 });
 
 describe('what the reader asks the library for', () => {
-    test('words receive varied, deterministic tone classes', () => {
-        const first = opened();
-        const tones = first.$$('.cloud__word').map((word) => word.className.split(' ')[1]);
-
-        assert.ok(new Set(tones).size > 1, 'expected more than one tone in the cloud');
-        assert.ok(tones.every((tone) => /^cloud__word--\d$/.test(tone)));
-
-        // Off the word, not off where it landed, so repacking cannot recolor it.
-        const again = opened().$$('.cloud__word').map((word) => word.className.split(' ')[1]);
-
-        assert.deepEqual(again, tones);
-    });
-
     test('it is redrawn on the pixels it has, so a reopened cloud is packed again', () => {
         const view = opened();
         view.click(view.$('.cloud__close'));

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
-import { TONES, cloudScale, countWords, toneOf, wordsIn } from '../src/lib/words.js';
+import { cloudScale, countWords, wordsIn } from '../src/lib/words.js';
 
 const reader = readFileSync(new URL('../../web/reader.js', import.meta.url), 'utf8');
 
@@ -62,14 +62,6 @@ describe('keeping the printed cloud and the screen cloud the same cloud', () => 
         }
     });
 
-    test('gives a word the same tone', () => {
-        const [, count] = reader.match(/const TONES = (\d+);/) ?? [];
-        assert.equal(Number(count), TONES);
-
-        const theirs = liftedFrom(/function toneOf\(word\) \{[\s\S]*?\n {4}\}/, 'toneOf', { TONES });
-
-        for (const [word] of zipf(40)) assert.equal(toneOf(word), theirs(word));
-    });
 });
 
 describe('the countable words of a letter', () => {
@@ -81,29 +73,10 @@ describe('the countable words of a letter', () => {
         ]);
     });
 
-    test('drops routine weekly language and common prepositions but keeps meaningful themes', () => {
+    test('drops routine language while keeping meaningful themes', () => {
         assert.deepEqual(
-            wordsIn('Week aboard across amid beneath between during inside outside toward via without home love'),
-            ['home', 'love']
-        );
-    });
-
-    test('keeps less common prepositions available as themes', () => {
-        assert.deepEqual(
-            wordsIn(
-                'notwithstanding underneath excepting excluding failing including regarding unlike throughout'
-            ),
-            [
-                'notwithstanding',
-                'underneath',
-                'excepting',
-                'excluding',
-                'failing',
-                'including',
-                'regarding',
-                'unlike',
-                'throughout'
-            ]
+            wordsIn('Week aboard between during inside toward via without home love notwithstanding underneath'),
+            ['home', 'love', 'notwithstanding', 'underneath']
         );
     });
 

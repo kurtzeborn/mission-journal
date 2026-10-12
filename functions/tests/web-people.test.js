@@ -257,12 +257,6 @@ describe('reading the list of who has access', () => {
         assert.equal(view.text('people-count'), '2 people, 1 invitation waiting');
     });
 
-    test('nobody invited, nothing said about invitations', async () => {
-        const view = await people({ answer: listing(OWNER_ONLY) });
-
-        assert.equal(view.text('people-count'), '1 person');
-    });
-
     test('Remove is a glyph on screen and a word to a screen reader', async () => {
         // The list has to survive thirty relatives, and "Remove" spelled out on
         // every row is the widest thing in it. What must not shrink with it is

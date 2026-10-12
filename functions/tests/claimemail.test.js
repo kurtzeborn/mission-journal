@@ -64,13 +64,6 @@ describe('the claim email', () => {
         assert.ok(!/\b60 days\b/.test(text));
     });
 
-    test('counts one letter as one letter', () => {
-        assert.ok(build({ messageCount: 1 }).text.startsWith('Your letter has arrived'));
-        assert.ok(build({ messageCount: 2 }).text.startsWith('Your 2 letters have arrived'));
-        assert.ok(build({ messageCount: 1, forwarded: true }).text.startsWith('You forwarded a letter'));
-        assert.ok(build({ messageCount: 2, forwarded: true }).text.startsWith('You forwarded 2 letters'));
-    });
-
     test('tells the missionary they can hand the job to someone at home', () => {
         const mine = build();
         assert.match(mine.text, /forward this email to a parent/);

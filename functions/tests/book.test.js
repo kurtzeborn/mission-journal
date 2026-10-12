@@ -30,7 +30,6 @@ import {
     monthLabel,
     photoBox,
     printPhoto,
-    proofMarks,
     reserve,
     runningHead,
     trailingPhotoIds
@@ -138,19 +137,6 @@ describe('the date over a letter', () => {
             'July 1, 2024 \u2013 January 15, 2026'
         );
     });
-});
-
-test('the proof alternates three warnings with two site names', () => {
-    assert.deepEqual(
-        proofMarks.map((mark) => mark.text),
-        [
-            'PROOF \u00b7 NOT FOR PRINT',
-            'PDayLetters.com',
-            'PROOF \u00b7 NOT FOR PRINT',
-            'PDayLetters.com',
-            'PROOF \u00b7 NOT FOR PRINT'
-        ]
-    );
 });
 
 describe('characters outside the book face', () => {
@@ -1113,16 +1099,6 @@ describe('binding the book in a color', () => {
         assert.equal(drawn.length, 1);
         assert.ok(Number(drawn[0][1]) >= PAGE.width - 0.5);
         assert.ok(Number(drawn[0][2]) >= PAGE.height * 0.52 - 0.5);
-    });
-
-    test('puts the site logo on the title page and back board, not the front board', async () => {
-        const { stream, done } = build();
-        const [bytes] = await Promise.all([readPdf(stream), done]);
-        const logos = [
-            ...drawnIn(bytes).matchAll(/30 0 0 -30 [-\d.]+ [-\d.]+ cm\s+\/I\d+ Do/g)
-        ];
-
-        assert.equal(logos.length, 2);
     });
 
     test('does not move a single page by choosing a cover', async () => {

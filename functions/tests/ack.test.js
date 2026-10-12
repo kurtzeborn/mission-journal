@@ -128,13 +128,9 @@ describe('what the receipt says', () => {
         const body = ackEmail({ author: '', slug: SLUG, baseUrl: 'https://pdayletters.com' });
 
         assert.match(body.text, /The PDayLetters\.com archive for elder\.example/);
-    });
-
-    test('an unknown author leaves no gap in the sentence', async () => {
-        const body = ackEmail({ author: '', slug: SLUG, baseUrl: 'https://pdayletters.com' });
-
         assert.match(body.text, /the letter you forwarded is now in the archive/);
         assert.doesNotMatch(body.text, /letter from\s/);
+        assert.doesNotMatch(body.text, /undefined/);
     });
 
     test('the archive link is built from the slug, escaped', async () => {
