@@ -83,6 +83,36 @@ async function inBatches(items, size, job) {
 export async function serviceStats({ store, tables, log, now }) {
     const sites = await allSiteActivity({ tables });
 
+    const audience = await serviceAudience({ tables, now, log });
+
+    const archives = await inBatches(sites, AT_ONCE, async (site) => ({
+        slug: site.slug,
+        people: audience.peopleBySlug.get(site.slug) ?? 0,
+        daily: audience.bySlug.get(site.slug)?.daily ?? 0,
+        monthly: audience.bySlug.get(site.slug)?.monthly ?? 0,
+        ...(await contentOf({ store, slug: site.slug, log }))
+    }));
+
+    const sum = (field) => archives.reduce((total, archive) => total + archive[field], 0);
+
+    return {
+        totals: {
+            archives: archives.length,
+            letters: sum('letters'),
+            hidden: sum('hidden'),
+            photos: sum('photos'),
+            ...audience.totals
+        },
+        archives
+    };
+}
+
+/**
+ * Service-wide membership and readership counts, without reading archive
+ * content. Shared by the full management report and the small manager strip
+ * so both numbers always mean exactly the same thing.
+ */
+export async function serviceAudience({ tables, now, log }) {
     const memberships = await tables.listEntities(TABLES.memberships);
 
     // How many of those people actually came. Same de-duplication argument as
@@ -99,28 +129,15 @@ export async function serviceStats({ store, tables, log, now }) {
         everyone.add(row.partitionKey);
     }
 
-    const archives = await inBatches(sites, AT_ONCE, async (site) => ({
-        slug: site.slug,
-        people: peopleBySlug.get(site.slug) ?? 0,
-        daily: reading.bySlug.get(site.slug)?.daily ?? 0,
-        monthly: reading.bySlug.get(site.slug)?.monthly ?? 0,
-        ...(await contentOf({ store, slug: site.slug, log }))
-    }));
-
-    const sum = (field) => archives.reduce((total, archive) => total + archive[field], 0);
-
     return {
+        peopleBySlug,
+        bySlug: reading.bySlug,
         totals: {
-            archives: archives.length,
-            letters: sum('letters'),
-            hidden: sum('hidden'),
-            photos: sum('photos'),
             people: everyone.size,
             // Not `sum('daily')`: somebody who opened two archives this morning
             // is one person here and two there, and both readings are wanted.
             daily: reading.totals.daily,
             monthly: reading.totals.monthly
-        },
-        archives
+        }
     };
 }
