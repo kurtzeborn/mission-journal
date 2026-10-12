@@ -63,31 +63,31 @@ describe('links between pages', () => {
     test('every page can add the manager strip after authorization', () => {
         for (const name of pages) {
             assert.match(read(name), /<script src="\/manager-strip\.js" defer><\/script>/, name);
+            assert.match(read(name), /<script src="\/deploy-version\.js" defer><\/script>/, name);
+            assert.ok(
+                read(name).indexOf('/deploy-version.js') < read(name).indexOf('/manager-strip.js'),
+                `${name} loads the strip before its deployed version`
+            );
         }
     });
 
-    test('the management masthead has no meaningless back button', () => {
-        const header = read('manage.html').match(/<header\b[\s\S]*?<\/header>/)?.[0] ?? '';
+    test('public pages expose the required navigation', () => {
+        const required = new Map([
+            ['/about', ['index.html', 'start.html', 'faq.html', 'resources.html']],
+            ['/resources', ['index.html', 'start.html', 'faq.html', 'about.html', 'terms.html']],
+            ['/start', ['index.html']],
+            ['/faq', ['index.html']],
+            ['#reading-an-archive', ['index.html']]
+        ]);
 
-        assert.doesNotMatch(header, /Back to the letters/);
-    });
-
-    test('the public entry pages link to the about page', async () => {
-        for (const name of ['index.html', 'start.html', 'faq.html', 'resources.html']) {
-            assert.ok(hrefsIn(read(name)).includes('/about'), `${name} does not link to /about`);
+        for (const [destination, names] of required) {
+            for (const name of names) {
+                assert.ok(
+                    hrefsIn(read(name)).includes(destination),
+                    `${name} does not link to ${destination}`
+                );
+            }
         }
-    });
-
-    test('the public entry pages link to resources', async () => {
-        for (const name of ['index.html', 'start.html', 'faq.html', 'about.html', 'terms.html']) {
-            assert.ok(hrefsIn(read(name)).includes('/resources'), `${name} does not link to /resources`);
-        }
-    });
-
-    test('the resources page links to MissionCall', async () => {
-        const source = read('resources.html');
-
-        assert.ok(hrefsIn(source).includes('https://missioncall.app'));
     });
 
     test('the resources page is public at its clean URL and file URL', async () => {

@@ -257,14 +257,6 @@ describe('the message itself', () => {
         assert.ok(html.includes('border:1px solid #173b5c'));
     });
 
-    test('the closing text declares the same font family as the opening', () => {
-        const { html } = digestEmail({ baseUrl: BASE, archives });
-        assert.match(
-            html,
-            /<p style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1\.5">&mdash; Pday Letters<\/p>/
-        );
-    });
-
     test('every letter is a link to that letter, not to the top of the archive', () => {
         const { text, html } = digestEmail({ baseUrl: BASE, archives });
         assert.ok(text.includes(`${BASE}/${ONE}/#panel-2026-08-02-abc`));

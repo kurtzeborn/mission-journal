@@ -57,6 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Record deployed commit
+        shell: bash
+        run: printf 'window.PDAY_DEPLOY_SHA = \"%s\";\n' "$GITHUB_SHA" > web/deploy-version.js
+
       - name: Deploy to Static Web Apps
         uses: Azure/static-web-apps-deploy@v1
         with:

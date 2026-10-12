@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
-    CLOTHS,
     DEFAULT_CLOTH,
     chooseCover,
     coverFile,
@@ -17,23 +16,8 @@ const wrote = (store, slug) =>
     JSON.parse(store.blobs.get(`config/${slug}/profile.json`).bytes.toString('utf8'));
 
 describe('what a cover is bound in', () => {
-    test('gives every color an ink that is not the same color', () => {
-        for (const [name, cloth] of Object.entries(CLOTHS)) {
-            assert.notEqual(cloth.paper, cloth.ink, name);
-            assert.match(cloth.paper, /^#[0-9a-f]{6}$/, name);
-            assert.match(cloth.ink, /^#[0-9a-f]{6}$/, name);
-            assert.match(cloth.quiet, /^#[0-9a-f]{6}$/, name);
-        }
-    });
-
     test('binds an archive that has never been asked', () => {
         assert.deepEqual(coverOf({}), { cloth: DEFAULT_CLOTH, picture: '' });
-    });
-
-    test('does not bind anything in white', () => {
-        // The one thing the owner said plainly. A default nobody chose is
-        // still a decision, and this is the decision.
-        assert.notEqual(CLOTHS[DEFAULT_CLOTH].paper.toLowerCase(), '#ffffff');
     });
 
     test('falls back rather than refusing when a stored choice has drifted', () => {

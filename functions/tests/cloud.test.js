@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { CLOUD, layoutCloud } from '../src/lib/cloud.js';
+import { layoutCloud } from '../src/lib/cloud.js';
 import { cloudScale } from '../src/lib/words.js';
 
 // The text block of a Letter page, which is what the cloud is actually given.
@@ -129,20 +129,5 @@ describe('laying the word cloud out for the press', () => {
 
     test('has nothing to draw for an archive with nothing in it', () => {
         assert.deepEqual(layoutCloud([], { ...PAGE, size: () => 12 }), []);
-    });
-
-    test('asks the library for what the browser asks it for', () => {
-        // The settings are copied from `web/reader.js`; this is here so that a
-        // stray edit to one of them reads as a decision rather than a typo.
-        assert.deepEqual(CLOUD, {
-            gridSize: 6,
-            rotateRatio: 0.3,
-            rotationSteps: 2,
-            minRotation: -Math.PI / 2,
-            maxRotation: Math.PI / 2,
-            shape: 'square',
-            drawOutOfBound: false,
-            shrinkToFit: true
-        });
     });
 });

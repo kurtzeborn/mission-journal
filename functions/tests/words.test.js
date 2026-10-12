@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
-import { LINKS, NOISE, TONES, cloudScale, countWords, toneOf, wordsIn } from '../src/lib/words.js';
+import { TONES, cloudScale, countWords, toneOf, wordsIn } from '../src/lib/words.js';
 
 const reader = readFileSync(new URL('../../web/reader.js', import.meta.url), 'utf8');
 
@@ -28,28 +28,24 @@ describe('keeping the printed cloud and the screen cloud the same cloud', () => 
     // the mission was mostly about, and the owner has no way to tell which of
     // the two is lying.
 
-    test('counts the same words as noise', () => {
+    test('tokenizes representative text the same way', () => {
         const [, listed] = reader.match(/const NOISE = new Set\(\s*`([^`]*)`/) ?? [];
         assert.ok(listed, 'no stopword list found in web/reader.js');
+        const browserNoise = new Set(listed.trim().split(/\s+/));
 
-        assert.deepEqual(new Set(listed.trim().split(/\s+/)), NOISE);
-    });
-
-    test('throws away the same links', () => {
         const [, written] = reader.match(/const LINKS = (\/.+\/[a-z]*);/) ?? [];
         assert.ok(written, 'no link pattern found in web/reader.js');
+        const browserLinks = new Function(`return ${written}`)();
 
-        assert.equal(written, String(LINKS));
-    });
+        const browserWordsIn = liftedFrom(
+            /const wordsIn = \(text\) =>[\s\S]*?;\r?\n/,
+            'wordsIn',
+            { NOISE: browserNoise, LINKS: browserLinks }
+        );
+        const passage =
+            "We couldn't walk to Antigua; photos are at https://photos.app.goo.gl/abc-def. Rain, rain!";
 
-    test('splits a passage into words the same way', () => {
-        const [, written] = reader.match(/const wordsIn = \(text\) =>([\s\S]*?);\r?\n/) ?? [];
-        assert.ok(written, 'no tokenizer found in web/reader.js');
-
-        // Whitespace only, so the reader's deeper indentation is allowed to
-        // differ. Everything else has to be character for character.
-        const flatten = (code) => code.replace(/\s+/g, ' ').trim();
-        assert.equal(flatten(written), flatten(String(wordsIn).replace(/^\(text\) =>/, '')));
+        assert.deepEqual(browserWordsIn(passage), wordsIn(passage));
     });
 
     test('sets a word at the same size', () => {

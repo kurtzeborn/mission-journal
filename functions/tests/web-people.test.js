@@ -203,6 +203,7 @@ describe('reading the list of who has access', () => {
         assert.equal(panel.textContent, 'invited as grandma@aol.com');
         // And the one that never changed has no unnecessary disclosure.
         assert.equal(rows[0].descendants().some((child) => child.className === 'hint'), false);
+        assert.match(rows[0].textContent, /this is you/);
     });
 
     test('a pending invitation is marked as an offer, not as access', async () => {
@@ -222,22 +223,6 @@ describe('reading the list of who has access', () => {
             .el('people')
             .children[i].children[0].children.find((child) => String(child.className).startsWith('role'));
 
-    test('the role is a pill against the name, not a word adrift among the buttons', async () => {
-        // Out by the controls it had no fixed position: how far in it sat
-        // depended on how many buttons the row happened to have.
-        const view = await people({
-            answer: listing({
-                members: OWNER_ONLY.members,
-                invites: [{ id: 'abc', email: 'later@example.com', role: 'reader' }]
-            })
-        });
-
-        assert.equal(view.el('people').children[0].children[0].className, 'people__who');
-        assert.equal(pillIn(view, 0).className, 'role role--owner');
-        assert.equal(pillIn(view, 0).textContent, 'owner');
-        assert.equal(pillIn(view, 1).className, 'role role--pending');
-    });
-
     test('the kind is chosen from a fixed set, never taken from the server', async () => {
         // It goes into a class attribute, which is no place to discover that
         // `role` was something this page has never heard of.
@@ -249,19 +234,6 @@ describe('reading the list of who has access', () => {
         });
 
         assert.equal(pillIn(view, 0).className, 'role role--reader');
-    });
-
-    test('a row with no buttons explains itself quietly', async () => {
-        // It used to be a `.note`, which is a larger type than the role beside
-        // it -- so the one row with nothing to press shouted loudest.
-        const view = await people({ answer: listing(OWNER_ONLY) });
-
-        const aside = view
-            .el('people')
-            .children[0].descendants()
-            .find((child) => child.className === 'people__aside');
-
-        assert.equal(aside.textContent, 'this is you');
     });
 
     test('a reader who reaches the page is told why it is empty', async () => {

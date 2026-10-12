@@ -3,16 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 import { fetching, page, run, settled } from './web-dom.js';
 
-const html = readFileSync(new URL('../../web/book.html', import.meta.url), 'utf8')
-    .replace(/<!--[\s\S]*?-->/g, '');
 const script = readFileSync(new URL('../../web/book.js', import.meta.url), 'utf8');
 
 describe('the finished book actions', () => {
-    test('offers the proof and keeps the print file hidden by default', () => {
-        assert.match(html, /id="proof"[^>]*href=/);
-        assert.match(html, /id="print"[^>]*hidden[^>]*>/);
-    });
-
     describe('Foreword and Afterword controls', () => {
         const open = async (initial = { foreword: null, afterword: null }) => {
             let saved = { ...initial };
@@ -172,6 +165,7 @@ describe('the finished book actions', () => {
     test('shows the print file to an operator', async () => {
         const view = await open({ operator: true });
 
+        assert.match(view.el('proof').href, /\/proof\.pdf$/);
         assert.equal(view.el('print').hidden, false);
         assert.match(view.el('print').href, /\/letters\.pdf$/);
     });
@@ -179,6 +173,7 @@ describe('the finished book actions', () => {
     test('does not show the print file to an archive owner', async () => {
         const view = await open();
 
+        assert.match(view.el('proof').href, /\/proof\.pdf$/);
         assert.equal(view.el('print').hidden, true);
     });
 

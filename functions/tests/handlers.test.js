@@ -614,7 +614,13 @@ describe('the book handlers', () => {
         assert.ok(response.jsonBody.cloth);
         // The hexes come down the wire so the page and the PDF cannot end up
         // with two different ideas of what navy is.
-        assert.ok(response.jsonBody.cloths.every((entry) => entry.name && entry.paper));
+        for (const entry of response.jsonBody.cloths) {
+            assert.ok(entry.name);
+            assert.match(entry.paper, /^#[0-9a-f]{6}$/);
+            assert.match(entry.ink, /^#[0-9a-f]{6}$/);
+            assert.match(entry.quiet, /^#[0-9a-f]{6}$/);
+            assert.notEqual(entry.paper, entry.ink);
+        }
     });
 
     test('a color is saved without disturbing the name', async () => {

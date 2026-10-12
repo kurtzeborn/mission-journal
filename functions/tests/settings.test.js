@@ -10,18 +10,18 @@ describe('reading configuration', () => {
         delete process.env[NAME];
     });
 
-    test('a setting that is there is the setting', () => {
-        process.env[NAME] = 'a-real-value';
+    test('uses a configured value, then a fallback, then an empty string', () => {
+        const cases = [
+            { value: 'a-real-value', fallback: 'fallback', expected: 'a-real-value' },
+            { value: undefined, fallback: 'fallback', expected: 'fallback' },
+            { value: undefined, fallback: undefined, expected: '' }
+        ];
 
-        assert.equal(setting(NAME, 'fallback'), 'a-real-value');
-    });
-
-    test('a setting that is not there is the fallback', () => {
-        assert.equal(setting(NAME, 'fallback'), 'fallback');
-    });
-
-    test('a setting with nothing to fall back on is empty rather than undefined', () => {
-        assert.equal(setting(NAME), '');
+        for (const { value, fallback, expected } of cases) {
+            if (value === undefined) delete process.env[NAME];
+            else process.env[NAME] = value;
+            assert.equal(setting(NAME, fallback), expected);
+        }
     });
 
     // The whole reason this file exists. App Service hands the process the

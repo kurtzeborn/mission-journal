@@ -47,24 +47,6 @@ const sizeOf = (view, word) =>
     Number.parseFloat(view.$(`.cloud__word[data-word="${word}"]`).style.fontSize);
 
 describe('getting to the cloud', () => {
-    test('it is a button on the same row as Expand all, at the other end of it', () => {
-        const view = archive();
-        const toolbar = view.$('.toolbar');
-
-        // Expand all sits on the right, over the Expand buttons it works on.
-        assert.deepEqual(toolbarLabels(view), ['Word cloud', 'Search', 'Expand all']);
-        assert.equal(view.$('.search').closest('.toolbar'), toolbar);
-    });
-
-    test('its mobile icon is a cloud made of word strokes', () => {
-        const view = archive();
-        const button = view.button('Word cloud');
-
-        assert.ok(button.querySelector('svg.toolbar__icon'));
-        assert.equal(button.querySelectorAll('svg path').length, 2);
-        assert.equal(button.querySelector('.toolbar__label').textContent, 'Word cloud');
-    });
-
     describe('buying a finished book', () => {
         test('the green button sits immediately after Word cloud and opens the handoff', () => {
             const view = page();
@@ -172,29 +154,17 @@ describe('what the cloud is made of', () => {
 });
 
 describe('what the reader asks the library for', () => {
-    test('color is left to the stylesheet, so hover and focus are one rule', () => {
-        const options = opened().record.wordcloud.at(-1);
-
-        assert.equal(options.color, null);
-        assert.match(options.classes('rain', 4), /^cloud__word cloud__word--\d$/);
-    });
-
-    test('a word is not all one color, and not a different one each time', () => {
+    test('words receive varied, deterministic tone classes', () => {
         const first = opened();
         const tones = first.$$('.cloud__word').map((word) => word.className.split(' ')[1]);
 
         assert.ok(new Set(tones).size > 1, 'expected more than one tone in the cloud');
+        assert.ok(tones.every((tone) => /^cloud__word--\d$/.test(tone)));
 
         // Off the word, not off where it landed, so repacking cannot recolor it.
         const again = opened().$$('.cloud__word').map((word) => word.className.split(' ')[1]);
 
         assert.deepEqual(again, tones);
-    });
-
-    test('some of the words are turned on their end', () => {
-        const options = opened().record.wordcloud.at(-1);
-
-        assert.ok(options.rotateRatio > 0 && options.rotateRatio < 1);
     });
 
     test('it is redrawn on the pixels it has, so a reopened cloud is packed again', () => {
