@@ -20,6 +20,9 @@ function only(bodyHtml, extra) {
 
 const frames = (body) => [...body.querySelectorAll('.photo')];
 const rows = (body) => [...body.querySelectorAll('.photo-row')];
+const historySettled = async () => {
+    for (let i = 0; i < 5; i += 1) await new Promise((resume) => setTimeout(resume, 0));
+};
 
 describe('finding the photos in a letter', () => {
     test('every stored photo is repointed and remembers what was stored', () => {
@@ -250,6 +253,30 @@ describe('opening a photo full size', () => {
         // property rather than its attribute. Harmless -- in the downloaded
         // archive it resolves against the folder and still points at the file.
         assert.equal(view.enlarged(), `https://pdayletters.com${stored('a1', 'large')}`);
+    });
+
+    test('Back closes it rather than leaving the archive', async () => {
+        const { view, body } = only(`${img('p1')}${para(400)}`);
+
+        view.click(body.querySelector('.photo img'));
+        view.window.history.back();
+        await historySettled();
+
+        assert.equal(view.enlarged(), null);
+        assert.equal(view.window.location.pathname, '/isaac.backman');
+    });
+
+    test('the close button gives its history entry back', async () => {
+        const { view, body } = only(`${img('p1')}${para(400)}`);
+
+        view.click(body.querySelector('.photo img'));
+        assert.equal(view.window.history.state?.lightbox, true);
+
+        view.click(view.lightbox().querySelector('.lightbox__close'));
+        await historySettled();
+
+        assert.equal(view.enlarged(), null);
+        assert.equal(view.window.history.state, null);
     });
 
     test('escape closes it and the photo is dropped', () => {
