@@ -137,6 +137,39 @@ window.Reader = (function () {
     // free, all of which are tedious and easy to get subtly wrong by hand, and
     // none of which needs a server -- so it works from file:// like the rest.
     let lightbox = null;
+    let lightboxEntry = false;
+    let ignoreLightboxPop = 0;
+
+    function enterLightbox() {
+        // Downloaded archives run from file:// and have no page beneath this
+        // one for Back to protect. More importantly, history support for local
+        // files varies by browser, so keep their existing close-button and
+        // Escape behavior unchanged.
+        if (!/^https?:$/.test(location.protocol) || lightboxEntry) return;
+
+        history.pushState({ lightbox: true }, '');
+        lightboxEntry = true;
+    }
+
+    function leaveLightbox() {
+        // Back already consumed the entry before asking the dialog to close.
+        if (!lightboxEntry) return;
+
+        lightboxEntry = false;
+        ignoreLightboxPop += 1;
+        history.back();
+    }
+
+    window.addEventListener('popstate', () => {
+        if (ignoreLightboxPop > 0) {
+            ignoreLightboxPop -= 1;
+            return;
+        }
+
+        if (!lightboxEntry) return;
+        lightboxEntry = false;
+        lightbox?.dialog.close();
+    });
 
     function ensureLightbox() {
         if (lightbox) return lightbox;
@@ -198,6 +231,7 @@ window.Reader = (function () {
             image.removeAttribute('src');
             image.hidden = true;
             loading.hidden = true;
+            leaveLightbox();
         });
 
         dialog.append(image, loading, close);
@@ -216,6 +250,7 @@ window.Reader = (function () {
         view.image.src = src;
         view.image.alt = alt ?? '';
         view.dialog.showModal();
+        enterLightbox();
     }
 
     // --- inline photos ----------------------------------------------------
