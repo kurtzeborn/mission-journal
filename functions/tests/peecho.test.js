@@ -17,7 +17,6 @@ import assert from 'node:assert/strict';
 
 import { memoryStore } from './memory-store.js';
 import {
-    CHECKOUT_DAYS,
     checkoutExpiry,
     createPublication,
     orderReference,
@@ -146,10 +145,6 @@ const listing = (extra = {}) =>
     });
 
 describe('what the printer is told about a book', () => {
-    test('checkout links remain available for six months', () => {
-        assert.equal(CHECKOUT_DAYS, 180);
-    });
-
     test('the reference names the site and the book so an order can be traced back', () => {
         const reference = orderReference(SLUG, BOOK);
 
@@ -329,6 +324,8 @@ describe('ordering a printed copy', () => {
             assert.equal(response.status, 200);
             assert.match(response.jsonBody.checkoutUrl, /checkout\/print\/en\/pub-1\?token=tok-1$/);
             assert.equal(response.jsonBody.listedUntil, orderOf(store).listedUntil);
+            const remaining = Date.parse(response.jsonBody.listedUntil) - Date.now();
+            assert.ok(Math.abs(remaining - 180 * 86400000) < 5000);
 
             // The link the printer will fetch is ours and signed, not a
             // storage URL -- that is the whole reason this endpoint exists.

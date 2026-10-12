@@ -39,22 +39,14 @@ describe('what a cover is bound in', () => {
 });
 
 describe('choosing a cover', () => {
-    test('takes a color and a photograph from the archive', () => {
-        assert.deepEqual(chooseCover({ cloth: 'forest', picture: 'p_0123456789ab' }), {
-            cover: { cloth: 'forest', picture: 'p_0123456789ab' }
-        });
-    });
-
-    test('takes a color on its own', () => {
-        assert.deepEqual(chooseCover({ cloth: 'linen', picture: '' }), {
-            cover: { cloth: 'linen', picture: '' }
-        });
-    });
-
-    test('takes the owner\u2019s own picture', () => {
-        assert.deepEqual(chooseCover({ cloth: 'ink', picture: 'own' }), {
-            cover: { cloth: 'ink', picture: 'own' }
-        });
+    test('accepts each supported kind of cover picture', () => {
+        for (const cover of [
+            { cloth: 'forest', picture: 'p_0123456789ab' },
+            { cloth: 'linen', picture: '' },
+            { cloth: 'ink', picture: 'own' }
+        ]) {
+            assert.deepEqual(chooseCover(cover), { cover });
+        }
     });
 
     test('refuses a color we do not have', () => {

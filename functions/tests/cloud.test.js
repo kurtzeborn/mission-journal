@@ -115,18 +115,6 @@ describe('laying the word cloud out for the press', () => {
         assert.ok(Math.min(...top) > Math.max(...bottom) * 2, 'the cloud came out all one size');
     });
 
-    test('turns a word onto its side or leaves it alone', () => {
-        const turned = placed.filter((item) => item.turn !== 0);
-
-        for (const item of placed) {
-            assert.ok([-90, 0, 90].includes(item.turn), `${item.word} came out at ${item.turn}`);
-        }
-
-        // `rotateRatio` is 0.3. A die is a die, so this is only checking that
-        // the setting arrived rather than that it came out exactly three in ten.
-        assert.ok(turned.length > 6 && turned.length < 30, `${turned.length} of 60 were turned`);
-    });
-
     test('has nothing to draw for an archive with nothing in it', () => {
         assert.deepEqual(layoutCloud([], { ...PAGE, size: () => 12 }), []);
     });

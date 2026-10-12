@@ -30,17 +30,15 @@ const entry = (sealerDomain, aar = MICROSOFT_AAR) => ({
 });
 
 describe('who we are willing to believe', () => {
-    test('an empty setting means the default', () => {
-        assert.deepEqual(trustedSealersFrom(''), DEFAULT_TRUSTED_SEALERS);
-        assert.deepEqual(trustedSealersFrom(undefined), DEFAULT_TRUSTED_SEALERS);
-    });
-
-    test('the default is one provider, not a general trust list', () => {
+    test('an empty setting trusts only Microsoft by default', () => {
         // mailauth ships a list of forwarders that are usually honest. It is
         // much wider than anything here has a reason to trust, and none of it
         // is needed: the only provider whose seal we depend on is the one that
         // breaks the body hash in the first place.
         assert.deepEqual(DEFAULT_TRUSTED_SEALERS, ['microsoft.com']);
+        assert.deepEqual(trustedSealersFrom(''), ['microsoft.com']);
+        assert.deepEqual(trustedSealersFrom(undefined), ['microsoft.com']);
+        assert.ok(!trustedSealersFrom('').includes('google.com'));
     });
 
     test('a list is split, trimmed, lowercased and stripped of trailing dots', () => {

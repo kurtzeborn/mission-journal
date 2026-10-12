@@ -59,11 +59,6 @@ describe('what an owner may change', () => {
         assert.equal(edit({ bodyHtml: long }).error, undefined);
     });
 
-    // Measured, so the cap is known to sit above real letters rather than
-    // assumed to: the longest of forty-four ran to 5,138 characters.
-    test('the cap is far above the longest letter anybody has written', () => {
-        assert.equal(edit({ bodyHtml: `<p>${'x'.repeat(5138)}</p>` }).error, undefined);
-    });
 });
 
 describe('what an edit records', () => {

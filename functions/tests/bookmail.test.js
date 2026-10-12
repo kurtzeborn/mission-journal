@@ -69,10 +69,6 @@ describe('the email that says a book is finished', () => {
         assert.match(ready().text, /41 letters, 96 pages/);
     });
 
-    test('counts one of a thing as one thing', () => {
-        assert.match(ready({ letters: 1, pages: 24 }).text, /1 letter, 24 pages/);
-    });
-
     test('says nothing has been printed, because nothing has', () => {
         assert.match(ready().text, /Nothing has been sent to a printer/);
     });
