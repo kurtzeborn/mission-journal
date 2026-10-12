@@ -11,6 +11,32 @@
 
     if (!window.matchMedia('(min-width: 64rem)').matches) return;
 
+    function stylesheet(href) {
+        if (document.querySelector(`link[href="${href}"]`)) return;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.append(link);
+    }
+
+    function iconLink({ href, label, icon, external = false }) {
+        const link = document.createElement('a');
+        link.className = 'manager-strip__link';
+        link.href = href;
+        link.setAttribute('aria-label', label);
+        link.title = label;
+        if (external) {
+            link.target = '_blank';
+            link.rel = 'noopener';
+        }
+
+        const glyph = document.createElement('i');
+        glyph.className = `fa-solid ${icon}`;
+        glyph.setAttribute('aria-hidden', 'true');
+        link.append(glyph);
+        return link;
+    }
+
     async function load() {
         let response;
         try {
@@ -26,12 +52,14 @@
         strip.className = 'manager-strip';
         strip.setAttribute('aria-label', 'Service status');
 
-        const manage = document.createElement('a');
-        manage.className = 'manager-strip__link';
-        manage.href = '/manage';
-        manage.setAttribute('aria-label', 'Open service tooling');
-        manage.title = 'Open service tooling';
-        manage.textContent = '\u2699';
+        stylesheet('/vendor/fontawesome/css/fontawesome.min.css');
+        stylesheet('/vendor/fontawesome/css/solid.min.css');
+
+        const manage = iconLink({
+            href: '/manage',
+            label: 'Open service tooling',
+            icon: 'fa-gear'
+        });
 
         const stats = document.createElement('span');
         stats.textContent =
@@ -41,7 +69,18 @@
             `U:${Number(counts.users ?? 0)} ` +
             `MAU:${Number(counts.monthlyActive ?? 0)}`;
 
+        const sha = String(window.PDAY_DEPLOY_SHA ?? '');
+        const version = /^[0-9a-f]{40}$/i.test(sha)
+            ? iconLink({
+                  href: `https://github.com/kurtzeborn/mission-journal/commit/${sha}`,
+                  label: `View deployed commit ${sha.slice(0, 7)} on GitHub`,
+                  icon: 'fa-code-branch',
+                  external: true
+              })
+            : null;
+
         strip.append(manage, stats);
+        if (version) strip.append(version);
         document.body.prepend(strip);
     }
 

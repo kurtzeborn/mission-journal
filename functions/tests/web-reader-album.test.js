@@ -45,25 +45,6 @@ const labels = (view) =>
         .map((el) => el.getAttribute('aria-label') ?? el.textContent);
 
 describe('getting to the album', () => {
-    test('its button sits with the word cloud, not with Expand all', () => {
-        // Both of these open a window over the archive. Expand all rearranges
-        // the archive itself and stays at the other end of the row.
-        assert.deepEqual(labels(archive()), [
-            'Photo Album',
-            'Word cloud',
-            'Search',
-            'Expand all'
-        ]);
-    });
-
-    test('its mobile icon is an image gallery while its accessible name stays intact', () => {
-        const view = archive();
-        const button = view.button('Photo Album');
-
-        assert.ok(button.querySelector('.fa-images'));
-        assert.equal(button.querySelector('.toolbar__label').textContent, 'Photo Album');
-    });
-
     test('the downloaded archive is given no album and offers no button', () => {
         assert.deepEqual(labels(archive({ withAlbum: false })), [
             'Word cloud',

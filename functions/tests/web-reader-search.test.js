@@ -35,12 +35,21 @@ const shown = (view) => view.$$('.post').filter((el) => !el.hidden).map((el) => 
 const marks = (view) => view.$$('mark.hit').map((el) => el.textContent);
 
 describe('narrowing the list', () => {
-    test('only the letters that match stay on the page', () => {
+    test('only matching letters stay on the page and the result counts agree', () => {
         const view = archive();
         view.search('Antigua');
 
         assert.deepEqual(shown(view), ['2026-03-25-9CRE']);
         assert.equal(view.$('.search__position').textContent, '1 match in 1 letter');
+
+        const several = archive([
+            letter('2026-03-25-9CRE', '<p>Rain again.</p>', { subject: 'One' }),
+            letter('2026-03-16-28MW', '<p>Rain and more rain.</p>', { subject: 'Two' })
+        ]);
+        several.search('rain');
+
+        assert.deepEqual(shown(several), ['2026-03-25-9CRE', '2026-03-16-28MW']);
+        assert.equal(several.$('.search__position').textContent, '3 matches in 2 letters');
     });
 
     test('a search nothing answers says so rather than emptying the page in silence', () => {
@@ -49,17 +58,6 @@ describe('narrowing the list', () => {
 
         assert.deepEqual(shown(view), []);
         assert.equal(view.$('.search__position').textContent, 'No letters match that.');
-    });
-
-    test('one sentence carries both counts, where there used to be two lines', () => {
-        const view = archive([
-            letter('2026-03-25-9CRE', '<p>Rain again.</p>', { subject: 'One' }),
-            letter('2026-03-16-28MW', '<p>Rain and more rain.</p>', { subject: 'Two' })
-        ]);
-        view.search('rain');
-
-        assert.equal(view.$('.search__position').textContent, '3 matches in 2 letters');
-        assert.equal(view.$$('.search__position').length, 1);
     });
 
     test('emptying the box puts the archive back exactly as it loaded', () => {

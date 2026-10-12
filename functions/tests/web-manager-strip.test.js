@@ -11,7 +11,13 @@ import { JSDOM } from 'jsdom';
 
 const script = readFileSync(new URL('../../web/manager-strip.js', import.meta.url), 'utf8');
 
-async function page({ desktop = true, status = 200, body = {}, fetchImpl } = {}) {
+async function page({
+    desktop = true,
+    status = 200,
+    body = {},
+    sha = '78318d36c72399dd762ba7c8562710a332eb8737',
+    fetchImpl
+} = {}) {
     const dom = new JSDOM('<!doctype html><html><body><main>Page</main></body></html>', {
         runScripts: 'outside-only',
         url: 'https://pdayletters.com/about'
@@ -20,6 +26,7 @@ async function page({ desktop = true, status = 200, body = {}, fetchImpl } = {})
     let calls = 0;
 
     window.matchMedia = () => ({ matches: desktop });
+    window.PDAY_DEPLOY_SHA = sha;
     window.fetch = fetchImpl ?? (async () => {
         calls += 1;
         return { ok: status >= 200 && status < 300, status, json: async () => body };
@@ -38,9 +45,33 @@ describe('the manager debug strip', () => {
         });
 
         const strip = window.document.querySelector('.manager-strip');
-        assert.equal(strip.textContent, '\u2699A:4 P:1 D:0 U:22 MAU:16');
-        assert.equal(strip.querySelector('a').getAttribute('href'), '/manage');
+        assert.equal(strip.textContent, 'A:4 P:1 D:0 U:22 MAU:16');
+        const links = strip.querySelectorAll('a');
+        assert.equal(links[0].getAttribute('href'), '/manage');
+        assert.equal(links[0].querySelector('i').className, 'fa-solid fa-gear');
+        assert.equal(
+            links[1].getAttribute('href'),
+            'https://github.com/kurtzeborn/mission-journal/commit/78318d36c72399dd762ba7c8562710a332eb8737'
+        );
+        assert.equal(links[1].querySelector('i').className, 'fa-solid fa-code-branch');
+        assert.equal(links[1].getAttribute('target'), '_blank');
         assert.equal(window.document.body.firstElementChild, strip);
+        assert.deepEqual(
+            [...window.document.head.querySelectorAll('link')].map((link) => link.getAttribute('href')),
+            [
+                '/vendor/fontawesome/css/fontawesome.min.css',
+                '/vendor/fontawesome/css/solid.min.css'
+            ]
+        );
+    });
+
+    test('omits the commit link when a local build has no deployed SHA', async () => {
+        const { window } = await page({
+            sha: '',
+            body: { archives: 4, pending: 1, deleted: 0, users: 22, monthlyActive: 16 }
+        });
+
+        assert.equal(window.document.querySelectorAll('.manager-strip a').length, 1);
     });
 
     test('creates no strip for a signed-out visitor or an ordinary user', async () => {

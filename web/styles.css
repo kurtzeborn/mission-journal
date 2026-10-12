@@ -71,6 +71,7 @@ body {
         padding: 0.05rem 0.5rem;
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 0.4rem;
         background: #e7e5e4;
         border-bottom: 1px solid #d6d3d1;
