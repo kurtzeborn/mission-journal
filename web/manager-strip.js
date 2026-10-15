@@ -37,10 +37,11 @@
         return link;
     }
 
-    function metric(label, value, modifier = '') {
+    function metric(label, value, title, modifier = '') {
         const item = document.createElement('span');
         item.className = `manager-strip__metric${modifier ? ` manager-strip__metric--${modifier}` : ''}`;
         item.textContent = `${label}:${value}`;
+        item.title = title;
         return item;
     }
 
@@ -54,8 +55,7 @@
     function observeLargestPaint(stats) {
         if (typeof window.PerformanceObserver !== 'function') return;
 
-        const item = metric('LCP', '\u2014');
-        item.title = 'Largest Contentful Paint: when the main visible content appeared';
+        const item = metric('LCP', '\u2014', 'Largest Contentful Paint: when the main visible content appeared');
         stats.append(item);
 
         try {
@@ -99,11 +99,11 @@
         const stats = document.createElement('span');
         stats.className = 'manager-strip__stats';
         stats.append(
-            metric('A', Number(counts.archives ?? 0)),
-            metric('P', pending, pending ? 'pending' : ''),
-            metric('D', deleted, deleted ? 'deleted' : ''),
-            metric('U', Number(counts.users ?? 0)),
-            metric('MAU', Number(counts.monthlyActive ?? 0))
+            metric('A', Number(counts.archives ?? 0), 'Active archives'),
+            metric('P', pending, 'Pending archives', pending ? 'pending' : ''),
+            metric('D', deleted, 'Archives pending deletion', deleted ? 'deleted' : ''),
+            metric('U', Number(counts.users ?? 0), 'Users'),
+            metric('MAU', Number(counts.monthlyActive ?? 0), 'Monthly active users')
         );
         observeLargestPaint(stats);
 

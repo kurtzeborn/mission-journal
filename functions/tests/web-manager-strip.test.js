@@ -63,7 +63,17 @@ describe('the manager debug strip', () => {
             [...stats.children].map((item) => item.textContent),
             ['A:4', 'P:1', 'D:0', 'U:22', 'MAU:16', 'LCP:842ms']
         );
-        assert.equal(stats.children[5].getAttribute('title'), 'Largest Contentful Paint: when the main visible content appeared');
+        assert.deepEqual(
+            [...stats.children].map((item) => item.getAttribute('title')),
+            [
+                'Active archives',
+                'Pending archives',
+                'Archives pending deletion',
+                'Users',
+                'Monthly active users',
+                'Largest Contentful Paint: when the main visible content appeared'
+            ]
+        );
         const links = strip.querySelectorAll('a');
         assert.equal(links[0].getAttribute('href'), '/manage');
         assert.equal(links[0].querySelector('i').className, 'fa-solid fa-gear');
