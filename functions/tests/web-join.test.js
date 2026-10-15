@@ -100,6 +100,10 @@ describe('accepting the invitation', () => {
         const accepted = view.calls.find((call) => call.url === '/api/qr-invite/accept');
         assert.deepEqual(accepted.body, { ticket: 'one-time-ticket' });
         assert.equal(view.context.location.href, '/elder.example/');
+        assert.equal(
+            view.context.sessionStorage.getItem('email-notification-prompt-after-join'),
+            'elder.example'
+        );
     });
 
     test('accepts automatically after the visitor already chose a join provider', async () => {
@@ -118,6 +122,10 @@ describe('accepting the invitation', () => {
         assert.deepEqual(accepted.body, { ticket: 'one-time-ticket' });
         assert.equal(view.context.location.href, '/elder.example/');
         assert.equal(view.context.sessionStorage.getItem('qr-invite-join-after-signin'), null);
+        assert.equal(
+            view.context.sessionStorage.getItem('email-notification-prompt-after-join'),
+            'elder.example'
+        );
     });
 
     test('still asks an already signed-in visitor to confirm', async () => {

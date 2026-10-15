@@ -10,7 +10,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { memoryStore } from './memory-store.js';
-import { read, resume, write } from '../src/functions/preferences.js';
+import { promptDismiss, promptVisit, read, resume, write } from '../src/functions/preferences.js';
 import { issueOptOut, optedOut, recordOptOut } from '../src/lib/optout.js';
 import { DIGEST, readUser, setDigest } from '../src/lib/users.js';
 
@@ -32,6 +32,57 @@ describe('reading what somebody has asked for', () => {
     test('a stranger is refused before any table is touched', async () => {
         const response = await read({ request: asking(null), tables: null });
         assert.equal(response.status, 401);
+    });
+
+    describe('deciding when to remind somebody', () => {
+        test('the fifth authenticated archive visit is due', async () => {
+            const store = memoryStore();
+
+            for (let visit = 1; visit <= 5; visit += 1) {
+                const response = await promptVisit({ request: asking(THEM), tables: store });
+                assert.equal(response.status, 200);
+                assert.equal(response.jsonBody.promptDue, visit === 5);
+                assert.equal(response.jsonBody.digestFrequency, DIGEST.off);
+            }
+        });
+
+        test('dismissing the reminder starts another five-visit interval', async () => {
+            const store = memoryStore();
+            for (let visit = 0; visit < 5; visit += 1) {
+                await promptVisit({ request: asking(THEM), tables: store });
+            }
+
+            assert.equal((await promptDismiss({ request: asking(THEM), tables: store })).status, 200);
+            assert.equal(
+                (await promptVisit({ request: asking(THEM), tables: store })).jsonBody.promptDue,
+                false
+            );
+        });
+
+        test('saving email settings also starts another reminder interval', async () => {
+            const store = memoryStore();
+            for (let visit = 0; visit < 5; visit += 1) {
+                await promptVisit({ request: asking(THEM), tables: store });
+            }
+            await write({
+                request: asking(THEM, {
+                    digestFrequency: DIGEST.off,
+                    digestWeekday: 1,
+                    digestWeek: 1
+                }),
+                tables: store
+            });
+
+            assert.equal(
+                (await promptVisit({ request: asking(THEM), tables: store })).jsonBody.promptDue,
+                false
+            );
+        });
+
+        test('a signed-out visitor cannot create reminder state', async () => {
+            assert.equal((await promptVisit({ request: asking(null), tables: null })).status, 401);
+            assert.equal((await promptDismiss({ request: asking(null), tables: null })).status, 401);
+        });
     });
 
     test('an address with no row is off, which is what no row means', async () => {

@@ -32,6 +32,7 @@
 import { TABLES } from './tables.js';
 
 const ROW = 'profile';
+const PROMPT_ROW = 'digest-prompt';
 
 const lower = (value) => String(value ?? '').trim().toLowerCase();
 
@@ -71,6 +72,34 @@ export async function readUser({ tables, email }) {
     const them = lower(email);
     if (!them) return null;
     return await tables.getEntity(TABLES.users, them, ROW);
+}
+
+export async function recordDigestPromptVisit({ tables, email, every = 5, now = () => new Date() }) {
+    const them = lower(email);
+    if (!them) throw new Error('user: an address is required');
+
+    const existing = await tables.getEntity(TABLES.users, them, PROMPT_ROW);
+    const visits = Math.max(0, Number(existing?.visits) || 0) + 1;
+    await tables.upsertEntity(TABLES.users, {
+        partitionKey: them,
+        rowKey: PROMPT_ROW,
+        visits,
+        visitedAt: now().toISOString()
+    });
+
+    return { visits, due: visits >= every };
+}
+
+export async function dismissDigestPrompt({ tables, email, now = () => new Date() }) {
+    const them = lower(email);
+    if (!them) throw new Error('user: an address is required');
+
+    await tables.upsertEntity(TABLES.users, {
+        partitionKey: them,
+        rowKey: PROMPT_ROW,
+        visits: 0,
+        dismissedAt: now().toISOString()
+    });
 }
 
 /**

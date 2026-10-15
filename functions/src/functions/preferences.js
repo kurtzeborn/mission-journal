@@ -5,7 +5,9 @@ import { tableStore } from '../lib/clients.js';
 import { optedOut, forgetOptOut } from '../lib/optout.js';
 import {
     DIGEST,
+    dismissDigestPrompt,
     digestSchedule,
+    recordDigestPromptVisit,
     readUser,
     setDigest,
     validDigestWeek,
@@ -27,25 +29,46 @@ import {
 
 const refuse = () => ({ status: 401, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' });
 
+async function preferenceBody({ tables, email }) {
+    const row = await readUser({ tables, email });
+    const schedule = digestSchedule(row);
+    return {
+        email,
+        digestFrequency: validFrequency(row?.digestFrequency),
+        digestWeekday: schedule.weekday,
+        digestWeek: schedule.week,
+        suppressed: await optedOut({ tables, email })
+    };
+}
+
 export async function read({ request, tables }) {
     const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     if (!principal?.email) return refuse();
 
-    const row = await readUser({ tables, email: principal.email });
-    const schedule = digestSchedule(row);
+    return json(200, await preferenceBody({ tables, email: principal.email }));
+}
 
+export async function promptVisit({ request, tables }) {
+    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
+    if (!principal?.email) return refuse();
+
+    const preferences = await preferenceBody({ tables, email: principal.email });
+    const prompt =
+        preferences.digestFrequency === DIGEST.off && !preferences.suppressed
+            ? await recordDigestPromptVisit({ tables, email: principal.email })
+            : { due: false };
     return json(200, {
-        email: principal.email,
-        digestFrequency: validFrequency(row?.digestFrequency),
-        digestWeekday: schedule.weekday,
-        digestWeek: schedule.week,
-        // Reported separately rather than folded into the frequency, because
-        // they are different statements and the page has to be able to say
-        // which one is in force. Somebody who pressed an unsubscribe link and
-        // later wonders why nothing arrives is owed an answer better than a
-        // dropdown that reads "monthly" and is lying.
-        suppressed: await optedOut({ tables, email: principal.email })
+        ...preferences,
+        promptDue: prompt.due
     });
+}
+
+export async function promptDismiss({ request, tables }) {
+    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
+    if (!principal?.email) return refuse();
+
+    await dismissDigestPrompt({ tables, email: principal.email });
+    return json(200, { dismissed: true });
 }
 
 export async function write({ request, tables }) {
@@ -79,6 +102,7 @@ export async function write({ request, tables }) {
         weekday,
         week
     });
+    await dismissDigestPrompt({ tables, email: principal.email });
 
     const saved = digestSchedule(await readUser({ tables, email: principal.email }));
     return json(200, {
@@ -124,4 +148,18 @@ app.http('preferences-resume', {
     methods: ['DELETE'],
     route: 'preferences/suppression',
     handler: (request, context) => resume({ request, tables: tableStore(), log: context })
+});
+
+app.http('preferences-prompt-visit', {
+    authLevel: 'anonymous',
+    methods: ['POST'],
+    route: 'preferences/prompt',
+    handler: (request) => promptVisit({ request, tables: tableStore() })
+});
+
+app.http('preferences-prompt-dismiss', {
+    authLevel: 'anonymous',
+    methods: ['PUT'],
+    route: 'preferences/prompt',
+    handler: (request) => promptDismiss({ request, tables: tableStore() })
 });

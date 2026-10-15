@@ -1776,6 +1776,30 @@ select:focus-visible {
     font-weight: 600;
 }
 
+.email-dialog {
+    width: min(34rem, calc(100% - 2rem));
+    max-height: calc(100dvh - 2rem);
+    padding: 1.4rem;
+    border: 0;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+.email-dialog::backdrop {
+    background: rgb(10 25 36 / 0.62);
+}
+
+.email-dialog .email-summary__choices {
+    margin: 1.25rem 0 1rem;
+}
+
+.email-dialog__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    align-items: center;
+}
+
 /* --- the mark beside a label --- */
 
 /* One question and its answer, where the answer is folded away until it is
