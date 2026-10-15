@@ -166,23 +166,57 @@ Details: [Access control](plan.md#access-control) · [Ownership and the 60-day w
 
 ## Tables
 
-Fourteen tables in the same storage account, drawn two at a time so each entity remains readable. Keys as written; every one is a point read or a single-partition query except where noted.
+Fourteen physical tables share the same storage account. Each Mermaid entity below lists stored properties only; descriptions of authority, access patterns, and lifecycle sit outside the entity.
 
-### User state and provider identity
+### User profiles
+
+The `users` table holds two record types in each email partition. A `profile` row contains presentation-only name data copied from the sign-in provider. Verified email and `acl.json`, not these names, remain the identity and authorization inputs.
 
 ```mermaid
 erDiagram
-    users {
+    users_profile {
         string PartitionKey "lowercased email"
-        string RowKey "digest-settings | profile"
-        string digest_settings_row "frequency, calendar schedule, cycle cursor, prompt state"
-        string profile_row "displayName, optional givenName/familyName, nameProvider, nameUpdatedAt"
-        string read_pattern "point reads; digest timer scans digest-settings rows daily"
+        string RowKey "profile"
+        string displayName
+        string givenName "optional"
+        string familyName "optional"
+        string nameProvider
+        string nameUpdatedAt "ISO timestamp"
     }
+```
+
+### Digest settings
+
+The second `users` row type is `digest-settings`. Most reads are point reads by email; the daily digest timer scans the table and selects only rows with this `RowKey`.
+
+```mermaid
+erDiagram
+    users_digest_settings {
+        string PartitionKey "lowercased email"
+        string RowKey "digest-settings"
+        string digestFrequency "off, weekly, or monthly"
+        int digestWeekday "0 through 6"
+        int digestWeek "1 through 4"
+        string digestAt "ISO cycle cursor"
+        string digestScheduleAt "optional ISO timestamp"
+        string createdAt "optional ISO timestamp"
+        int promptVisits
+        string promptVisitedAt "optional ISO timestamp"
+        string promptDismissedAt "optional ISO timestamp"
+    }
+```
+
+### Provider identity
+
+This is a repairable index from a stable provider identity to the provider's current email address.
+
+```mermaid
+erDiagram
     identities {
         string PartitionKey "identity"
         string RowKey "sha256 of provider and userId"
-        string note "DERIVED - repaired by signing in again"
+        string email "lowercased current email"
+        string at "ISO timestamp"
     }
 ```
 
@@ -193,14 +227,25 @@ erDiagram
     memberships {
         string PartitionKey "lowercased email"
         string RowKey "slug"
-        string note "DERIVED from acl.json - never grants access"
+        string role "owner or reader"
+        string addedAt "ISO timestamp"
     }
     invites {
         string PartitionKey "slug"
-        string RowKey "hash of the invitation token"
-        string note "the hash revokes; it does not accept"
+        string RowKey "hash of invitation token"
+        string email "lowercased invitee"
+        string role "owner or reader"
+        string invitedBy "lowercased email"
+        string createdAt "ISO timestamp"
+        string expiresAt "ISO timestamp"
+        string acceptedAt "optional ISO timestamp"
+        string acceptedBy "optional lowercased email"
+        string revokedAt "optional ISO timestamp"
+        string supersededBy "optional token hash"
     }
 ```
+
+`memberships` is a derived reverse index from `acl.json` and never grants access. Invitation rows are retained as tombstones after acceptance or revocation so a spent token cannot become valid again.
 
 ### Quick Join
 
@@ -209,14 +254,30 @@ erDiagram
     qrInvites {
         string PartitionKey "slug"
         string RowKey "active"
-        string note "one owner-controlled Quick Join session"
+        string sessionId
+        string invitedBy "lowercased owner email"
+        string createdAt "ISO timestamp"
+        string expiresAt "ISO timestamp"
+        string closedAt "empty or ISO timestamp"
     }
-    qrRedemptions {
+    qrRedemptions_ticket {
         string PartitionKey "slug:sessionId"
-        string RowKey "ticket hash or capacity slot"
-        string note "single-use joins and the 50-reader session cap"
+        string RowKey "ticket-{token hash}"
+        string slot "slot row key"
+        string acceptedBy "lowercased email"
+        string acceptedAt "ISO timestamp"
+        string completedAt "empty or ISO timestamp"
+    }
+    qrRedemptions_slot {
+        string PartitionKey "slug:sessionId"
+        string RowKey "slot-00 through slot-49"
+        string ticketHash "ticket row key"
+        string acceptedBy "lowercased email"
+        string reservedAt "ISO timestamp"
     }
 ```
+
+The two `qrRedemptions` row types are inserted together: the slot row enforces the 50-reader session cap and the ticket row makes each join single-use.
 
 ### Archive metadata and reminders
 
@@ -225,14 +286,23 @@ erDiagram
     sites {
         string PartitionKey "slug"
         string RowKey "activity"
-        string columns "display name, mission details, album URLs, lastPostAt, lastReceivedAt"
+        string missionaryDisplayName
+        string missionName
+        string missionStartDate "YYYY-MM-DD or empty"
+        string missionReturnDate "YYYY-MM-DD or empty"
+        string photoAlbumUrls "JSON string array"
+        string lastPostAt "letter date"
+        string lastReceivedAt "arrival timestamp"
     }
     nudges {
         string PartitionKey "lowercased email"
-        string RowKey "slug:kind"
-        string note "send-once guard for reminder mail"
+        string RowKey "slug:kind or dated ack/reject key"
+        string sentAt "ISO timestamp"
+        string author "optional missionary email"
     }
 ```
+
+`nudges` rows are send-once locks. Most are permanent per recipient/archive/kind; acknowledgement and rejection keys include a UTC date.
 
 ### Mail consent and delivery
 
@@ -241,14 +311,21 @@ erDiagram
     optouts {
         string PartitionKey "optout"
         string RowKey "sha256 of email"
-        string note "AUTHORITATIVE - nothing else records a refusal"
+        string email "lowercased email"
+        string at "ISO timestamp"
+        string slug "archive that prompted opt-out"
     }
     deliveries {
         string PartitionKey "delivery"
         string RowKey "sha256 of email"
-        string note "DERIVED from Cloudflare suppression"
+        string email "lowercased email"
+        string status
+        string at "ISO timestamp"
+        string slug "most recent related archive"
     }
 ```
+
+`optouts` is authoritative consent state. `deliveries` is a replaceable snapshot of the most recent Cloudflare delivery outcome.
 
 ### Intake guards
 
@@ -257,14 +334,21 @@ erDiagram
     arrivals {
         string PartitionKey "slug:YYYY-MM-DD"
         string RowKey "message ULID"
-        string note "daily cap guard - swept after 30 days"
     }
     rejections {
         string PartitionKey "slug"
         string RowKey "message ULID"
-        string note "AUTHORITATIVE - the only trace of a refused first letter"
+        string at "ISO timestamp"
+        string sender
+        string author
+        string subject
+        string reason
+        string source
+        string forgetAfter "ISO timestamp"
     }
 ```
+
+`arrivals` enforces the daily intake cap and is swept after 30 days. A `rejections` row is the only retained trace of a refused first letter and remains until `forgetAfter`.
 
 ### Activity and deletion lifecycle
 
@@ -272,19 +356,22 @@ erDiagram
 erDiagram
     visits {
         string PartitionKey "YYYY-MM-DD"
-        string RowKey "slug + bar + sha256 of the address"
-        string note "one row per person per archive per day - swept after 40"
+        string RowKey "slug|sha256 of email"
+        string slug
     }
     deletions {
         string PartitionKey "slug"
         string RowKey "record"
-        string note "AUTHORITATIVE - the 30-day promise lives here"
+        string deletedAt "ISO timestamp"
+        string deletedBy "lowercased email"
+        string reason
+        string purgeAfter "ISO timestamp"
     }
 ```
 
-### Typed rows in `users`
+`visits` records one row per person, archive, and day and is swept after 40 days. `deletions` is authoritative for the 30-day restoration and purge window.
 
-The two rows share an email partition but have separate authorities and lifecycles. Provider names are presentation data; verified email and `acl.json` remain the identity and authorization inputs.
+### How the two `users` row types are written and read
 
 ```mermaid
 flowchart LR
