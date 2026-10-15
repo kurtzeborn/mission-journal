@@ -15,14 +15,17 @@ import { fetching, page, run, settled } from './web-dom.js';
 
 const SLUG = 'elder.example';
 
-async function archive({ answer, path = `/${SLUG}/`, device, qrcode = null }) {
+async function archive({ answer, path = `/${SLUG}/`, device, qrcode = null, userProfile = false }) {
     const view = page({ html: 'site.html', path, device });
     // The reader itself is not under test here; only what happens instead of
     // it when the letters never arrive.
     view.context.Reader = { mount(options) { view.context.mounted = options; } };
     if (qrcode) view.context.qrcode = qrcode;
     const net = fetching(answer);
-    run(['quick-join.js', 'app.js'], { context: view.context, fetch: net.fetch });
+    run(userProfile ? ['user-profile.js', 'quick-join.js', 'app.js'] : ['quick-join.js', 'app.js'], {
+        context: view.context,
+        fetch: net.fetch
+    });
     await settled();
     return { ...view, calls: net.calls };
 }
@@ -637,6 +640,32 @@ describe('the masthead menu', () => {
         assert.equal(view.text('account-email'), 'gran@example.com');
         assert.equal(view.text('menu-address'), 'gran@example.com');
         assert.equal(view.text('menu-provider'), 'Signed in with Google');
+    });
+
+    test('uses the provider name in the trigger and keeps the email in the menu', async () => {
+        const view = await archive({
+            userProfile: true,
+            answer: async (url, init) => {
+                if (url === '/.auth/me') {
+                    return {
+                        status: 200,
+                        body: {
+                            clientPrincipal: {
+                                userDetails: 'gran@example.com',
+                                identityProvider: 'google',
+                                claims: [{ typ: 'name', val: 'Ana Example' }]
+                            }
+                        }
+                    };
+                }
+                if (url === '/api/profile' && init?.method === 'PUT') return { status: 200, body: {} };
+                if (url === '/api/memberships') return { status: 200, body: { memberships: [] } };
+                return { status: 200, body: { slug: SLUG, role: 'reader', posts: [] } };
+            }
+        });
+
+        assert.equal(view.text('account-email'), 'Ana Example');
+        assert.equal(view.text('menu-address'), 'gran@example.com');
     });
 
     test('the way out does not wait on anything that can fail', async () => {

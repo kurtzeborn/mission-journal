@@ -2236,6 +2236,12 @@ h3:target {
     overflow-wrap: anywhere;
 }
 
+.people__email {
+    display: block;
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+}
+
 /* The role, sitting against the address it describes.
 
    A pill rather than a word, and on the left rather than out by the buttons.
@@ -2298,6 +2304,7 @@ h3:target {
    full contrast -- Resend is very often the thing to press next, and dimming
    the remedy along with the problem would be the wrong half. */
 .people__row--undelivered .people__address,
+.people__row--undelivered .people__email,
 .people__row--undelivered .people__aside {
     opacity: 0.55;
 }

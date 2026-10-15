@@ -1145,7 +1145,9 @@
             };
 
             const on = shortDate(deleted.purgeAfter);
-            const by = deleted.deletedBy;
+            const by = deleted.deletedByName
+                ? `${deleted.deletedByName} (${deleted.deletedBy})`
+                : deleted.deletedBy;
 
             // Assembled as text rather than markup, like everything else here,
             // and every part of it is optional: an operator deletion carries a
@@ -1224,6 +1226,7 @@
 
     function readPrincipal() {
         principalRequest ??= (async () => {
+            if (window.UserProfile) return window.UserProfile.readPrincipal();
             try {
                 const response = await fetch('/.auth/me', { cache: 'no-store' });
                 if (!response.ok) return null;
@@ -1357,7 +1360,9 @@
             document.getElementById('menu-provider').textContent = `Signed in with ${provider.name}`;
         }
 
-        document.getElementById('account-email').textContent = principal.userDetails;
+        const profile = window.UserProfile?.profileOf(principal);
+        document.getElementById('account-email').textContent =
+            profile?.displayName || principal.userDetails;
         document.getElementById('menu-address').textContent = principal.userDetails;
     }
 

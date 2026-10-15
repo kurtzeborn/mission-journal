@@ -42,6 +42,11 @@
       "allowedRoles": ["anonymous", "authenticated"]
     },
     {
+      "comment": "Loaded beside account.js on the public landing page so an existing signed-in session can copy provider name claims into the protected application profile.",
+      "route": "/user-profile.js",
+      "allowedRoles": ["anonymous", "authenticated"]
+    },
+    {
       "comment": "Beside account.js and for the same reason: a shared script loaded by pages on both sides of the sign-in wall. Every anonymous page below that lands out of an email loads it, and the catch-all would otherwise 401 it and leave those pages inert. It carries no archive data -- an element lookup, a section toggle, the fragment-to-sessionStorage move, and the two provider hrefs.",
       "route": "/page.js",
       "allowedRoles": ["anonymous", "authenticated"]

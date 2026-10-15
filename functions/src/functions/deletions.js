@@ -29,6 +29,7 @@ import { pendingDeletions, restoreSite } from '../lib/deletion.js';
 import { serviceFlow, STATE } from '../lib/flow.js';
 import { serviceAudience, serviceStats } from '../lib/stats.js';
 import { validSlug } from '../lib/paths.js';
+import { userProfilesFor } from '../lib/userprofile.js';
 
 const account = () => process.env.STORAGE_ACCOUNT_NAME;
 const SUMMARY_CACHE_MS = 60 * 1000;
@@ -38,7 +39,18 @@ async function list(request, context) {
     const gated = operatorGate({ request, log: context });
     if (gated.denied) return gated.denied;
 
-    return json(200, { deletions: await pendingDeletions({ tables: tableStore() }) });
+    const tables = tableStore();
+    const deletions = await pendingDeletions({ tables });
+    const profiles = await userProfilesFor({
+        tables,
+        emails: deletions.map((deletion) => deletion.deletedBy)
+    });
+    return json(200, {
+        deletions: deletions.map((deletion) => ({
+            ...deletion,
+            deletedByName: profiles.get(String(deletion.deletedBy ?? '').toLowerCase())?.displayName ?? ''
+        }))
+    });
 }
 
 export async function received(request, context, store = blobStore(), tables = tableStore()) {

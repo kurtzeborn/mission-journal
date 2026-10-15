@@ -18,6 +18,7 @@ import { recordMembership } from './memberships.js';
 import { validSlug } from './paths.js';
 import { sitesBySlug } from './sites.js';
 import { TABLES } from './tables.js';
+import { userNameFor } from './userprofile.js';
 
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 const lower = (value) => String(value ?? '').trim().toLowerCase();
@@ -163,12 +164,16 @@ export async function exchangeQrInvite({ tables, token, key, now = () => new Dat
         purpose: PURPOSE.qrTicket,
         subject: id
     });
-    const sites = await sitesBySlug({ tables, slugs: [slug] });
+    const [sites, inviterName] = await Promise.all([
+        sitesBySlug({ tables, slugs: [slug] }),
+        userNameFor({ tables, email: row.invitedBy })
+    ]);
 
     return {
         status: 'ready',
         ticket,
         invitedBy: row.invitedBy ?? '',
+        invitedByName: inviterName,
         missionary: sites.get(slug)?.missionaryDisplayName ?? '',
         expiresAt: ticketExpiresAt
     };

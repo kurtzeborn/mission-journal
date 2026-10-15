@@ -16,6 +16,7 @@ import {
 import { recordMembership } from '../src/lib/memberships.js';
 import { claimTokenHash } from '../src/lib/claimtoken.js';
 import { TABLES } from '../src/lib/tables.js';
+import { setUserProfile } from '../src/lib/userprofile.js';
 
 const KEY = 'a-signing-key-from-key-vault';
 const SLUG = 'elder.example';
@@ -145,12 +146,19 @@ describe('joining through a QR invitation', () => {
 
     test('a scanned code becomes a ticket that survives the QR refresh', async () => {
         const store = await site();
+        await setUserProfile({
+            tables: store,
+            email: OWNER,
+            displayName: 'Ana Example',
+            provider: 'google'
+        });
         const time = clock('2026-09-21T12:00:00Z');
         const started = await startQrInvite({
             store, tables: store, slug: SLUG, actor: OWNER,
             key: KEY, baseUrl: BASE, now: time.now
         });
         const ready = await exchangeQrInvite({ tables: store, token: started.token, key: KEY, now: time.now });
+        assert.equal(ready.invitedByName, 'Ana Example');
 
         time.advance(45_000);
         const accepted = await acceptQrInvite({

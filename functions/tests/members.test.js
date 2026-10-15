@@ -16,6 +16,7 @@ import { membershipsFor, recordMembership } from '../src/lib/memberships.js';
 import { recordDelivery, deliveryKey } from '../src/lib/delivery.js';
 import { TABLES } from '../src/lib/tables.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../src/lib/claimtoken.js';
+import { setUserProfile } from '../src/lib/userprofile.js';
 
 const silent = { info() {}, warn() {}, error() {} };
 const NOW = () => new Date('2026-08-05T12:00:00Z');
@@ -231,6 +232,23 @@ describe('the missionary cannot be evicted from their own archive', () => {
         assert.equal(by[MISSIONARY].removable, false, 'the verified missionary');
         assert.equal(by[READER].removable, true);
     });
+
+    test('the list adds presentation names without replacing identity addresses', async () => {
+        const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);
+        await setUserProfile({
+            tables: store,
+            email: READER,
+            displayName: 'Ana Example',
+            provider: 'google',
+            now: NOW
+        });
+
+        const listed = await listMembers({ store, tables: store, slug: SLUG, actor: OWNER });
+        const reader = listed.find((entry) => entry.email === READER);
+
+        assert.equal(reader.displayName, 'Ana Example');
+        assert.equal(reader.email, READER);
+    });
 });
 
 // --- whose mail is not arriving -------------------------------------------
@@ -350,6 +368,26 @@ describe('changing what somebody may do', () => {
 // --- invitations ----------------------------------------------------------
 
 describe('inviting somebody who has never signed in', () => {
+    test('names the inviter in the email when their provider supplied one', async () => {
+        const store = await site([member(OWNER, ROLE.owner)]);
+        const mailer = recorder();
+        await setUserProfile({
+            tables: store,
+            email: OWNER,
+            displayName: 'Ana Example',
+            provider: 'google',
+            now: NOW
+        });
+
+        await inviteMember({
+            store, tables: store, mailer, slug: SLUG, actor: OWNER,
+            email: READER, key: KEY, baseUrl: BASE, now: NOW, log: silent
+        });
+
+        assert.match(mailer.sent[0].text, /Ana Example has invited you/);
+        assert.doesNotMatch(mailer.sent[0].text, /parent@example\.com has invited you/);
+    });
+
     test('mails a link and changes nothing until it is followed', async () => {
         const store = await site([member(OWNER, ROLE.owner)]);
         const mailer = recorder();

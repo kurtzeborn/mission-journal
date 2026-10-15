@@ -38,6 +38,7 @@ import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { deliveryTrouble } from './delivery.js';
 import { forgetMembership, recordMembership } from './memberships.js';
 import { validSlug } from './paths.js';
+import { userProfilesFor } from './userprofile.js';
 
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 const lower = (email) => String(email ?? '').trim().toLowerCase();
@@ -76,11 +77,16 @@ export async function listMembers({ store, tables = null, slug, actor, log = con
     const members = await readAcl(store, safe);
     if (!members) return null;
 
-    const trouble = await deliveryTrouble({ tables, emails: members.map((m) => m.email), log });
+    const emails = members.map((m) => m.email);
+    const [trouble, profiles] = await Promise.all([
+        deliveryTrouble({ tables, emails, log }),
+        userProfilesFor({ tables, emails })
+    ]);
 
     const me = lower(actor);
     return members.map((m) => ({
         email: lower(m.email),
+        displayName: profiles.get(lower(m.email))?.displayName ?? '',
         role: m.role,
         verifiedMissionary: Boolean(m.verifiedMissionary),
         addedAt: m.addedAt ?? '',

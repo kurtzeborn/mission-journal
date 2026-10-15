@@ -14,12 +14,9 @@ import {
     DIGEST,
     digestSchedule,
     digestDue,
-    cleanupLegacyDigestRows,
     DIGEST_ROW,
     dismissDigestPrompt,
     everyUser,
-    LEGACY_DIGEST_ROW,
-    LEGACY_PROMPT_ROW,
     markDigested,
     recordDigestPromptVisit,
     readUser,
@@ -242,68 +239,5 @@ describe('finding everybody who is due', () => {
         assert.equal(row.digestAt, '2026-08-08T13:15:00.000Z');
         assert.equal(row.digestFrequency, DIGEST.weekly);
         assert.equal(row.createdAt, '2026-08-01T00:00:00.000Z');
-    });
-});
-
-describe('retiring the compatibility layout', () => {
-    test('legacy rows are deleted only when digest-settings has the same data', async () => {
-        const store = memoryStore();
-        await store.upsertEntity(TABLES.users, {
-            partitionKey: THEM,
-            rowKey: LEGACY_DIGEST_ROW,
-            digestFrequency: DIGEST.monthly,
-            digestWeekday: 2,
-            digestWeek: 3,
-            digestAt: '2026-08-01T00:00:00.000Z'
-        });
-        await store.upsertEntity(TABLES.users, {
-            partitionKey: THEM,
-            rowKey: LEGACY_PROMPT_ROW,
-            visits: 4,
-            dismissedAt: '2026-08-02T00:00:00.000Z'
-        });
-        await store.upsertEntity(TABLES.users, {
-            partitionKey: THEM,
-            rowKey: DIGEST_ROW,
-            digestFrequency: DIGEST.monthly,
-            digestWeekday: 2,
-            digestWeek: 3,
-            digestAt: '2026-08-01T00:00:00.000Z',
-            promptVisits: 4,
-            promptDismissedAt: '2026-08-02T00:00:00.000Z'
-        });
-
-        assert.deepEqual(await cleanupLegacyDigestRows({ tables: store }), {
-            legacySettings: 1,
-            legacyPrompts: 1,
-            blockers: 0,
-            deleted: 0,
-            applied: false
-        });
-
-        await cleanupLegacyDigestRows({ tables: store, apply: true });
-        assert.equal(await store.getEntity(TABLES.users, THEM, LEGACY_DIGEST_ROW), null);
-        assert.equal(await store.getEntity(TABLES.users, THEM, LEGACY_PROMPT_ROW), null);
-        assert.ok(await store.getEntity(TABLES.users, THEM, DIGEST_ROW));
-    });
-
-    test('a mismatched legacy row blocks deletion', async () => {
-        const store = memoryStore();
-        await store.upsertEntity(TABLES.users, {
-            partitionKey: THEM,
-            rowKey: LEGACY_DIGEST_ROW,
-            digestFrequency: DIGEST.weekly
-        });
-        await store.upsertEntity(TABLES.users, {
-            partitionKey: THEM,
-            rowKey: DIGEST_ROW,
-            digestFrequency: DIGEST.monthly
-        });
-
-        await assert.rejects(
-            () => cleanupLegacyDigestRows({ tables: store, apply: true }),
-            /do not match/
-        );
-        assert.ok(await store.getEntity(TABLES.users, THEM, LEGACY_DIGEST_ROW));
     });
 });

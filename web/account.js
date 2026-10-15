@@ -31,9 +31,13 @@
 
         let principal;
         try {
-            const response = await fetch('/.auth/me', { cache: 'no-store' });
-            if (!response.ok) return;
-            principal = (await response.json()).clientPrincipal;
+            if (window.UserProfile) {
+                principal = await window.UserProfile.readPrincipal();
+            } else {
+                const response = await fetch('/.auth/me', { cache: 'no-store' });
+                if (!response.ok) return;
+                principal = (await response.json()).clientPrincipal;
+            }
         } catch {
             // Leave the signed-out state alone. A visitor who cannot reach
             // /.auth/me is no worse off being offered the sign-in button.
@@ -50,9 +54,9 @@
             document.getElementById('menu-provider').textContent = `Signed in with ${provider.name}`;
         }
 
-        // Twice over: the trigger can only ever show it truncated, and the
-        // address in full is the whole point of saying it.
-        document.getElementById('account-email').textContent = principal.userDetails;
+        const profile = window.UserProfile?.profileOf(principal);
+        document.getElementById('account-email').textContent =
+            profile?.displayName || principal.userDetails;
         document.getElementById('menu-address').textContent = principal.userDetails;
 
         if (signedOut) signedOut.hidden = true;

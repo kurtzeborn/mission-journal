@@ -29,8 +29,6 @@
 import { TABLES } from './tables.js';
 
 export const DIGEST_ROW = 'digest-settings';
-export const LEGACY_DIGEST_ROW = 'profile';
-export const LEGACY_PROMPT_ROW = 'digest-prompt';
 
 const lower = (value) => String(value ?? '').trim().toLowerCase();
 
@@ -100,75 +98,6 @@ export async function dismissDigestPrompt({ tables, email, now = () => new Date(
         promptVisits: 0,
         promptDismissedAt: dismissedAt
     });
-}
-
-/**
- * Remove the legacy entities after confirming their data exists in the new
- * layout. Dry-run by default, and refuses to delete when any field differs.
- */
-export async function cleanupLegacyDigestRows({ tables, apply = false }) {
-    const rows = await tables.listEntities(TABLES.users);
-    const byEmail = new Map();
-    for (const row of rows) {
-        if (!byEmail.has(row.partitionKey)) byEmail.set(row.partitionKey, new Map());
-        byEmail.get(row.partitionKey).set(row.rowKey, row);
-    }
-
-    let legacySettings = 0;
-    let legacyPrompts = 0;
-    let blockers = 0;
-    const digestFields = [
-        'digestFrequency',
-        'digestWeekday',
-        'digestWeek',
-        'digestAt',
-        'digestScheduleAt',
-        'createdAt'
-    ];
-
-    for (const mine of byEmail.values()) {
-        const settings = mine.get(LEGACY_DIGEST_ROW);
-        const prompt = mine.get(LEGACY_PROMPT_ROW);
-        const current = mine.get(DIGEST_ROW);
-        if (settings) legacySettings += 1;
-        if (prompt) legacyPrompts += 1;
-        if (
-            (settings && (!current || digestFields.some((field) =>
-                (settings[field] ?? null) !== (current[field] ?? null)
-            ))) ||
-            (prompt && (
-                !current ||
-                (prompt.visits ?? null) !== (current.promptVisits ?? null) ||
-                (prompt.visitedAt ?? null) !== (current.promptVisitedAt ?? null) ||
-                (prompt.dismissedAt ?? null) !== (current.promptDismissedAt ?? null)
-            ))
-        ) {
-            blockers += 1;
-        }
-    }
-
-    if (apply && blockers) {
-        throw new Error(`user cleanup: ${blockers} partition(s) do not match digest-settings`);
-    }
-
-    if (apply) {
-        for (const [email, mine] of byEmail) {
-            if (mine.has(LEGACY_DIGEST_ROW)) {
-                await tables.deleteEntity(TABLES.users, email, LEGACY_DIGEST_ROW);
-            }
-            if (mine.has(LEGACY_PROMPT_ROW)) {
-                await tables.deleteEntity(TABLES.users, email, LEGACY_PROMPT_ROW);
-            }
-        }
-    }
-
-    return {
-        legacySettings,
-        legacyPrompts,
-        blockers,
-        deleted: apply ? legacySettings + legacyPrompts : 0,
-        applied: apply
-    };
 }
 
 /**

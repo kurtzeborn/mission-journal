@@ -82,15 +82,14 @@ function fail(status) {
 }
 
 function renderReady(described, principal) {
-    // `textContent` throughout. `invitedBy` is an address an owner typed and
-    // `missionary` is a name somebody typed into the claim form, so both are
-    // attacker-supplied as far as this page is concerned.
+    // `textContent` throughout. Both names came from somebody else's account
+    // or archive settings.
     const whose = described.missionary
         ? `${described.missionary}'s letters`
         : 'a missionary\u2019s letters';
 
     $('ready-lede').textContent =
-        `${described.invitedBy || 'Somebody'} has invited you to read ${whose}.`;
+        `${described.invitedByName || described.invitedBy || 'Somebody'} has invited you to read ${whose}.`;
 
     $('ready-role').textContent =
         described.role === 'owner'
