@@ -166,9 +166,9 @@ Details: [Access control](plan.md#access-control) · [Ownership and the 60-day w
 
 ## Tables
 
-Fourteen tables in the same storage account, drawn in three groups so they stay legible. Keys as written; every one is a point read or a single-partition query except where noted.
+Fourteen tables in the same storage account, drawn two at a time so each entity remains readable. Keys as written; every one is a point read or a single-partition query except where noted.
 
-### People and access
+### User state and provider identity
 
 ```mermaid
 erDiagram
@@ -179,21 +179,33 @@ erDiagram
         string profile_row "displayName, optional givenName/familyName, nameProvider, nameUpdatedAt"
         string read_pattern "point reads; digest timer scans digest-settings rows daily"
     }
-    memberships {
-        string PartitionKey "lowercased email"
-        string RowKey "slug"
-        string note "DERIVED from acl.json - never grants access"
-    }
     identities {
         string PartitionKey "identity"
         string RowKey "sha256 of provider and userId"
         string note "DERIVED - repaired by signing in again"
+    }
+```
+
+### Memberships and emailed invitations
+
+```mermaid
+erDiagram
+    memberships {
+        string PartitionKey "lowercased email"
+        string RowKey "slug"
+        string note "DERIVED from acl.json - never grants access"
     }
     invites {
         string PartitionKey "slug"
         string RowKey "hash of the invitation token"
         string note "the hash revokes; it does not accept"
     }
+```
+
+### Quick Join
+
+```mermaid
+erDiagram
     qrInvites {
         string PartitionKey "slug"
         string RowKey "active"
@@ -206,7 +218,7 @@ erDiagram
     }
 ```
 
-### Archives and mail
+### Archive metadata and reminders
 
 ```mermaid
 erDiagram
@@ -220,6 +232,12 @@ erDiagram
         string RowKey "slug:kind"
         string note "send-once guard for reminder mail"
     }
+```
+
+### Mail consent and delivery
+
+```mermaid
+erDiagram
     optouts {
         string PartitionKey "optout"
         string RowKey "sha256 of email"
@@ -232,7 +250,7 @@ erDiagram
     }
 ```
 
-### Guards and housekeeping
+### Intake guards
 
 ```mermaid
 erDiagram
@@ -241,15 +259,21 @@ erDiagram
         string RowKey "message ULID"
         string note "daily cap guard - swept after 30 days"
     }
-    visits {
-        string PartitionKey "YYYY-MM-DD"
-        string RowKey "slug + bar + sha256 of the address"
-        string note "one row per person per archive per day - swept after 40"
-    }
     rejections {
         string PartitionKey "slug"
         string RowKey "message ULID"
         string note "AUTHORITATIVE - the only trace of a refused first letter"
+    }
+```
+
+### Activity and deletion lifecycle
+
+```mermaid
+erDiagram
+    visits {
+        string PartitionKey "YYYY-MM-DD"
+        string RowKey "slug + bar + sha256 of the address"
+        string note "one row per person per archive per day - swept after 40"
     }
     deletions {
         string PartitionKey "slug"
