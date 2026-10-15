@@ -166,7 +166,9 @@ Details: [Access control](plan.md#access-control) · [Ownership and the 60-day w
 
 ## Tables
 
-Fourteen physical tables share the same storage account. Each Mermaid entity below lists stored properties only; descriptions of authority, access patterns, and lifecycle sit outside the entity.
+Fourteen physical tables share the same storage account.
+
+<!-- Keep Mermaid entity rows limited to stored properties. Put authority, access patterns, and lifecycle in prose. -->
 
 ### User profiles
 
