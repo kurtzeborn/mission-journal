@@ -3,8 +3,10 @@
 // A QR code shown at a family gathering is a bearer credential by design, but
 // it must not become a photograph that grants access next week. The displayed
 // token therefore lives for thirty seconds and can only be exchanged while an
-// owner-controlled session is active. Exchange produces a per-browser,
-// single-use ticket long enough to survive an OAuth round trip.
+// owner-controlled session is active. Every scan produces its own per-browser
+// ticket long enough to survive an OAuth round trip. The displayed code is
+// intentionally multi-use; only an individual browser's ticket is bound to
+// the first account that accepts it.
 //
 // The QR code is intentionally reader-only. Broadcasting ownership in a room
 // would turn one accidental scan into permission to edit letters and invite
@@ -29,7 +31,7 @@ const redemptionPartition = (slug, id) => `${slug}:${id}`;
 export const QR_CODE_SECONDS = 30;
 export const QR_SESSION_IDLE_SECONDS = 90;
 export const QR_TICKET_MINUTES = 10;
-export const QR_SESSION_MAX_JOINS = 50;
+export const QR_CLOSE_GRACE_SECONDS = 20;
 
 const after = (at, milliseconds) => new Date(at.getTime() + milliseconds).toISOString();
 
@@ -49,6 +51,15 @@ function live(row, id, at) {
         !row.closedAt &&
         Date.parse(row.expiresAt) > at.getTime()
     );
+}
+
+// Closing stops new scans immediately, but somebody who already scanned may
+// be halfway through provider sign-in. Give that issued ticket a short landing
+// window rather than making the owner reopen the dialog and start them over.
+function acceptingTicket(row, id, at) {
+    if (live(row, id, at)) return true;
+    if (!row || row.sessionId !== id || !row.closedAt) return false;
+    return Date.parse(row.closedAt) + QR_CLOSE_GRACE_SECONDS * 1000 > at.getTime();
 }
 
 function codeFor({ slug, id, key, baseUrl, now }) {
@@ -202,7 +213,7 @@ export async function acceptQrInvite({
     if (!slug || !id) return { status: 'invalid' };
 
     const session = await activeRow(tables, slug);
-    if (!live(session, id, at)) return { status: 'closed' };
+    if (!acceptingTicket(session, id, at)) return { status: 'closed' };
 
     const redemptionKey = `ticket-${claimTokenHash(ticket)}`;
     const partitionKey = redemptionPartition(slug, id);
@@ -217,36 +228,19 @@ export async function acceptQrInvite({
     }
 
     if (!previous) {
-        let reserved = false;
-        for (let slot = 0; slot < QR_SESSION_MAX_JOINS; slot++) {
-            const slotKey = `slot-${String(slot).padStart(2, '0')}`;
-            reserved = await tables.insertEntities(TABLES.qrRedemptions, [
-                {
-                    partitionKey,
-                    rowKey: slotKey,
-                    ticketHash: redemptionKey,
-                    acceptedBy: email,
-                    reservedAt: at.toISOString()
-                },
-                {
-                    partitionKey,
-                    rowKey: redemptionKey,
-                    slot: slotKey,
-                    acceptedBy: email,
-                    acceptedAt: at.toISOString(),
-                    completedAt: ''
-                }
-            ]);
-            if (reserved) break;
-
+        const inserted = await tables.insertEntity(TABLES.qrRedemptions, {
+            partitionKey,
+            rowKey: redemptionKey,
+            acceptedBy: email,
+            acceptedAt: at.toISOString(),
+            completedAt: ''
+        });
+        if (!inserted) {
             const winner = await tables.getEntity(TABLES.qrRedemptions, partitionKey, redemptionKey);
-            if (winner) {
-                if (lower(winner.acceptedBy) !== email) return { status: 'accepted', slug };
-                reserved = true;
-                break;
+            if (!winner || lower(winner.acceptedBy) !== email) {
+                return { status: 'accepted', slug };
             }
         }
-        if (!reserved) return { status: 'full' };
     }
 
     for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {
