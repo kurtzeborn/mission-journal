@@ -20,7 +20,7 @@ flowchart LR
         cf -->|in-SMTP| worker
     end
 
-    subgraph azure["Azure &mdash; mission-journal, westus2"]
+    subgraph azure["Azure &mdash; mission-journal<br/>resources: westus2 · Static Web App: centralus"]
         direction TB
         swa["Static Web App<br/>mj-swa-*<br/>Standard"]
         fn["Function App<br/>mj-fn-*<br/>Flex Consumption"]
@@ -35,7 +35,7 @@ flowchart LR
         swa --> kv
     end
 
-    worker -->|"SAS write"| st
+    worker -->|"scoped SAS: blob write + queue add"| st
     swa <-->|"Google or Microsoft sign-in"| reader(["Reader in a browser"])
     fn -->|REST| mail["Cloudflare Email Service<br/>outbound mail"]
     fn -->|REST| peecho["Peecho<br/>print fulfilment"]
@@ -55,6 +55,7 @@ flowchart TD
 
     q1 --> ing["Function: ingest"]
     ing -->|"DKIM / ARC verify, classify, route by sender"| decide{"Slug claimed?"}
+    ing -->|"acknowledgements, claim offers, nudges"| mail["Cloudflare Email Service"]
     decide -->|"yes"| raw["blob: raw/{slug}/{msgId}/"]
     decide -->|"no"| pending["blob: pending/{slug}/"]
     decide -->|"refused"| rej[("table: rejections")]
@@ -62,7 +63,10 @@ flowchart TD
     raw --> q2[["queue: render"]]
     q2 --> ren["Function: render"]
     ren -->|"sanitize HTML, WebP renditions"| rendered["blob: rendered/{slug}/"]
-    ren --> ack["Function: notify — ack + digest"]
+
+    digest["Timer: digest"] -->|"read due digest-settings rows"| users[("table: users")]
+    digest --> rendered
+    digest -->|"summary mail"| mail
 ```
 
 Details: [Email ingestion](plan.md#email-ingestion) · [Cloudflare Email Routing](plan.md#email-ingestion--cloudflare-email-routing) · [Missionary routing](plan.md#missionary-routing) · [Content sanitization](plan.md#content-sanitization) · [Photo handling](plan.md#photo-handling)
@@ -108,13 +112,13 @@ All private, no public access. One GRS account holds everything durable.
 flowchart TB
     subgraph auth[Authoritative — losing it loses letters]
         raw["raw/{slug}/{msgId}/<br/>message.eml · attachments/ · metadata.json"]
-        config["config/{slug}/<br/>profile.json · acl.json"]
+        config["config/{slug}/<br/>profile.json · acl.json · cover.webp<br/>book-sections.json · claim state"]
         pending["pending/{slug}/<br/>claim.json + unclaimed letters"]
     end
 
     subgraph derived[Derived — rebuildable from raw/]
         rendered["rendered/{slug}/<br/>posts.json · photos/{id}/large.webp · thumb.webp"]
-        books["books/{slug}/{id}/<br/>book.pdf · proof.pdf · status.json · manifest.json"]
+        books["books/{slug}/{id}/<br/>book.pdf · proof.pdf · status.json · manifest.json<br/>cover.jpg · order.json"]
         exports["exports/<br/>staged offline archives"]
     end
 
@@ -134,8 +138,8 @@ flowchart TB
 |---|---|
 | `inbox` | deleted after 30 days, versions and snapshots too |
 | `exports` | deleted after 7 days |
-| `raw` | moved to Cool after 30 days |
-| all | superseded blob versions expire after 30 days |
+| `raw` | moved to Cold after 30 days |
+| `raw`, `rendered`, `books` | superseded blob versions expire after 30 days |
 
 `raw/` is never served to anyone and is not in the offline export — it exists for reprocessing and for authorship evidence.
 
@@ -162,7 +166,7 @@ Details: [Access control](plan.md#access-control) · [Ownership and the 60-day w
 
 ## Tables
 
-Twelve tables in the same storage account, drawn in three groups so they stay legible. Keys as written; every one is a point read or a single-partition query except where noted.
+Fourteen tables in the same storage account, drawn in three groups so they stay legible. Keys as written; every one is a point read or a single-partition query except where noted.
 
 ### People and access
 
@@ -170,8 +174,10 @@ Twelve tables in the same storage account, drawn in three groups so they stay le
 erDiagram
     users {
         string PartitionKey "lowercased email"
-        string RowKey "profile"
-        string columns "auth provider, digest prefs, claim schedule"
+        string RowKey "digest-settings | profile"
+        string digest_settings_row "frequency, calendar schedule, cycle cursor, prompt state"
+        string profile_row "displayName, optional givenName/familyName, nameProvider, nameUpdatedAt"
+        string read_pattern "point reads; digest timer scans digest-settings rows daily"
     }
     memberships {
         string PartitionKey "lowercased email"
@@ -188,6 +194,16 @@ erDiagram
         string RowKey "hash of the invitation token"
         string note "the hash revokes; it does not accept"
     }
+    qrInvites {
+        string PartitionKey "slug"
+        string RowKey "active"
+        string note "one owner-controlled Quick Join session"
+    }
+    qrRedemptions {
+        string PartitionKey "slug:sessionId"
+        string RowKey "ticket hash or capacity slot"
+        string note "single-use joins and the 50-reader session cap"
+    }
 ```
 
 ### Archives and mail
@@ -197,7 +213,7 @@ erDiagram
     sites {
         string PartitionKey "slug"
         string RowKey "activity"
-        string columns "display name, mission dates, lastPostAt, lastReceivedAt"
+        string columns "display name, mission details, album URLs, lastPostAt, lastReceivedAt"
     }
     nudges {
         string PartitionKey "lowercased email"
@@ -242,6 +258,22 @@ erDiagram
     }
 ```
 
+### Typed rows in `users`
+
+The two rows share an email partition but have separate authorities and lifecycles. Provider names are presentation data; verified email and `acl.json` remain the identity and authorization inputs.
+
+```mermaid
+flowchart LR
+    auth["Static Web Apps /.auth/me<br/>provider name claims"] --> browser["user-profile.js in the browser"]
+    browser -->|"PUT /api/profile<br/>name fields only"| profileApi["Function: user-profile-write"]
+    edge["Static Web Apps proxy<br/>verified email + provider"] --> profileApi
+    profileApi --> profile[("users<br/>PK: email · RK: profile")]
+    profile -.->|"names in People, invitations,<br/>account and operator displays"| presentation["presentation surfaces"]
+
+    preferences["preferences API<br/>and digest prompt"] --> digest[("users<br/>PK: email · RK: digest-settings<br/>frequency · schedule · cycle cursor · prompt state")]
+    digestTimer["daily digest timer"] -->|"scan due rows"| digest
+```
+
 Details: [Storage layout](plan.md#storage-layout) · [Notification preferences](plan.md#notification-preferences) · [New-letter notifications](plan.md#new-letter-notifications) · [Onboarding and auto-provisioning](plan.md#onboarding-and-auto-provisioning)
 
 ---
@@ -281,23 +313,30 @@ flowchart TB
         r1["content/{slug}/posts.json"]
         r2["photo/{slug}/{id}/{size}.webp"]
         r3["download/{slug}/letters.zip"]
-        r4["memberships"]
+    end
+    subgraph account["Signed-in account"]
+        u1["memberships"]
+        u2["preferences · preferences/prompt"]
+        u3["profile — provider-supplied user name"]
     end
     subgraph own[Owners]
         o1["posts/{slug}/{postId} — edit, hide, restore, photos"]
-        o2["members/{slug} — invite, resend, promote, remove"]
+        o2["members/{slug} — invite, resend, promote, remove, Quick Join"]
         o3["profile/{slug} · site/{slug}"]
-        o4["book/{slug} · print/{slug}/{id}"]
-        o5["photos/google/* — album import"]
+        o4["book/{slug} — cover, sections, proof, publish"]
+        o5["print/{slug}/{id} — Peecho checkout and files"]
+        o6["photos/google/* — album import"]
     end
     subgraph anon[Token-bearing, no sign-in]
         a1["claim/describe · claim/redeem · claim/resend"]
         a2["invite/describe · invite/accept"]
-        a3["optout/describe · optout"]
-        a4["relay/describe · relay"]
+        a3["qr-invite/exchange · qr-invite/accept"]
+        a4["optout/describe · optout"]
+        a5["relay/describe · relay"]
+        a6["peecho/placed · peecho/status — signed webhooks"]
     end
     subgraph op["Operators — manage/*, 404 to everyone else"]
-        p1["manage/deletions · manage/last-received"]
+        p1["manage/deletions · manage/last-received · manage/summary"]
         p2["manage/stats · manage/pending"]
         p3["manage/rejections/*"]
     end
