@@ -8,81 +8,13 @@
 // off until they come here, and a preference nobody can find is the same as a
 // preference that is not offered. The account menu is how they find it.
 
-/* global Page */
+/* global EmailSchedule, Page */
 
 const { $, show, aimSignIn } = Page;
-
-// A rejected fetch is the network, not the answer. Distinguished from a 401
-// here because they need opposite pages: one says sign in, the other says we
-// are broken, and showing the wrong one sends somebody to authenticate
-// against an outage.
-async function call(method, payload, path = '/api/preferences') {
-    try {
-        const response = await fetch(path, {
-            method,
-            headers: payload ? { 'Content-Type': 'application/json' } : {},
-            body: payload ? JSON.stringify(payload) : undefined
-        });
-        return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
-    } catch {
-        return { ok: false, status: 0, body: {} };
-    }
-}
 
 function offerSignIn() {
     aimSignIn();
     show('signin');
-}
-
-function selectedFrequency() {
-    if ($('digest-weekly').checked) return 'weekly';
-    if ($('digest-monthly').checked) return 'monthly';
-    return 'off';
-}
-
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const WEEKS = ['', 'first', 'second', 'third', 'fourth'];
-
-function showSchedule() {
-    const frequency = selectedFrequency();
-    $('digest-week-row').hidden = frequency !== 'monthly';
-    $('digest-weekday-row').hidden = frequency === 'off';
-
-    if (frequency === 'off') {
-        $('digest-preview').textContent = 'We won\u2019t send email summaries.';
-        return;
-    }
-
-    const weekday = WEEKDAYS[Number($('digest-weekday').value)] ?? 'Monday';
-    const when =
-        frequency === 'monthly'
-            ? `on the ${WEEKS[Number($('digest-week').value)] ?? 'first'} ${weekday} of each month`
-            : `every ${weekday}`;
-    $('digest-preview').textContent =
-        `We\u2019ll check ${when}. If no new letters have arrived, we won\u2019t send anything.`;
-}
-
-async function save(event) {
-    event.preventDefault();
-
-    const button = $('digest-submit');
-    button.disabled = true;
-
-    const result = await call('PUT', {
-        digestFrequency: selectedFrequency(),
-        digestWeekday: Number($('digest-weekday').value),
-        digestWeek: Number($('digest-week').value)
-    });
-
-    // A session can lapse while the page is open, and this page is one
-    // somebody might leave sitting. Sending them back through sign-in is
-    // better than a save that quietly did nothing.
-    if (result.status === 401) return offerSignIn();
-
-    button.disabled = false;
-    $('digest-as').textContent = result.ok
-        ? 'Saved.'
-        : 'That did not save. Please try again in a moment.';
 }
 
 // Lifting a block, not choosing a frequency, so the whole panel goes rather
@@ -91,7 +23,7 @@ async function resume() {
     const button = $('resume');
     button.disabled = true;
 
-    const result = await call('DELETE', null, '/api/preferences/suppression');
+    const result = await EmailSchedule.call('DELETE', null, '/api/preferences/suppression');
 
     if (result.status === 401) return offerSignIn();
 
@@ -106,24 +38,30 @@ async function resume() {
 }
 
 async function start() {
-    const result = await call('GET');
+    const result = await EmailSchedule.call('GET');
 
     if (result.status === 401) return offerSignIn();
     if (!result.ok) return show('failed');
 
-    const frequency = result.body.digestFrequency ?? 'off';
-    $(`digest-${frequency}`).checked = true;
-    $('digest-weekday').value = String(result.body.digestWeekday ?? 1);
-    $('digest-week').value = String(result.body.digestWeek ?? 1);
-    showSchedule();
+    const schedule = EmailSchedule.create({
+        elements: {
+            form: $('digest-form'),
+            weekly: $('digest-weekly'),
+            monthly: $('digest-monthly'),
+            off: $('digest-off'),
+            weekRow: $('digest-week-row'),
+            weekdayRow: $('digest-weekday-row'),
+            week: $('digest-week'),
+            weekday: $('digest-weekday'),
+            preview: $('digest-preview'),
+            submit: $('digest-submit'),
+            status: $('digest-as')
+        },
+        onUnauthorized: offerSignIn
+    });
+    schedule.set(result.body);
     $('suppressed').hidden = !result.body.suppressed;
     $('digest-as').textContent = result.body.email ? `Signed in as ${result.body.email}.` : '';
-    $('digest-form').addEventListener('submit', save);
-    $('digest-weekly').addEventListener('change', showSchedule);
-    $('digest-monthly').addEventListener('change', showSchedule);
-    $('digest-off').addEventListener('change', showSchedule);
-    $('digest-weekday').addEventListener('change', showSchedule);
-    $('digest-week').addEventListener('change', showSchedule);
     $('resume').addEventListener('click', resume);
 
     show('ready');

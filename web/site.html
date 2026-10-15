@@ -109,7 +109,7 @@
                         <ul class="menu__list" id="archives-list"></ul>
                     </div>
                     <ul class="menu__list">
-                        <li><a href="/email">Email settings</a></li>
+                        <li><a id="email-settings" href="/email">Email settings</a></li>
                         <li><a href="/.auth/logout?post_logout_redirect_uri=/login.html%3Fsignedout%3D1">Sign out</a></li>
                     </ul>
                 </div>
@@ -305,6 +305,65 @@
         </form>
     </dialog>
 
+    <dialog class="email-dialog" id="email-dialog" aria-labelledby="email-dialog-title">
+        <h2 id="email-dialog-title">Email notifications</h2>
+        <p id="email-dialog-copy"></p>
+        <form id="email-dialog-form">
+            <fieldset class="email-summary__choices">
+                <legend>When should we check for new letters?</legend>
+                <label class="email-summary__choice" for="email-dialog-weekly">
+                    <input id="email-dialog-weekly" name="email-dialog-frequency" type="radio" value="weekly">
+                    <span>
+                        <strong>Weekly</strong>
+                        <small>Check once a week. Send an email only if something new arrived.</small>
+                    </span>
+                </label>
+                <label class="email-summary__choice" for="email-dialog-monthly">
+                    <input id="email-dialog-monthly" name="email-dialog-frequency" type="radio" value="monthly">
+                    <span>
+                        <strong>Monthly</strong>
+                        <small>Check once a month. Send an email only if something new arrived.</small>
+                    </span>
+                </label>
+                <label class="email-summary__choice" for="email-dialog-off">
+                    <input id="email-dialog-off" name="email-dialog-frequency" type="radio" value="off">
+                    <span>
+                        <strong>Off</strong>
+                        <small>Don&rsquo;t send email summaries.</small>
+                    </span>
+                </label>
+            </fieldset>
+            <p id="email-dialog-week-row" hidden>
+                <label for="email-dialog-week">Which week each month?</label><br>
+                <select id="email-dialog-week">
+                    <option value="1">First</option>
+                    <option value="2">Second</option>
+                    <option value="3">Third</option>
+                    <option value="4">Fourth</option>
+                </select>
+            </p>
+            <p id="email-dialog-weekday-row" hidden>
+                <label for="email-dialog-weekday">Which day of the week?</label><br>
+                <select id="email-dialog-weekday">
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                    <option value="0">Sunday</option>
+                </select>
+            </p>
+            <p class="email-summary__preview" id="email-dialog-preview" aria-live="polite"></p>
+            <p class="email-dialog__actions">
+                <button class="button" type="submit" id="email-dialog-submit">Save schedule</button>
+                <button class="button button--quiet" type="button" id="email-dialog-dismiss">Close</button>
+            </p>
+            <p class="note" id="email-dialog-status" role="status" aria-live="polite"></p>
+        </form>
+        <p class="note note--small"><a href="/email">Open the full email settings page</a></p>
+    </dialog>
+
     <!--
         Classic scripts, not modules. The same reader has to run from a file://
         URL inside the downloaded zip, where module loading is blocked by CORS.
@@ -317,6 +376,8 @@
     <script src="/album.js"></script>
     <script src="/vendor/qrcode.js"></script>
     <script src="/quick-join.js"></script>
+    <script src="/email-schedule.js"></script>
+    <script src="/email-dialog.js"></script>
     <script src="/app.js"></script>
 </body>
 

@@ -159,6 +159,10 @@ describe('accepting', () => {
         const accepted = view.calls.find((c) => c.url === '/api/invite/accept');
         assert.equal(accepted.body.token, TOKEN);
         assert.equal(view.context.location.href, '/elder.example/');
+        assert.equal(
+            view.context.sessionStorage.getItem('email-notification-prompt-after-join'),
+            'elder.example'
+        );
     });
 
     test('nobody is asked to press a second button to get in', async () => {

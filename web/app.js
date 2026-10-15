@@ -1115,6 +1115,7 @@
         // appears a moment later costs nothing. Awaiting it would put a second
         // round trip in front of the content on every visit.
         showArchives(payload.slug);
+        window.EmailDialog?.mount(payload.slug);
 
         // The standing exception to private-by-default, said out loud on the
         // page where it is being exercised. The server has already logged it;

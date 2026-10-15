@@ -14,8 +14,10 @@ import {
     DIGEST,
     digestSchedule,
     digestDue,
+    dismissDigestPrompt,
     everyUser,
     markDigested,
+    recordDigestPromptVisit,
     readUser,
     setDigest,
     validFrequency
@@ -42,6 +44,25 @@ describe('recording what somebody chose', () => {
     test('an address nobody has answered for has no row at all', async () => {
         const store = memoryStore();
         assert.equal(await readUser({ tables: store, email: THEM }), null);
+    });
+
+    describe('reminding somebody who still has summaries off', () => {
+        test('the fifth archive visit is due and a dismissal starts the count over', async () => {
+            const store = memoryStore();
+
+            for (let visit = 1; visit <= 5; visit += 1) {
+                const prompt = await recordDigestPromptVisit({
+                    tables: store,
+                    email: THEM,
+                    now: AT(`2026-08-0${visit}T00:00:00Z`)
+                });
+                assert.equal(prompt.due, visit === 5);
+            }
+            assert.equal(await readUser({ tables: store, email: THEM }), null);
+
+            await dismissDigestPrompt({ tables: store, email: THEM, now: AT('2026-08-06T00:00:00Z') });
+            assert.equal((await recordDigestPromptVisit({ tables: store, email: THEM })).due, false);
+        });
     });
 
     test('the address is the partition, lowercased and trimmed', async () => {

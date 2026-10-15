@@ -13,6 +13,7 @@
 /* global Page */
 
 const KEY = 'invite-token';
+const EMAIL_PROMPT_AFTER_JOIN_KEY = 'email-notification-prompt-after-join';
 
 const { $, show, aimSignIn } = Page;
 const takeToken = () => Page.takeToken(KEY);
@@ -129,6 +130,7 @@ async function submit(event, token) {
     }
 
     sessionStorage.removeItem(KEY);
+    sessionStorage.setItem(EMAIL_PROMPT_AFTER_JOIN_KEY, result.body.slug);
 
     // Straight into the archive. A confirmation page here would only be a
     // second button saying what the first one already did.

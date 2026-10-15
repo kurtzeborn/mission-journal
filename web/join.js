@@ -9,6 +9,7 @@
 const CODE_KEY = 'qr-invite-code';
 const READY_KEY = 'qr-invite-ready';
 const JOIN_AFTER_SIGNIN_KEY = 'qr-invite-join-after-signin';
+const EMAIL_PROMPT_AFTER_JOIN_KEY = 'email-notification-prompt-after-join';
 
 const { $, show, takeToken, aimSignIn } = Page;
 
@@ -129,6 +130,7 @@ async function accept(event, ready) {
 
     sessionStorage.removeItem(READY_KEY);
     sessionStorage.removeItem(JOIN_AFTER_SIGNIN_KEY);
+    sessionStorage.setItem(EMAIL_PROMPT_AFTER_JOIN_KEY, result.body.slug);
     location.href = `/${result.body.slug}/`;
 }
 
