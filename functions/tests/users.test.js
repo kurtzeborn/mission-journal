@@ -14,7 +14,7 @@ import {
     DIGEST,
     digestSchedule,
     digestDue,
-    backfillDigestSettings,
+    cleanupLegacyDigestRows,
     DIGEST_ROW,
     dismissDigestPrompt,
     everyUser,
@@ -245,8 +245,8 @@ describe('finding everybody who is due', () => {
     });
 });
 
-describe('moving the live layout without losing rollback', () => {
-    test('legacy settings and reminder state are merged into digest-settings', async () => {
+describe('retiring the compatibility layout', () => {
+    test('legacy rows are deleted only when digest-settings has the same data', async () => {
         const store = memoryStore();
         await store.upsertEntity(TABLES.users, {
             partitionKey: THEM,
@@ -262,20 +262,48 @@ describe('moving the live layout without losing rollback', () => {
             visits: 4,
             dismissedAt: '2026-08-02T00:00:00.000Z'
         });
+        await store.upsertEntity(TABLES.users, {
+            partitionKey: THEM,
+            rowKey: DIGEST_ROW,
+            digestFrequency: DIGEST.monthly,
+            digestWeekday: 2,
+            digestWeek: 3,
+            digestAt: '2026-08-01T00:00:00.000Z',
+            promptVisits: 4,
+            promptDismissedAt: '2026-08-02T00:00:00.000Z'
+        });
 
-        assert.deepEqual(
-            await backfillDigestSettings({ tables: store }),
-            { legacySettings: 1, legacyPrompts: 1, written: 1, applied: false }
+        assert.deepEqual(await cleanupLegacyDigestRows({ tables: store }), {
+            legacySettings: 1,
+            legacyPrompts: 1,
+            blockers: 0,
+            deleted: 0,
+            applied: false
+        });
+
+        await cleanupLegacyDigestRows({ tables: store, apply: true });
+        assert.equal(await store.getEntity(TABLES.users, THEM, LEGACY_DIGEST_ROW), null);
+        assert.equal(await store.getEntity(TABLES.users, THEM, LEGACY_PROMPT_ROW), null);
+        assert.ok(await store.getEntity(TABLES.users, THEM, DIGEST_ROW));
+    });
+
+    test('a mismatched legacy row blocks deletion', async () => {
+        const store = memoryStore();
+        await store.upsertEntity(TABLES.users, {
+            partitionKey: THEM,
+            rowKey: LEGACY_DIGEST_ROW,
+            digestFrequency: DIGEST.weekly
+        });
+        await store.upsertEntity(TABLES.users, {
+            partitionKey: THEM,
+            rowKey: DIGEST_ROW,
+            digestFrequency: DIGEST.monthly
+        });
+
+        await assert.rejects(
+            () => cleanupLegacyDigestRows({ tables: store, apply: true }),
+            /do not match/
         );
-        assert.equal(await store.getEntity(TABLES.users, THEM, DIGEST_ROW), null);
-
-        await backfillDigestSettings({ tables: store, apply: true });
-        const row = await store.getEntity(TABLES.users, THEM, DIGEST_ROW);
-        assert.equal(row.digestFrequency, DIGEST.monthly);
-        assert.equal(row.digestWeekday, 2);
-        assert.equal(row.promptVisits, 4);
-        assert.equal(row.promptDismissedAt, '2026-08-02T00:00:00.000Z');
         assert.ok(await store.getEntity(TABLES.users, THEM, LEGACY_DIGEST_ROW));
-        assert.ok(await store.getEntity(TABLES.users, THEM, LEGACY_PROMPT_ROW));
     });
 });
