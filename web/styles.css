@@ -85,6 +85,22 @@ body {
         line-height: 1;
         text-decoration: none;
     }
+
+    .manager-strip__stats {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.8rem;
+    }
+
+    .manager-strip__metric--pending {
+        color: #a16207;
+        font-weight: 700;
+    }
+
+    .manager-strip__metric--deleted {
+        color: #b91c1c;
+        font-weight: 700;
+    }
 }
 
 .wrap {
