@@ -231,6 +231,91 @@ describe('being turned away from an archive', () => {
     });
 });
 
+// The write-and-return seam for owner actions.
+//
+// The reader owns the controls, but app.js owns the request, the refusal
+// sentence, and where the reload returns. A successful edit that comes back at
+// the top of a hundred-letter archive looks like the edit disappeared; a
+// failed one that reloads anyway throws away the only useful explanation.
+describe('changing a letter from the archive', () => {
+    async function owner(writeAnswer = { status: 200, body: {} }) {
+        return archive({
+            answer: async (url, init) => {
+                if (url === '/.auth/me') return signedIn('mum@example.com');
+                if (url === '/api/memberships') {
+                    return { status: 200, body: { memberships: [] } };
+                }
+                if (url.startsWith('/api/posts/')) {
+                    return typeof writeAnswer === 'function'
+                        ? writeAnswer(url, init)
+                        : writeAnswer;
+                }
+                return {
+                    status: 200,
+                    headers: { ETag: '"archive-version"' },
+                    body: {
+                        slug: SLUG,
+                        role: 'owner',
+                        posts: [{ id: 'letter one', subject: 'Before' }]
+                    }
+                };
+            }
+        });
+    }
+
+    test('a saved edit reloads at the letter that changed', async () => {
+        const view = await owner();
+
+        const failed = await view.context.mounted.admin.patch(
+            'letter one',
+            { subject: 'After' },
+            []
+        );
+
+        assert.equal(failed, null);
+        assert.equal(view.context.location.hash, '#panel-letter%20one');
+        assert.equal(view.context.location.reloaded, 1);
+
+        const write = view.calls.find((call) => call.method === 'PATCH');
+        assert.equal(write.url, `/api/posts/${SLUG}/letter%20one`);
+        assert.equal(write.headers['If-Match'], '"archive-version"');
+        assert.deepEqual(write.body, { subject: 'After' });
+    });
+
+    test('deleting a letter reloads without returning to a letter that is gone', async () => {
+        const view = await owner();
+
+        const failed = await view.context.mounted.admin.remove('letter one');
+
+        assert.equal(failed, null);
+        assert.equal(view.context.location.hash, '');
+        assert.equal(view.context.location.reloaded, 1);
+    });
+
+    test('a stale edit explains the conflict and leaves the page in place', async () => {
+        const view = await owner({ status: 412, body: {} });
+
+        const failed = await view.context.mounted.admin.patch(
+            'letter one',
+            { subject: 'After' },
+            []
+        );
+
+        assert.match(failed, /someone changed these letters/);
+        assert.equal(view.context.location.reloaded, undefined);
+        assert.equal(view.context.location.hash, '');
+    });
+
+    test('a network failure says nothing changed and leaves the page in place', async () => {
+        const view = await owner(() => new Error('offline'));
+
+        const failed = await view.context.mounted.admin.restore('letter one');
+
+        assert.equal(failed, 'Could not reach the server. Nothing was changed.');
+        assert.equal(view.context.location.reloaded, undefined);
+    });
+});
+
 // Reaching the other archives you belong to.
 //
 // There is no dashboard, and every archive is behind a sign-in, so somebody
