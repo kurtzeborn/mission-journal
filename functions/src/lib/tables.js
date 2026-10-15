@@ -9,7 +9,8 @@
 // set the pattern:
 //
 //   `memberships`  PartitionKey = lowercased email, RowKey = slug
-//   `users`        PartitionKey = lowercased email, RowKey = 'profile'
+//   `users`        PartitionKey = lowercased email, typed rows such as
+//                  'digest-settings' and 'profile'
 //
 // `acl.json` remains the source of truth for who may read a site, and the
 // content API keeps checking it on every request. `memberships` exists only

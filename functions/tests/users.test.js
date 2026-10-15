@@ -14,8 +14,12 @@ import {
     DIGEST,
     digestSchedule,
     digestDue,
+    backfillDigestSettings,
+    DIGEST_ROW,
     dismissDigestPrompt,
     everyUser,
+    LEGACY_DIGEST_ROW,
+    LEGACY_PROMPT_ROW,
     markDigested,
     recordDigestPromptVisit,
     readUser,
@@ -58,7 +62,10 @@ describe('recording what somebody chose', () => {
                 });
                 assert.equal(prompt.due, visit === 5);
             }
-            assert.equal(await readUser({ tables: store, email: THEM }), null);
+            const row = await readUser({ tables: store, email: THEM });
+            assert.equal(row.rowKey, DIGEST_ROW);
+            assert.equal(row.digestFrequency, undefined);
+            assert.equal(row.promptVisits, 5);
 
             await dismissDigestPrompt({ tables: store, email: THEM, now: AT('2026-08-06T00:00:00Z') });
             assert.equal((await recordDigestPromptVisit({ tables: store, email: THEM })).due, false);
@@ -90,6 +97,26 @@ describe('recording what somebody chose', () => {
             email: THEM,
             frequency: DIGEST.monthly,
             now: AT('2026-08-01T00:00:00Z')
+        });
+
+        test('a reminder row does not start the digest window before consent', async () => {
+            const store = memoryStore();
+            await recordDigestPromptVisit({
+                tables: store,
+                email: THEM,
+                now: AT('2026-08-01T00:00:00Z')
+            });
+            await setDigest({
+                tables: store,
+                email: THEM,
+                frequency: DIGEST.weekly,
+                now: AT('2026-08-10T00:00:00Z')
+            });
+
+            const row = await readUser({ tables: store, email: THEM });
+            assert.equal(row.digestAt, '2026-08-10T00:00:00.000Z');
+            assert.equal(row.createdAt, '2026-08-10T00:00:00.000Z');
+            assert.equal(row.promptVisits, 1);
         });
 
         const row = await readUser({ tables: store, email: THEM });
@@ -192,7 +219,7 @@ describe('whether a cycle is over', () => {
 });
 
 describe('finding everybody who is due', () => {
-    test('the scan ignores any row that is not a profile', async () => {
+    test('the scan ignores rows that are not digest settings and prefers the new row', async () => {
         const store = memoryStore();
         await setDigest({ tables: store, email: THEM, frequency: DIGEST.monthly, now: AT('2026-08-01T00:00:00Z') });
         await store.upsertEntity(TABLES.users, {
@@ -203,7 +230,7 @@ describe('finding everybody who is due', () => {
 
         const rows = await everyUser({ tables: store });
         assert.equal(rows.length, 1);
-        assert.equal(rows[0].rowKey, 'profile');
+        assert.equal(rows[0].rowKey, DIGEST_ROW);
     });
 
     test('marking a cycle done moves the window and nothing else', async () => {
@@ -215,5 +242,40 @@ describe('finding everybody who is due', () => {
         assert.equal(row.digestAt, '2026-08-08T13:15:00.000Z');
         assert.equal(row.digestFrequency, DIGEST.weekly);
         assert.equal(row.createdAt, '2026-08-01T00:00:00.000Z');
+    });
+});
+
+describe('moving the live layout without losing rollback', () => {
+    test('legacy settings and reminder state are merged into digest-settings', async () => {
+        const store = memoryStore();
+        await store.upsertEntity(TABLES.users, {
+            partitionKey: THEM,
+            rowKey: LEGACY_DIGEST_ROW,
+            digestFrequency: DIGEST.monthly,
+            digestWeekday: 2,
+            digestWeek: 3,
+            digestAt: '2026-08-01T00:00:00.000Z'
+        });
+        await store.upsertEntity(TABLES.users, {
+            partitionKey: THEM,
+            rowKey: LEGACY_PROMPT_ROW,
+            visits: 4,
+            dismissedAt: '2026-08-02T00:00:00.000Z'
+        });
+
+        assert.deepEqual(
+            await backfillDigestSettings({ tables: store }),
+            { legacySettings: 1, legacyPrompts: 1, written: 1, applied: false }
+        );
+        assert.equal(await store.getEntity(TABLES.users, THEM, DIGEST_ROW), null);
+
+        await backfillDigestSettings({ tables: store, apply: true });
+        const row = await store.getEntity(TABLES.users, THEM, DIGEST_ROW);
+        assert.equal(row.digestFrequency, DIGEST.monthly);
+        assert.equal(row.digestWeekday, 2);
+        assert.equal(row.promptVisits, 4);
+        assert.equal(row.promptDismissedAt, '2026-08-02T00:00:00.000Z');
+        assert.ok(await store.getEntity(TABLES.users, THEM, LEGACY_DIGEST_ROW));
+        assert.ok(await store.getEntity(TABLES.users, THEM, LEGACY_PROMPT_ROW));
     });
 });
