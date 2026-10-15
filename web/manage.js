@@ -147,7 +147,12 @@
             const row = document.createElement('tr');
             slugCell(row, deletion.slug);
             cell(row, day(deletion.deletedAt));
-            cell(row, deletion.deletedBy ?? '\u2014');
+            cell(
+                row,
+                deletion.deletedByName
+                    ? `${deletion.deletedByName} (${deletion.deletedBy})`
+                    : deletion.deletedBy ?? '\u2014'
+            );
             cell(row, deletion.reason || '\u2014');
             cell(row, day(deletion.purgeAfter));
 

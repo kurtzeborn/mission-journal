@@ -35,6 +35,7 @@ import { issueOptOut, optedOut, unsubscribeHeaders } from './optout.js';
 import { validSlug } from './paths.js';
 import { sitesBySlug } from './sites.js';
 import { TABLES } from './tables.js';
+import { userNameFor, userProfilesFor } from './userprofile.js';
 import { validEmail } from './members.js';
 
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
@@ -166,12 +167,15 @@ export async function inviteMember({
         expiresAt
     });
 
-    const sites = await sitesBySlug({ tables, slugs: [safe] });
+    const [sites, inviterName] = await Promise.all([
+        sitesBySlug({ tables, slugs: [safe] }),
+        userNameFor({ tables, email: me })
+    ]);
     const optOutToken = issueOptOut({ email: them, slug: safe, key, now });
     const body = inviteEmail({
         baseUrl,
         token,
-        invitedBy: me,
+        invitedBy: inviterName || me,
         missionary: sites.get(safe)?.missionaryDisplayName ?? '',
         role,
         expiresAt,
@@ -223,14 +227,20 @@ export async function listInvites({ tables, slug, now = () => new Date(), log = 
     const rows = await tables.listEntities(TABLES.invites, { partitionKey: safe });
 
     const live = rows.filter((row) => !row.acceptedAt && !row.revokedAt && Date.parse(row.expiresAt) > at);
-    const trouble = await deliveryTrouble({ tables, emails: live.map((row) => row.email), log });
+    const emails = live.flatMap((row) => [row.email, row.invitedBy]);
+    const [trouble, profiles] = await Promise.all([
+        deliveryTrouble({ tables, emails: live.map((row) => row.email), log }),
+        userProfilesFor({ tables, emails })
+    ]);
 
     return live
         .map((row) => ({
             id: row.rowKey,
             email: row.email,
+            displayName: profiles.get(lower(row.email))?.displayName ?? '',
             role: row.role,
             invitedBy: row.invitedBy ?? '',
+            invitedByName: profiles.get(lower(row.invitedBy))?.displayName ?? '',
             createdAt: row.createdAt ?? '',
             expiresAt: row.expiresAt ?? '',
             // The invitation that never arrived is the sharpest case this
@@ -346,12 +356,15 @@ export async function resendInvite({
         supersededBy: hash
     });
 
-    const sites = await sitesBySlug({ tables, slugs: [safe] });
+    const [sites, inviterName] = await Promise.all([
+        sitesBySlug({ tables, slugs: [safe] }),
+        userNameFor({ tables, email: me })
+    ]);
     const optOutToken = issueOptOut({ email: them, slug: safe, key, now });
     const body = inviteEmail({
         baseUrl,
         token,
-        invitedBy: me,
+        invitedBy: inviterName || me,
         missionary: sites.get(safe)?.missionaryDisplayName ?? '',
         role: row.role,
         expiresAt,
@@ -434,13 +447,17 @@ export async function describeInvite({ tables, token, key, now = () => new Date(
     if (row.acceptedAt) return { status: 'accepted', slug };
     if (verified.reason === 'expired') return { status: 'expired', slug };
 
-    const sites = await sitesBySlug({ tables, slugs: [slug] });
+    const [sites, inviterName] = await Promise.all([
+        sitesBySlug({ tables, slugs: [slug] }),
+        userNameFor({ tables, email: row.invitedBy })
+    ]);
 
     return {
         status: 'ready',
         slug,
         role: row.role,
         invitedBy: row.invitedBy ?? '',
+        invitedByName: inviterName,
         missionary: sites.get(slug)?.missionaryDisplayName ?? '',
         expiresAt: row.expiresAt ?? ''
     };

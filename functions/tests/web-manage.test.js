@@ -83,11 +83,13 @@ describe('what an operator is shown', () => {
     });
 
     test('the archive name, who deleted it, and why', async () => {
-        const view = await manage({ answer: listed(DELETIONS) });
+        const view = await manage({
+            answer: listed([{ ...DELETIONS[0], deletedByName: 'Ana Example' }, DELETIONS[1]])
+        });
 
         const [slug, , by, reason] = cells(rows(view)[0]);
         assert.equal(slug, 'elder.example');
-        assert.equal(by, 'mum@example.com');
+        assert.equal(by, 'Ana Example (mum@example.com)');
         assert.equal(reason, 'wrong archive');
         assert.ok(cells(rows(view)[1])[3], 'a missing reason rendered as an empty cell');
     });

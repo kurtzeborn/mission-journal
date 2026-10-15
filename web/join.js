@@ -91,7 +91,7 @@ function renderReady(ready, principal) {
         ? `${ready.missionary}'s letters`
         : 'a missionary\u2019s letters';
     $('ready-lede').textContent =
-        `${ready.invitedBy || 'An archive owner'} is inviting people here to read ${whose}.`;
+        `${ready.invitedByName || ready.invitedBy || 'An archive owner'} is inviting people here to read ${whose}.`;
 
     if (principal) {
         if (sessionStorage.getItem(JOIN_AFTER_SIGNIN_KEY) === ready.ticket) {

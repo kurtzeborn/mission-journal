@@ -77,7 +77,7 @@
         // that says why: opacity on the parent is not something a child undoes.
         const address = document.createElement('span');
         address.className = 'people__address';
-        address.textContent = person.email;
+        address.textContent = person.displayName || person.email;
         who.appendChild(address);
 
         // Beside the name rather than out by the buttons, where it landed in a
@@ -92,6 +92,13 @@
               : person.role;
         who.appendChild(document.createTextNode(' '));
         who.appendChild(what);
+
+        if (person.displayName) {
+            const email = document.createElement('span');
+            email.className = 'people__email';
+            email.textContent = person.email;
+            who.appendChild(email);
+        }
 
         // Beside the address rather than on a line of its own. Three bad
         // addresses in a list of thirty cost three extra lines to say one
@@ -181,13 +188,16 @@
                     // The one destructive control on the page, and the one
                     // whose consequence is invisible: the person is simply
                     // gone the next time they look.
+                    const identity = person.displayName
+                        ? `${person.displayName} (${person.email})`
+                        : person.email;
                     const sure = person.pending
                         ? {
-                              question: `Withdraw the invitation to ${person.email}?`,
+                              question: `Withdraw the invitation to ${identity}?`,
                               action: 'Withdraw'
                           }
                         : {
-                              question: `Remove ${person.email} from this archive?`,
+                              question: `Remove ${identity} from this archive?`,
                               detail:
                                   'They will no longer be able to read the letters. ' +
                                   'Nothing is emailed to them.',

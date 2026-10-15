@@ -174,6 +174,25 @@ describe('inviting a whole family in one sitting', () => {
 });
 
 describe('reading the list of who has access', () => {
+    test('uses a provider name without hiding the account address', async () => {
+        const view = await people({
+            answer: listing({
+                members: [{
+                    email: 'mum@example.com',
+                    displayName: 'Ana Example',
+                    role: 'owner',
+                    you: true,
+                    removable: false,
+                    invitedEmail: ''
+                }],
+                invites: []
+            })
+        });
+
+        assert.match(view.el('people').children[0].textContent, /Ana Example/);
+        assert.match(view.el('people').children[0].textContent, /mum@example\.com/);
+    });
+
     test('an unfamiliar address keeps its invitation address behind an information mark', async () => {
         const view = await people({
             answer: listing({

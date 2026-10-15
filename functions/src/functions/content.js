@@ -6,6 +6,7 @@ import { gate, hardened, contentEtag, notModified } from '../lib/api.js';
 import { presentPosts } from '../lib/present.js';
 import { MAX_PHOTOS } from '../lib/photos.js';
 import { recordVisit } from '../lib/visits.js';
+import { userNameFor } from '../lib/userprofile.js';
 
 // The whole site in one response. A family archive is a few hundred letters at
 // most, so paging would add a moving part for no gain, and having the entire
@@ -37,6 +38,12 @@ async function handler(request, context) {
     const deleted = result.viaOperator
         ? await deletionOf({ tables: tableStore(), slug: result.slug })
         : null;
+    if (deleted?.deletedBy) {
+        deleted.deletedByName = await userNameFor({
+            tables: tableStore(),
+            email: deleted.deletedBy
+        });
+    }
 
     // Before the 304, which it did not used to be. Skipping it on a
     // revalidation saved a point read and cost correctness: the name and the
