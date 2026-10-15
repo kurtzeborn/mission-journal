@@ -16,6 +16,7 @@ async function page({
     status = 200,
     body = {},
     sha = '78318d36c72399dd762ba7c8562710a332eb8737',
+    largestPaint = 842,
     fetchImpl
 } = {}) {
     const dom = new JSDOM('<!doctype html><html><body><main>Page</main></body></html>', {
@@ -27,6 +28,18 @@ async function page({
 
     window.matchMedia = () => ({ matches: desktop });
     window.PDAY_DEPLOY_SHA = sha;
+    if (largestPaint !== null) {
+        window.PerformanceObserver = class {
+            constructor(callback) {
+                this.callback = callback;
+            }
+
+            observe(options) {
+                this.options = options;
+                this.callback({ getEntries: () => [{ startTime: largestPaint }] });
+            }
+        };
+    }
     window.fetch = fetchImpl ?? (async () => {
         calls += 1;
         return { ok: status >= 200 && status < 300, status, json: async () => body };
@@ -39,13 +52,28 @@ async function page({
 }
 
 describe('the manager debug strip', () => {
-    test('shows only the five requested counts after the manager API answers', async () => {
+    test('spaces the counts and includes client-perceived load time after the manager API answers', async () => {
         const { window } = await page({
             body: { archives: 4, pending: 1, deleted: 0, users: 22, monthlyActive: 16 }
         });
 
         const strip = window.document.querySelector('.manager-strip');
-        assert.equal(strip.textContent, 'A:4 P:1 D:0 U:22 MAU:16');
+        const stats = strip.querySelector('.manager-strip__stats');
+        assert.deepEqual(
+            [...stats.children].map((item) => item.textContent),
+            ['A:4', 'P:1', 'D:0', 'U:22', 'MAU:16', 'LCP:842ms']
+        );
+        assert.deepEqual(
+            [...stats.children].map((item) => item.getAttribute('title')),
+            [
+                'Active archives',
+                'Pending archives',
+                'Archives pending deletion',
+                'Users',
+                'Monthly active users',
+                'Largest Contentful Paint: when the main visible content appeared'
+            ]
+        );
         const links = strip.querySelectorAll('a');
         assert.equal(links[0].getAttribute('href'), '/manage');
         assert.equal(links[0].querySelector('i').className, 'fa-solid fa-gear');
@@ -63,6 +91,31 @@ describe('the manager debug strip', () => {
                 '/vendor/fontawesome/css/solid.min.css'
             ]
         );
+    });
+
+    test('colors pending yellow and pending deletion red only when action is needed', async () => {
+        const active = await page({
+            body: { archives: 4, pending: 1, deleted: 2, users: 22, monthlyActive: 16 }
+        });
+        const activeMetrics = active.window.document.querySelectorAll('.manager-strip__metric');
+        assert.match(activeMetrics[1].className, /manager-strip__metric--pending/);
+        assert.match(activeMetrics[2].className, /manager-strip__metric--deleted/);
+
+        const clear = await page({
+            body: { archives: 4, pending: 0, deleted: 0, users: 22, monthlyActive: 16 }
+        });
+        const clearMetrics = clear.window.document.querySelectorAll('.manager-strip__metric');
+        assert.doesNotMatch(clearMetrics[1].className, /manager-strip__metric--pending/);
+        assert.doesNotMatch(clearMetrics[2].className, /manager-strip__metric--deleted/);
+    });
+
+    test('omits load timing when the browser cannot observe largest paint', async () => {
+        const { window } = await page({
+            largestPaint: null,
+            body: { archives: 4, pending: 0, deleted: 0, users: 22, monthlyActive: 16 }
+        });
+
+        assert.equal(window.document.querySelector('.manager-strip__stats').children.length, 5);
     });
 
     test('omits the commit link when a local build has no deployed SHA', async () => {
