@@ -99,27 +99,9 @@ Every rotation is the same two moves: reissue at the provider, then store in *on
 - **`CLOUDFLARE_ACCOUNT_ID`** — not a secret, and inert without a token.
 - **`pdayletters.com`** — auto-renew is on at Namecheap. See the [annual check](#annually); the risk is the card behind it, not the date.
 
-### The alert that reminds you
+### Alert coverage
 
-**Shipped 2026-08-11.** Key Vault raises `SecretNearExpiry` 30 days ahead; an Event Grid system topic on the vault routes that and `SecretExpired` to a `MonitorAlert` at Sev2, which mails `scott@kurtzeborn.org`. All of it is in `infra/main.bicep`, gated on the `alertEmail` parameter.
-
-**It only covers the two Key Vault secrets.** The GitHub-held deploy token and the Worker's two SAS tokens are invisible to it — those need the calendar entry.
-
-**The notification deliberately does not go through our own mailer.** Every message this service sends uses `cloudflare-api-token`, one of the secrets being watched. An alert about that token expiring, sent with that token, would fail exactly when it mattered. Azure Monitor's email path shares nothing with the system it reports on.
-
-Three things worth remembering about the mechanism:
-
-- **`MonitorAlert` needs `eventDeliverySchema: 'CloudEventSchemaV1_0'`,** which is not the default. Without it the deployment fails naming the schema but not the resource that wanted it. `Microsoft.EventGrid` must also be registered on the subscription first.
-- **`az eventgrid system-topic event-subscription show` cannot read this subscription** — the CLI pins an API version older than the feature. Verify with `az resource show --api-version 2025-02-15` instead.
-- **`SecretNewVersionCreated` is deliberately not subscribed.** The vault emits it on every write, so a rotation — the fix — would raise an alert of its own.
-
-**Key Vault cannot renew any of this,** and serves an expired secret quite happily. Auto-renewal is certificates-only for integrated CAs, and `exp` is advisory rather than enforced on read. So the date is a warning that can never cause an outage of its own, and every rotation above is done by hand. Real automation would be a Function reacting to the near-expiry event and calling Graph or the Cloudflare API — justifiable across a set, hard to justify for one secret every two years.
-
-### The alignment goal
-
-**Met.** Every dated credential now falls in **August** — 2027-08-01, 2027-08-31 and 2028-08-04 — so rotation arrives in one season rather than three times a year unannounced. Nothing further is planned here; the table above is the schedule.
-
-Several of the credentials live outside Key Vault, so the alert does not see them: the GitHub Actions secrets, the Worker's two SAS tokens, and the registrar. Because `exp` is advisory, a secret holding nothing but a note could carry the GitHub deploy token's real date and surface in the same alert. **Considered during the alignment pass and not done** — it is a trick rather than a design, and now that everything falls in one August the calendar entry it would replace only has to fire once.
+Key Vault raises `SecretNearExpiry` 30 days ahead and `SecretExpired` at expiry; Azure Monitor emails `scott@kurtzeborn.org` without using this service's own mail credentials. It covers only `cloudflare-api-token` and `aad-client-secret`. The GitHub-held deploy token, the Worker's two SAS policies, and the registrar remain calendar items. Key Vault does not renew secrets and does not stop serving an expired value, so every rotation above is still manual.
 
 ---
 
@@ -127,32 +109,15 @@ Several of the credentials live outside Key Vault, so the alert does not see the
 
 ### Every deploy that touches Cloudflare Email settings
 
-- **Re-check that email preview is off.** Verified off 2026-08-04 and again 2026-08-05. It is the one setting that silently converts a credential into a logged one — claim links travel in message bodies, and a preview stores them.
+- **Re-check that email preview is off.** It is the one setting that silently converts a credential into a logged one — claim links travel in message bodies, and a preview stores them.
 
 ### Monthly
 
 - **Outbound send volume.** 3,000 messages a month are included, then $0.35/1,000. Sends to verified destinations are free and do not count. A runaway loop is a cost problem before it is a deliverability problem.
-- **DMARC aggregate reports** for `pdayletters.com`. **Moved to `p=reject; pct=100` on 2026-10-15**, after the August evidence and the next clean month showed aligned DKIM surviving every forward. Reports remain enabled in Cloudflare DMARC Management; the published `ri=86400` asks for daily aggregates but is advisory.
-
-  **Why `p=reject` was deferred until October:** the evidence needed was the forwarding case. A Comcast report on 2026-08-23 recorded one of our letters forwarded by somebody's Gmail: the envelope was then `gmail.com`, so SPF no longer aligned and was scored a fail, and only the surviving `pdayletters.com` DKIM signature carried it through. Under `reject` that difference is a grandparent's forward arriving or vanishing without trace. The monthly question was therefore not *are there SPF failures* — forwards will always produce them — but **is aligned DKIM passing on every record**.
-
-  **The Cloudflare Email Sending settings page misreports the policy** — it claimed `p=reject` while DNS said `p=none`. Read DNS, never that page.
-
-  **2026-08-24 — the first batch after the change was clean.** Five records across four receivers (Microsoft Enterprise, Outlook.com, Google, Yahoo): DKIM pass, SPF pass, disposition `none`, every source IP Cloudflare's. Every record carried both Cloudflare's own third-party signature and the aligned `pdayletters.com` one, selector `cf-bounce`. All four still report `policy_published: p=none`, because their windows are 22–23 August and the change landed on the 23rd — expected, not a regression. **No forwarded mail in the batch at all**, so it is no evidence either way for `p=reject`; that step still waits on months whose forwards keep DKIM.
-
-  **Reports are moving to [Cloudflare DMARC Management](https://developers.cloudflare.com/dmarc-management/)** — free, dashboard rather than inbox, and it keeps the evidence trail that `p=reject` has to be earned on, which deleting `rua=` would throw away. **Enabled 2026-08-24.** Its "Fix record" button appended its own address and left everything else alone; the record now reads `v=DMARC1; p=quarantine; pct=100; rua=mailto:<id>@dmarc-reports.cloudflare.net,mailto:dmarc@pdayletters.com; ri=604800`, and SPF is untouched at `v=spf1 include:_spf.mx.cloudflare.net ~all`. Two cautions for next time: DMARC Management also wants to manage the **SPF** record and cannot do that safely when a CNAME in the zone points at an external domain, so let it touch DMARC only; and per the paragraph above, verify from DNS rather than from the panel.
-
-  **2026-08-26 — the dashboard is receiving, and the forwarding case has its first data point.** Eight records across five receivers covering 22–24 August. The aligned `pdayletters.com` signature, selector `cf-bounce`, passed on **every one** — which is the whole of the monthly question. Google's 24 August window is the first to echo `p=quarantine` back; the earlier ones still say `p=none` because their windows close before the change, so that is propagation and not a regression. **The Comcast record is the forward this has been waiting for**: one of our letters sent on by somebody's Gmail, envelope rewritten to `gmail.com`, SPF scored `fail`, and the surviving DKIM signature carried it to `disposition: none` on its own. That is exactly the behaviour `p=reject` needs — but it is one forward in one month, not the run of clean months the paragraph above asks for, so `reject` still waits.
-
-  **With reports confirmed in the dashboard, `mailto:dmarc@pdayletters.com` came out of `rua=` on 2026-08-26.** The record is now `v=DMARC1; p=quarantine; pct=100; rua=mailto:<id>@dmarc-reports.cloudflare.net; ri=604800`, confirmed against two independent resolvers — one address, mailbox unsubscribed, evidence trail intact. **The monthly check now happens in the dashboard**, and it is still the same question: aligned DKIM on every record.
-
-  **2026-10-15 — moved to `p=reject`.** The preceding 30 days contained 28 messages and zero DMARC failures. Cloudflare's 24 records had 100% SPF and DKIM alignment; two Google and two Namecheap records had 0% SPF alignment but 100% DKIM alignment, exactly the forwarding condition the hold was waiting to prove. The published record is `v=DMARC1; p=reject; pct=100; rua=mailto:<id>@dmarc-reports.cloudflare.net; ri=86400`. It was confirmed as the sole `_dmarc` TXT record through Cloudflare's authoritative nameserver, `1.1.1.1`, and `8.8.8.8`. The monthly check remains useful for detecting a future signing regression, but it no longer gates another policy change.
-
-  **The two red badges on the analysis page are cosmetic; leave both alone.** SPF is marked failing because the root record ends `~all` rather than `-all`, and forwarded messages legitimately lose SPF alignment; tightening it buys nothing DMARC is not already delivering. Every measured record passes through aligned DKIM, and DMARC Management is not allowed to touch SPF. BIMI is marked failing because it is not configured, and configuring it means a Verified Mark Certificate costing four figures a year before Gmail or Apple will show the logo.
 
 ### Quarterly
 
-- **`npm audit`.** Run `npm run audit` in `functions/` rather than `npm audit` itself. `tools/audit-check.js` compares advisory **IDs** against `functions/audit-baseline.json` and fails only on ones nobody has looked at yet, so green means *nothing new* rather than *nothing at all*. **The baseline is empty as of September 2026** and both numbers agree: `mailauth` 5 dropped the `undici` 7 tree, and `overrides` in `functions/package.json` lift the `joi` and `nodemailer` versions `mailauth` pins. The quarterly job is therefore small: run it, and if it fails, **fix the dependency** — an override is usually enough. Only when there is nothing to move to, add the ID to the baseline **with a note saying why it is unreachable**. An entry without a reason is a silenced alarm, and a permanently red check is one a real advisory gets scrolled past in.
+- **`npm audit`.** Run `npm run audit` in `functions/` rather than `npm audit` itself. `tools/audit-check.js` compares advisory **IDs** against `functions/audit-baseline.json` and fails only on ones nobody has looked at yet, so green means *nothing new* rather than *nothing at all*. If it fails, **fix the dependency** when possible. Only when there is nothing safe to move to, add the ID to the baseline **with a note saying why it is unreachable**. An entry without a reason is a silenced alarm.
 - **Storage growth.** `inbox/` and `exports/` both expire on their own now — 30 days and 7 days, set by the `lifecycle` policy in `infra/main.bicep`, and the `arrivals` table is swept nightly by the `sweep` timer, which drops counting rows older than 30 days. What is worth a quarterly look is the containers with no rule at all: `raw/` and `rendered/` grow for as long as the archives live, which is the intended behavior and the reason the bill will only ever go up.
   - **The `nudges` table is deliberately not swept.** Most of its rows are once-ever gates — deleting one re-sends a message somebody already got — and only the `ack:` rows are dated. They accumulate one row per forwarder per archive per day, which is small enough that the risk of a sweep touching the wrong prefix is the larger number.
 
