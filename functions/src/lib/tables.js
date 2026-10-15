@@ -136,23 +136,6 @@ export function createTableStore({ accountName, credential = new DefaultAzureCre
             }
         },
 
-        // Atomically create several rows in one partition. Azure Table
-        // transactions are limited to a single partition, which is exactly
-        // the shape used by a QR gathering: one capacity slot and one ticket
-        // redemption either both exist or neither does.
-        async insertEntities(table, entities) {
-            if (!entities.length) return true;
-            try {
-                await client(table).submitTransaction(
-                    entities.map((entity) => ['create', entity])
-                );
-                return true;
-            } catch (err) {
-                if (err?.statusCode === 409) return false;
-                throw err;
-            }
-        },
-
         async listEntities(table, { partitionKey } = {}) {
             const options = partitionKey
                 ? { queryOptions: { filter: odata`PartitionKey eq ${partitionKey}` } }

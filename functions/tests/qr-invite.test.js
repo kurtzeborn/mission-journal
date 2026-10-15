@@ -9,12 +9,11 @@ import {
     acceptQrInvite,
     closeQrInvite,
     exchangeQrInvite,
-    QR_SESSION_MAX_JOINS,
+    QR_CLOSE_GRACE_SECONDS,
     rotateQrInvite,
     startQrInvite
 } from '../src/lib/qrinvite.js';
 import { recordMembership } from '../src/lib/memberships.js';
-import { claimTokenHash } from '../src/lib/claimtoken.js';
 import { TABLES } from '../src/lib/tables.js';
 import { setUserProfile } from '../src/lib/userprofile.js';
 
@@ -108,23 +107,58 @@ describe('opening and rotating an in-person invitation', () => {
         assert.equal((await exchangeQrInvite({ tables: store, token: second.token, key: KEY })).status, 'ready');
     });
 
-    test('closing the dialog invalidates codes and exchanged tickets', async () => {
+    test('closing rejects later code exchanges but gives an issued ticket time to finish', async () => {
         const store = await site();
+        const time = clock('2026-09-21T12:00:00Z');
         const started = await startQrInvite({
-            store, tables: store, slug: SLUG, actor: OWNER, key: KEY, baseUrl: BASE
+            store, tables: store, slug: SLUG, actor: OWNER,
+            key: KEY, baseUrl: BASE, now: time.now
         });
-        const ready = await exchangeQrInvite({ tables: store, token: started.token, key: KEY });
+        const ready = await exchangeQrInvite({
+            tables: store, token: started.token, key: KEY, now: time.now
+        });
 
-        await closeQrInvite({ store, tables: store, slug: SLUG, actor: OWNER, id: started.id });
+        await closeQrInvite({
+            store, tables: store, slug: SLUG, actor: OWNER, id: started.id, now: time.now
+        });
 
-        assert.equal((await exchangeQrInvite({ tables: store, token: started.token, key: KEY })).status, 'closed');
         assert.equal(
-            (await acceptQrInvite({
-                store, tables: store, ticket: ready.ticket, key: KEY,
-                principal: READER, log: silent
+            (await exchangeQrInvite({
+                tables: store, token: started.token, key: KEY, now: time.now
             })).status,
             'closed'
         );
+        time.advance((QR_CLOSE_GRACE_SECONDS - 1) * 1000);
+        assert.equal(
+            (await acceptQrInvite({
+                store, tables: store, ticket: ready.ticket, key: KEY,
+                principal: READER, now: time.now, log: silent
+            })).status,
+            'ok'
+        );
+    });
+
+    test('an exchanged ticket stops working when the close grace period ends', async () => {
+        const store = await site();
+        const time = clock('2026-09-21T12:00:00Z');
+        const started = await startQrInvite({
+            store, tables: store, slug: SLUG, actor: OWNER,
+            key: KEY, baseUrl: BASE, now: time.now
+        });
+        const ready = await exchangeQrInvite({
+            tables: store, token: started.token, key: KEY, now: time.now
+        });
+        await closeQrInvite({
+            store, tables: store, slug: SLUG, actor: OWNER, id: started.id, now: time.now
+        });
+
+        time.advance((QR_CLOSE_GRACE_SECONDS + 1) * 1000);
+        const result = await acceptQrInvite({
+            store, tables: store, ticket: ready.ticket, key: KEY,
+            principal: READER, now: time.now, log: silent
+        });
+
+        assert.equal(result.status, 'closed');
     });
 });
 
@@ -191,6 +225,41 @@ describe('joining through a QR invitation', () => {
         assert.equal(added.role, ROLE.reader);
         assert.equal(added.verifiedMissionary, false);
         assert.equal(added.invitedBy, OWNER);
+    });
+
+    test('two people scanning the same displayed code receive separate working tickets', async () => {
+        const store = await site();
+        const started = await startQrInvite({
+            store, tables: store, slug: SLUG, actor: OWNER, key: KEY, baseUrl: BASE
+        });
+        const first = await exchangeQrInvite({ tables: store, token: started.token, key: KEY });
+        const second = await exchangeQrInvite({ tables: store, token: started.token, key: KEY });
+
+        assert.notEqual(first.ticket, second.ticket);
+        const results = await Promise.all([
+            acceptQrInvite({
+                store, tables: store, ticket: first.ticket, key: KEY,
+                principal: READER, log: silent
+            }),
+            acceptQrInvite({
+                store, tables: store, ticket: second.ticket, key: KEY,
+                principal: 'grandpa@example.com', log: silent
+            })
+        ]);
+
+        assert.deepEqual(results.map((result) => result.status), ['ok', 'ok']);
+        assert.equal(
+            await resolveRole({ store, slug: SLUG, principal: { email: READER } }),
+            ROLE.reader
+        );
+        assert.equal(
+            await resolveRole({
+                store,
+                slug: SLUG,
+                principal: { email: 'grandpa@example.com' }
+            }),
+            ROLE.reader
+        );
     });
 
     test('the same account may safely retry but another account cannot replay the ticket', async () => {
@@ -270,60 +339,5 @@ describe('joining through a QR invitation', () => {
         });
 
         assert.equal(result.status, 'closed');
-    });
-
-    test('a gathering is capped even though fresh codes can keep rotating', async () => {
-        const store = await site();
-        const started = await startQrInvite({
-            store, tables: store, slug: SLUG, actor: OWNER, key: KEY, baseUrl: BASE
-        });
-        const partitionKey = `${SLUG}:${started.id}`;
-        for (let i = 0; i < QR_SESSION_MAX_JOINS; i++) {
-            await store.insertEntity(TABLES.qrRedemptions, {
-                partitionKey,
-                rowKey: `slot-${String(i).padStart(2, '0')}`,
-                acceptedBy: `reader-${i}@example.com`
-            });
-        }
-        const ready = await exchangeQrInvite({ tables: store, token: started.token, key: KEY });
-
-        const result = await acceptQrInvite({
-            store, tables: store, ticket: ready.ticket, key: KEY, principal: READER, log: silent
-        });
-
-        assert.equal(result.status, 'full');
-        assert.equal(await store.getEntity(
-            TABLES.qrRedemptions,
-            partitionKey,
-            `ticket-${claimTokenHash(ready.ticket)}`
-        ), null);
-    });
-
-    test('capacity reservation is atomic under concurrent joins', async () => {
-        const store = await site();
-        const started = await startQrInvite({
-            store, tables: store, slug: SLUG, actor: OWNER, key: KEY, baseUrl: BASE
-        });
-        const tickets = [];
-        for (let i = 0; i < QR_SESSION_MAX_JOINS + 5; i++) {
-            tickets.push((await exchangeQrInvite({ tables: store, token: started.token, key: KEY })).ticket);
-        }
-
-        const results = await Promise.all(
-            tickets.map((ticket, index) =>
-                acceptQrInvite({
-                    store,
-                    tables: store,
-                    ticket,
-                    key: KEY,
-                    principal: `reader-${index}@example.com`,
-                    log: silent
-                })
-            )
-        );
-
-        assert.equal(results.filter((result) => result.status === 'ok').length, QR_SESSION_MAX_JOINS);
-        assert.equal(results.filter((result) => result.status === 'full').length, 5);
-        assert.equal(store.json('config', `${SLUG}/acl.json`).members.length, QR_SESSION_MAX_JOINS + 1);
     });
 });

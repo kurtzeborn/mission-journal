@@ -260,24 +260,16 @@ erDiagram
         string expiresAt "ISO timestamp"
         string closedAt "empty or ISO timestamp"
     }
-    qrRedemptions_ticket {
+    qrRedemptions {
         string PartitionKey "slug:sessionId"
         string RowKey "ticket-{token hash}"
-        string slot "slot row key"
         string acceptedBy "lowercased email"
         string acceptedAt "ISO timestamp"
         string completedAt "empty or ISO timestamp"
     }
-    qrRedemptions_slot {
-        string PartitionKey "slug:sessionId"
-        string RowKey "slot-00 through slot-49"
-        string ticketHash "ticket row key"
-        string acceptedBy "lowercased email"
-        string reservedAt "ISO timestamp"
-    }
 ```
 
-The two `qrRedemptions` row types are inserted together: the slot row enforces the 50-reader session cap and the ticket row makes each join single-use.
+The displayed QR code is multi-use: every scan exchanges it for a new random ticket, so several people can scan the same code and join independently. A `qrRedemptions` row binds one browser's ticket to the first signed-in account that accepts it, lets that account retry safely, and prevents a copied ticket from adding a different account. After the owner closes Quick Join, the server rejects any later exchange attempt made from an old screenshot or a camera view still holding the code. Tickets issued before closure retain 20 seconds to finish sign-in.
 
 ### Archive metadata and reminders
 

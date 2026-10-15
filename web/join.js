@@ -48,11 +48,6 @@ const FAILURES = {
         detail: 'The archive owner closed the QR invitation or left it idle.',
         help: 'Ask them to open it again.'
     },
-    full: {
-        title: 'This invitation session is full',
-        detail: 'The session has already added its maximum number of readers.',
-        help: 'Ask the archive owner to start another QR invitation.'
-    },
     accepted: {
         title: 'This invitation has already been used',
         detail: 'The sign-in ticket was already accepted by another account.',
