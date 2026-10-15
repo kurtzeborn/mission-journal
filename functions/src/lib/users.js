@@ -10,13 +10,10 @@
 //
 // Three things about the shape, each of which had a cheaper wrong answer:
 //
-//   **No row means no mail.** Nothing on the way in writes one -- not a
-//   claim, not an invitation, not ingest -- so the only thing that can is
-//   somebody opening the settings page and asking to hear from us. That is
-//   the strictest possible reading of asked rather than assumed, and it
-//   disposes of the `@missionary.org` case for free: those addresses are
-//   created by ingest and never sign in, so they never get a row, so they
-//   never get a digest. They wrote the letters.
+//   **Only an active frequency means mail.** A row may also exist because the
+//   archive reminded somebody that summaries are available. Consent is the
+//   explicit transition from off to weekly or monthly, and `digestAt` begins
+//   at that moment rather than when the entity happened to be created.
 //
 //   **This is not the opt-out, and it never overrides it.** A preference is a
 //   choice about which mail to receive; an opt-out is a statement about
@@ -31,8 +28,9 @@
 
 import { TABLES } from './tables.js';
 
-const ROW = 'profile';
-const PROMPT_ROW = 'digest-prompt';
+export const DIGEST_ROW = 'digest-settings';
+export const LEGACY_DIGEST_ROW = 'profile';
+export const LEGACY_PROMPT_ROW = 'digest-prompt';
 
 const lower = (value) => String(value ?? '').trim().toLowerCase();
 
@@ -71,21 +69,43 @@ export function digestSchedule(row) {
 export async function readUser({ tables, email }) {
     const them = lower(email);
     if (!them) return null;
-    return await tables.getEntity(TABLES.users, them, ROW);
+    const [current, legacy] = await Promise.all([
+        tables.getEntity(TABLES.users, them, DIGEST_ROW),
+        tables.getEntity(TABLES.users, them, LEGACY_DIGEST_ROW)
+    ]);
+    if (!current) return legacy;
+    if (!legacy) return current;
+    return { ...legacy, ...current, partitionKey: them, rowKey: DIGEST_ROW };
 }
 
 export async function recordDigestPromptVisit({ tables, email, every = 5, now = () => new Date() }) {
     const them = lower(email);
     if (!them) throw new Error('user: an address is required');
 
-    const existing = await tables.getEntity(TABLES.users, them, PROMPT_ROW);
-    const visits = Math.max(0, Number(existing?.visits) || 0) + 1;
-    await tables.upsertEntity(TABLES.users, {
-        partitionKey: them,
-        rowKey: PROMPT_ROW,
-        visits,
-        visitedAt: now().toISOString()
-    });
+    const [current, legacy] = await Promise.all([
+        tables.getEntity(TABLES.users, them, DIGEST_ROW),
+        tables.getEntity(TABLES.users, them, LEGACY_PROMPT_ROW)
+    ]);
+    const visits = Math.max(
+        0,
+        Number(current?.promptVisits) || 0,
+        Number(legacy?.visits) || 0
+    ) + 1;
+    const visitedAt = now().toISOString();
+    await Promise.all([
+        tables.upsertEntity(TABLES.users, {
+            partitionKey: them,
+            rowKey: DIGEST_ROW,
+            promptVisits: visits,
+            promptVisitedAt: visitedAt
+        }),
+        tables.upsertEntity(TABLES.users, {
+            partitionKey: them,
+            rowKey: LEGACY_PROMPT_ROW,
+            visits,
+            visitedAt
+        })
+    ]);
 
     return { visits, due: visits >= every };
 }
@@ -94,12 +114,78 @@ export async function dismissDigestPrompt({ tables, email, now = () => new Date(
     const them = lower(email);
     if (!them) throw new Error('user: an address is required');
 
-    await tables.upsertEntity(TABLES.users, {
-        partitionKey: them,
-        rowKey: PROMPT_ROW,
-        visits: 0,
-        dismissedAt: now().toISOString()
-    });
+    const dismissedAt = now().toISOString();
+    await Promise.all([
+        tables.upsertEntity(TABLES.users, {
+            partitionKey: them,
+            rowKey: DIGEST_ROW,
+            promptVisits: 0,
+            promptDismissedAt: dismissedAt
+        }),
+        tables.upsertEntity(TABLES.users, {
+            partitionKey: them,
+            rowKey: LEGACY_PROMPT_ROW,
+            visits: 0,
+            dismissedAt
+        })
+    ]);
+}
+
+const digestProperties = (row) => ({
+    ...(row?.digestFrequency === undefined ? {} : { digestFrequency: row.digestFrequency }),
+    ...(row?.digestWeekday === undefined ? {} : { digestWeekday: row.digestWeekday }),
+    ...(row?.digestWeek === undefined ? {} : { digestWeek: row.digestWeek }),
+    ...(row?.digestAt === undefined ? {} : { digestAt: row.digestAt }),
+    ...(row?.digestScheduleAt === undefined ? {} : { digestScheduleAt: row.digestScheduleAt }),
+    ...(row?.createdAt === undefined ? {} : { createdAt: row.createdAt })
+});
+
+/**
+ * Copy the two legacy user entity shapes into `digest-settings`.
+ *
+ * This deliberately leaves the old rows in place. The compatibility release
+ * writes both layouts so it can be rolled back safely; deletion belongs to the
+ * later cutover after production equivalence has been verified.
+ */
+export async function backfillDigestSettings({ tables, apply = false }) {
+    const rows = await tables.listEntities(TABLES.users);
+    const byEmail = new Map();
+
+    for (const row of rows) {
+        if (!byEmail.has(row.partitionKey)) byEmail.set(row.partitionKey, new Map());
+        byEmail.get(row.partitionKey).set(row.rowKey, row);
+    }
+
+    let legacySettings = 0;
+    let legacyPrompts = 0;
+    let written = 0;
+
+    for (const [email, mine] of byEmail) {
+        const settings = mine.get(LEGACY_DIGEST_ROW);
+        const prompt = mine.get(LEGACY_PROMPT_ROW);
+        const current = mine.get(DIGEST_ROW);
+        if (settings) legacySettings += 1;
+        if (prompt) legacyPrompts += 1;
+        if (!settings && !prompt) continue;
+
+        const entity = {
+            partitionKey: email,
+            rowKey: DIGEST_ROW,
+            ...digestProperties(settings),
+            ...(prompt?.visits === undefined ? {} : { promptVisits: prompt.visits }),
+            ...(prompt?.visitedAt === undefined ? {} : { promptVisitedAt: prompt.visitedAt }),
+            ...(prompt?.dismissedAt === undefined ? {} : { promptDismissedAt: prompt.dismissedAt }),
+            ...digestProperties(current),
+            ...(current?.promptVisits === undefined ? {} : { promptVisits: current.promptVisits }),
+            ...(current?.promptVisitedAt === undefined ? {} : { promptVisitedAt: current.promptVisitedAt }),
+            ...(current?.promptDismissedAt === undefined ? {} : { promptDismissedAt: current.promptDismissedAt })
+        };
+
+        if (apply) await tables.upsertEntity(TABLES.users, entity);
+        written += 1;
+    }
+
+    return { legacySettings, legacyPrompts, written, applied: apply };
 }
 
 /**
@@ -126,8 +212,9 @@ export async function setDigest({
     if (!them) throw new Error('user: an address is required');
 
     const at = now().toISOString();
-    const existing = await tables.getEntity(TABLES.users, them, ROW);
+    const existing = await readUser({ tables, email: them });
     const current = digestSchedule(existing ?? { digestAt: at });
+    const currentFrequency = validFrequency(existing?.digestFrequency);
     const wanted = {
         weekday: validDigestWeekday(weekday) ? weekday : current.weekday,
         week: validDigestWeek(week) ? week : current.week
@@ -142,25 +229,32 @@ export async function setDigest({
         )
     );
 
-    await tables.upsertEntity(TABLES.users, {
+    const firstConsent = currentFrequency === DIGEST.off && wantedFrequency !== DIGEST.off;
+    const entity = {
         partitionKey: them,
-        rowKey: ROW,
         digestFrequency: wantedFrequency,
         digestWeekday: wanted.weekday,
         digestWeek: wanted.week,
-        ...(existing ? (scheduleChanged ? { digestScheduleAt: at } : {}) : { createdAt: at, digestAt: at })
-    });
+        ...(scheduleChanged ? { digestScheduleAt: at } : {}),
+        ...(existing?.createdAt ? { createdAt: existing.createdAt } : {}),
+        ...(existing?.digestAt ? { digestAt: existing.digestAt } : {}),
+        ...(firstConsent ? { createdAt: existing?.createdAt ?? at, digestAt: at } : {})
+    };
+    await Promise.all([
+        tables.upsertEntity(TABLES.users, { ...entity, rowKey: DIGEST_ROW }),
+        tables.upsertEntity(TABLES.users, { ...entity, rowKey: LEGACY_DIGEST_ROW })
+    ]);
 
     return wantedFrequency;
 }
 
 /** The cycle is over, whether or not it had anything in it. */
 export async function markDigested({ tables, email, at }) {
-    await tables.upsertEntity(TABLES.users, {
-        partitionKey: lower(email),
-        rowKey: ROW,
-        digestAt: at
-    });
+    const partitionKey = lower(email);
+    await Promise.all([
+        tables.upsertEntity(TABLES.users, { partitionKey, rowKey: DIGEST_ROW, digestAt: at }),
+        tables.upsertEntity(TABLES.users, { partitionKey, rowKey: LEGACY_DIGEST_ROW, digestAt: at })
+    ]);
 }
 
 /**
@@ -222,5 +316,23 @@ export function digestDue({ row, now = () => new Date() }) {
  */
 export async function everyUser({ tables }) {
     const rows = await tables.listEntities(TABLES.users);
-    return rows.filter((row) => row.rowKey === ROW);
+    const byEmail = new Map();
+
+    for (const row of rows) {
+        if (row.rowKey !== DIGEST_ROW && row.rowKey !== LEGACY_DIGEST_ROW) continue;
+        const mine = byEmail.get(row.partitionKey) ?? {};
+        mine[row.rowKey] = row;
+        byEmail.set(row.partitionKey, mine);
+    }
+
+    return [...byEmail.entries()].map(([partitionKey, mine]) => {
+        if (!mine[DIGEST_ROW]) return mine[LEGACY_DIGEST_ROW];
+        if (!mine[LEGACY_DIGEST_ROW]) return mine[DIGEST_ROW];
+        return {
+            ...mine[LEGACY_DIGEST_ROW],
+            ...mine[DIGEST_ROW],
+            partitionKey,
+            rowKey: DIGEST_ROW
+        };
+    });
 }
