@@ -78,15 +78,13 @@ describe('opening an invitation', () => {
         assert.equal(view.text('failed-title'), 'This invitation cannot be used');
     });
 
-    test('an owner invitation says what it is before it is accepted', async () => {
-        // The stake is higher than a reader seat and the page is the last
-        // place it can be said.
+    test('even an obsolete owner value is presented as the reader access it grants', async () => {
         const view = await invitePage({
             answer: server({ described: { status: 200, body: { ...READY.body, role: 'owner' } } })
         });
 
-        assert.match(view.text('ready-role'), /invited as an owner/);
-        assert.match(view.text('ready-role'), /invite other people/);
+        assert.match(view.text('ready-role'), /invited as a reader/);
+        assert.doesNotMatch(view.text('ready-role'), /invite other people/);
     });
 });
 

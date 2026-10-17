@@ -31,15 +31,17 @@ async function handler(timer, context) {
         pastDue: Boolean(timer?.isPastDue)
     });
 
-    // Sequential, and reported separately: they are two tables with two
-    // retention windows, and one of them failing should be legible as itself.
+    // Sequential, and reported separately: one clears old arrival counters and
+    // one normalizes any legacy visit rows. Either can fail without hiding the
+    // other result.
     const visits = await sweepVisits({ tables, log: context, dryRun });
 
-    context.log('sweep: cleared visit rows nobody reports on', {
+    context.log('sweep: normalized visit rows', {
         scanned: visits.scanned,
         deleted: visits.deleted,
         kept: visits.kept,
         failed: visits.failed,
+        migrated: visits.migrated,
         oldest: visits.oldest,
         dryRun
     });

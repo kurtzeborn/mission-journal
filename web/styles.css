@@ -2225,6 +2225,32 @@ h3:target {
     border-bottom: 1px solid var(--rule);
 }
 
+.people__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0 0 1rem;
+}
+
+.people__access {
+    flex: 0 0 9rem;
+    color: var(--ink-soft);
+    font-size: 0.72rem;
+    line-height: 1.25;
+}
+
+.people__access-label {
+    display: block;
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.people-invite {
+    width: min(36rem, calc(100% - 2rem));
+}
+
 /* The controls come down with the row. Below the 34px the rest of the site
    uses, which is the trade for the density -- acceptable only because Remove
    asks before it does anything. */

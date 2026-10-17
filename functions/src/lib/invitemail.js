@@ -46,7 +46,6 @@ const readableDate = (iso) =>
  * @param {string} input.token
  * @param {string} input.invitedBy     the owner's address
  * @param {string} [input.missionary]  the archive's display name, if it has one
- * @param {string} input.role
  * @param {string} input.expiresAt
  * @param {string} [input.optOutToken] signed, names the recipient; omitted only in tests
  * @param {boolean} [input.again]      an owner asked for this one to be sent a second time
@@ -56,7 +55,6 @@ export function inviteEmail({
     token,
     invitedBy,
     missionary = '',
-    role,
     expiresAt,
     optOutToken = '',
     again = false
@@ -101,9 +99,7 @@ export function inviteEmail({
         ...repeated,
         `${invitedBy} has invited you to read ${whose} on ${SIGNATURE}.`,
         '',
-        role === 'owner'
-            ? 'You have been invited as an owner, so you will be able to read the\nletters, edit them, and invite other people.'
-            : 'You have been invited as a reader, so you will be able to read the\nletters and download them.',
+        'You have been invited as a reader, so you will be able to read the\nletters and download them.',
         '',
         'Accept here:',
         link,
@@ -140,9 +136,7 @@ export function inviteEmail({
             ? `<p style="padding:12px;background:#faf8f4;border-radius:4px">${escape(invitedBy)} asked us to send this again. If you still have the earlier email, use the button below instead &mdash; the older link has stopped working.</p>`
             : '',
         `<p><strong>${escape(invitedBy)}</strong> has invited you to read ${escape(whose)} on ${SIGNATURE}.</p>`,
-        role === 'owner'
-            ? '<p>You have been invited as an <strong>owner</strong>, so you will be able to edit letters and invite other people as well as read them.</p>'
-            : '<p>You have been invited as a <strong>reader</strong>, so you will be able to read letters and download them.</p>',
+        '<p>You have been invited as a <strong>reader</strong>, so you will be able to read letters and download them.</p>',
         `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Accept the invitation</a></p>`,
         '<p>Please use a <strong>personal</strong> account rather than a work or school one. The account you sign in with is the one that gets access &mdash; it does not have to be the address this email arrived at.</p>',
         `<p>This invitation stops working on <strong>${escape(deadline)}</strong>.</p>`,
