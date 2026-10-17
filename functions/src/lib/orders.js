@@ -58,12 +58,16 @@ export async function readLiveCheckout({ store, slug, now = () => new Date() }) 
     const suffix = '/order.json';
     const names = await store.listBlobs(BOOKS, prefix);
     const at = now().getTime();
+    const replaced = new Set();
 
     for (const name of names.filter((candidate) => candidate.endsWith(suffix)).sort().reverse()) {
         const id = name.slice(prefix.length, -suffix.length);
         if (!id || id.includes('/')) continue;
 
         const found = await readOrder({ store, slug, id });
+        if (found?.order?.replaces) replaced.add(found.order.replaces);
+        if (replaced.has(id) || found?.order?.supersededAt) continue;
+
         const checkoutUrl = found?.order?.checkoutUrl;
         const listedUntil = Date.parse(found?.order?.listedUntil ?? '');
         if (typeof checkoutUrl === 'string' && checkoutUrl && listedUntil > at) {

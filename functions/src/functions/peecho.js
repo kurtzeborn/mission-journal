@@ -134,11 +134,21 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
         return json(404, { error: 'there is no finished book to print' });
     }
 
-    // Already listed, and the listing has not run out. Handing back the same
-    // checkout rather than making a second one, because two listings for one
-    // book is two prices, two pages and two ways to buy the same object.
+    const replace = request.query.get('replace') === '1';
     const existing = await readOrder({ store, slug, id });
-    if (existing?.order?.checkoutUrl && Date.parse(existing.order.listedUntil ?? '') > Date.now()) {
+    if (existing?.order?.supersededAt) {
+        return json(409, { error: 'this book was replaced by a newer checkout version' });
+    }
+
+    const live = await readLiveCheckout({ store, slug });
+
+    // Already the version for sale, and the listing has not run out. Handing
+    // back the same checkout rather than making a duplicate for one book.
+    if (
+        existing?.order?.checkoutUrl &&
+        Date.parse(existing.order.listedUntil ?? '') > Date.now() &&
+        (!live || live.id === id)
+    ) {
         return json(200, {
             checkoutUrl: existing.order.checkoutUrl,
             listedUntil: existing.order.listedUntil,
@@ -147,10 +157,24 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
         });
     }
 
-    const live = await readLiveCheckout({ store, slug });
-    if (live) {
+    let replacing = null;
+    if (live && live.id !== id) {
+        if (!replace) {
+            return json(409, {
+                error: 'another version of this book already has an active checkout page'
+            });
+        }
+
+        // Book ids begin with sortable timestamps. A replacement is a newer
+        // draft taking over from the current sale, never an old proof being
+        // put back in front of it through a hand-written request.
+        if (id <= live.id) {
+            return json(409, { error: 'only a newer book version can replace the current checkout' });
+        }
+        replacing = live;
+    } else if (live) {
         return json(409, {
-            error: 'another version of this book already has an active checkout page'
+            error: 'this book already has an active checkout page'
         });
     }
 
@@ -205,6 +229,7 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
 
     if (listed.error) return json(502, { error: listed.error });
 
+    const listedAt = new Date().toISOString();
     await noteOrder({
         store,
         slug,
@@ -214,11 +239,34 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
             title,
             publicationId: listed.publicationId,
             checkoutUrl: listed.checkoutUrl,
-            listedAt: new Date().toISOString(),
+            listedAt,
             listedUntil: listedUntil.toISOString(),
-            checkoutHiddenAt: null
+            checkoutHiddenAt: null,
+            replaces: replacing?.id ?? null
         }
     });
+
+    if (replacing) {
+        const superseded = await noteOrder({
+            store,
+            slug,
+            id: replacing.id,
+            log: context,
+            patch: {
+                supersededAt: listedAt,
+                supersededBy: id,
+                checkoutHiddenAt: listedAt
+            }
+        });
+        if (superseded.error) {
+            context.error?.('peecho.supersedeFailed', {
+                slug,
+                oldId: replacing.id,
+                newId: id,
+                error: superseded.error
+            });
+        }
+    }
 
     context.log('peecho.listed', { slug, id, publication: listed.publicationId });
 
@@ -226,7 +274,8 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
         checkoutUrl: listed.checkoutUrl,
         listedUntil: listedUntil.toISOString(),
         visible: true,
-        reused: false
+        reused: false,
+        replaced: Boolean(replacing)
     });
 }
 
