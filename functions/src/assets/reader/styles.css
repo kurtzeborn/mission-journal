@@ -1611,6 +1611,14 @@ select:focus-visible {
 
 /* --- book-only pages --- */
 
+.book-listing > :first-child {
+    margin-top: 0;
+}
+
+.book-listing > :last-child {
+    margin-bottom: 0;
+}
+
 .book-part {
     display: flex;
     align-items: center;

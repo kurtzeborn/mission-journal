@@ -310,6 +310,8 @@ describe('the finished book actions', () => {
         assert.match(view.el('proof').href, /\/book-2\/proof\.pdf$/);
         assert.equal(view.el('sale').hidden, false);
         assert.equal(view.el('finished').hidden, false);
+        assert.match(view.el('sale').getAttribute('class'), /\bentry\b/);
+        assert.ok(view.source.indexOf('id="finished"') < view.source.indexOf('id="published-books"'));
         assert.equal(view.text('book-heading'), 'Latest draft');
         assert.equal(view.el('checkout-blocked').hidden, false);
         assert.equal(view.el('order-controls').hidden, false);

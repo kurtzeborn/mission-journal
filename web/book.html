@@ -158,40 +158,6 @@
             -->
             <p class="note" id="said" role="status" aria-live="polite"></p>
 
-            <div id="sale" hidden>
-                <hr class="rule">
-
-                <h2>Currently for sale</h2>
-                <p id="sale-about"></p>
-
-                <p>
-                    <a class="button" id="sale-proof" href="/" target="_blank" rel="noopener">
-                        View checkout proof
-                    </a>
-                    <a class="button button--quiet" id="sale-print" href="/" hidden>
-                        Download print file
-                    </a>
-                </p>
-
-                <p>
-                    <a class="button" id="buy" href="/" target="_blank" rel="noopener">
-                        Go to the checkout
-                    </a>
-                    <button class="button button--quiet" type="button" id="close-checkout">
-                        Close
-                    </button>
-                    <button class="button button--quiet" type="button" id="restore-checkout" hidden>
-                        Restore
-                    </button>
-                </p>
-                <p class="note" id="checkout-expires"></p>
-                <p class="note">
-                    Closing only hides <strong>Buy a Book</strong> from the archive.
-                    A checkout link already shared will still work until it expires.
-                </p>
-                <p class="note" id="sale-said" role="status" aria-live="polite"></p>
-            </div>
-
             <div id="finished" hidden>
                 <hr class="rule">
 
@@ -246,6 +212,43 @@
 
                     <p class="note" id="order-said" role="status" aria-live="polite"></p>
                 </div>
+            </div>
+
+            <!-- Each published version is its own card. There is one live
+                 checkout today; this container can hold earlier published
+                 versions when the page exposes that history. -->
+            <div id="published-books">
+                <section class="entry book-listing" id="sale" aria-labelledby="sale-heading" hidden>
+                    <h2 id="sale-heading">Currently for sale</h2>
+                    <p id="sale-about"></p>
+
+                    <p>
+                        <a class="button" id="sale-proof" href="/" target="_blank" rel="noopener">
+                            View checkout proof
+                        </a>
+                        <a class="button button--quiet" id="sale-print" href="/" hidden>
+                            Download print file
+                        </a>
+                    </p>
+
+                    <p>
+                        <a class="button" id="buy" href="/" target="_blank" rel="noopener">
+                            Go to the checkout
+                        </a>
+                        <button class="button button--quiet" type="button" id="close-checkout">
+                            Close
+                        </button>
+                        <button class="button button--quiet" type="button" id="restore-checkout" hidden>
+                            Restore
+                        </button>
+                    </p>
+                    <p class="note" id="checkout-expires"></p>
+                    <p class="note">
+                        Closing only hides <strong>Buy a Book</strong> from the archive.
+                        A checkout link already shared will still work until it expires.
+                    </p>
+                    <p class="note" id="sale-said" role="status" aria-live="polite"></p>
+                </section>
             </div>
         </section>
     </main>
