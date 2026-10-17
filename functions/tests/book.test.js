@@ -26,6 +26,7 @@ import {
     endingPhotoCount,
     emojiRuns,
     inReadingOrder,
+    lowerRoman,
     mirror,
     monthLabel,
     photoBox,
@@ -88,6 +89,15 @@ describe('the order a book runs in', () => {
             inReadingOrder(posts).map((entry) => entry.id),
             ['a', 'b', 'c']
         );
+    });
+
+    describe('printed folios', () => {
+        test('uses conventional lowercase Roman numerals for front matter', () => {
+            assert.deepEqual(
+                [1, 2, 3, 4, 9, 14, 40, 49, 99].map(lowerRoman),
+                ['i', 'ii', 'iii', 'iv', 'ix', 'xiv', 'xl', 'xlix', 'xcix']
+            );
+        });
     });
 
     test('leaves the payload it was handed alone', () => {
@@ -884,10 +894,10 @@ describe('setting a whole book', () => {
         const [, result] = await Promise.all([readPdf(stream), done]);
         const pages = Object.fromEntries(result.sections.map((section) => [section.name, section.page]));
 
-        // Title and cloud are pages 1 and 2. A short Foreword opens on page 3,
-        // then the contents occupies page 4 before the first chapter.
-        assert.equal(pages.foreword, 3);
-        assert.ok(pages.foreword < result.opens[0].page);
+        // Title and cloud are front matter i and ii. A short Foreword opens
+        // on iii, then the main text restarts in Arabic.
+        assert.equal(pages.foreword, 'iii');
+        assert.equal(result.opens[0].page, 2);
         assert.ok(pages.afterword > result.opens.at(-1).page);
     });
 
@@ -932,6 +942,18 @@ describe('setting a whole book', () => {
         const [bytes] = await Promise.all([readPdf(stream), done]);
 
         assert.match(bytes.toString('latin1'), /isaac\.backman/);
+    });
+
+    test('centers the title-page logo over the title-page URL', async () => {
+        const { stream, done } = build();
+        const [bytes] = await Promise.all([readPdf(stream), done]);
+        const logos = [
+            ...drawnIn(bytes).matchAll(/30 0 0 -30 ([-\d.]+) [-\d.]+ cm\s+\/I\d+ Do/g)
+        ].map((match) => Number(match[1]));
+
+        assert.equal(logos.length, 2);
+        assert.equal(logos[0] + 15, MARGIN.inside + COLUMN / 2);
+        assert.equal(logos[1] + 15, PAGE.width / 2);
     });
 
     test('paginates identically whether or not the photographs are there', async () => {
@@ -1167,15 +1189,15 @@ describe('the word cloud in the front of the book', () => {
         // The cloud sits on the title page's verso, which was always being
         // printed for the imprint, so it costs no sheet of its own. What it
         // does do is flip the parity of the front matter, and a chapter has
-        // to open on a recto: title 1, cloud 2, one page of contents 3, a
-        // blank 4, the chapter opening 5, the first letter 6.
+        // to open on a recto. The physical placement remains unchanged while
+        // the chapter restarts at Arabic 1 and the first letter becomes 2.
         const { stream, done } = build([
             wordy('a', '2026-01-04', 'Week one'),
             wordy('b', '2026-02-08', 'Week six')
         ]);
         const [, result] = await Promise.all([readPdf(stream), done]);
 
-        assert.equal(result.opens[0].page, 6);
+        assert.equal(result.opens[0].page, 2);
     });
 
     test('sets the words at a whole range of sizes', async () => {
@@ -1191,12 +1213,13 @@ describe('the word cloud in the front of the book', () => {
     test('leaves the leaf blank rather than printing three words large', async () => {
         // An archive of two short letters has no cloud in it, and a handful of
         // words blown up to fill a page looks like a mistake rather than like
-        // a summary. The leaf still gets printed, because it is the back of
-        // the title page and everything after it is placed from there.
+        // a summary. The leaf still gets printed and Roman-numbered, because
+        // it is the back of the title page and everything after it is placed
+        // from there.
         const thin = build([post('a', '2026-01-04', 'Week one')]);
         const [thinBytes, result] = await Promise.all([readPdf(thin.stream), thin.done]);
 
-        assert.equal(result.opens[0].page, 6);
+        assert.equal(result.opens[0].page, 2);
         assert.ok(sizes(thinBytes).size < 20, 'something was set on the blank leaf');
     });
 });

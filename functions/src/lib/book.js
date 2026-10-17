@@ -521,6 +521,41 @@ export const mirror = (pageNumber) => (pageNumber % 2 === 1 ? 0 : -(MARGIN.insid
 // The one text box everything is set against, before mirroring.
 const LEFT = MARGIN.inside;
 
+export function lowerRoman(value) {
+    if (!Number.isInteger(value) || value < 1 || value > 3999) return '';
+
+    const numerals = [
+        [1000, 'm'],
+        [900, 'cm'],
+        [500, 'd'],
+        [400, 'cd'],
+        [100, 'c'],
+        [90, 'xc'],
+        [50, 'l'],
+        [40, 'xl'],
+        [10, 'x'],
+        [9, 'ix'],
+        [5, 'v'],
+        [4, 'iv'],
+        [1, 'i']
+    ];
+    let remaining = value;
+    let out = '';
+
+    for (const [amount, numeral] of numerals) {
+        while (remaining >= amount) {
+            out += numeral;
+            remaining -= amount;
+        }
+    }
+
+    return out;
+}
+
+function folioOf(state) {
+    return state.numbering === 'front' ? lowerRoman(state.page) : state.folio;
+}
+
 /**
  * Fetch a photograph and prepare it for print.
  *
@@ -685,6 +720,7 @@ function openBook({ title, state }) {
         }
 
         state.page += 1;
+        if (state.numbering === 'main') state.folio += 1;
         const recto = state.page % 2 === 1;
 
         // A float belongs to one sheet of paper. Cleared here rather than at
@@ -709,19 +745,20 @@ function openBook({ title, state }) {
         // does so only once a document is long enough to need a second page.
         doc.page.margins = { top: 0, bottom: 0, left: 0, right: 0 };
 
-        // Front matter carries no furniture. A running head over a title page
-        // is a printing error rather than a feature, and a folio on the
-        // contents would number pages that are not yet the book.
+        // Front matter carries no running heads, but it does carry lowercase
+        // Roman folios. The title page also holds the colophon, so its folio
+        // is counted but suppressed; every other nonblank front-matter page
+        // prints its number. Main text restarts at Arabic 1.
         //
-        // Neither does a page left blank to bring the next chapter round onto
-        // a right-hand page. A blank leaf with a page number on it reads as a
-        // page whose contents failed to print.
-        if (state.furniture && !state.blank) {
+        // A page left blank to bring the next chapter round onto a right-hand
+        // page is still counted, but its folio stays hidden. A numbered blank
+        // leaf reads as a page whose contents failed to print.
+        if (!state.blank) {
             // A chapter opening takes the folio but not the running head. The
             // head answers "where am I" on a page that has already told you,
             // in large type an inch below it -- so on this one page it is
             // noise, and every printed book leaves it off.
-            if (!state.opening) {
+            if (state.furniture && !state.opening) {
                 const running = recto ? state.head : title;
                 const headWidth = mixedWidth(doc, running, { font: 'italic', size: 9.5 });
                 const size = headWidth > COLUMN ? (9.5 * COLUMN) / headWidth : 9.5;
@@ -737,18 +774,14 @@ function openBook({ title, state }) {
                 });
             }
 
-            // The folio *is* the physical page number, front matter included
-            // in the count even though it prints none of its own. Numbering
-            // the letters separately from page one was the first arrangement
-            // and it put odd numbers on left-hand pages, which is the one
-            // thing about page numbers everybody notices without being able
-            // to say why it looks wrong.
-            doc.font('regular').fontSize(10).fillColor(QUIET);
-            doc.text(String(state.page), LEFT, PAGE.height - MARGIN.bottom + 26, {
-                width: COLUMN,
-                align: recto ? 'right' : 'left',
-                lineBreak: false
-            });
+            if (!state.suppressFolio) {
+                doc.font('regular').fontSize(10).fillColor(QUIET);
+                doc.text(String(folioOf(state)), LEFT, PAGE.height - MARGIN.bottom + 26, {
+                    width: COLUMN,
+                    align: recto ? 'right' : 'left',
+                    lineBreak: false
+                });
+            }
 
             state.opening = false;
         }
@@ -1213,12 +1246,19 @@ function padToPrinter(doc, state, least) {
 function setMonth(doc, { month, index, chapters, profile, state }) {
     padToRecto(doc, state);
 
+    // The blank that may precede the first chapter still belongs to the front
+    // matter. Only the chapter opening itself becomes Arabic page 1.
+    if (index === 0) {
+        state.numbering = 'main';
+        state.folio = 0;
+    }
+
     state.head = month.label;
     state.opening = true;
     state.indent = 0;
     doc.addPage();
 
-    const opened = state.page;
+    const opened = state.folio;
 
     doc.font('semibold').fontSize(30).fillColor(BLACK);
     doc.text(month.label, LEFT, MARGIN.top + PAGE.height * 0.22, { width: COLUMN, lineBreak: false });
@@ -1308,7 +1348,7 @@ function setLetter(doc, { post, slug, images, state, fillChapterBlank = false })
     state.indent = 0;
     doc.addPage();
 
-    const opened = state.page;
+    const opened = state.folio;
 
     // A letter drops below the top margin. It is the oldest signal in book
     // typography that something has started, and it costs an inch of a page
@@ -1913,8 +1953,8 @@ function setFrontCover(doc, { title, profile, cloth, picture, state }) {
     state.cover = false;
 }
 
-function setSiteLogo(doc, y) {
-    doc.image(SITE_LOGO, (PAGE.width - SITE_LOGO_SIZE) / 2, y, {
+function setSiteLogo(doc, y, { x = 0, width = PAGE.width } = {}) {
+    doc.image(SITE_LOGO, x + (width - SITE_LOGO_SIZE) / 2, y, {
         width: SITE_LOGO_SIZE,
         height: SITE_LOGO_SIZE
     });
@@ -1962,7 +2002,9 @@ function setBackCover(doc, { slug, cloth, state }) {
  */
 function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
     state.indent = 0;
+    state.suppressFolio = true;
     doc.addPage();
+    state.suppressFolio = false;
 
     doc.y = PAGE.height * 0.25;
     setNameplate(doc, {
@@ -1976,7 +2018,7 @@ function setTitlePage(doc, { title, slug, profile, madeAt, state }) {
 
     doc.font('italic').fontSize(10).fillColor(QUIET);
     doc.y = TEXT_BOTTOM - 36;
-    setSiteLogo(doc, doc.y - SITE_LOGO_SIZE - 8);
+    setSiteLogo(doc, doc.y - SITE_LOGO_SIZE - 8, { x: LEFT, width: COLUMN });
 
     for (const line of [
         `${SITE_NAME}/${slug}`,
@@ -2051,7 +2093,7 @@ function setBookSection(doc, { section, slug, state }) {
     state.indent = 0;
     doc.addPage();
 
-    const opened = state.page;
+    const opened = folioOf(state);
     doc.y = MARGIN.top + 40;
     setLines(doc, [{ text: section.title }], {
         state,
@@ -2146,8 +2188,8 @@ function setCloud(doc, { words, state }) {
  * is the invariant the contents page rests on -- see the header.
  *
  * @returns {Promise<{starts: Map<string, number>, chapters: number[],
- *   sectionStarts: Map<string, number>}>} where each letter, month, and optional
- * book-only section opened
+ *   sectionStarts: Map<string, number|string>}>} where each letter, month, and
+ * optional book-only section opened
  */
 async function setBook(
     doc,
@@ -2273,6 +2315,9 @@ function printWidths(post, slug) {
 
 const freshState = (madeAt, proof) => ({
     page: 0,
+    folio: 0,
+    numbering: 'front',
+    suppressFolio: false,
     head: '',
     furniture: false,
     opening: false,
@@ -2334,7 +2379,8 @@ function tooLong(pages, most, posts) {
  *
  * `pages` counts what the printer counts -- every leaf, both covers -- since
  * that is the number their spine calculation is fed. The folios in `opens`
- * number the book instead, so the two do not agree and are not meant to.
+ * restart at Arabic 1 with the main text, so the two do not agree and are not
+ * meant to.
  *
  * `proof` marks the reviewing copy and drops it to screen resolution, and
  * those two go together on purpose -- which is why one flag sets both. A
@@ -2351,7 +2397,7 @@ function tooLong(pages, most, posts) {
  * printed on it, so nothing behind it moves.
  *
  * @returns {{stream: import('node:stream').Readable, done: Promise<{pages: number,
- *   opens: {id: string, page: number}[], sections: {name: string, page: number}[]}>}}
+ *   opens: {id: string, page: number}[], sections: {name: string, page: number|string}[]}>}}
  */
 export function buildInterior({
     store,
