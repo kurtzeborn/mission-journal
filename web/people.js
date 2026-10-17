@@ -167,13 +167,33 @@
             time.dateTime = person.lastAccessAt;
             time.textContent = accessDate(person.lastAccessAt);
             time.title = fullAccessDate(person.lastAccessAt);
-            time.setAttribute('aria-label', `Last opened ${fullAccessDate(person.lastAccessAt)}`);
+            time.setAttribute('aria-label', `Last viewed ${fullAccessDate(person.lastAccessAt)}`);
             access.appendChild(time);
         } else {
             access.textContent = '\u2014';
             access.setAttribute('aria-label', 'No access recorded');
         }
         item.appendChild(access);
+
+        const digest = document.createElement('span');
+        digest.className = 'people__digest';
+        const digestKind =
+            person.digestFrequency === 'weekly'
+                ? { icon: 'fa-calendar-week', label: 'Weekly email digest enabled' }
+                : person.digestFrequency === 'monthly'
+                  ? { icon: 'fa-calendar-day', label: 'Monthly email digest enabled' }
+                  : null;
+        if (digestKind) {
+            digest.setAttribute('aria-label', digestKind.label);
+            digest.setAttribute('title', digestKind.label);
+            const digestIcon = document.createElement('i');
+            digestIcon.className = `fa-solid ${digestKind.icon}`;
+            digestIcon.setAttribute('aria-hidden', 'true');
+            digest.appendChild(digestIcon);
+        } else {
+            digest.setAttribute('aria-label', 'Email digest disabled');
+        }
+        item.appendChild(digest);
 
         const controls = document.createElement('span');
         controls.className = 'people__controls';
@@ -244,7 +264,7 @@
                     await api(`/${encodeURIComponent(person.pending ? person.id : person.email)}`, {
                         method: 'DELETE'
                     });
-                }, trouble, 'fa-xmark')
+                }, trouble, 'fa-user-slash')
             );
         }
 

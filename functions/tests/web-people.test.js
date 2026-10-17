@@ -206,6 +206,7 @@ describe('reading the list of who has access', () => {
 
         assert.equal(address.textContent, 'Ana Example');
         assert.equal(hint.children[0].getAttribute('aria-label'), 'Show email address for Ana Example');
+        assert.equal(hint.children[0].children[0].className, 'fa-solid fa-envelope');
         assert.equal(hint.children[1].textContent, 'mum@example.com');
     });
 
@@ -329,6 +330,7 @@ describe('reading the list of who has access', () => {
         assert.equal(remove.textContent, '');
         assert.equal(remove.getAttribute('aria-label'), 'Remove');
         assert.equal(remove.getAttribute('title'), 'Remove');
+        assert.equal(remove.children[0].className, 'fa-solid fa-user-slash');
     });
 
     test('role changes and resends are compact controls with accessible names', async () => {
@@ -345,6 +347,29 @@ describe('reading the list of who has access', () => {
         assert.equal(view.button('people', 'Make owner').textContent, '');
         assert.equal(view.button('people', 'Make reader').textContent, '');
         assert.equal(view.button('people', 'Resend').textContent, '');
+    });
+
+    test('shows weekly and monthly digest choices as accessible calendar icons', async () => {
+        const view = await people({
+            answer: listing({
+                members: [
+                    { email: 'weekly@example.com', role: 'reader', digestFrequency: 'weekly' },
+                    { email: 'monthly@example.com', role: 'reader', digestFrequency: 'monthly' },
+                    { email: 'off@example.com', role: 'reader', digestFrequency: 'off' }
+                ],
+                invites: []
+            })
+        });
+
+        const digests = [...view.el('people').children].map(
+            (row) => row.descendants().find((child) => child.className === 'people__digest')
+        );
+        assert.equal(digests[0].getAttribute('aria-label'), 'Monthly email digest enabled');
+        assert.equal(digests[0].children[0].className, 'fa-solid fa-calendar-day');
+        assert.equal(digests[1].getAttribute('aria-label'), 'Email digest disabled');
+        assert.equal(digests[1].children.length, 0);
+        assert.equal(digests[2].getAttribute('aria-label'), 'Weekly email digest enabled');
+        assert.equal(digests[2].children[0].className, 'fa-solid fa-calendar-week');
     });
 
     test('owners come before readers, then newer access and a stable name', async () => {

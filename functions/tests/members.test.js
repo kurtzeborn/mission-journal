@@ -18,6 +18,7 @@ import { TABLES } from '../src/lib/tables.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../src/lib/claimtoken.js';
 import { setUserProfile } from '../src/lib/userprofile.js';
 import { recordVisit } from '../src/lib/visits.js';
+import { DIGEST, setDigest } from '../src/lib/users.js';
 
 const silent = { info() {}, warn() {}, error() {} };
 const NOW = () => new Date('2026-08-05T12:00:00Z');
@@ -259,6 +260,23 @@ describe('the missionary cannot be evicted from their own archive', () => {
 
         assert.equal(listed.find((entry) => entry.email === READER).lastAccessAt, NOW().toISOString());
         assert.equal(listed.find((entry) => entry.email === OWNER).lastAccessAt, '');
+    });
+
+    test('the list includes each member digest choice without scanning unrelated users', async () => {
+        const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);
+        await setDigest({
+            tables: store,
+            email: READER,
+            frequency: DIGEST.weekly,
+            weekday: 1,
+            week: 1,
+            now: NOW
+        });
+
+        const listed = await listMembers({ store, tables: store, slug: SLUG, actor: OWNER });
+
+        assert.equal(listed.find((entry) => entry.email === READER).digestFrequency, DIGEST.weekly);
+        assert.equal(listed.find((entry) => entry.email === OWNER).digestFrequency, DIGEST.off);
     });
 });
 

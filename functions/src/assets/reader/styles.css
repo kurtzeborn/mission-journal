@@ -2215,7 +2215,7 @@ h3:target {
 .people__header,
 .people__row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 4.2rem 4.2rem;
+    grid-template-columns: minmax(0, 1fr) 3.8rem 2rem 4.2rem;
     column-gap: 0.25rem;
     align-items: center;
 }
@@ -2230,7 +2230,8 @@ h3:target {
     text-transform: uppercase;
 }
 
-.people__header span:nth-child(2) {
+.people__header span:nth-child(2),
+.people__header span:nth-child(3) {
     text-align: center;
 }
 
@@ -2258,6 +2259,12 @@ h3:target {
 .people__access {
     color: var(--ink-soft);
     font-size: 0.72rem;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.people__digest {
+    color: var(--ink-soft);
     text-align: center;
     white-space: nowrap;
 }
@@ -2388,6 +2395,13 @@ h3:target {
 /* How many people this is, so a long list can be checked against a number. */
 .people__count {
     margin: 0 0 0.5rem;
+}
+
+@media (max-width: 30rem) {
+    .people-page .wrap {
+        padding-right: 0.75rem;
+        padding-left: 0.75rem;
+    }
 }
 
 .qr-invite {

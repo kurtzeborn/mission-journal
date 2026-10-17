@@ -79,10 +79,9 @@ export const TABLES = {
     // Derived, and the recovery is a sign-in: an empty table simply re-binds
     // everyone the next time they visit. See identity.js.
     identities: 'identities',
-    // PartitionKey = 'YYYY-MM-DD', RowKey = '{slug}|SHA-256 of the address'.
-    // One row per person per archive per day they read it, upserted, so the
-    // count is people rather than page loads. Holds no address and nothing
-    // about what was read. Derived, and losing it costs a month of history.
+    // PartitionKey = slug, RowKey = SHA-256 of the address. One latest-access
+    // row per person and archive, upserted on each read. Holds no address and
+    // nothing about what was read. Derived, and losing it costs access history.
     // See visits.js.
     visits: 'visits'
 };

@@ -38,7 +38,7 @@ import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { deliveryTrouble } from './delivery.js';
 import { forgetMembership, recordMembership } from './memberships.js';
 import { validSlug } from './paths.js';
-import { userProfilesFor } from './userprofile.js';
+import { memberUserDetailsFor } from './userprofile.js';
 import { lastVisitsFor } from './visits.js';
 
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
@@ -78,16 +78,17 @@ export async function listMembers({ store, tables = null, slug, actor, log = con
     if (!members) return null;
 
     const emails = members.map((m) => m.email);
-    const [trouble, profiles, lastVisits] = await Promise.all([
+    const [trouble, users, lastVisits] = await Promise.all([
         deliveryTrouble({ tables, emails, log }),
-        userProfilesFor({ tables, emails }),
+        memberUserDetailsFor({ tables, emails }),
         lastVisitsFor({ tables, slug: safe, emails, log })
     ]);
 
     const me = lower(actor);
     return members.map((m) => ({
         email: lower(m.email),
-        displayName: profiles.get(lower(m.email))?.displayName ?? '',
+        displayName: users.get(lower(m.email))?.displayName ?? '',
+        digestFrequency: users.get(lower(m.email))?.digestFrequency ?? 'off',
         role: m.role,
         verifiedMissionary: Boolean(m.verifiedMissionary),
         addedAt: m.addedAt ?? '',
