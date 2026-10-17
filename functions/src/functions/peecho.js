@@ -2,6 +2,7 @@ import { app } from '@azure/functions';
 import { blobStore, signingKey } from '../lib/clients.js';
 import { hardened, jsonResponse as json, siteGate } from '../lib/api.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../lib/claimtoken.js';
+import { clothOf, coverOf } from '../lib/cover.js';
 import { noteOrder, readActiveCheckout, readLiveCheckout, readOrder } from '../lib/orders.js';
 import {
     createPublication,
@@ -44,6 +45,13 @@ const FETCH_MINUTES = 60;
 // bomb with a long fuse. Ten years is the honest way to write "not this
 // decade", and the lever that actually revokes these is rotating the key.
 const PRINT_YEARS = 10;
+
+// Proven against Peecho's previewer for the live Letter hardcover at 152
+// pages. Crimson is the book's own face and 16 sits comfortably within the
+// previewer's required 4–32 range.
+const SPINE_FONT = 'Crimson';
+const SPINE_TEXT_SIZE = 16;
+const SPINE_SITE = 'PDayLetters.com';
 
 // Where the API lives from outside. The printer fetches this, so it cannot be
 // a relative path and it cannot be the Function App's own hostname either --
@@ -148,6 +156,7 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
 
     const { profile } = await readProfile({ store, slug });
     const title = profile.displayName || slug;
+    const cloth = clothOf(coverOf(profile).cloth);
 
     const { token } = issueClaimToken({
         slug,
@@ -181,6 +190,15 @@ export async function order({ request, context, store, key, fetchImpl = fetch })
             offeringPrice: shop.offeringPrice,
             category: shop.category,
             baseUrl: baseUrl(),
+            spine: {
+                top: String(profile.mission ?? '').trim(),
+                center: title,
+                bottom: SPINE_SITE,
+                backgroundColor: cloth.paper,
+                textColor: cloth.ink,
+                fontFamily: SPINE_FONT,
+                textSize: SPINE_TEXT_SIZE
+            },
             expiresAt: listedUntil
         })
     });
