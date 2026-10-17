@@ -66,13 +66,13 @@ const recorder = () => {
 };
 
 /** An archive with one owner and one invitation waiting to be accepted. */
-async function pending({ role = ROLE.reader, at = NOW } = {}) {
+async function pending({ at = NOW } = {}) {
     const store = await site([member(OWNER, ROLE.owner)]);
     const mailer = recorder();
 
     await inviteMember({
         store, tables: store, mailer, slug: SLUG, actor: OWNER,
-        email: THEM, role, key: KEY, baseUrl: BASE, now: at, log: silent
+        email: THEM, key: KEY, baseUrl: BASE, now: at, log: silent
     });
 
     const [invitation] = await listInvites({ tables: store, slug: SLUG, now: at });
@@ -154,14 +154,16 @@ describe('sending an invitation again', () => {
         assert.ok(Date.parse(result.expiresAt) > Date.parse(invitation.expiresAt));
     });
 
-    test('the role is carried over rather than reset to reader', async () => {
-        const { store, mailer, invitation } = await pending({ role: ROLE.owner });
+    test('an outstanding legacy owner invitation is reset to reader', async () => {
+        const { store, mailer, invitation } = await pending();
+        const legacy = await store.getEntity(TABLES.invites, SLUG, invitation.id);
+        await store.upsertEntity(TABLES.invites, { ...legacy, role: ROLE.owner });
 
         const result = await resend(store, mailer, invitation.id);
 
-        assert.equal(result.role, ROLE.owner);
+        assert.equal(result.role, ROLE.reader);
         const [now] = await listInvites({ tables: store, slug: SLUG, now: NOW });
-        assert.equal(now.role, ROLE.owner);
+        assert.equal(now.role, ROLE.reader);
     });
 
     test('accepting the new link works end to end', async () => {

@@ -93,7 +93,6 @@ export async function inviteMember({
     slug,
     actor,
     email,
-    role = ROLE.reader,
     key,
     baseUrl,
     now = () => new Date(),
@@ -103,7 +102,6 @@ export async function inviteMember({
     const them = validEmail(email);
     if (!safe) return { error: 'no such site' };
     if (!them) return { error: 'not an email address' };
-    if (role !== ROLE.owner && role !== ROLE.reader) return { error: 'unknown role' };
 
     const members = await readAcl(store, safe);
     if (!members) return { error: 'no such site' };
@@ -161,7 +159,7 @@ export async function inviteMember({
         partitionKey: safe,
         rowKey: hash,
         email: them,
-        role,
+        role: ROLE.reader,
         invitedBy: me,
         createdAt: now().toISOString(),
         expiresAt
@@ -177,7 +175,6 @@ export async function inviteMember({
         token,
         invitedBy: inviterName || me,
         missionary: sites.get(safe)?.missionaryDisplayName ?? '',
-        role,
         expiresAt,
         optOutToken
     });
@@ -208,7 +205,7 @@ export async function inviteMember({
     // reports this one send; the row is what still says so tomorrow.
     await recordDelivery({ tables, email: them, status: result.status, slug: safe, now, log });
 
-    return { ok: true, slug: safe, email: them, role, expiresAt, delivery: result.status };
+    return { ok: true, slug: safe, email: them, role: ROLE.reader, expiresAt, delivery: result.status };
 }
 
 /**
@@ -238,7 +235,7 @@ export async function listInvites({ tables, slug, now = () => new Date(), log = 
             id: row.rowKey,
             email: row.email,
             displayName: profiles.get(lower(row.email))?.displayName ?? '',
-            role: row.role,
+            role: ROLE.reader,
             invitedBy: row.invitedBy ?? '',
             invitedByName: profiles.get(lower(row.invitedBy))?.displayName ?? '',
             createdAt: row.createdAt ?? '',
@@ -341,7 +338,7 @@ export async function resendInvite({
         partitionKey: safe,
         rowKey: hash,
         email: them,
-        role: row.role,
+        role: ROLE.reader,
         invitedBy: me,
         createdAt: now().toISOString(),
         expiresAt
@@ -366,7 +363,6 @@ export async function resendInvite({
         token,
         invitedBy: inviterName || me,
         missionary: sites.get(safe)?.missionaryDisplayName ?? '',
-        role: row.role,
         expiresAt,
         optOutToken,
         again: true
@@ -391,7 +387,7 @@ export async function resendInvite({
 
     await recordDelivery({ tables, email: them, status: result.status, slug: safe, now, log });
 
-    return { ok: true, slug: safe, id: hash, email: them, role: row.role, expiresAt, delivery: result.status };
+    return { ok: true, slug: safe, id: hash, email: them, role: ROLE.reader, expiresAt, delivery: result.status };
 }
 
 /**
@@ -455,7 +451,7 @@ export async function describeInvite({ tables, token, key, now = () => new Date(
     return {
         status: 'ready',
         slug,
-        role: row.role,
+        role: ROLE.reader,
         invitedBy: row.invitedBy ?? '',
         invitedByName: inviterName,
         missionary: sites.get(slug)?.missionaryDisplayName ?? '',
@@ -513,7 +509,7 @@ export async function acceptInvite({
         });
     }
 
-    const role = row.role === ROLE.owner ? ROLE.owner : ROLE.reader;
+    const role = ROLE.reader;
 
     // --- 2. grant --------------------------------------------------------
     for (let attempt = 0; attempt < CONFLICT_RETRIES; attempt++) {

@@ -38,18 +38,29 @@ describe('inviting a whole family in one sitting', () => {
         // column copied from a spreadsheet.
         view.el('email').value =
             'grandma@example.com, uncle.bob@example.com\nAunt Kay <kay@example.com>\n\n  cousin@example.com  ';
-        view.el('role').value = 'reader';
         await view.el('invite').dispatch('submit');
 
-        const invited = view.calls.filter((c) => c.method === 'POST').map((c) => c.body.email);
+        const invitationCalls = view.calls.filter((c) => c.method === 'POST');
+        const invited = invitationCalls.map((c) => c.body.email);
         assert.deepEqual(invited, [
             'grandma@example.com',
             'uncle.bob@example.com',
             'kay@example.com',
             'cousin@example.com'
         ]);
+        assert.deepEqual(Object.keys(invitationCalls[0].body), ['email']);
         assert.equal(view.text('invite-said'), '4 invitations sent. They work for two weeks.');
         assert.equal(view.el('email').value, '');
+    });
+
+    test('the compact action opens an invitation dialog', async () => {
+        const view = await people({ answer: listing(OWNER_ONLY) });
+
+        assert.notEqual(view.el('invite-dialog').open, true);
+        await view.el('invite-open').dispatch('click');
+        assert.equal(view.el('invite-dialog').open, true);
+        await view.el('invite-close').dispatch('click');
+        assert.equal(view.el('invite-dialog').open, false);
     });
 
     test('the same relative listed twice is only invited once', async () => {
@@ -234,6 +245,26 @@ describe('reading the list of who has access', () => {
         });
 
         assert.match(view.lines('people')[1], /invited as reader/);
+        assert.match(view.lines('people')[1], /Not joined/);
+    });
+
+    test('shows the most recent access day without inventing one', async () => {
+        const view = await people({
+            answer: listing({
+                members: [
+                    {
+                        email: 'mum@example.com',
+                        role: 'owner',
+                        lastAccessAt: '2026-08-16T23:58:00.000Z'
+                    },
+                    { email: 'gran@example.com', role: 'reader', lastAccessAt: '' }
+                ],
+                invites: []
+            })
+        });
+
+        assert.match(view.lines('people')[0], /Aug 16, 2026/);
+        assert.match(view.lines('people')[1], /No access recorded/);
     });
 
     /** The pill, wherever in the name cell it ended up. */
@@ -293,16 +324,37 @@ describe('reading the list of who has access', () => {
         assert.equal(remove.getAttribute('title'), 'Remove');
     });
 
-    test('owners come before readers, and each group is alphabetical', async () => {
-        // Arrival order is unfindable once the list is long, and the people who
-        // can change things are what an owner opened the page to check.
+    test('owners come before readers, then newer access and a stable name', async () => {
         const view = await people({
             answer: listing({
                 members: [
-                    { email: 'zoe@example.com', role: 'reader', removable: true },
-                    { email: 'dad@example.com', role: 'owner', removable: true },
-                    { email: 'elder@example.com', role: 'owner', verifiedMissionary: true },
-                    { email: 'aunt@example.com', role: 'reader', removable: true }
+                    {
+                        email: 'zoe@example.com',
+                        displayName: 'Zoe',
+                        role: 'reader',
+                        lastAccessAt: '2026-08-16T10:00:00Z',
+                        removable: true
+                    },
+                    {
+                        email: 'dad@example.com',
+                        displayName: 'Dad',
+                        role: 'owner',
+                        lastAccessAt: '2026-08-14T10:00:00Z',
+                        removable: true
+                    },
+                    {
+                        email: 'elder@example.com',
+                        role: 'owner',
+                        verifiedMissionary: true,
+                        lastAccessAt: '2026-08-15T10:00:00Z'
+                    },
+                    {
+                        email: 'aunt@example.com',
+                        displayName: 'Aunt',
+                        role: 'reader',
+                        lastAccessAt: '2026-08-16T10:00:00Z',
+                        removable: true
+                    }
                 ],
                 invites: [
                     { id: 'b', email: 'second@example.com', role: 'reader' },
@@ -315,9 +367,9 @@ describe('reading the list of who has access', () => {
             view.lines('people').map((line) => line.split(' ')[0]),
             [
                 'elder@example.com',
-                'dad@example.com',
-                'aunt@example.com',
-                'zoe@example.com',
+                'Dad',
+                'Aunt',
+                'Zoe',
                 'first@example.com',
                 'second@example.com'
             ]

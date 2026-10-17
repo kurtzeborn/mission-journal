@@ -17,6 +17,7 @@ import { recordDelivery, deliveryKey } from '../src/lib/delivery.js';
 import { TABLES } from '../src/lib/tables.js';
 import { issueClaimToken, PURPOSE, verifyClaimToken } from '../src/lib/claimtoken.js';
 import { setUserProfile } from '../src/lib/userprofile.js';
+import { recordVisit } from '../src/lib/visits.js';
 
 const silent = { info() {}, warn() {}, error() {} };
 const NOW = () => new Date('2026-08-05T12:00:00Z');
@@ -249,6 +250,16 @@ describe('the missionary cannot be evicted from their own archive', () => {
         assert.equal(reader.displayName, 'Ana Example');
         assert.equal(reader.email, READER);
     });
+
+    test('the list includes the latest recorded archive access', async () => {
+        const store = await site([member(OWNER, ROLE.owner), member(READER, ROLE.reader)]);
+        await recordVisit({ tables: store, slug: SLUG, email: READER, now: NOW, log: silent });
+
+        const listed = await listMembers({ store, tables: store, slug: SLUG, actor: OWNER });
+
+        assert.equal(listed.find((entry) => entry.email === READER).lastAccessAt, NOW().toISOString());
+        assert.equal(listed.find((entry) => entry.email === OWNER).lastAccessAt, '');
+    });
 });
 
 // --- whose mail is not arriving -------------------------------------------
@@ -295,6 +306,7 @@ describe('telling an owner that somebody is not hearing from us', () => {
         const [pending] = await listInvites({ tables: store, slug: SLUG, now: NOW, log: silent });
 
         assert.equal(pending.email, READER);
+        assert.equal(pending.role, ROLE.reader);
         assert.equal(pending.delivery, 'bounced');
         assert.ok(pending.deliveryAt);
     });
@@ -499,7 +511,7 @@ describe('inviting somebody who has never signed in', () => {
         assert.equal(listed.find((m) => m.email === OWNER).invitedEmail, '');
     });
 
-    test('accepting as an owner grants ownership, not a reader seat', async () => {
+    test('an attempted owner invitation still grants a reader seat that can be promoted later', async () => {
         const store = await site([member(OWNER, ROLE.owner)]);
         const mailer = recorder();
 
@@ -510,6 +522,11 @@ describe('inviting somebody who has never signed in', () => {
         const token = mailer.sent[0].text.match(/\/invite#(\S+)/)[1];
         await acceptInvite({ store, tables: store, token, key: KEY, principal: OTHER, now: NOW, log: silent });
 
+        assert.equal(await resolveRole({ store, slug: SLUG, principal: { email: OTHER } }), ROLE.reader);
+
+        await setMemberRole({
+            store, tables: store, slug: SLUG, actor: OWNER, email: OTHER, role: ROLE.owner, now: NOW, log: silent
+        });
         assert.equal(await resolveRole({ store, slug: SLUG, principal: { email: OTHER } }), ROLE.owner);
     });
 
@@ -691,7 +708,9 @@ describe('inviting somebody who has never signed in', () => {
         const token = mailer.sent[0].text.match(/\/invite#(\S+)/)[1];
         await acceptInvite({ store, tables: store, token, key: KEY, principal: OTHER, now: NOW, log: silent });
 
-        assert.equal(aclOf(store).find((m) => m.email === OTHER).verifiedMissionary, false);
+        const accepted = aclOf(store).find((m) => m.email === OTHER);
+        assert.equal(accepted.role, ROLE.reader);
+        assert.equal(accepted.verifiedMissionary, false);
     });
 });
 

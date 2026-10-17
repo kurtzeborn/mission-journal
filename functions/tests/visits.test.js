@@ -10,8 +10,8 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { memoryStore } from './memory-store.js';
-import { recordVisit, activeReaders, visitorKey, ACTIVE_DAYS } from '../src/lib/visits.js';
-import { sweepVisits, VISIT_RETAIN_DAYS } from '../src/lib/sweep.js';
+import { recordVisit, activeReaders, lastVisitsFor, visitorKey, ACTIVE_DAYS } from '../src/lib/visits.js';
+import { sweepVisits } from '../src/lib/sweep.js';
 import { TABLES } from '../src/lib/tables.js';
 
 const TODAY = new Date('2026-08-16T12:00:00Z');
@@ -35,7 +35,7 @@ describe('recording a visit', () => {
         assert.equal(rows.length, 1);
     });
 
-    test('the address is hashed, and nothing in the row can be read back to it', async () => {
+    test('the address becomes a safe fixed-length key rather than stored PII', async () => {
         const tables = memoryStore();
 
         await visit(tables, 'Gran@Example.com', 'elder.one');
@@ -44,7 +44,9 @@ describe('recording a visit', () => {
         const written = JSON.stringify(row).toLowerCase();
         assert.equal(written.includes('gran@example.com'), false);
         assert.equal(written.includes('gran'), false);
-        assert.match(row.rowKey, /^elder\.one\|[0-9a-f]{64}$/);
+        assert.equal(row.partitionKey, 'elder.one');
+        assert.match(row.rowKey, /^[0-9a-f]{64}$/);
+        assert.equal(row.lastAccessAt, TODAY.toISOString());
     });
 
     test('the same address in different letters is the same person', async () => {
@@ -102,7 +104,7 @@ describe('counting who is reading', () => {
     test('somebody who came every day this month is counted once in it', async () => {
         const tables = memoryStore();
 
-        for (let back = 0; back < ACTIVE_DAYS; back += 1) {
+        for (let back = ACTIVE_DAYS - 1; back >= 0; back -= 1) {
             await visit(tables, 'gran@example.com', 'elder.one', -back);
         }
 
@@ -147,28 +149,57 @@ describe('counting who is reading', () => {
     });
 });
 
-describe('sweeping visit rows', () => {
-    test('the retention window clears the window that is reported on', async () => {
-        // A sweep that merely reached thirty days would take the far end of
-        // its own report whenever it ran a little early.
-        assert.ok(VISIT_RETAIN_DAYS > ACTIVE_DAYS);
-    });
-
-    test('rows older than the window go, and everything reported on stays', async () => {
+describe('listing recent access for one archive', () => {
+    test('matches known addresses to their latest timestamp', async () => {
         const tables = memoryStore();
+        await visit(tables, 'gran@example.com', 'elder.one', -2);
+        await visit(tables, 'mum@example.com', 'elder.one', 0);
+        await visit(tables, 'gran@example.com', 'sister.two', 0);
 
-        await visit(tables, 'old@example.com', 'elder.one', -(VISIT_RETAIN_DAYS + 5));
-        await visit(tables, 'gran@example.com', 'elder.one', -(ACTIVE_DAYS - 1));
+        const found = await lastVisitsFor({
+            tables,
+            slug: 'elder.one',
+            emails: ['Gran@Example.com', 'mum@example.com', 'never@example.com'],
+            log: quiet
+        });
+
+        assert.equal(found.get('gran@example.com'), at(-2).toISOString());
+        assert.equal(found.get('mum@example.com'), TODAY.toISOString());
+        assert.equal(found.has('never@example.com'), false);
+    });
+});
+
+describe('normalizing legacy visit rows', () => {
+    test('keeps each person\'s latest old day and deletes the obsolete daily rows', async () => {
+        const tables = memoryStore();
+        const gran = visitorKey('gran@example.com');
+
+        await tables.upsertEntity(TABLES.visits, {
+            partitionKey: '2026-08-01',
+            rowKey: `elder.one|${gran}`,
+            slug: 'elder.one'
+        });
+        await tables.upsertEntity(TABLES.visits, {
+            partitionKey: '2026-08-14',
+            rowKey: `elder.one|${gran}`,
+            slug: 'elder.one'
+        });
         await visit(tables, 'mum@example.com', 'elder.one', 0);
 
-        const result = await sweepVisits({ tables, now, log: quiet });
+        const result = await sweepVisits({ tables, log: quiet });
 
-        assert.equal(result.deleted, 1);
-        assert.equal(result.kept, 2);
+        assert.equal(result.deleted, 2);
+        assert.equal(result.migrated, 1);
+        assert.equal(result.kept, 1);
+        assert.equal((await tables.listEntities(TABLES.visits)).length, 2);
+        assert.equal(
+            (await tables.getEntity(TABLES.visits, 'elder.one', gran)).lastAccessAt,
+            '2026-08-14T00:00:00.000Z'
+        );
         assert.equal((await activeReaders({ tables, now, log: quiet })).totals.monthly, 2);
     });
 
-    test('a partition it cannot read as a day is left alone', async () => {
+    test('a row it cannot identify as legacy is left alone', async () => {
         const tables = memoryStore();
         await tables.upsertEntity(TABLES.visits, { partitionKey: 'whenever', rowKey: 'elder.one|abc' });
 
@@ -176,5 +207,29 @@ describe('sweeping visit rows', () => {
 
         assert.equal(result.deleted, 0);
         assert.equal(result.kept, 1);
+    });
+
+    test('a failed migration keeps the legacy rows that are still the only evidence', async () => {
+        const backing = memoryStore();
+        const gran = visitorKey('gran@example.com');
+        await backing.upsertEntity(TABLES.visits, {
+            partitionKey: '2026-08-14',
+            rowKey: `elder.one|${gran}`,
+            slug: 'elder.one'
+        });
+        const tables = {
+            listEntities: (...args) => backing.listEntities(...args),
+            deleteEntity: (...args) => backing.deleteEntity(...args),
+            insertEntity: async () => {
+                throw new Error('write failed');
+            }
+        };
+
+        const result = await sweepVisits({ tables, log: quiet });
+
+        assert.equal(result.failed, 1);
+        assert.equal(result.deleted, 0);
+        assert.equal(result.kept, 1);
+        assert.equal((await backing.listEntities(TABLES.visits)).length, 1);
     });
 });

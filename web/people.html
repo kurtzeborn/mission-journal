@@ -29,11 +29,19 @@
         <div id="state" class="state"><span class="waiting">Loading</span></div>
 
         <section id="everything" hidden>
+            <div class="people__actions">
+                <button class="button" type="button" id="invite-open">Invite people</button>
+                <button class="button button--quiet" type="button" id="qr-open">Quick join</button>
+            </div>
             <p class="note people__count" id="people-count" role="status" aria-live="polite"></p>
             <ul class="people" id="people"></ul>
+        </section>
+    </main>
 
-            <h2>Invite friends &amp; family</h2>
-            <form id="invite">
+    <dialog class="ask people-invite" id="invite-dialog" aria-labelledby="invite-title">
+        <form id="invite">
+            <h2 class="ask__question" id="invite-title">Invite friends &amp; family</h2>
+            <div class="ask__detail">
                 <p>
                     <label for="email">Their email addresses</label><br>
                     <!-- A textarea rather than an email field because the
@@ -42,7 +50,7 @@
                          addresses are almost always already in a list
                          somewhere. Typing them back in one at a time is the
                          kind of small tax that stops people finishing. -->
-                    <textarea id="email" class="addresses" name="email" rows="4" autocomplete="off" required
+                    <textarea id="email" class="addresses" name="email" rows="4" autocomplete="off" required autofocus
                         placeholder="grandma@example.com, uncle.bob@example.com&#10;Aunt Kay &lt;kay@example.com&gt;"></textarea>
                 </p>
                 <p class="note note--small">
@@ -50,26 +58,20 @@
                     Pasting straight out of your contacts or an old email works; names around the
                     addresses are ignored.
                 </p>
-                <p>
-                    <label for="role">They can</label><br>
-                    <select id="role" name="role">
-                        <option value="reader">Read the letters</option>
-                        <option value="owner">Read, edit, and invite others</option>
-                    </select>
+                <p class="note note--small">
+                    Invitations grant reader access. An owner can promote a reader later.
                 </p>
-                <p><button class="button" type="submit" id="invite-submit">Send the invitations</button></p>
                 <p class="note" id="invite-said" role="status" aria-live="polite"></p>
                 <ul class="note" id="invite-trouble" hidden></ul>
-            </form>
-
-            <hr>
-            <h3>Quick join</h3>
-            <p class="note">
-                At a family gathering, show a temporary QR code that adds anyone who scans it as a reader.
-            </p>
-            <p><button class="button button--quiet" type="button" id="qr-open">Invite by QR code</button></p>
-        </section>
-    </main>
+            </div>
+            <div class="ask__buttons">
+                <button class="ask__button" type="button" id="invite-close">Cancel</button>
+                <button class="ask__button ask__button--calm" type="submit" id="invite-submit">
+                    Send invitations
+                </button>
+            </div>
+        </form>
+    </dialog>
 
     <dialog class="ask qr-invite" id="qr-dialog" aria-labelledby="qr-title">
         <h2 class="ask__question" id="qr-title">Scan to join this archive</h2>

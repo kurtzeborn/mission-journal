@@ -39,6 +39,7 @@ import { deliveryTrouble } from './delivery.js';
 import { forgetMembership, recordMembership } from './memberships.js';
 import { validSlug } from './paths.js';
 import { userProfilesFor } from './userprofile.js';
+import { lastVisitsFor } from './visits.js';
 
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 const lower = (email) => String(email ?? '').trim().toLowerCase();
@@ -65,10 +66,9 @@ export const validEmail = (value) => {
  * actor's own row -- with its controls disabled -- instead of leaving them
  * wondering why they are missing from a list they are looking at.
  *
- * `tables` is optional and the delivery annotation is simply absent without
- * it. This list is how an owner sees who can read the archive, and that has to
- * keep working when the side table telling them whose mail is bouncing does
- * not.
+ * `tables` is optional and the delivery/access annotations are simply absent
+ * without it. This list is how an owner sees who can read the archive, and
+ * that has to keep working when a side table does not.
  */
 export async function listMembers({ store, tables = null, slug, actor, log = console }) {
     const safe = validSlug(slug);
@@ -78,9 +78,10 @@ export async function listMembers({ store, tables = null, slug, actor, log = con
     if (!members) return null;
 
     const emails = members.map((m) => m.email);
-    const [trouble, profiles] = await Promise.all([
+    const [trouble, profiles, lastVisits] = await Promise.all([
         deliveryTrouble({ tables, emails, log }),
-        userProfilesFor({ tables, emails })
+        userProfilesFor({ tables, emails }),
+        lastVisitsFor({ tables, slug: safe, emails, log })
     ]);
 
     const me = lower(actor);
@@ -100,6 +101,7 @@ export async function listMembers({ store, tables = null, slug, actor, log = con
         // always. See delivery.js.
         delivery: trouble.get(lower(m.email))?.status ?? '',
         deliveryAt: trouble.get(lower(m.email))?.at ?? '',
+        lastAccessAt: lastVisits.get(lower(m.email)) ?? '',
         // Precomputed rather than left to the client. The client may not
         // reimplement the policy -- it would drift, and it would drift in the
         // direction of showing a button that then fails.

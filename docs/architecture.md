@@ -349,9 +349,9 @@ erDiagram
 ```mermaid
 erDiagram
     visits {
-        string PartitionKey "YYYY-MM-DD"
-        string RowKey "slug|sha256 of email"
-        string slug
+        string PartitionKey "archive slug"
+        string RowKey "sha256 of lowercased email"
+        string lastAccessAt "ISO timestamp"
     }
     deletions {
         string PartitionKey "slug"
@@ -363,7 +363,7 @@ erDiagram
     }
 ```
 
-`visits` records one row per person, archive, and day and is swept after 40 days. `deletions` is authoritative for the 30-day restoration and purge window.
+`visits` records the latest access for each person and archive. The email hash is a fixed Azure-safe key and limits casual disclosure; it is pseudonymous rather than anonymous because a known address can be hashed and matched. `deletions` is authoritative for the 30-day restoration and purge window.
 
 ### How the two `users` row types are written and read
 
@@ -398,7 +398,7 @@ flowchart LR
 |---|---|---|
 | `purge` | 03:15 | erase expired `pending/` sites |
 | `remind` | 03:45 | tapering claim re-invitations |
-| `sweep` | 03:45 | drop finished `arrivals` and `visits` rows |
+| `sweep` | 03:45 | drop finished `arrivals` rows and normalize legacy daily `visits` rows |
 | `erase` | 04:15 | erase archives past the 30-day deletion window |
 | `digest` | 13:15 | new-letter digests |
 

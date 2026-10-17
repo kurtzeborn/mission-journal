@@ -74,7 +74,7 @@ export async function invite({ request, context, store, tables, mail, key, baseU
     const gated = await ownerOf({ request, store, context });
     if (gated.denied) return gated.denied;
 
-    const { email, role } = await readBody(request);
+    const { email } = await readBody(request);
 
     const result = await inviteMember({
         store,
@@ -83,7 +83,6 @@ export async function invite({ request, context, store, tables, mail, key, baseU
         slug: gated.slug,
         actor: gated.principal.email,
         email,
-        role: role === ROLE.owner ? ROLE.owner : ROLE.reader,
         key,
         baseUrl,
         log: context

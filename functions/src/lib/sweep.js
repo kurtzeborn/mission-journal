@@ -1,4 +1,4 @@
-// Clearing out the counting rows nobody reads any more.
+// Clearing out completed operational rows and normalizing old visit rows.
 //
 // `withinDailyCap` writes one row per accepted letter into `arrivals` and
 // counts rows in the partition to decide whether an archive has taken too
@@ -19,21 +19,17 @@
 // which is what a question like "did the cap fire, or did the letters never
 // arrive" actually needs.
 //
-// `visits` has the same shape and the same problem, and one difference: there
-// the window *is* for reading, because the thirty-day figure on the operator
-// page is computed from these rows. Its retention has to clear that window
-// rather than merely reach it.
+// The former `visits` shape also partitioned by day. It has been replaced by
+// one latest-access row per archive and person, so this job migrates the newest
+// legacy day and removes every obsolete daily row. Keeping the migration here
+// makes a delayed host or rollback self-cleaning without a manual production
+// script.
 
 import { TABLES } from './tables.js';
-import { ACTIVE_DAYS } from './visits.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const RETAIN_DAYS = 30;
-
-// Longer than the thirty days `activeReaders` looks back over, because a sweep
-// that ran an hour early would otherwise take the far end of its own window.
-export const VISIT_RETAIN_DAYS = ACTIVE_DAYS + 10;
 
 // The date half of `{slug}:{yyyy-mm-dd}`. Anchored and exact, because the slug
 // in front of it may contain anything a local-part may contain, colons
@@ -132,20 +128,112 @@ export const sweepArrivals = ({
         log
     });
 
-/** Visit rows from before the window anybody reports on. */
+/**
+ * Migrate the latest legacy day for each archive/person, then remove all
+ * legacy rows.
+ *
+ * `insertEntity` is the concurrency guard. A current visit may create the new
+ * row after this scan; if it wins, migration receives false rather than
+ * overwriting that newer timestamp with an old midnight.
+ */
 export const sweepVisits = ({
     tables,
-    now = () => new Date(),
-    retainDays = VISIT_RETAIN_DAYS,
     dryRun = false,
     log = console
-}) =>
-    sweepDated({
-        tables,
-        table: TABLES.visits,
-        pattern: DAY_PARTITION,
-        now,
-        retainDays,
-        dryRun,
-        log
-    });
+}) => migrateVisits({ tables, dryRun, log });
+
+async function migrateVisits({ tables, dryRun, log }) {
+    const empty = { scanned: 0, deleted: 0, kept: 0, failed: 0, migrated: 0, oldest: null };
+    if (!tables) return empty;
+
+    let rows;
+    try {
+        rows = await tables.listEntities(TABLES.visits);
+    } catch (error) {
+        log.error?.('sweep: could not read the visits table', { message: error?.message });
+        return empty;
+    }
+
+    const result = { ...empty, scanned: rows.length };
+    const current = new Set(
+        rows
+            .filter((row) => row.lastAccessAt)
+            .map((row) => `${row.partitionKey}\u0000${row.rowKey}`)
+    );
+    const legacy = new Map();
+
+    for (const row of rows) {
+        const day = DAY_PARTITION.exec(String(row.partitionKey ?? ''))?.[1];
+        if (!day) {
+            result.kept += 1;
+            continue;
+        }
+
+        const key = String(row.rowKey ?? '');
+        const bar = key.indexOf('|');
+        if (bar < 1 || bar === key.length - 1) {
+            result.kept += 1;
+            continue;
+        }
+
+        const slug = row.slug ?? key.slice(0, bar);
+        const who = key.slice(bar + 1);
+        const id = `${slug}\u0000${who}`;
+        const group = legacy.get(id) ?? { slug, who, day, rows: [] };
+        if (group.day < day) group.day = day;
+        group.rows.push(row);
+        legacy.set(id, group);
+
+        if (!result.oldest || day < result.oldest) result.oldest = day;
+    }
+
+    for (const [id, visit] of legacy) {
+        let targetReady = current.has(id);
+        if (dryRun) {
+            if (!targetReady) result.migrated += 1;
+            targetReady = true;
+        } else if (!targetReady) {
+            try {
+                targetReady =
+                    (await tables.insertEntity(TABLES.visits, {
+                        partitionKey: visit.slug,
+                        rowKey: visit.who,
+                        lastAccessAt: `${visit.day}T00:00:00.000Z`
+                    })) !== false;
+                if (targetReady) result.migrated += 1;
+                else targetReady = true; // A concurrent current visit won the insert.
+            } catch (error) {
+                result.failed += 1;
+                log.error?.('sweep: could not migrate a legacy visits row', {
+                    slug: visit.slug,
+                    message: error?.message
+                });
+            }
+        }
+
+        if (!targetReady) {
+            result.kept += visit.rows.length;
+            continue;
+        }
+
+        for (const row of visit.rows) {
+            if (dryRun) {
+                result.deleted += 1;
+                continue;
+            }
+
+            try {
+                await tables.deleteEntity(TABLES.visits, row.partitionKey, row.rowKey);
+                result.deleted += 1;
+            } catch (error) {
+                result.failed += 1;
+                log.error?.('sweep: could not delete a legacy visits row', {
+                    partitionKey: row.partitionKey,
+                    message: error?.message
+                });
+            }
+        }
+    }
+
+    return result;
+}

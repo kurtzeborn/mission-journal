@@ -58,6 +58,17 @@
                 ? 'owner'
                 : 'reader';
 
+    const accessDate = (value) => {
+        const at = new Date(value);
+        if (Number.isNaN(at.getTime())) return '';
+        return new Intl.DateTimeFormat(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            timeZone: 'UTC'
+        }).format(at);
+    };
+
     // Kept out of the markup. Every one of these strings is either an address
     // somebody typed or a name somebody typed, so nothing here builds HTML.
     function row(person) {
@@ -137,6 +148,26 @@
         }
 
         item.appendChild(who);
+
+        const access = document.createElement('span');
+        access.className = 'people__access';
+
+        const accessLabel = document.createElement('span');
+        accessLabel.className = 'people__access-label';
+        accessLabel.textContent = 'Last opened';
+        access.appendChild(accessLabel);
+
+        if (person.pending) {
+            access.appendChild(document.createTextNode('Not joined'));
+        } else if (accessDate(person.lastAccessAt)) {
+            const time = document.createElement('time');
+            time.dateTime = person.lastAccessAt;
+            time.textContent = accessDate(person.lastAccessAt);
+            access.appendChild(time);
+        } else {
+            access.appendChild(document.createTextNode('No access recorded'));
+        }
+        item.appendChild(access);
 
         const controls = document.createElement('span');
         controls.className = 'people__controls';
@@ -316,12 +347,17 @@
         const list = $('people');
         list.textContent = '';
 
-        // Owners above readers, alphabetical inside each. Thirty rows in
-        // whatever order they were added is a list nobody can find a name in,
-        // and the people who can change things are what an owner came to check.
-        const rank = (p) => (p.verifiedMissionary ? 0 : p.role === 'owner' ? 1 : 2);
+        // Owners first, then whoever came most recently. People with no visit
+        // yet fall to the end of their role, and names make equal timestamps
+        // deterministic rather than preserving storage order.
+        const rank = (p) => (p.role === 'owner' ? 0 : 1);
         const ordered = (people) =>
-            [...people].sort((a, b) => rank(a) - rank(b) || a.email.localeCompare(b.email));
+            [...people].sort(
+                (a, b) =>
+                    rank(a) - rank(b) ||
+                    String(b.lastAccessAt ?? '').localeCompare(String(a.lastAccessAt ?? '')) ||
+                    String(a.displayName || a.email).localeCompare(String(b.displayName || b.email))
+            );
 
         for (const person of ordered(payload.members)) list.appendChild(row(person));
         // Invitations after members, and marked, because an invitation is an
@@ -382,7 +418,6 @@
         }
 
         submit.disabled = true;
-        const role = $('role').value;
         const refused = [];
         let sent = 0;
 
@@ -404,7 +439,7 @@
                 response = await api('', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, role })
+                    body: JSON.stringify({ email })
                 });
             } catch {
                 refused.push({ email, why: 'could not reach the server' });
@@ -445,7 +480,10 @@
         // Only cleared when the whole list went through. Leaving the refusals
         // in the box is what lets somebody fix a typo and press send again,
         // and clearing it would throw away the addresses that still need one.
-        if (!refused.length) $('email').value = '';
+        if (!refused.length) {
+            $('email').value = '';
+            $('invite-dialog').close();
+        }
         else $('email').value = refused.map((r) => r.email).join('\n');
 
         await load();
@@ -455,6 +493,13 @@
         show('No archive was named.');
     } else {
         $('back').href = `/${encodeURIComponent(slug)}/`;
+        $('invite-open').addEventListener('click', () => {
+            $('invite-said').textContent = '';
+            $('invite-trouble').textContent = '';
+            $('invite-trouble').hidden = true;
+            $('invite-dialog').showModal();
+        });
+        $('invite-close').addEventListener('click', () => $('invite-dialog').close());
         $('invite').addEventListener('submit', invite);
         QuickJoin.mount(slug);
         load();

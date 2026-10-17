@@ -92,9 +92,7 @@ function renderReady(described, principal) {
         `${described.invitedByName || described.invitedBy || 'Somebody'} has invited you to read ${whose}.`;
 
     $('ready-role').textContent =
-        described.role === 'owner'
-            ? 'You have been invited as an owner, so you will be able to read the letters, edit them, and invite other people.'
-            : 'You have been invited as a reader, so you will be able to read the letters and download them.';
+        'You have been invited as a reader, so you will be able to read the letters and download them.';
 
     if (principal) {
         $('accept-form').hidden = false;
