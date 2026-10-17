@@ -2212,15 +2212,38 @@ h3:target {
     padding: 0;
 }
 
+.people__header,
+.people__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 4.2rem 4.2rem;
+    column-gap: 0.25rem;
+    align-items: center;
+}
+
+.people__header {
+    padding: 0 0 0.2rem;
+    color: var(--ink-soft);
+    font-family: system-ui, sans-serif;
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.people__header span:nth-child(2) {
+    text-align: center;
+}
+
+.people__header span:last-child {
+    text-align: right;
+}
+
 /* Deliberately denser than the rest of the site. This is a list to scan rather
    than prose to read, and at thirty relatives a full-size row puts the person
    being looked for below the fold on a phone. */
 .people__row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.3rem 0;
+    min-height: 40px;
+    padding: 0.15rem 0;
     font-size: 0.8rem;
     border-bottom: 1px solid var(--rule);
 }
@@ -2233,55 +2256,57 @@ h3:target {
 }
 
 .people__access {
-    flex: 0 0 9rem;
     color: var(--ink-soft);
     font-size: 0.72rem;
-    line-height: 1.25;
-}
-
-.people__access-label {
-    display: block;
-    font-size: 0.58rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .people-invite {
     width: min(36rem, calc(100% - 2rem));
 }
 
-/* The controls come down with the row. Below the 34px the rest of the site
-   uses, which is the trade for the density -- acceptable only because Remove
-   asks before it does anything. */
+/* Visually compact without returning to the 26px tap targets this list used
+   to have. The row gets denser by removing words, not by making controls hard
+   to hit on a phone. */
 .people__row .button--compact {
-    min-height: 26px;
-    padding: 0.15rem 0.45rem;
-    font-size: 0.68rem;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0;
+    font-size: 0.8rem;
 }
 
 /* Square, so the glyph sits in the middle of it rather than on a baseline. */
 .button--icon {
     justify-content: center;
-    width: 26px;
+    width: 38px;
     padding: 0;
-    font-size: 1rem;
     line-height: 1;
 }
 
-/* Takes the slack so the controls sit right, and wraps rather than truncating:
-   the whole point of the row is the address, and an address elided in the
-   middle is one somebody cannot check before pressing Remove. */
 .people__who {
     position: relative;
-    flex: 1 1 12rem;
-    overflow-wrap: anywhere;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 0.25rem;
 }
 
-.people__email {
-    display: block;
-    color: var(--ink-soft);
-    font-size: 0.72rem;
+.people__address {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.people__email-hint {
+    flex: 0 0 auto;
+    margin-left: 0;
+}
+
+.people__email-hint .hint__panel {
+    overflow-wrap: anywhere;
+    white-space: pre-line;
 }
 
 /* The role, sitting against the address it describes.
@@ -2291,9 +2316,8 @@ h3:target {
    sat depended on how many buttons the row happened to have, so the one column
    every row shares was the only ragged thing on the page. */
 .role {
-    display: inline-block;
-    margin-left: 0.4rem;
-    padding: 0.05rem 0.5rem;
+    flex: 0 0 auto;
+    padding: 0.04rem 0.35rem;
     border: 1px solid var(--rule);
     border-radius: 999px;
     font-family: system-ui, sans-serif;
@@ -2304,6 +2328,10 @@ h3:target {
     white-space: nowrap;
 }
 
+.role--you {
+    border-style: dashed;
+}
+
 /* Filled rather than colored. Owners can remove people, so the distinction has
    to survive being read by somebody who cannot tell the two greens apart. */
 .role--owner {
@@ -2312,22 +2340,12 @@ h3:target {
     color: var(--ink);
 }
 
-/* Nobody has accepted this one yet, and a solid outline says they have. */
-.role--pending {
-    border-style: dashed;
-}
-
-/* Said in place of the buttons the row has not got, so it must not be the
-   loudest thing in a row it is only explaining. */
-.people__aside {
-    color: var(--ink-soft);
-    font-size: 0.72rem;
-}
-
 .people__controls {
     display: flex;
+    justify-content: flex-end;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.2rem;
+    white-space: nowrap;
 }
 
 /* Why a row's button did nothing. Full-width so it drops onto its own line
@@ -2335,7 +2353,7 @@ h3:target {
    push them off the edge on a phone, which is where somebody is most likely
    to be pressing Resend in the first place. */
 .people__trouble {
-    flex: 1 0 100%;
+    grid-column: 1 / -1;
     margin: 0;
     color: var(--ink-soft);
 }
@@ -2346,8 +2364,7 @@ h3:target {
    full contrast -- Resend is very often the thing to press next, and dimming
    the remedy along with the problem would be the wrong half. */
 .people__row--undelivered .people__address,
-.people__row--undelivered .people__email,
-.people__row--undelivered .people__aside {
+.people__row--undelivered .role {
     opacity: 0.55;
 }
 
@@ -2356,6 +2373,7 @@ h3:target {
    instead of a sentence under it -- three bad addresses in a list of thirty
    cost three extra lines to say one thing. The sentence is on the title. */
 .people__undelivered {
+    flex: 0 0 auto;
     font-size: 0.72rem;
     color: #8a5a12;
     white-space: nowrap;

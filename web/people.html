@@ -9,6 +9,8 @@
     <link rel="icon" href="/logo.png">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/solid.min.css">
     <script src="/deploy-version.js" defer></script>
     <script src="/manager-strip.js" defer></script>
 </head>
@@ -34,6 +36,11 @@
                 <button class="button button--quiet" type="button" id="qr-open">Quick join</button>
             </div>
             <p class="note people__count" id="people-count" role="status" aria-live="polite"></p>
+            <div class="people__header" aria-hidden="true">
+                <span>Person</span>
+                <span>Last opened</span>
+                <span>Actions</span>
+            </div>
             <ul class="people" id="people"></ul>
         </section>
     </main>

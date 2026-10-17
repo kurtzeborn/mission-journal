@@ -185,7 +185,7 @@ describe('inviting a whole family in one sitting', () => {
 });
 
 describe('reading the list of who has access', () => {
-    test('uses a provider name without hiding the account address', async () => {
+    test('uses one visible identity and keeps the account address behind an email button', async () => {
         const view = await people({
             answer: listing({
                 members: [{
@@ -200,11 +200,16 @@ describe('reading the list of who has access', () => {
             })
         });
 
-        assert.match(view.el('people').children[0].textContent, /Ana Example/);
-        assert.match(view.el('people').children[0].textContent, /mum@example\.com/);
+        const row = view.el('people').children[0];
+        const address = row.descendants().find((child) => child.className === 'people__address');
+        const hint = row.descendants().find((child) => child.className === 'hint people__email-hint');
+
+        assert.equal(address.textContent, 'Ana Example');
+        assert.equal(hint.children[0].getAttribute('aria-label'), 'Show email address for Ana Example');
+        assert.equal(hint.children[1].textContent, 'mum@example.com');
     });
 
-    test('an unfamiliar address keeps its invitation address behind an information mark', async () => {
+    test('an unfamiliar address keeps its invitation address behind the email button', async () => {
         const view = await people({
             answer: listing({
                 members: [
@@ -221,19 +226,18 @@ describe('reading the list of who has access', () => {
         });
 
         const rows = view.el('people').children;
-        const hint = rows[1].descendants().find((child) => child.className === 'hint');
+        const hint = rows[1].descendants().find((child) => child.className === 'hint people__email-hint');
         const mark = hint.children[0];
         const panel = hint.children[1];
 
         assert.match(rows[1].textContent, /g\.example@gmail\.com/);
         assert.equal(mark.className, 'hint__mark');
-        assert.equal(mark.textContent, 'i');
-        assert.equal(mark.getAttribute('aria-label'), 'invited as grandma@aol.com');
+        assert.equal(mark.getAttribute('aria-label'), 'Show invitation address for g.example@gmail.com');
         assert.equal(panel.className, 'hint__panel');
-        assert.equal(panel.textContent, 'invited as grandma@aol.com');
+        assert.equal(panel.textContent, 'g.example@gmail.com\nInvited as grandma@aol.com');
         // And the one that never changed has no unnecessary disclosure.
-        assert.equal(rows[0].descendants().some((child) => child.className === 'hint'), false);
-        assert.match(rows[0].textContent, /this is you/);
+        assert.equal(rows[0].descendants().some((child) => child.className === 'hint people__email-hint'), false);
+        assert.match(rows[0].textContent, /You/);
     });
 
     test('a pending invitation is marked as an offer, not as access', async () => {
@@ -244,8 +248,7 @@ describe('reading the list of who has access', () => {
             })
         });
 
-        assert.match(view.lines('people')[1], /invited as reader/);
-        assert.match(view.lines('people')[1], /Not joined/);
+        assert.match(view.lines('people')[1], /Invited/);
     });
 
     test('shows the most recent access day without inventing one', async () => {
@@ -263,8 +266,12 @@ describe('reading the list of who has access', () => {
             })
         });
 
-        assert.match(view.lines('people')[0], /Aug 16, 2026/);
-        assert.match(view.lines('people')[1], /No access recorded/);
+        assert.match(view.lines('people')[0], /08\/16\/26/);
+        assert.match(view.lines('people')[1], /\u2014/);
+        assert.equal(
+            view.el('people').children[1].children[1].getAttribute('aria-label'),
+            'No access recorded'
+        );
     });
 
     /** The pill, wherever in the name cell it ended up. */
@@ -283,7 +290,7 @@ describe('reading the list of who has access', () => {
             })
         });
 
-        assert.equal(pillIn(view, 0).className, 'role role--reader');
+        assert.equal(pillIn(view, 0), undefined);
     });
 
     test('a reader who reaches the page is told why it is empty', async () => {
@@ -319,9 +326,25 @@ describe('reading the list of who has access', () => {
         });
 
         const remove = view.button('people', 'Remove');
-        assert.equal(remove.textContent, '\u00d7');
+        assert.equal(remove.textContent, '');
         assert.equal(remove.getAttribute('aria-label'), 'Remove');
         assert.equal(remove.getAttribute('title'), 'Remove');
+    });
+
+    test('role changes and resends are compact controls with accessible names', async () => {
+        const view = await people({
+            answer: listing({
+                members: [
+                    { email: 'reader@example.com', role: 'reader', removable: true },
+                    { email: 'owner@example.com', role: 'owner', removable: true }
+                ],
+                invites: [{ id: 'x', email: 'later@example.com', role: 'reader' }]
+            })
+        });
+
+        assert.equal(view.button('people', 'Make owner').textContent, '');
+        assert.equal(view.button('people', 'Make reader').textContent, '');
+        assert.equal(view.button('people', 'Resend').textContent, '');
     });
 
     test('owners come before readers, then newer access and a stable name', async () => {
@@ -364,7 +387,9 @@ describe('reading the list of who has access', () => {
         });
 
         assert.deepEqual(
-            view.lines('people').map((line) => line.split(' ')[0]),
+            [...view.el('people').children].map(
+                (row) => row.descendants().find((child) => child.className === 'people__address').textContent
+            ),
             [
                 'elder@example.com',
                 'Dad',
@@ -534,10 +559,12 @@ describe('sending an invitation again', () => {
             })
         });
 
-        const rows = view.lines('people');
-        assert.doesNotMatch(rows[0], /Resend/);
-        assert.doesNotMatch(rows[1], /Resend/);
-        assert.match(rows[2], /Resend/);
+        const hasResend = (row) =>
+            row.descendants().some((child) => child.getAttribute?.('aria-label') === 'Resend');
+        const rows = view.el('people').children;
+        assert.equal(hasResend(rows[0]), false);
+        assert.equal(hasResend(rows[1]), false);
+        assert.equal(hasResend(rows[2]), true);
     });
 
     test('it names the invitation, not the address', async () => {
@@ -665,10 +692,10 @@ describe('showing that somebody is not getting their mail', () => {
 
         assert.ok(classesOn(view, 1).includes('people__row--undelivered'));
 
-        // Two words in the row, the sentence behind them. A sentence per bad
-        // address is a line per bad address in a list of thirty.
+        // The row gets one icon; the actionable sentence remains available to
+        // a screen reader and as the pointer tooltip.
         const marker = markerIn(view, 1);
-        assert.equal(marker.textContent, 'not delivering');
+        assert.equal(marker.textContent, '');
         assert.match(marker.getAttribute('title'), /Mail is not reaching this address/);
         assert.match(marker.getAttribute('title'), /Check the spelling/);
         assert.equal(marker.getAttribute('aria-label'), marker.getAttribute('title'));
