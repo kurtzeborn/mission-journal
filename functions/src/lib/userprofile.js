@@ -6,6 +6,7 @@
 // Functions do not, so a protected endpoint copies those values here.
 
 import { TABLES } from './tables.js';
+import { DIGEST_ROW, validFrequency } from './users.js';
 
 export const PROFILE_ROW = 'profile';
 
@@ -65,6 +66,33 @@ export async function userProfilesFor({ tables, emails }) {
         unique.map(async (email) => {
             const row = await readUserProfile({ tables, email });
             if (row?.displayName) found.set(email, row);
+        })
+    );
+
+    return found;
+}
+
+/**
+ * Presentation name and digest choice for a known list of members.
+ *
+ * Both rows share the email partition in `users`, so one bounded partition
+ * query replaces the profile point read the People page already performed.
+ * This does not scan the users table or add another request per member.
+ */
+export async function memberUserDetailsFor({ tables, emails }) {
+    if (!tables) return new Map();
+    const unique = [...new Set((emails ?? []).map(lower).filter(Boolean))];
+    const found = new Map();
+
+    await Promise.all(
+        unique.map(async (email) => {
+            const rows = await tables.listEntities(TABLES.users, { partitionKey: email });
+            const profile = rows.find((row) => row.rowKey === PROFILE_ROW);
+            const digest = rows.find((row) => row.rowKey === DIGEST_ROW);
+            found.set(email, {
+                displayName: profile?.displayName ?? '',
+                digestFrequency: validFrequency(digest?.digestFrequency)
+            });
         })
     );
 
