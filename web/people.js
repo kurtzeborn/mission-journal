@@ -47,26 +47,33 @@
     // else entirely.
     const UNDELIVERED = 'Mail is not reaching this address. Check the spelling, or ask them for another one.';
 
-    // Chosen from a fixed set rather than interpolated: `role` is the server's
-    // word and a class attribute is no place to find out it was something else.
-    const kindOf = (person) =>
-        person.pending
-            ? 'pending'
-            : person.verifiedMissionary
-              ? 'missionary'
-              : person.role === 'owner'
-                ? 'owner'
-                : 'reader';
-
     const accessDate = (value) => {
+        const at = new Date(value);
+        if (Number.isNaN(at.getTime())) return '';
+        return new Intl.DateTimeFormat('en-US', {
+            year: '2-digit',
+            month: '2-digit',
+            day: '2-digit',
+            timeZone: 'UTC'
+        }).format(at);
+    };
+
+    const fullAccessDate = (value) => {
         const at = new Date(value);
         if (Number.isNaN(at.getTime())) return '';
         return new Intl.DateTimeFormat(undefined, {
             year: 'numeric',
-            month: 'short',
+            month: 'long',
             day: 'numeric',
             timeZone: 'UTC'
         }).format(at);
+    };
+
+    const badge = (label, kind) => {
+        const el = document.createElement('span');
+        el.className = `role role--${kind}`;
+        el.textContent = label;
+        return el;
     };
 
     // Kept out of the markup. Every one of these strings is either an address
@@ -89,58 +96,58 @@
         const address = document.createElement('span');
         address.className = 'people__address';
         address.textContent = person.displayName || person.email;
+        address.title = person.displayName || person.email;
         who.appendChild(address);
 
-        // Beside the name rather than out by the buttons, where it landed in a
-        // different place on every row: the controls a row has decide how much
-        // room is left, so the column was ragged for a reason nobody can see.
-        const what = document.createElement('span');
-        what.className = `role role--${kindOf(person)}`;
-        what.textContent = person.pending
-            ? `invited as ${person.role}`
-            : person.verifiedMissionary
-              ? 'the missionary'
-              : person.role;
-        who.appendChild(document.createTextNode(' '));
-        who.appendChild(what);
-
-        if (person.displayName) {
-            const email = document.createElement('span');
-            email.className = 'people__email';
-            email.textContent = person.email;
-            who.appendChild(email);
+        // Reader is the ordinary state and earns no badge. Only the states an
+        // owner needs to notice take horizontal space.
+        if (!person.pending && person.verifiedMissionary) {
+            who.appendChild(badge('Missionary', 'missionary'));
+        } else if (!person.pending && person.you) {
+            who.appendChild(badge('You', 'you'));
+        } else if (!person.pending && person.role === 'owner') {
+            who.appendChild(badge('Owner', 'owner'));
         }
 
-        // Beside the address rather than on a line of its own. Three bad
-        // addresses in a list of thirty cost three extra lines to say one
-        // thing, and the sentence is still there on hover and to a reader.
+        // An icon rather than a second line. Its full sentence remains the
+        // accessible name and the pointer tooltip.
         if (person.delivery) {
             const bad = document.createElement('span');
             bad.className = 'people__undelivered';
-            bad.textContent = 'not delivering';
             bad.setAttribute('title', UNDELIVERED);
             bad.setAttribute('aria-label', UNDELIVERED);
-            who.appendChild(document.createTextNode(' '));
+            const warning = document.createElement('i');
+            warning.className = 'fa-solid fa-triangle-exclamation';
+            warning.setAttribute('aria-hidden', 'true');
+            bad.appendChild(warning);
             who.appendChild(bad);
         }
 
-        // Keep the original invitation address available without making every
-        // mismatched sign-in consume a second line in this deliberately compact
-        // list. This is the same disclosure used beside labels on Settings.
-        if (person.invitedEmail) {
-            const invitedAs = `invited as ${person.invitedEmail}`;
+        // When a provider name is available, the address moves behind one
+        // envelope rather than consuming a second line. A changed invitation
+        // address uses the same disclosure even when there is no provider name.
+        if (person.displayName || person.invitedEmail) {
+            const label = person.displayName
+                ? `Show email address for ${person.displayName}`
+                : `Show invitation address for ${person.email}`;
             const hint = document.createElement('details');
-            hint.className = 'hint';
+            hint.className = 'hint people__email-hint';
             hint.setAttribute('name', 'invitation-address');
 
             const mark = document.createElement('summary');
             mark.className = 'hint__mark';
-            mark.setAttribute('aria-label', invitedAs);
-            mark.textContent = 'i';
+            mark.setAttribute('aria-label', label);
+            mark.setAttribute('title', label);
+            const envelope = document.createElement('i');
+            envelope.className = 'fa-solid fa-envelope';
+            envelope.setAttribute('aria-hidden', 'true');
+            mark.appendChild(envelope);
 
             const panel = document.createElement('div');
             panel.className = 'hint__panel';
-            panel.textContent = invitedAs;
+            panel.textContent = person.invitedEmail
+                ? `${person.email}\nInvited as ${person.invitedEmail}`
+                : person.email;
 
             hint.appendChild(mark);
             hint.appendChild(panel);
@@ -152,20 +159,19 @@
         const access = document.createElement('span');
         access.className = 'people__access';
 
-        const accessLabel = document.createElement('span');
-        accessLabel.className = 'people__access-label';
-        accessLabel.textContent = 'Last opened';
-        access.appendChild(accessLabel);
-
         if (person.pending) {
-            access.appendChild(document.createTextNode('Not joined'));
+            access.textContent = 'Invited';
+            access.setAttribute('aria-label', 'Invitation not yet accepted');
         } else if (accessDate(person.lastAccessAt)) {
             const time = document.createElement('time');
             time.dateTime = person.lastAccessAt;
             time.textContent = accessDate(person.lastAccessAt);
+            time.title = fullAccessDate(person.lastAccessAt);
+            time.setAttribute('aria-label', `Last opened ${fullAccessDate(person.lastAccessAt)}`);
             access.appendChild(time);
         } else {
-            access.appendChild(document.createTextNode('No access recorded'));
+            access.textContent = '\u2014';
+            access.setAttribute('aria-label', 'No access recorded');
         }
         item.appendChild(access);
 
@@ -188,7 +194,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ role: person.role === 'owner' ? 'reader' : 'owner' })
                     });
-                }, trouble)
+                }, trouble, person.role === 'owner' ? 'fa-book-open' : 'fa-key')
             );
         }
 
@@ -209,7 +215,7 @@
                     // rather than about the owner doing something wrong.
                     const body = await response.json().catch(() => ({}));
                     return body.error ?? 'could not send that again';
-                }, trouble)
+                }, trouble, 'fa-rotate-right')
             );
         }
 
@@ -238,17 +244,8 @@
                     await api(`/${encodeURIComponent(person.pending ? person.id : person.email)}`, {
                         method: 'DELETE'
                     });
-                }, trouble, '\u00d7')
+                }, trouble, 'fa-xmark')
             );
-        } else if (!person.pending) {
-            const why = document.createElement('span');
-            why.className = 'people__aside';
-            // Said rather than left blank. A row with no buttons next to rows
-            // that have them reads as a bug.
-            why.textContent = person.you
-                ? 'this is you'
-                : 'verified, cannot be removed';
-            controls.appendChild(why);
         }
 
         item.appendChild(controls);
@@ -278,12 +275,14 @@
         el.className = icon
             ? 'button button--quiet button--compact button--icon'
             : 'button button--quiet button--compact';
-        el.textContent = icon || label;
-        // The glyph is decoration; the name is the label a screen reader and a
-        // long-press tooltip both read.
+        el.textContent = icon ? '' : label;
         if (icon) {
             el.setAttribute('aria-label', label);
             el.setAttribute('title', label);
+            const glyph = document.createElement('i');
+            glyph.className = `fa-solid ${icon}`;
+            glyph.setAttribute('aria-hidden', 'true');
+            el.appendChild(glyph);
         }
         el.addEventListener('click', async () => {
             el.disabled = true;
