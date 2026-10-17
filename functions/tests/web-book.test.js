@@ -159,6 +159,7 @@ describe('the finished book actions', () => {
         });
         run('book.js', { context: view.context, fetch: net.fetch });
         await settled();
+        view.net = net;
         return view;
     };
 
@@ -311,8 +312,77 @@ describe('the finished book actions', () => {
         assert.equal(view.el('finished').hidden, false);
         assert.equal(view.text('book-heading'), 'Latest draft');
         assert.equal(view.el('checkout-blocked').hidden, false);
-        assert.equal(view.el('order-controls').hidden, true);
+        assert.equal(view.el('order-controls').hidden, false);
+        assert.equal(view.text('order'), 'Replace checkout with this draft');
         assert.equal(view.text('make'), 'Make a revised version');
+    });
+
+    test('replaces the current checkout only after an explicit confirmation', async () => {
+        const listedUntil = '2099-04-03T23:54:54.009Z';
+        const checkout = {
+            active: true,
+            visible: true,
+            checkoutUrl: 'https://www.peecho.com/checkout/print/en/old?token=secret',
+            listedUntil
+        };
+        const view = await open({
+            book: {
+                id: 'book-2',
+                builtAt: '2026-10-05T12:00:00.000Z',
+                pages: 30,
+                letters: 4
+            },
+            sale: {
+                id: 'book-1',
+                builtAt: '2026-09-12T12:00:00.000Z',
+                pages: 24,
+                letters: 3,
+                checkout
+            },
+            order: {
+                checkoutUrl: 'https://www.peecho.com/checkout/print/en/new?token=secret',
+                listedUntil,
+                visible: true,
+                reused: false,
+                replaced: true
+            }
+        });
+
+        await view.el('order').dispatch('click');
+        await settled();
+
+        assert.match(view.context.asked.question, /Replace the current checkout/);
+        assert.match(view.context.asked.detail, /previously shared Peecho link may still work/);
+        const posted = view.net.calls.find((call) => call.method === 'POST');
+        assert.match(posted.url, /\/book-2\?replace=1$/);
+        assert.equal(view.el('finished').hidden, true);
+        assert.match(view.el('buy').href, /\/new\?token=secret$/);
+        assert.match(view.text('order-said'), /now the version for sale/);
+    });
+
+    test('keeps the current checkout when replacement is cancelled', async () => {
+        const checkout = {
+            active: true,
+            visible: true,
+            checkoutUrl: 'https://www.peecho.com/checkout/print/en/old?token=secret',
+            listedUntil: '2099-04-03T23:54:54.009Z'
+        };
+        const view = await open({
+            book: { id: 'book-2' },
+            sale: {
+                id: 'book-1',
+                builtAt: '2026-09-12T12:00:00.000Z',
+                pages: 24,
+                letters: 3,
+                checkout
+            }
+        });
+        view.context.confirmed = false;
+
+        await view.el('order').dispatch('click');
+
+        assert.equal(view.net.calls.some((call) => call.method === 'POST'), false);
+        assert.match(view.el('buy').href, /\/old\?token=secret$/);
     });
 
     test('keeps the sale proof available while a revised version is building', async () => {

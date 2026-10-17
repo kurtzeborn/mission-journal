@@ -34,6 +34,7 @@ import {
     fetchCoverForPrint
 } from '../src/functions/peecho.js';
 import { issueClaimToken, PURPOSE } from '../src/lib/claimtoken.js';
+import { readLiveCheckout } from '../src/lib/orders.js';
 import { createHash } from 'node:crypto';
 
 const SLUG = 'elder.example';
@@ -429,6 +430,126 @@ describe('ordering a printed copy', () => {
 
             assert.equal(response.status, 409);
             assert.equal(calls.length, 0);
+        });
+    });
+
+    test('an explicit replacement makes the newer draft current without deleting the old book', async () => {
+        await withPrinting(async () => {
+            const store = withABook();
+            const revised = '20261005T120000Z-revised';
+            store.blobs.set(`books/${SLUG}/${revised}/status.json`, {
+                bytes: Buffer.from(JSON.stringify({
+                    id: revised,
+                    slug: SLUG,
+                    state: 'ready',
+                    builtAt: '2026-10-05T12:00:00.000Z',
+                    pages: 52,
+                    letters: 13
+                })),
+                metadata: {},
+                etag: 'etag-revised'
+            });
+            store.blobs.set(`books/${SLUG}/${BOOK}/order.json`, {
+                bytes: Buffer.from(JSON.stringify({
+                    checkoutUrl: 'https://www.peecho.com/checkout/print/en/original?token=secret',
+                    listedUntil: '2099-01-01T00:00:00.000Z'
+                })),
+                metadata: {},
+                etag: 'etag-order'
+            });
+            const { fetchImpl, calls } = answering({
+                secure_publication_id: 'replacement',
+                token: 'new-token'
+            });
+
+            const response = await order({
+                request: request({
+                    email: OWNER,
+                    params: { slug: SLUG, id: revised },
+                    query: { replace: '1' }
+                }),
+                context: silent,
+                store,
+                key: KEY,
+                fetchImpl
+            });
+
+            assert.equal(response.status, 200);
+            assert.equal(response.jsonBody.replaced, true);
+            assert.equal(calls.length, 1);
+
+            const previous = orderOf(store);
+            const replacement = store.json('books', `${SLUG}/${revised}/order.json`);
+            assert.equal(previous.supersededBy, revised);
+            assert.ok(previous.supersededAt);
+            assert.equal(replacement.replaces, BOOK);
+            assert.equal(
+                store.blobs.has(`books/${SLUG}/${BOOK}/book.pdf`),
+                true,
+                'the original print file is retained for order history and reprints'
+            );
+
+            const live = await readLiveCheckout({ store, slug: SLUG });
+            assert.equal(live.id, revised);
+
+            replacement.listedUntil = '2000-01-01T00:00:00.000Z';
+            store.blobs.set(`books/${SLUG}/${revised}/order.json`, {
+                bytes: Buffer.from(JSON.stringify(replacement)),
+                metadata: {},
+                etag: 'etag-expired-replacement'
+            });
+            assert.equal(
+                await readLiveCheckout({ store, slug: SLUG }),
+                null,
+                'the replaced checkout must not resurface after its replacement expires'
+            );
+        });
+    });
+
+    test('a failed replacement leaves the current checkout in place', async () => {
+        await withPrinting(async () => {
+            const store = withABook();
+            const revised = '20261005T120000Z-revised';
+            store.blobs.set(`books/${SLUG}/${revised}/status.json`, {
+                bytes: Buffer.from(JSON.stringify({
+                    id: revised,
+                    slug: SLUG,
+                    state: 'ready',
+                    pages: 52,
+                    letters: 13
+                })),
+                metadata: {},
+                etag: 'etag-revised'
+            });
+            store.blobs.set(`books/${SLUG}/${BOOK}/order.json`, {
+                bytes: Buffer.from(JSON.stringify({
+                    checkoutUrl: 'https://www.peecho.com/checkout/print/en/original?token=secret',
+                    listedUntil: '2099-01-01T00:00:00.000Z'
+                })),
+                metadata: {},
+                etag: 'etag-order'
+            });
+            const { fetchImpl } = answering(
+                { custom_code: 'PREVIEW_FAILED' },
+                { ok: false, status: 400 }
+            );
+
+            const response = await order({
+                request: request({
+                    email: OWNER,
+                    params: { slug: SLUG, id: revised },
+                    query: { replace: '1' }
+                }),
+                context: silent,
+                store,
+                key: KEY,
+                fetchImpl
+            });
+
+            assert.equal(response.status, 502);
+            assert.equal(orderOf(store).supersededAt, undefined);
+            assert.equal(store.json('books', `${SLUG}/${revised}/order.json`), null);
+            assert.equal((await readLiveCheckout({ store, slug: SLUG })).id, BOOK);
         });
     });
 

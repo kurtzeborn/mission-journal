@@ -186,7 +186,8 @@
         // way to sell a book and should not offer to.
         $('printing').hidden = !status.printing;
         $('checkout-blocked').hidden = !sale;
-        $('order-controls').hidden = Boolean(sale);
+        $('order-controls').hidden = false;
+        $('order').textContent = sale ? 'Replace checkout with this draft' : 'Make a checkout page';
 
         const expired = status.checkout && status.checkout.active === false
             ? new Date(status.checkout.listedUntil)
@@ -699,14 +700,28 @@
 
         if (!newest) return;
 
+        const replacing = Boolean(sale && sale.id !== newest);
+        if (replacing) {
+            const confirmed = await window.Confirm.ask({
+                question: 'Replace the current checkout?',
+                detail:
+                    'PDayLetters will offer this draft instead and keep the previous book and order history. ' +
+                    'A previously shared Peecho link may still work until it expires.',
+                action: 'Replace checkout'
+            });
+            if (!confirmed) return;
+        }
+
         button.disabled = true;
-        orderSaid.textContent = 'Asking the printer\u2026';
+        orderSaid.textContent = replacing ? 'Replacing the checkout\u2026' : 'Asking the printer\u2026';
 
         let response;
         try {
-            response = await fetch(`/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(newest)}`, {
-                method: 'POST'
-            });
+            const replace = replacing ? '?replace=1' : '';
+            response = await fetch(
+                `/api/print/${encodeURIComponent(slug)}/${encodeURIComponent(newest)}${replace}`,
+                { method: 'POST' }
+            );
         } catch {
             button.disabled = false;
             orderSaid.textContent = 'Could not reach the server. Nothing has been ordered.';
@@ -747,7 +762,9 @@
         // and would otherwise look like nothing happened.
         orderSaid.textContent = body.reused
             ? 'This book already had a checkout page, so here it is again.'
-            : '';
+            : body.replaced
+              ? 'This draft is now the version for sale.'
+              : '';
     }
 
     async function changeCheckoutVisibility(visible) {
