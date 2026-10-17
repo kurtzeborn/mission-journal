@@ -113,6 +113,7 @@ export function publicationBody({
     offeringPrice = '',
     category = '',
     baseUrl = '',
+    spine = null,
     expiresAt
 }) {
     const body = {
@@ -154,6 +155,20 @@ export function publicationBody({
         if (offeringPrice) body.fixedOfferingPrice = String(offeringPrice);
     } else if (category) {
         body.filterCategory = category;
+    }
+
+    // Peecho calculates the geometry from the product, facility and page
+    // count. These fields supply only the dynamic content drawn inside it;
+    // `customSpine` is the separate uploaded-artwork path and does not belong
+    // on a dynamically generated spine.
+    if (spine) {
+        body.spineColorHex = spine.backgroundColor;
+        body.spineText = spine.center;
+        body.spineTextBottom = spine.bottom;
+        body.spineTextColor = spine.textColor;
+        body.spineTextSize = spine.textSize;
+        body.spineFontFamily = spine.fontFamily;
+        if (spine.top) body.spineTextTop = spine.top;
     }
 
     // Where the buyer lands afterwards. Back at the book page in all three

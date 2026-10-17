@@ -74,14 +74,17 @@ function request({ email = null, body = {}, params = {}, query = {} } = {}) {
 }
 
 // A site with owners, a name, and one finished book in it.
-function withABook({ state = 'ready' } = {}) {
+function withABook({
+    state = 'ready',
+    profile = { slug: SLUG, displayName: 'Elder Example' }
+} = {}) {
     const store = memoryStore();
     store.acl(SLUG, [
         { email: OWNER, role: 'owner' },
         { email: READER, role: 'reader' }
     ]);
     store.blobs.set(`config/${SLUG}/profile.json`, {
-        bytes: Buffer.from(JSON.stringify({ slug: SLUG, displayName: 'Elder Example' }), 'utf8'),
+        bytes: Buffer.from(JSON.stringify(profile), 'utf8'),
         metadata: {},
         etag: 'etag-profile'
     });
@@ -187,6 +190,42 @@ describe('what the printer is told about a book', () => {
         assert.equal(file.pages, 48);
         assert.deepEqual(file.dimensions, { width: 216, height: 280 });
         assert.match(file.src, /^https:\/\/pdayletters\.com\/api\/print\//);
+    });
+
+    test('a dynamic spine uses Peecho fields rather than uploaded artwork', () => {
+        const body = listing({
+            spine: {
+                top: 'Peru Misión Lima Central',
+                center: 'Sister Mallory Kurtzeborn',
+                bottom: 'PDayLetters.com',
+                backgroundColor: '#223349',
+                textColor: '#f4f2ee',
+                fontFamily: 'Crimson',
+                textSize: 16
+            }
+        });
+
+        assert.deepEqual(
+            {
+                spineTextTop: body.spineTextTop,
+                spineText: body.spineText,
+                spineTextBottom: body.spineTextBottom,
+                spineColorHex: body.spineColorHex,
+                spineTextColor: body.spineTextColor,
+                spineTextSize: body.spineTextSize,
+                spineFontFamily: body.spineFontFamily
+            },
+            {
+                spineTextTop: 'Peru Misión Lima Central',
+                spineText: 'Sister Mallory Kurtzeborn',
+                spineTextBottom: 'PDayLetters.com',
+                spineColorHex: '#223349',
+                spineTextColor: '#f4f2ee',
+                spineTextSize: 16,
+                spineFontFamily: 'Crimson'
+            }
+        );
+        assert.equal('customSpine' in body, false);
     });
 
     test('the buyer is sent back to the book page however checkout ends', () => {
@@ -436,6 +475,63 @@ describe('ordering a printed copy', () => {
                 thumbnail.src,
                 /\/api\/print\/elder\.example\/20260819T055521Z-dd3c9494\/cover\.jpg\?t=/
             );
+        });
+    });
+
+    test('the spine follows the archive name, mission, and selected cloth', async () => {
+        await withPrinting(async () => {
+            const store = withABook({
+                profile: {
+                    slug: SLUG,
+                    displayName: 'Sister Mallory Kurtzeborn',
+                    mission: 'Peru Misión Lima Central',
+                    cover: { cloth: 'navy', picture: '' }
+                }
+            });
+            const { fetchImpl, calls } = answering({ secure_publication_id: 'pub-1', token: 'tok-1' });
+
+            await order({ request: asOwner(), context: silent, store, key: KEY, fetchImpl });
+
+            assert.deepEqual(
+                {
+                    top: calls[0].body.spineTextTop,
+                    center: calls[0].body.spineText,
+                    bottom: calls[0].body.spineTextBottom,
+                    background: calls[0].body.spineColorHex,
+                    text: calls[0].body.spineTextColor,
+                    font: calls[0].body.spineFontFamily,
+                    size: calls[0].body.spineTextSize
+                },
+                {
+                    top: 'Peru Misión Lima Central',
+                    center: 'Sister Mallory Kurtzeborn',
+                    bottom: 'PDayLetters.com',
+                    background: '#223349',
+                    text: '#f4f2ee',
+                    font: 'Crimson',
+                    size: 16
+                }
+            );
+        });
+    });
+
+    test('an archive without a mission still gets a useful default-cloth spine', async () => {
+        await withPrinting(async () => {
+            const { fetchImpl, calls } = answering({ secure_publication_id: 'pub-1', token: 'tok-1' });
+
+            await order({
+                request: asOwner(),
+                context: silent,
+                store: withABook(),
+                key: KEY,
+                fetchImpl
+            });
+
+            assert.equal('spineTextTop' in calls[0].body, false);
+            assert.equal(calls[0].body.spineText, 'Elder Example');
+            assert.equal(calls[0].body.spineTextBottom, 'PDayLetters.com');
+            assert.equal(calls[0].body.spineColorHex, '#44515c');
+            assert.equal(calls[0].body.spineTextColor, '#f7f5f1');
         });
     });
 
