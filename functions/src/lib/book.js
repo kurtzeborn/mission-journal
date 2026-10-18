@@ -292,18 +292,6 @@ export function emojiRuns(runs) {
     });
 }
 
-export const chapterSummary = (month) => {
-    const letters = month.letters.length;
-    const pictures = month.letters.reduce(
-        (total, letter) => total + (letter.post.photos?.length ?? 0),
-        0
-    );
-    const letterCount = letters === 1 ? 'One letter' : `${letters} letters`;
-    const pictureCount = pictures === 1 ? 'one picture' : `${pictures} pictures`;
-
-    return `${letterCount} \u2022 ${pictureCount}`;
-};
-
 // A calendar day for the cover: "June 15, 2025". `dateLine` names the weekday
 // too, which is what a letter wants over it and far more than a cover does.
 // Exported for the thumbnail, which sets the same two dates in the same words.
@@ -1262,12 +1250,6 @@ function setMonth(doc, { month, index, chapters, profile, state }) {
 
     doc.font('semibold').fontSize(30).fillColor(BLACK);
     doc.text(month.label, LEFT, MARGIN.top + PAGE.height * 0.22, { width: COLUMN, lineBreak: false });
-
-    doc.font('italic').fontSize(11).fillColor(QUIET);
-    doc.text(chapterSummary(month), LEFT, doc.y + 10, {
-        width: COLUMN,
-        lineBreak: false
-    });
 
     const progress = chapterProgress(
         profile,

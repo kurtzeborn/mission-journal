@@ -16,7 +16,6 @@ import {
     buildInterior,
     byMonth,
     chapterProgress,
-    chapterSummary,
     contentsPages,
     contentsSheets,
     coverDate,
@@ -335,14 +334,6 @@ describe('gathering the letters into months', () => {
         assert.equal(months[0].letters.length, 2);
     });
 
-    test('summarizes both letters and pictures on a chapter page', () => {
-        const [month] = byMonth([
-            post('a', '2026-01-04', 'Week one', { photos: range(2) }),
-            post('b', '2026-01-11', 'Week two', { photos: range(1) })
-        ]);
-
-        assert.equal(chapterSummary(month), '2 letters \u2022 3 pictures');
-    });
 });
 
 describe('the rectangle a photograph gets', () => {
