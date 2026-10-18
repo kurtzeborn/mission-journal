@@ -463,6 +463,24 @@
         return null;
     }
 
+    async function setFeaturedPhoto(postId, photoId, featured) {
+        const failed = await call(
+            'PATCH',
+            postId,
+            `/photos/${encodeURIComponent(photoId)}/featured`,
+            {
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ featured })
+            },
+            false
+        );
+        // This scoped write cannot make the letter text stale, but it does
+        // move posts.json. Stop asserting the old whole-archive validator on
+        // a later text edit composed from the still-current text on screen.
+        if (!failed) loadedEtag = null;
+        return failed;
+    }
+
     // Chrome reads File.type out of the Windows registry, which carries no
     // entry for .heic, .webp or .avif -- so on Windows the browser reports
     // nothing at all for three formats this site accepts, and the upload was
@@ -1175,6 +1193,7 @@
                       restore: (postId) => send('POST', postId, null, '/restore'),
                       addPhotos,
                       addFromGoogle,
+                      featurePhoto: setFeaturedPhoto,
                       confirmDelete: (post) =>
                           Confirm.ask({
                               question: `Remove "${post.subject || 'Untitled'}" from the site?`,

@@ -12,7 +12,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 
-import { addPhoto, removePhoto } from '../src/functions/post.js';
+import { addPhoto, featurePhoto, removePhoto } from '../src/functions/post.js';
 import { memoryStore } from './memory-store.js';
 import { ROLE } from '../src/lib/acl.js';
 import { MAX_UPLOAD_BYTES, MAX_PHOTOS } from '../src/lib/photos.js';
@@ -42,6 +42,7 @@ const request = ({
     bytes = Buffer.alloc(0),
     postId = POST,
     photoId,
+    featured,
     takenAt,
     claims
 }) => ({
@@ -59,23 +60,32 @@ const request = ({
     // A Buffer's own bytes, not its backing pool: `Buffer.alloc` hands out
     // slices of a shared ArrayBuffer, and sending the whole thing would upload
     // several kilobytes of somebody else's test data.
-    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length)
+    arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length),
+    json: async () => ({ featured })
 });
 
 /** An archive with one letter, carrying whatever photos a test needs. */
-async function seeded(photos = []) {
+async function seeded(photos = [], { bodyHtml = '<p>Hola</p>', featuredPhotoIds } = {}) {
     const store = memoryStore();
     store.acl(SLUG, MEMBERS);
     await store.writeBlob(
         'rendered',
         `${SLUG}/posts.json`,
-        Buffer.from(JSON.stringify([{ id: POST, subject: 'Antigua at last', bodyHtml: '<p>Hola</p>', photos }]), 'utf8')
+        Buffer.from(JSON.stringify([{
+            id: POST,
+            subject: 'Antigua at last',
+            bodyHtml,
+            photos,
+            ...(featuredPhotoIds ? { featuredPhotoIds } : {})
+        }]), 'utf8')
     );
     return store;
 }
 
 const posted = (store, options) => addPhoto({ request: request(options), context: silent, store });
 const dropped = (store, options) => removePhoto({ request: request(options), context: silent, store });
+const featured = (store, options) =>
+    featurePhoto({ request: request(options), context: silent, store });
 
 const photosOf = (store) => store.json('rendered', `${SLUG}/posts.json`)[0].photos;
 
@@ -359,6 +369,14 @@ describe('taking a picture back off', () => {
         assert.deepEqual(photosOf(store), [ARRIVED]);
     });
 
+    test('removing a featured photo removes its selection too', async () => {
+        const store = await seeded([ADDED], { featuredPhotoIds: [ADDED.id] });
+
+        await dropped(store, { as: MUM, photoId: ADDED.id });
+
+        assert.equal(store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds, undefined);
+    });
+
     test('a picture that came with the letter is refused', async () => {
         // The rule the endpoint exists to hold. Removing one of these is what
         // `Restore original` is for, and that asks first.
@@ -394,5 +412,98 @@ describe('taking a picture back off', () => {
         const response = await dropped(store, { as: MUM, postId: 'no-such-post', photoId: ADDED.id });
 
         assert.equal(response.status, 404);
+    });
+});
+
+describe('choosing featured book photos', () => {
+    const loose = (id) => ({ id, width: 1200, height: 800 });
+
+    test('an owner can feature and unfeature an attached photo', async () => {
+        const store = await seeded([loose('p_one')]);
+
+        const added = await featured(store, {
+            as: MUM,
+            photoId: 'p_one',
+            featured: true
+        });
+        assert.equal(added.status, 200);
+        assert.deepEqual(
+            store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
+            ['p_one']
+        );
+
+        const removed = await featured(store, {
+            as: MUM,
+            photoId: 'p_one',
+            featured: false
+        });
+        assert.equal(removed.status, 200);
+        assert.equal(
+            store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
+            undefined
+        );
+    });
+
+    test('the same request twice is idempotent', async () => {
+        const store = await seeded([loose('p_one')]);
+
+        await featured(store, { as: MUM, photoId: 'p_one', featured: true });
+        const again = await featured(store, { as: MUM, photoId: 'p_one', featured: true });
+
+        assert.equal(again.status, 200);
+        assert.deepEqual(
+            store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
+            ['p_one']
+        );
+    });
+
+    test('a third featured photo is refused', async () => {
+        const photos = [loose('p_one'), loose('p_two'), loose('p_three')];
+        const store = await seeded(photos, { featuredPhotoIds: ['p_one', 'p_two'] });
+
+        const response = await featured(store, {
+            as: MUM,
+            photoId: 'p_three',
+            featured: true
+        });
+
+        assert.equal(response.status, 409);
+        assert.match(response.jsonBody.error, /2 featured pictures/);
+        assert.deepEqual(
+            store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
+            ['p_one', 'p_two']
+        );
+    });
+
+    test('a photo inside the letter cannot be featured', async () => {
+        const store = await seeded(
+            [loose('p_inline')],
+            { bodyHtml: '<p>Hola</p><img src="/api/photo/elder.example/p_inline/large.webp">' }
+        );
+
+        const response = await featured(store, {
+            as: MUM,
+            photoId: 'p_inline',
+            featured: true
+        });
+
+        assert.equal(response.status, 409);
+        assert.match(response.jsonBody.error, /attached after the letter/);
+    });
+
+    test('a reader cannot change the selection', async () => {
+        const store = await seeded([loose('p_one')]);
+
+        const response = await featured(store, {
+            as: GRAN,
+            photoId: 'p_one',
+            featured: true
+        });
+
+        assert.equal(response.status, 403);
+        assert.equal(
+            store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
+            undefined
+        );
     });
 });

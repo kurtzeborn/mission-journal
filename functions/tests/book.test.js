@@ -24,6 +24,7 @@ import {
     endingAlbum,
     endingPhotoCount,
     emojiRuns,
+    featuredPlan,
     inReadingOrder,
     lowerRoman,
     mirror,
@@ -633,6 +634,22 @@ describe('filling a leaf that has nothing else on it', () => {
     });
 });
 
+describe('giving selected photos featured space', () => {
+    const usable = PAGE.height - MARGIN.top - MARGIN.bottom;
+    const wide = { id: 'w', width: 2400, height: 1600 };
+    const tall = { id: 't', width: 1600, height: 2400 };
+
+    test('one selected photo gets about a quarter of the usable page or more', () => {
+        const plan = featuredPlan([wide], { height: usable });
+        assert.ok(plan.least >= plan.minimum);
+    });
+
+    test('two selected photos each get about a quarter of the usable page', () => {
+        const plan = featuredPlan([wide, tall], { height: usable });
+        assert.ok(plan.least >= plan.minimum);
+    });
+});
+
 describe('the room a line has beside a picture', () => {
     const float = { side: 'left', top: 100, bottom: 200, width: 180 };
     const at = (y, over = {}) => reserve({ float, y, height: 16, ...over });
@@ -955,7 +972,7 @@ describe('setting a whole book', () => {
         // came back from the printer.
         const withPhotos = posts.map((entry) =>
             entry.id === 'b'
-                ? { ...entry, photos: range(3) }
+                ? { ...entry, photos: range(3), featuredPhotoIds: ['p0', 'p1'] }
                 : entry
         );
 

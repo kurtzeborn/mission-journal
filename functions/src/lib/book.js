@@ -168,6 +168,7 @@ const ALBUM_GAP = 10;
 const ALBUM_MIN_ROW = 84;
 const ALBUM_MOST = 6;
 const ALBUM_AFTER_TEXT = 18;
+const FEATURED_MIN_SHARE = 0.23;
 
 // Four by three when nothing was recorded. Ingest measures every photograph it
 // stores, so this is for the handful that predate it -- and a picture with no
@@ -1105,6 +1106,55 @@ export function albumPlan(photos, { height, width = COLUMN, gap = ALBUM_GAP }) {
         .sort((a, b) => b.least - a.least)[0].rows;
 }
 
+export function featuredPlan(
+    photos,
+    {
+        height,
+        width = COLUMN,
+        pageHeight = PAGE.height - MARGIN.top - MARGIN.bottom
+    }
+) {
+    let rows;
+
+    if (photos.length === 2) {
+        // Two featured pictures are balanced by printed area rather than by
+        // width. Giving each a full-width band makes a landscape-and-portrait
+        // pair lopsided: the landscape becomes a shallow strip while the
+        // portrait consumes the page. Equal-area bands make both read as the
+        // point of the page, and a binary search handles every pair of shapes
+        // without special cases.
+        let low = 0;
+        let high = width * height;
+
+        for (let step = 0; step < 24; step += 1) {
+            const area = (low + high) / 2;
+            const heights = photos.map((photo) => Math.sqrt(area / aspectOf(photo)));
+            const fits =
+                heights.every((rowHeight, index) => rowHeight * aspectOf(photos[index]) <= width) &&
+                heights.reduce((sum, rowHeight) => sum + rowHeight, 0) + ALBUM_GAP <= height;
+
+            if (fits) low = area;
+            else high = area;
+        }
+
+        rows = photos.map((photo) => ({
+            photos: [photo],
+            height: Math.sqrt(low / aspectOf(photo))
+        }));
+    } else {
+        rows = albumPlan(photos, { height, width });
+    }
+    const areas = rows.flatMap((row) =>
+        row.photos.map((photo) => row.height ** 2 * aspectOf(photo))
+    );
+
+    return {
+        rows,
+        least: areas.length ? Math.min(...areas) : 0,
+        minimum: width * pageHeight * FEATURED_MIN_SHARE
+    };
+}
+
 /**
  * How many leaves to give a letter's album.
  *
@@ -1407,9 +1457,46 @@ function setLetter(doc, { post, slug, images, state, fillChapterBlank = false })
     // for the first few pictures rather than following an almost
     // blank text page with an album page.
     const album = (post.photos ?? []).filter((photo) => !placed.has(photo.id));
+    const requested = new Set((post.featuredPhotoIds ?? []).slice(0, 2));
+    const featured = album.filter(
+        (photo) => requested.has(photo.id) && !(post.bodyHtml ?? '').includes(photo.id)
+    );
+    const ordinary = album.filter((photo) => !featured.includes(photo));
     const pageUsable = TEXT_BOTTOM - MARGIN.top;
+
+    if (featured.length) {
+        const top = doc.y + ALBUM_AFTER_TEXT;
+        const available = TEXT_BOTTOM - top;
+        const plan = available > 0
+            ? featuredPlan(featured, { height: available, pageHeight: pageUsable })
+            : null;
+
+        setBox(doc, state, 0);
+        if (plan && plan.least >= plan.minimum) {
+            setLeaf(doc, {
+                photos: featured,
+                images,
+                top,
+                usable: available,
+                rows: plan.rows
+            });
+        } else {
+            doc.addPage();
+            const full = featuredPlan(featured, { height: pageUsable, pageHeight: pageUsable });
+            setLeaf(doc, {
+                photos: featured,
+                images,
+                usable: pageUsable,
+                rows: full.rows
+            });
+        }
+
+        setAlbum(doc, { photos: ordinary, images, state });
+        return opened;
+    }
+
     const remaining = TEXT_BOTTOM - doc.y;
-    const ending = endingAlbum(album, {
+    const ending = endingAlbum(ordinary, {
         remaining,
         usable: pageUsable,
         page: state.page,
@@ -1465,8 +1552,8 @@ function setAlbum(doc, { photos, images, state, pages = albumPageCount(photos.le
 /**
  * One page of an album.
  */
-function setLeaf(doc, { photos, images, usable, top = MARGIN.top }) {
-    const rows = albumPlan(photos, { height: usable });
+function setLeaf(doc, { photos, images, usable, top = MARGIN.top, rows = null }) {
+    rows ??= albumPlan(photos, { height: usable });
 
     // Centered both ways. Vertically because an arrangement can still come up
     // short of the page -- six pictures of the same shape tile it almost

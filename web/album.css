@@ -164,6 +164,10 @@
     list-style: none;
 }
 
+.gallery__item {
+    position: relative;
+}
+
 /* Square and cropped, where the viewer contains. A thumbnail is being
    recognised rather than looked at, and a wall of ragged letterboxed rectangles
    is much harder to scan than a wall of even squares. */
@@ -190,6 +194,55 @@
 .gallery__cell:hover img {
     opacity: 0.85;
     transform: scale(1.04);
+}
+
+.gallery__feature {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    display: grid;
+    place-items: center;
+    width: 2.4rem;
+    height: 2.4rem;
+    padding: 0;
+    color: #e7e5e4;
+    background: rgb(28 25 23 / 82%);
+    border: 1px solid #78716c;
+    border-radius: 50%;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 45%);
+    cursor: pointer;
+}
+
+.gallery__feature:hover,
+.gallery__feature:focus-visible {
+    color: #ffffff;
+    background: #292524;
+}
+
+.gallery__feature.is-featured {
+    color: #fbbf24;
+    border-color: #fbbf24;
+}
+
+.gallery__feature:disabled {
+    opacity: 0.55;
+    cursor: wait;
+}
+
+.gallery__feature:focus-visible {
+    outline: 3px solid #f5f5f4;
+    outline-offset: 2px;
+}
+
+.gallery__message {
+    flex: none;
+    margin: 0;
+    padding: 0.45rem 1.25rem;
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    color: #fef3c7;
+    background: #292524;
+    border-bottom: 1px solid #44403c;
 }
 
 /* --- the viewer -------------------------------------------------------- */

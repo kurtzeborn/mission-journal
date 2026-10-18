@@ -36,6 +36,16 @@ const MAX_BODY = 128 * 1024;
 
 const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 
+const sameList = (a, b) =>
+    a.length === b.length && a.every((value, index) => value === b[index]);
+
+const validFeaturedPhotoIds = (post, bodyHtml = post.bodyHtml ?? '') => {
+    const photos = new Set((post.photos ?? []).map((photo) => photo.id));
+    return [...new Set(post.featuredPhotoIds ?? [])]
+        .filter((id) => photos.has(id) && !bodyHtml.includes(id))
+        .slice(0, 2);
+};
+
 /**
  * Apply an owner's changes to one post.
  *
@@ -100,6 +110,13 @@ export function applyEdit(post, changes, { editor, slug, now = new Date() }) {
         if (bodyHtml !== (post.bodyHtml ?? '')) {
             next.bodyHtml = bodyHtml;
             changed.push('bodyHtml');
+
+            const featured = validFeaturedPhotoIds(next, bodyHtml);
+            if (!sameList(featured, post.featuredPhotoIds ?? [])) {
+                if (featured.length) next.featuredPhotoIds = featured;
+                else delete next.featuredPhotoIds;
+                changed.push('featuredPhotoIds');
+            }
 
             // `bodyText` is only ever a fallback for a letter that has not
             // rendered yet, and readers receive it. Leaving it in place after

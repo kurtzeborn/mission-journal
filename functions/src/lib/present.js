@@ -26,6 +26,7 @@ const READER_FIELDS = [
 // whether to publish it.
 const OWNER_FIELDS = [
     ...READER_FIELDS,
+    'featuredPhotoIds',
     'hidden',
     'heldReason',
     'editedBy',
