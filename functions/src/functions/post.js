@@ -403,10 +403,14 @@ export async function removePhoto({ request, context, store }) {
 
             removed = true;
             const next = [...posts];
+            const featuredPhotoIds = (next[index].featuredPhotoIds ?? [])
+                .filter((id) => id !== photoId);
             next[index] = {
                 ...next[index],
-                photos: photos.filter((entry) => entry.id !== photoId)
+                photos: photos.filter((entry) => entry.id !== photoId),
+                ...(featuredPhotoIds.length ? { featuredPhotoIds } : {})
             };
+            if (!featuredPhotoIds.length) delete next[index].featuredPhotoIds;
             return { posts: next };
         }
     });
@@ -419,6 +423,84 @@ export async function removePhoto({ request, context, store }) {
 
     context.log('post.photoRemoved', { slug: gated.slug, postId, photo: photoId, removed });
     return ok({ id: postId, photo: photoId, removed });
+}
+
+const FEATURE_LIMIT = 2;
+const FEATURE_FULL = `a letter can have ${FEATURE_LIMIT} featured pictures`;
+const FEATURE_INLINE = 'only pictures attached after the letter can be featured';
+
+export async function featurePhoto({ request, context, store }) {
+    const gated = await ownerOnly(request, context, store);
+    if (gated.denied) return gated.denied;
+
+    let body;
+    try {
+        body = await request.json();
+    } catch {
+        return problem(400, 'body must be valid JSON');
+    }
+    if (!body || typeof body !== 'object' || typeof body.featured !== 'boolean') {
+        return problem(400, 'featured must be a boolean');
+    }
+
+    const { postId, photoId } = request.params;
+    let featuredPhotoIds = [];
+
+    const outcome = await commitPosts({
+        store,
+        slug: gated.slug,
+        log: context,
+        mutate: (posts) => {
+            const index = posts.findIndex((post) => post.id === postId);
+            if (index < 0) return { error: 'post not found' };
+
+            const post = posts[index];
+            if (!(post.photos ?? []).some((photo) => photo.id === photoId)) {
+                return { error: 'photo not found' };
+            }
+            if ((post.bodyHtml ?? '').includes(photoId)) return { error: FEATURE_INLINE };
+
+            const eligible = new Set(
+                (post.photos ?? [])
+                    .filter((photo) => !(post.bodyHtml ?? '').includes(photo.id))
+                    .map((photo) => photo.id)
+            );
+            featuredPhotoIds = [...new Set(post.featuredPhotoIds ?? [])]
+                .filter((id) => eligible.has(id));
+
+            const already = featuredPhotoIds.includes(photoId);
+            if (body.featured && !already) {
+                if (featuredPhotoIds.length >= FEATURE_LIMIT) return { error: FEATURE_FULL };
+                featuredPhotoIds.push(photoId);
+            } else if (!body.featured && already) {
+                featuredPhotoIds = featuredPhotoIds.filter((id) => id !== photoId);
+            }
+
+            const next = [...posts];
+            next[index] = { ...post };
+            if (featuredPhotoIds.length) next[index].featuredPhotoIds = featuredPhotoIds;
+            else delete next[index].featuredPhotoIds;
+            return { posts: next };
+        }
+    });
+
+    if (outcome.error) {
+        if (outcome.error === 'post not found' || outcome.error === 'photo not found') {
+            return problem(404, outcome.error === 'post not found' ? 'no such post' : 'no such photo');
+        }
+        if (outcome.error === FEATURE_INLINE || outcome.error === FEATURE_FULL) {
+            return problem(409, outcome.error);
+        }
+        return problem(400, outcome.error);
+    }
+
+    context.log('post.photoFeatured', {
+        slug: gated.slug,
+        postId,
+        photo: photoId,
+        featured: body.featured
+    });
+    return ok({ id: postId, photo: photoId, featured: body.featured, featuredPhotoIds });
 }
 
 app.http('editPost', {
@@ -443,6 +525,13 @@ app.http('removePostPhoto', {
     methods: ['DELETE'],
     route: 'posts/{slug}/{postId}/photos/{photoId}',
     handler: (request, context) => removePhoto({ request, context, store: blobStore() })
+});
+
+app.http('featurePostPhoto', {
+    authLevel: 'anonymous',
+    methods: ['PATCH'],
+    route: 'posts/{slug}/{postId}/photos/{photoId}/featured',
+    handler: (request, context) => featurePhoto({ request, context, store: blobStore() })
 });
 
 app.http('deletePost', {

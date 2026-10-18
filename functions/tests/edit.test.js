@@ -128,6 +128,21 @@ describe('an edited body goes through the sanitizer', () => {
         assert.equal(next.bodyText, undefined);
         assert.ok(changed.includes('bodyText'));
     });
+
+    test('moving a featured attachment into the letter clears its selection', () => {
+        const target = post({
+            bodyHtml: '<p>hello</p>',
+            photos: [{ id: 'p_0eade5b54243', width: 800, height: 600 }],
+            featuredPhotoIds: ['p_0eade5b54243']
+        });
+
+        const { post: next, changed } = edit({
+            bodyHtml: `<p>hello</p><img src="${PHOTO}" alt="" />`
+        }, target);
+
+        assert.equal(next.featuredPhotoIds, undefined);
+        assert.ok(changed.includes('featuredPhotoIds'));
+    });
 });
 
 describe('committing the change', () => {

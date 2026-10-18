@@ -180,6 +180,7 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, restore, su
 
         if (restore) {
             posts[index].subject = subject;
+            delete posts[index].featuredPhotoIds;
             // The post matches what arrived again, so a record saying somebody
             // changed it would be a lie -- and the whole point of keeping it is
             // that "why does this not match the copy in my inbox?" has an

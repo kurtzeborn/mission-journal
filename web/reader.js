@@ -2365,6 +2365,7 @@ window.Reader = (function () {
                 photos.addEventListener('click', () => album.open({
                     posts,
                     photoSrc,
+                    admin,
                     reveal(id) {
                         const view = views.get(id);
                         if (view) revealPost(views, groups, view, { behavior: 'smooth' });

@@ -378,7 +378,8 @@ test('a restore puts back the subject, the body and the photos, and clears the s
         bodyHtml: '<p>Rewritten entirely.</p>',
         // Stands in for the owner-added pictures that are coming: anything in
         // `photos` that the original message did not carry.
-        photos: [...post.photos, { id: 'added-by-an-owner', width: 800, height: 600 }]
+        photos: [...post.photos, { id: 'added-by-an-owner', width: 800, height: 600 }],
+        featuredPhotoIds: ['added-by-an-owner']
     });
 
     const result = await runRender({ message, store, restore: true, log: silent });
@@ -388,6 +389,7 @@ test('a restore puts back the subject, the body and the photos, and clears the s
     assert.equal(restored.subject, original.subject);
     assert.equal(restored.bodyHtml, original.bodyHtml);
     assert.deepEqual(restored.photos, original.photos);
+    assert.equal(restored.featuredPhotoIds, undefined);
     assert.equal(restored.editedBy, null);
     assert.equal(restored.editedAt, null);
 });
@@ -430,13 +432,17 @@ test('a re-render keeps the pictures an owner added and puts them last', async (
     // are years old by then; if that quietly deleted an owner's photographs it
     // would do so without anybody asking for it and without saying so.
     const { store, message, post } = await pipeline('outlook-web-inline');
-    await editInPlace(store, { photos: [...post.photos, ADDED] });
+    await editInPlace(store, {
+        photos: [...post.photos, ADDED],
+        featuredPhotoIds: [ADDED.id]
+    });
 
     await runRender({ message, store, log: silent });
 
     const after = store.json('rendered', `${SLUG}/posts.json`)[0];
     assert.equal(after.photos.length, post.photos.length + 1);
     assert.deepEqual(after.photos.at(-1), ADDED);
+    assert.deepEqual(after.featuredPhotoIds, [ADDED.id]);
     // And the message's own pictures still come first, which is what puts the
     // added ones at the end of the album the reader draws.
     assert.deepEqual(after.photos.slice(0, -1).map((photo) => photo.id), post.photos.map((photo) => photo.id));

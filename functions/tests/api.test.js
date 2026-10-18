@@ -37,6 +37,7 @@ const POSTS = [
         forwardedBy: 'scott@kurtzeborn.org',
         originalMessageId: null,
         photos: [{ id: 'p_0eade5b54243', width: 10, height: 10 }],
+        featuredPhotoIds: ['p_0eade5b54243'],
         linkedPhotoServices: ['googlePhotos'],
         sourceRawPath: 'raw/isaac.backman/u_01/message.eml'
     },
@@ -323,6 +324,7 @@ describe('what a reader receives', () => {
             'editedAt',
             'hidden',
             'heldReason',
+            'featuredPhotoIds',
             // Retired, but still on stored records written before it was, so
             // the allowlist is what actually keeps it out of a response.
             'linkedPhotoServices'
@@ -358,6 +360,11 @@ describe('what an owner receives', () => {
 
     test('even an owner is not sent the raw blob path', () => {
         assert.equal(shown()[0].sourceRawPath, undefined);
+    });
+
+    test('featured book selections are included for owner controls', () => {
+        const visible = shown().find((p) => p.id === '2025-11-10-ZHCM');
+        assert.deepEqual(visible.featuredPhotoIds, ['p_0eade5b54243']);
     });
 });
 
