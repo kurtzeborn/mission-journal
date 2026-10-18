@@ -525,13 +525,17 @@ window.Reader = (function () {
     function renderAlbum(post, photoSrc, admin) {
         const inline = post.bodyHtml ?? '';
         const loose = (post.photos ?? []).filter((photo) => !inline.includes(photo.id));
-        if (!loose.length) return null;
+        // An owner may still need this empty destination: a terminal burst of
+        // emailed photos is moved into it below, where the feature controls
+        // belong. If nothing moves in, renderPost removes it again.
+        if (!loose.length && !admin?.featurePhoto) return null;
 
         const album = document.createElement('ul');
         album.className = 'album';
 
         for (const photo of loose) {
             const item = document.createElement('li');
+            item.dataset.photo = photo.id;
             const link = document.createElement('a');
             link.href = photoSrc(photo.id, 'large');
             // An anchor whose only content is an image with empty alt text has
@@ -601,6 +605,40 @@ window.Reader = (function () {
         return album;
     }
 
+    const featureLabel = (selected) =>
+        selected
+            ? 'Remove this photograph from the featured book photos'
+            : 'Feature this photograph in the printed book';
+
+    function paintFeature(button, selected) {
+        button.classList.toggle('is-featured', selected);
+        button.setAttribute('aria-pressed', String(selected));
+        button.setAttribute('aria-label', featureLabel(selected));
+        button.title = featureLabel(selected);
+    }
+
+    function decorateAlbumFeatures(post, album, admin) {
+        if (!album || !admin?.featurePhoto) return;
+
+        const selected = new Set(post.featuredPhotoIds ?? []);
+        for (const item of album.querySelectorAll('li[data-photo]')) {
+            if (item.querySelector('.album__feature')) continue;
+
+            const feature = document.createElement('button');
+            feature.type = 'button';
+            feature.className = 'album__feature';
+            feature.dataset.photo = item.dataset.photo;
+
+            const star = document.createElement('i');
+            star.className = 'fa-solid fa-star';
+            star.setAttribute('aria-hidden', 'true');
+            feature.append(star);
+
+            paintFeature(feature, selected.has(item.dataset.photo));
+            item.append(feature);
+        }
+    }
+
     // A letter that ends in a burst of photographs and has one an owner added
     // afterwards drew two scrolling rows, one under the other, on behalf of a
     // distinction nothing else on the page makes: `tile` and `renderAlbum`
@@ -624,6 +662,8 @@ window.Reader = (function () {
         const first = album.firstChild;
         for (const frame of [...row.querySelectorAll(`.${PHOTO_FRAME}`)]) {
             const item = document.createElement('li');
+            const ref = photoRefOf(frame.querySelector('img')?.getAttribute('data-photo'));
+            if (ref) item.dataset.photo = ref.id;
             // Read by `splitTrailingRun` to put them back, and the reason none
             // of them is offered the remove button an owner's own photos get.
             item.dataset.inline = '';
@@ -782,9 +822,14 @@ window.Reader = (function () {
         const body = renderBody(post, photoSrc);
         panel.append(body);
 
-        const album = renderAlbum(post, photoSrc, admin);
+        let album = renderAlbum(post, photoSrc, admin);
         if (album) panel.append(album);
         mergeTrailingRun(body, album);
+        if (album && !album.children.length) {
+            album.remove();
+            album = null;
+        }
+        decorateAlbumFeatures(post, album, admin);
 
         // Assembled before the owner controls are built, because those insert
         // the subject field next to the heading and `insertAdjacentElement`
@@ -1065,6 +1110,41 @@ window.Reader = (function () {
         // Delegated, because the buttons themselves are the album's and it has
         // no business knowing what a pending edit is.
         album?.addEventListener('click', (event) => {
+            const feature = event.target.closest?.('.album__feature');
+            if (feature) {
+                const photoId = feature.dataset.photo;
+                const selected = (post.featuredPhotoIds ?? []).includes(photoId);
+                const current = post.featuredPhotoIds ?? [];
+
+                if (!selected && current.length >= 2) {
+                    say('This letter already has two featured photos. Remove one before adding another.');
+                    return;
+                }
+
+                const choose = async () => {
+                    const controls = [...album.querySelectorAll('.album__feature')];
+                    for (const control of controls) control.disabled = true;
+
+                    const failed = await admin.featurePhoto(post.id, photoId, !selected);
+
+                    for (const control of controls) control.disabled = false;
+                    if (failed) return failed;
+
+                    post.featuredPhotoIds = selected
+                        ? current.filter((id) => id !== photoId)
+                        : [...current, photoId];
+                    if (!post.featuredPhotoIds.length) delete post.featuredPhotoIds;
+
+                    paintFeature(feature, !selected);
+                    return selected
+                        ? 'This photo will use the regular book layout.'
+                        : 'This photo will be featured larger in the next book.';
+                };
+
+                run('Saving…', choose);
+                return;
+            }
+
             const drop = event.target.closest?.('.album__remove');
             if (!drop) return;
             dropped.add(drop.dataset.photo);
@@ -1130,6 +1210,7 @@ window.Reader = (function () {
             // letter is already open -- nothing is going to open it again.
             loadPhotos(body);
             mergeTrailingRun(body, album);
+            decorateAlbumFeatures(post, album, admin);
             close();
         };
 
@@ -2365,7 +2446,6 @@ window.Reader = (function () {
                 photos.addEventListener('click', () => album.open({
                     posts,
                     photoSrc,
-                    admin,
                     reveal(id) {
                         const view = views.get(id);
                         if (view) revealPost(views, groups, view, { behavior: 'smooth' });

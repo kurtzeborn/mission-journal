@@ -478,7 +478,11 @@ describe('choosing featured book photos', () => {
     test('a photo inside the letter cannot be featured', async () => {
         const store = await seeded(
             [loose('p_inline')],
-            { bodyHtml: '<p>Hola</p><img src="/api/photo/elder.example/p_inline/large.webp">' }
+            {
+                bodyHtml:
+                    '<p>Hola</p><img src="/api/photo/elder.example/p_inline/large.webp">' +
+                    '<p>The letter continues after this picture.</p>'
+            }
         );
 
         const response = await featured(store, {
@@ -489,6 +493,25 @@ describe('choosing featured book photos', () => {
 
         assert.equal(response.status, 409);
         assert.match(response.jsonBody.error, /attached after the letter/);
+    });
+
+    test('a terminal photo run shown in the letter album can be featured', async () => {
+        const store = await seeded(
+            [loose('p_album')],
+            { bodyHtml: '<p>Hola</p><img src="/api/photo/elder.example/p_album/large.webp">' }
+        );
+
+        const response = await featured(store, {
+            as: MUM,
+            photoId: 'p_album',
+            featured: true
+        });
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(
+            store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
+            ['p_album']
+        );
     });
 
     test('a reader cannot change the selection', async () => {

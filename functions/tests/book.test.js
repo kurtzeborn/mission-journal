@@ -33,8 +33,8 @@ import {
     printPhoto,
     reserve,
     runningHead,
-    trailingPhotoIds
 } from '../src/lib/book.js';
+import { trailingPhotoIds } from '../src/lib/bookflow.js';
 import { memoryStore } from './memory-store.js';
 
 // Reading the finished PDF back is the only honest check here. The layout is

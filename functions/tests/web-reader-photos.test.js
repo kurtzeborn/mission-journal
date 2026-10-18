@@ -327,7 +327,10 @@ describe('pictures an owner adds', () => {
     /** The archive as an owner sees it, with the calls recorded. */
     function owner({
         photos = [{ id: 'a1' }, ADDED],
+        bodyHtml = para(400),
+        featuredPhotoIds = [],
         patch = async () => undefined,
+        feature = async () => undefined,
         add = async () => undefined,
         google = null
     } = {}) {
@@ -335,7 +338,7 @@ describe('pictures an owner adds', () => {
         const view = page();
 
         view.mount({
-            posts: [letter('2026-03-25-9CRE', para(400), { photos })],
+            posts: [letter('2026-03-25-9CRE', bodyHtml, { photos, featuredPhotoIds })],
             admin: {
                 patch: (id, changes, dropPhotos) => {
                     // Copied out of the page's realm, so an assertion out here
@@ -345,6 +348,10 @@ describe('pictures an owner adds', () => {
                 },
                 remove: async () => undefined,
                 restore: async () => undefined,
+                featurePhoto: (id, photoId, selected) => {
+                    calls.push({ verb: 'feature', id, photoId, selected });
+                    return feature(id, photoId, selected);
+                },
                 confirmDelete: () => true,
                 confirmRestore: () => true,
                 addPhotos: (id, files, say) => {
@@ -382,7 +389,92 @@ describe('pictures an owner adds', () => {
         view.mount({ posts: [letter('2026-03-25-9CRE', para(400), { photos: [ADDED] })] });
 
         assert.equal(view.$('.album__remove'), null);
+        assert.equal(view.$('.album__feature'), null);
         assert.equal(view.$('.admin'), null);
+    });
+
+    test('feature controls appear only on photos in the horizontal letter album', () => {
+        const { view } = owner({
+            bodyHtml:
+                `${img('mid')}${para(400)}` +
+                `<p>${img('tail-one')}</p><p>${img('tail-two')}</p>`,
+            photos: [
+                { id: 'mid' },
+                { id: 'tail-one' },
+                { id: 'tail-two' },
+                { id: 'loose' }
+            ]
+        });
+
+        assert.deepEqual(
+            view.$$('.album__feature').map((button) => button.dataset.photo),
+            ['tail-one', 'tail-two', 'loose']
+        );
+        assert.equal(view.$('.post__body .album__feature'), null);
+    });
+
+    test('a terminal photo row gets controls even when there are no loose photos', () => {
+        const { view } = owner({
+            bodyHtml: `<p>${img('tail-one')}</p><p>${img('tail-two')}</p>`,
+            photos: [{ id: 'tail-one' }, { id: 'tail-two' }]
+        });
+
+        assert.deepEqual(
+            view.$$('.album__feature').map((button) => button.dataset.photo),
+            ['tail-one', 'tail-two']
+        );
+    });
+
+    test('Cancel restores feature controls on a terminal photo row', () => {
+        const { view } = owner({
+            bodyHtml: `<p>${img('tail-one')}</p><p>${img('tail-two')}</p>`,
+            photos: [{ id: 'tail-one' }, { id: 'tail-two' }]
+        });
+
+        view.click(view.button('Edit'));
+        view.click(view.button('Cancel'));
+
+        assert.deepEqual(
+            view.$$('.album__feature').map((button) => button.dataset.photo),
+            ['tail-one', 'tail-two']
+        );
+    });
+
+    test('choosing a featured photo updates the star and the owner status', async () => {
+        const { view, calls } = owner();
+        const star = view.$('.album__feature');
+
+        view.click(star);
+        await settled();
+
+        assert.deepEqual(calls, [{
+            verb: 'feature',
+            id: '2026-03-25-9CRE',
+            photoId: 'a1',
+            selected: true
+        }]);
+        assert.equal(star.getAttribute('aria-pressed'), 'true');
+        assert.match(view.$('.admin__status').textContent, /featured larger/);
+    });
+
+    test('an existing featured selection is drawn as selected', () => {
+        const { view } = owner({ featuredPhotoIds: ['a1'] });
+
+        assert.equal(view.$('.album__feature').getAttribute('aria-pressed'), 'true');
+        assert.match(view.$('.album__feature').getAttribute('aria-label'), /Remove this photograph/);
+    });
+
+    test('a third featured photo is stopped before asking the server', async () => {
+        const { view, calls } = owner({
+            photos: [{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }],
+            featuredPhotoIds: ['a1', 'a2']
+        });
+
+        view.click(view.$$('.album__feature')[2]);
+        await settled();
+
+        assert.deepEqual(calls, []);
+        assert.match(view.$('.admin__status').textContent, /already has two featured photos/);
     });
 
     test('only the ones an owner added can be taken back off', () => {

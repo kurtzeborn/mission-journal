@@ -28,7 +28,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 
 import sharp from 'sharp';
-import { flowBody, inlinePhotoIds } from './bookflow.js';
+import { flowBody, inlinePhotoIds, trailingPhotoIds } from './bookflow.js';
 import { clothOf } from './cover.js';
 import { fillLine, segments } from './typeset.js';
 import { layoutCloud } from './cloud.js';
@@ -1458,9 +1458,7 @@ function setLetter(doc, { post, slug, images, state, fillChapterBlank = false })
     // blank text page with an album page.
     const album = (post.photos ?? []).filter((photo) => !placed.has(photo.id));
     const requested = new Set((post.featuredPhotoIds ?? []).slice(0, 2));
-    const featured = album.filter(
-        (photo) => requested.has(photo.id) && !(post.bodyHtml ?? '').includes(photo.id)
-    );
+    const featured = album.filter((photo) => requested.has(photo.id));
     const ordinary = album.filter((photo) => !featured.includes(photo));
     const pageUsable = TEXT_BOTTOM - MARGIN.top;
 
@@ -1779,17 +1777,6 @@ function textAfter(blocks, from) {
     }
 
     return count;
-}
-
-export function trailingPhotoIds(blocks) {
-    const ids = [];
-
-    for (let index = (blocks?.length ?? 0) - 1; index >= 0; index -= 1) {
-        if (blocks[index].kind !== 'photo') break;
-        ids.unshift(blocks[index].photoId);
-    }
-
-    return ids;
 }
 
 function setLeaderRow(
