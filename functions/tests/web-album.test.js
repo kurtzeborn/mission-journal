@@ -56,6 +56,23 @@ async function back(view) {
 
 const open = (dialog) => Boolean(dialog?.hasAttribute('open'));
 
+test('the album opens with the newest letter first', () => {
+    const newer = letter('2026-03-25-9CRE', para(400), {
+        photos: [{ id: 'new-photo', width: 800, height: 600 }]
+    });
+    const older = letter('2026-03-16-28MW', para(400), {
+        photos: [{ id: 'old-photo', width: 800, height: 600 }]
+    });
+    const view = archive({ posts: [newer, older] });
+
+    assert.deepEqual(
+        [...view.gallery().querySelectorAll('.gallery__cell img')]
+            .map((image) => image.getAttribute('src')),
+        [photoSrc('new-photo', 'thumb'), photoSrc('old-photo', 'thumb')]
+    );
+    assert.equal(view.gallery().querySelector('.gallery__order').value, 'newest');
+});
+
 describe('getting out of the photo album', () => {
     test('opening it is somewhere to come back from', () => {
         const view = archive();
