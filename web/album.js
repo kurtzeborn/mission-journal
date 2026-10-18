@@ -47,14 +47,9 @@ window.Album = (function () {
         ['random', 'Random order']
     ];
 
-    // Oldest first, unlike the list behind it, which runs newest first because
-    // a reader checking for a new letter wants the top of the page. Nobody
-    // opens an album to see whether anything arrived; they open it to look
-    // through, and looking through goes forwards.
-    //
     // Kept between openings so the choice sticks for the visit, and not
     // remembered any longer than that.
-    let order = 'oldest';
+    let order = 'newest';
 
     // How long a photograph stays on screen once it has arrived.
     //
