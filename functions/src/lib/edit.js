@@ -7,6 +7,7 @@
 
 import { sanitizeBody, PHOTO_PREFIX } from './sanitize.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
+import { flowBody, inlinePhotoIds, trailingPhotoIds } from './bookflow.js';
 
 // Everything an owner is allowed to change. Anything absent is either derived
 // from the source message or internal bookkeeping.
@@ -39,10 +40,13 @@ const utf8 = (obj) => Buffer.from(JSON.stringify(obj, null, 2), 'utf8');
 const sameList = (a, b) =>
     a.length === b.length && a.every((value, index) => value === b[index]);
 
-const validFeaturedPhotoIds = (post, bodyHtml = post.bodyHtml ?? '') => {
+const validFeaturedPhotoIds = (post, slug, bodyHtml = post.bodyHtml ?? '') => {
     const photos = new Set((post.photos ?? []).map((photo) => photo.id));
+    const blocks = flowBody(bodyHtml, slug);
+    const trailing = new Set(trailingPhotoIds(blocks));
+    const inline = new Set(inlinePhotoIds(blocks));
     return [...new Set(post.featuredPhotoIds ?? [])]
-        .filter((id) => photos.has(id) && !bodyHtml.includes(id))
+        .filter((id) => photos.has(id) && (!inline.has(id) || trailing.has(id)))
         .slice(0, 2);
 };
 
@@ -111,7 +115,7 @@ export function applyEdit(post, changes, { editor, slug, now = new Date() }) {
             next.bodyHtml = bodyHtml;
             changed.push('bodyHtml');
 
-            const featured = validFeaturedPhotoIds(next, bodyHtml);
+            const featured = validFeaturedPhotoIds(next, slug, bodyHtml);
             if (!sameList(featured, post.featuredPhotoIds ?? [])) {
                 if (featured.length) next.featuredPhotoIds = featured;
                 else delete next.featuredPhotoIds;

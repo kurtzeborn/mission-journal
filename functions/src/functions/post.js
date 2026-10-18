@@ -8,6 +8,7 @@ import { applyEdit, commitPosts } from '../lib/edit.js';
 import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES, MAX_PHOTOS, overSizeClaim } from '../lib/photos.js';
 import { photoId } from '../lib/paths.js';
 import { runRender } from '../lib/render.js';
+import { flowBody, inlinePhotoIds, trailingPhotoIds } from '../lib/bookflow.js';
 
 const problem = (status, error) => ({
     status,
@@ -429,6 +430,18 @@ const FEATURE_LIMIT = 2;
 const FEATURE_FULL = `a letter can have ${FEATURE_LIMIT} featured pictures`;
 const FEATURE_INLINE = 'only pictures attached after the letter can be featured';
 
+const featureablePhotoIds = (post, slug) => {
+    const blocks = flowBody(post.bodyHtml ?? '', slug);
+    const trailing = new Set(trailingPhotoIds(blocks));
+    const inline = new Set(inlinePhotoIds(blocks));
+
+    return new Set(
+        (post.photos ?? [])
+            .filter((photo) => !inline.has(photo.id) || trailing.has(photo.id))
+            .map((photo) => photo.id)
+    );
+};
+
 export async function featurePhoto({ request, context, store }) {
     const gated = await ownerOnly(request, context, store);
     if (gated.denied) return gated.denied;
@@ -458,13 +471,8 @@ export async function featurePhoto({ request, context, store }) {
             if (!(post.photos ?? []).some((photo) => photo.id === photoId)) {
                 return { error: 'photo not found' };
             }
-            if ((post.bodyHtml ?? '').includes(photoId)) return { error: FEATURE_INLINE };
-
-            const eligible = new Set(
-                (post.photos ?? [])
-                    .filter((photo) => !(post.bodyHtml ?? '').includes(photo.id))
-                    .map((photo) => photo.id)
-            );
+            const eligible = featureablePhotoIds(post, gated.slug);
+            if (!eligible.has(photoId)) return { error: FEATURE_INLINE };
             featuredPhotoIds = [...new Set(post.featuredPhotoIds ?? [])]
                 .filter((id) => eligible.has(id));
 

@@ -137,11 +137,25 @@ describe('an edited body goes through the sanitizer', () => {
         });
 
         const { post: next, changed } = edit({
-            bodyHtml: `<p>hello</p><img src="${PHOTO}" alt="" />`
+            bodyHtml: `<p>hello</p><img src="${PHOTO}" alt="" /><p>More letter follows.</p>`
         }, target);
 
         assert.equal(next.featuredPhotoIds, undefined);
         assert.ok(changed.includes('featuredPhotoIds'));
+    });
+
+    test('moving a featured attachment to the terminal album keeps its selection', () => {
+        const target = post({
+            bodyHtml: '<p>hello</p>',
+            photos: [{ id: 'p_0eade5b54243', width: 800, height: 600 }],
+            featuredPhotoIds: ['p_0eade5b54243']
+        });
+
+        const { post: next } = edit({
+            bodyHtml: `<p>hello</p><img src="${PHOTO}" alt="" />`
+        }, target);
+
+        assert.deepEqual(next.featuredPhotoIds, ['p_0eade5b54243']);
     });
 });
 

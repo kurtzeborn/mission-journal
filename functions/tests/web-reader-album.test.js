@@ -90,16 +90,6 @@ describe('getting to the album', () => {
         assert.equal(typeof view.album.opened[0].reveal, 'function');
     });
 
-    test('owner actions are handed to the album only when present', () => {
-        const view = page();
-        const book = album();
-        const admin = { featurePhoto() {} };
-        view.mount({ posts: POSTS, album: book, admin });
-
-        view.click(view.button('Photo Album'));
-
-        assert.equal(book.opened[0].admin, admin);
-    });
 });
 
 describe('clicking a photograph', () => {

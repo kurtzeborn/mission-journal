@@ -274,3 +274,21 @@ function trimEdges(blocks) {
 export function inlinePhotoIds(blocks) {
     return blocks.filter((block) => block.kind === 'photo').map((block) => block.photoId);
 }
+
+/**
+ * The terminal run of photos the reader moves into the horizontal album.
+ *
+ * These are part of the body markup, but they are not inline illustrations:
+ * nothing follows them, and both the reader and the printed book treat them
+ * as the letter's attachment album.
+ */
+export function trailingPhotoIds(blocks) {
+    const ids = [];
+
+    for (let index = (blocks?.length ?? 0) - 1; index >= 0; index -= 1) {
+        if (blocks[index].kind !== 'photo') break;
+        ids.unshift(blocks[index].photoId);
+    }
+
+    return ids;
+}

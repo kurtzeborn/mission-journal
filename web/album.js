@@ -91,8 +91,6 @@ window.Album = (function () {
                 post,
                 frames: photos.map((photo) => ({
                     post,
-                    photo,
-                    featureable: !(post.bodyHtml ?? '').includes(photo.id),
                     src: photoSrc(photo.id, 'large'),
                     thumb: photoSrc(photo.id, 'thumb')
                 }))
@@ -422,69 +420,6 @@ window.Album = (function () {
 
     let gallery = null;
 
-    const featured = (frame) =>
-        (frame.post.featuredPhotoIds ?? []).includes(frame.photo.id);
-
-    const featureLabel = (frame) =>
-        featured(frame)
-            ? 'Remove this photograph from the featured book photos'
-            : 'Feature this photograph in the printed book';
-
-    function paintFeature(button, frame) {
-        const selected = featured(frame);
-        button.classList.toggle('is-featured', selected);
-        button.setAttribute('aria-pressed', String(selected));
-        button.setAttribute('aria-label', featureLabel(frame));
-        button.title = featureLabel(frame);
-    }
-
-    function say(message) {
-        gallery.message.textContent = message ?? '';
-        gallery.message.hidden = !message;
-    }
-
-    async function toggleFeature(button) {
-        const frame = gallery.frames[Number(button.dataset.at)];
-        const admin = gallery.source?.admin;
-        if (!frame?.featureable || !admin?.featurePhoto) return;
-
-        const selected = featured(frame);
-        const current = frame.post.featuredPhotoIds ?? [];
-        if (!selected && current.length >= 2) {
-            say('This letter already has two featured photos. Remove one before adding another.');
-            return;
-        }
-
-        say('');
-        const controls = [...gallery.body.querySelectorAll('.gallery__feature')];
-        for (const control of controls) control.disabled = true;
-
-        const failed = await admin.featurePhoto(frame.post.id, frame.photo.id, !selected);
-
-        for (const control of controls) control.disabled = false;
-        if (failed) {
-            say(failed);
-            return;
-        }
-
-        frame.post.featuredPhotoIds = selected
-            ? current.filter((id) => id !== frame.photo.id)
-            : [...current, frame.photo.id];
-        if (!frame.post.featuredPhotoIds.length) delete frame.post.featuredPhotoIds;
-
-        for (const other of gallery.frames) {
-            if (other.post.id !== frame.post.id || other.photo.id !== frame.photo.id) continue;
-            const control = gallery.cells[other.at]?.parentElement?.querySelector('.gallery__feature');
-            if (control) paintFeature(control, other);
-        }
-
-        say(
-            selected
-                ? 'This photo will use the regular book layout.'
-                : 'This photo will be featured larger in the next book.'
-        );
-    }
-
     function ensureGallery() {
         if (gallery) return gallery;
 
@@ -525,11 +460,6 @@ window.Album = (function () {
         const body = document.createElement('div');
         body.className = 'gallery__body';
 
-        const message = document.createElement('p');
-        message.className = 'gallery__message';
-        message.setAttribute('role', 'status');
-        message.hidden = true;
-
         picker.addEventListener('change', () => {
             order = picker.value;
             fill();
@@ -539,12 +469,6 @@ window.Album = (function () {
         // Delegated. Six hundred thumbnails is six hundred listeners
         // otherwise, and the grid is rebuilt every time the order changes.
         body.addEventListener('click', (event) => {
-            const feature = event.target.closest?.('.gallery__feature');
-            if (feature && body.contains(feature)) {
-                toggleFeature(feature);
-                return;
-            }
-
             const cell = event.target.closest?.('.gallery__cell');
             if (!cell || !body.contains(cell)) return;
             openViewer(Number(cell.dataset.at));
@@ -560,11 +484,11 @@ window.Album = (function () {
             body.replaceChildren();
         });
 
-        dialog.append(head, message, body);
+        dialog.append(head, body);
         document.body.append(dialog);
 
         gallery = {
-            dialog, title, count, picker, message, body,
+            dialog, title, count, picker, body,
             frames: [], cells: [], reveal: null, source: null
         };
 
@@ -572,7 +496,7 @@ window.Album = (function () {
     }
 
     function fill() {
-        const { posts, photoSrc, admin } = gallery.source;
+        const { posts, photoSrc } = gallery.source;
         const { blocks, frames } = planOf(posts, photoSrc, order);
 
         gallery.frames = frames;
@@ -612,23 +536,7 @@ window.Album = (function () {
                 cell.append(img);
 
                 const item = document.createElement('li');
-                item.className = 'gallery__item';
                 item.append(cell);
-
-                if (admin?.featurePhoto && frame.featureable) {
-                    const feature = document.createElement('button');
-                    feature.type = 'button';
-                    feature.className = 'gallery__feature';
-                    feature.dataset.at = String(frame.at);
-
-                    const star = document.createElement('i');
-                    star.className = 'fa-solid fa-star';
-                    star.setAttribute('aria-hidden', 'true');
-                    feature.append(star);
-                    paintFeature(feature, frame);
-                    item.append(feature);
-                }
-
                 grid.append(item);
 
                 gallery.cells[frame.at] = cell;
@@ -663,19 +571,13 @@ window.Album = (function () {
      * @param {Array} options.posts        the presented posts, newest first
      * @param {Function} options.photoSrc  (photoId, size) => url
      * @param {Function} options.reveal    hand a post id back to the page
-     * @param {object} [options.admin]     owner-only photograph actions
      */
-    function open({ posts, photoSrc, reveal, admin = null }) {
+    function open({ posts, photoSrc, reveal }) {
         if (!posts.some((post) => post.photos?.length)) return;
 
         const view = ensureGallery();
-        view.source = { posts, photoSrc, admin };
+        view.source = { posts, photoSrc };
         view.reveal = reveal;
-        say(
-            admin?.featurePhoto
-                ? 'Star up to two attached photos per letter to feature them in the next book.'
-                : ''
-        );
 
         // Whose photographs these are, taken off the page rather than passed
         // in: `reader.js` also runs in the downloaded archive, which has no
