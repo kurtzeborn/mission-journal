@@ -454,7 +454,10 @@ describe('pictures an owner adds', () => {
             selected: true
         }]);
         assert.equal(star.getAttribute('aria-pressed'), 'true');
-        assert.match(view.$('.admin__status').textContent, /featured larger/);
+        assert.equal(
+            view.$('.admin__status').textContent,
+            'This photo will be larger in the printed book.'
+        );
     });
 
     test('an existing featured selection is drawn as selected', () => {
