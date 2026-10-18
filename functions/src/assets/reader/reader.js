@@ -1138,7 +1138,7 @@ window.Reader = (function () {
                     paintFeature(feature, !selected);
                     return selected
                         ? 'This photo will use the regular book layout.'
-                        : 'This photo will be featured larger in the next book.';
+                        : 'This photo will be larger in the printed book.';
                 };
 
                 run('Saving…', choose);
