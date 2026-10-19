@@ -167,6 +167,9 @@ const COVERS = 2;
 const ALBUM_GAP = 10;
 const ALBUM_MIN_ROW = 84;
 const ALBUM_MOST = 6;
+const ALBUM_MIN_PHOTO_SHARE = 0.05;
+const ALBUM_MIN_COLUMN_SHARE = 0.5;
+const FEATURED_SIZE_TOLERANCE = 0.02;
 const ALBUM_AFTER_TEXT = 18;
 
 // Four by three when nothing was recorded. Ingest measures every photograph it
@@ -1141,7 +1144,11 @@ const prominenceOf = (entries, featured) => {
     return ratios.length ? Math.min(...ratios) : 0;
 };
 
-const planMetrics = (rows, featured) => {
+const rowWidth = (row, gap) =>
+    row.photos.reduce((sum, photo) => sum + row.height * aspectOf(photo), 0) +
+    gap * (row.photos.length - 1);
+
+const planMetrics = (rows, featured, { height, width, gap }) => {
     const entries = photoAreas(rows);
     const areas = entries.map((entry) => entry.area);
     const featuredAreas = entries
@@ -1155,11 +1162,29 @@ const planMetrics = (rows, featured) => {
         least: areas.length ? Math.min(...areas) : 0,
         featuredLeast: featuredAreas.length ? Math.min(...featuredAreas) : 0,
         prominence,
-        prominent: featuredAreas.length > 0 && prominence + 0.0001 >= 1
+        prominent:
+            featuredAreas.length > 0 &&
+            prominence + FEATURED_SIZE_TOLERANCE + 0.0001 >= 1,
+        legible:
+            areas.length > 0 &&
+            Math.min(...areas) + 0.01 >= width * height * ALBUM_MIN_PHOTO_SHARE,
+        broad:
+            rows.length > 0 &&
+            Math.max(...rows.map((row) => rowWidth(row, gap))) + 0.01 >=
+                width * ALBUM_MIN_COLUMN_SHARE
     };
 };
 
-const chooseFeaturedPlan = (candidates) => {
+const preferredPlans = (candidates, { preferLegibility }) => {
+    if (!preferLegibility) return { candidates, legible: false };
+
+    const broad = candidates.filter((candidate) => candidate.broad);
+    const wideEnough = broad.length ? broad : candidates;
+    const legible = wideEnough.filter((candidate) => candidate.legible);
+    return { candidates: legible.length ? legible : wideEnough, legible: Boolean(legible.length) };
+};
+
+const chooseFeaturedPlan = (candidates, { preferLegibility }) => {
     const prominent = candidates.filter((candidate) => candidate.prominent);
     if (!prominent.length) {
         return candidates.sort(
@@ -1171,8 +1196,10 @@ const chooseFeaturedPlan = (candidates) => {
         )[0];
     }
 
-    return prominent.sort(
+    const preferred = preferredPlans(prominent, { preferLegibility });
+    return preferred.candidates.sort(
         (a, b) =>
+            (!preferred.legible ? b.least - a.least : 0) ||
             b.featuredLeast - a.featuredLeast ||
             b.area - a.area ||
             b.least - a.least
@@ -1181,7 +1208,13 @@ const chooseFeaturedPlan = (candidates) => {
 
 export function albumPlan(
     photos,
-    { height, width = COLUMN, gap = ALBUM_GAP, featured = new Set() }
+    {
+        height,
+        width = COLUMN,
+        gap = ALBUM_GAP,
+        featured = new Set(),
+        preferLegibility = false
+    }
 ) {
     if (!photos.length) return [];
 
@@ -1205,17 +1238,25 @@ export function albumPlan(
 
     for (const bands of partitions) {
         const rows = plannedRows(bands, { height, width, gap });
-        candidates.push(planMetrics(rows, selected));
+        candidates.push(planMetrics(rows, selected, { height, width, gap }));
     }
 
     const mostArea = Math.max(...candidates.map((candidate) => candidate.area));
-    if (selected.size) return chooseFeaturedPlan(candidates).rows;
+    if (selected.size) {
+        return chooseFeaturedPlan(candidates, { preferLegibility }).rows;
+    }
 
-    return candidates
+    const preferred = preferredPlans(candidates, { preferLegibility });
+    const preferredArea = Math.max(...preferred.candidates.map((candidate) => candidate.area));
+
+    return preferred.candidates
         // A few percent more ink is not worth making one photograph half the
         // size of its neighbours. Among effectively full pages, keep the most
         // even arrangement.
-        .filter((candidate) => candidate.area >= mostArea * 0.95)
+        .filter(
+            (candidate) =>
+                candidate.area >= (preferLegibility ? preferredArea : mostArea) * 0.95
+        )
         .sort((a, b) => b.least - a.least)[0].rows;
 }
 
@@ -1340,7 +1381,7 @@ const leavesForSizes = (photos, sizes, { height, featured }) => {
 
     for (const size of sizes) {
         const leaf = photos.slice(at, at + size);
-        const rows = albumPlan(leaf, { height, featured });
+        const rows = albumPlan(leaf, { height, featured, preferLegibility: true });
         leaves.push({ photos: leaf, rows });
         at += size;
     }
@@ -1381,11 +1422,11 @@ const dealtLeaves = (photos, sizes, { height, featured, matchOrientation = false
 
     return leaves.map((leaf) => ({
         photos: leaf,
-        rows: albumPlan(leaf, { height, featured })
+        rows: albumPlan(leaf, { height, featured, preferLegibility: true })
     }));
 };
 
-const spreadMetrics = (leaves, featured) => {
+const spreadMetrics = (leaves, featured, { height, width = COLUMN, gap = ALBUM_GAP }) => {
     const entries = leaves.flatMap((leaf) => photoAreas(leaf.rows));
     const areas = entries.map((entry) => entry.area);
     const featuredAreas = entries
@@ -1400,7 +1441,21 @@ const spreadMetrics = (leaves, featured) => {
         least: areas.length ? Math.min(...areas) : 0,
         featuredLeast: featuredAreas.length ? Math.min(...featuredAreas) : 0,
         prominence,
-        prominent: featuredAreas.length > 0 && prominence + 0.0001 >= 1,
+        prominent:
+            featuredAreas.length > 0 &&
+            prominence + FEATURED_SIZE_TOLERANCE + 0.0001 >= 1,
+        legible:
+            areas.length > 0 &&
+            Math.min(...areas) + 0.01 >= width * height * ALBUM_MIN_PHOTO_SHARE,
+        broad: leaves.every(
+            (leaf) =>
+                leaf.rows.length > 0 &&
+                Math.max(...leaf.rows.map((row) => rowWidth(row, gap))) + 0.01 >=
+                    width * ALBUM_MIN_COLUMN_SHARE
+        ),
+        featuredLeaves: leaves.filter((leaf) =>
+            leaf.photos.some((photo) => featured.has(photo.id))
+        ).length,
         imbalance: Math.max(...counts) - Math.min(...counts)
     };
 };
@@ -1410,11 +1465,12 @@ const spreadMetrics = (leaves, featured) => {
  *
  * Featured pictures are a preference, not a second album. The ordinary page
  * count and six-photo limit stay fixed, but printed order may change. Bounded
- * alternatives distribute featured anchors and their similarly oriented
- * neighbours across the leaves. A featured picture must be at least as large
- * as every ordinary picture of the same orientation whenever that is feasible;
- * among those arrangements, make the smallest featured picture as large as
- * possible before optimizing total coverage and balance.
+ * alternatives distribute featured anchors and similarly shaped neighbours
+ * across the leaves. Near-equal comparable sizes count as equal, columns under
+ * half width are avoided when another arrangement exists, and five percent of
+ * the printable page is the soft legibility floor. None of those preferences
+ * opens another leaf; when all cannot be met, maximize the weakest photograph
+ * before optimizing featured size, total coverage and balance.
  */
 export function albumLeaves(
     photos,
@@ -1432,7 +1488,7 @@ export function albumLeaves(
     if (!selected.size) {
         return albumSpread(photos, { pages }).map((leaf) => ({
             photos: leaf,
-            rows: albumPlan(leaf, { height })
+            rows: albumPlan(leaf, { height, preferLegibility: true })
         }));
     }
 
@@ -1440,14 +1496,17 @@ export function albumLeaves(
         ...photos.filter((photo) => selected.has(photo.id)),
         ...photos.filter((photo) => !selected.has(photo.id))
     ];
+    const byAspect = [...ordered].sort((a, b) => aspectOf(b) - aspectOf(a));
     const candidates = pageSizePlans(ordered.length, pages).flatMap((sizes) => [
         spreadMetrics(
             leavesForSizes(ordered, sizes, { height, featured: selected }),
-            selected
+            selected,
+            { height }
         ),
         spreadMetrics(
             dealtLeaves(ordered, sizes, { height, featured: selected }),
-            selected
+            selected,
+            { height }
         ),
         spreadMetrics(
             dealtLeaves(ordered, sizes, {
@@ -1455,14 +1514,31 @@ export function albumLeaves(
                 featured: selected,
                 matchOrientation: true
             }),
-            selected
+            selected,
+            { height }
+        ),
+        spreadMetrics(
+            leavesForSizes(byAspect, sizes, { height, featured: selected }),
+            selected,
+            { height }
         )
     ]);
     const prominent = candidates.filter((candidate) => candidate.prominent);
-    const pool = prominent.length ? prominent : candidates;
+    const eligible = prominent.length ? prominent : candidates;
+    const mostFeaturedLeaves = Math.max(
+        ...eligible.map((candidate) => candidate.featuredLeaves)
+    );
+    const distributed = eligible.filter(
+        (candidate) => candidate.featuredLeaves === mostFeaturedLeaves
+    );
+    const broad = distributed.filter((candidate) => candidate.broad);
+    const wideEnough = broad.length ? broad : distributed;
+    const legible = wideEnough.filter((candidate) => candidate.legible);
+    const pool = legible.length ? legible : wideEnough;
 
     return pool.sort(
         (a, b) =>
+            (!legible.length ? b.least - a.least : 0) ||
             (prominent.length
                 ? b.featuredLeast - a.featuredLeast
                 : b.prominence - a.prominence) ||
