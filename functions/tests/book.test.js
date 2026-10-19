@@ -9,6 +9,7 @@ import {
     SHEET_LEAST,
     SHEET_MOST,
     albumPageCount,
+    albumLeaves,
     albumPlan,
     albumRows,
     albumSpread,
@@ -24,7 +25,6 @@ import {
     endingAlbum,
     endingPhotoCount,
     emojiRuns,
-    featuredPlan,
     inReadingOrder,
     lowerRoman,
     mirror,
@@ -639,14 +639,55 @@ describe('giving selected photos featured space', () => {
     const wide = { id: 'w', width: 2400, height: 1600 };
     const tall = { id: 't', width: 1600, height: 2400 };
 
-    test('one selected photo gets about a quarter of the usable page or more', () => {
-        const plan = featuredPlan([wide], { height: usable });
-        assert.ok(plan.least >= plan.minimum);
+    const areas = (leaves) =>
+        leaves
+            .flatMap((leaf) => leaf.rows)
+            .flatMap((row) =>
+                row.photos.map((photo) => ({
+                    id: photo.id,
+                    area: row.height ** 2 * (photo.width / photo.height)
+                }))
+            );
+
+    test('keeps featured photos in the ordinary page budget and in album order', () => {
+        const photos = Array.from({ length: 10 }, (_, index) => ({
+            ...(index % 2 ? tall : wide),
+            id: `p${index}`
+        }));
+        const pages = albumPageCount(photos.length);
+        const leaves = albumLeaves(photos, {
+            pages,
+            height: usable,
+            featured: new Set(['p1', 'p7'])
+        });
+
+        assert.equal(leaves.length, pages);
+        assert.ok(leaves.every((leaf) => leaf.photos.length > 0 && leaf.photos.length <= 6));
+        assert.deepEqual(leaves.flatMap((leaf) => leaf.photos), photos);
     });
 
-    test('two selected photos each get about a quarter of the usable page', () => {
-        const plan = featuredPlan([wide, tall], { height: usable });
-        assert.ok(plan.least >= plan.minimum);
+    test('keeps featured photos out of the smallest size tier when an efficient layout can', () => {
+        const photos = [
+            { ...wide, id: 'p0' },
+            { ...tall, id: 'p1' },
+            { ...wide, id: 'p2' },
+            { ...tall, id: 'p3' },
+            { ...wide, id: 'p4' },
+            { ...tall, id: 'p5' }
+        ];
+        const laidOut = areas(
+            albumLeaves(photos, {
+                pages: 1,
+                height: usable,
+                featured: new Set(['p1'])
+            })
+        );
+        const featured = laidOut.find((entry) => entry.id === 'p1').area;
+        const smallestOrdinary = Math.min(
+            ...laidOut.filter((entry) => entry.id !== 'p1').map((entry) => entry.area)
+        );
+
+        assert.ok(featured >= smallestOrdinary * 1.05);
     });
 
     test('the allowance grows once for every five attached photos from ten onward', () => {
