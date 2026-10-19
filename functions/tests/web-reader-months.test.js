@@ -12,7 +12,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { page, letter } from './reader-dom.js';
 
-// Three months, and enough letters in them to cross the folding threshold.
+// Three months in newest-first order.
 const MANY = [
     ...['25', '18', '11', '04'].map((day) => letter(`2026-03-${day}-A${day}`, '<p>March.</p>')),
     ...['25', '18', '11', '04'].map((day) => letter(`2026-02-${day}-B${day}`, '<p>February.</p>')),
@@ -21,7 +21,7 @@ const MANY = [
     )
 ];
 
-// The same three months, kept short enough to stay under it.
+// The same three months with one letter apiece.
 const FEW = [
     letter('2026-03-25-A25', '<p>March.</p>'),
     letter('2026-02-18-B18', '<p>February.</p>'),
@@ -38,6 +38,8 @@ const months = (view) => view.$$('.month').filter((el) => !el.hidden);
 const headings = (view) => months(view).map((el) => el.querySelector('.month__name').textContent);
 const counts = (view) => months(view).map((el) => el.querySelector('.month__count').textContent);
 const folded = (view) => months(view).map((el) => el.classList.contains('month--folded'));
+const monthToggle = (view, name) =>
+    view.$$('.month__toggle').find((el) => el.textContent.startsWith(name));
 
 /** The letters a reader can actually see, in page order. */
 const reachable = (view) =>
@@ -90,25 +92,15 @@ describe('the shape of the list', () => {
 });
 
 describe('what is folded when the page arrives', () => {
-    test('a long archive arrives folded, with the newest month left open', () => {
-        // Thirteen letters is more than a screen of dates, so the contents are
-        // worth having. The month holding the open letter cannot be shut.
-        const view = archive();
-
-        assert.deepEqual(folded(view), [false, true, true]);
-        assert.deepEqual(reachable(view), [
-            '2026-03-25-A25',
-            '2026-03-18-A18',
-            '2026-03-11-A11',
-            '2026-03-04-A04'
-        ]);
-    });
-
-    test('a short one arrives open, because folding it would hide a short list', () => {
-        const view = archive(FEW);
-
-        assert.deepEqual(folded(view), [false, false, false]);
-        assert.deepEqual(reachable(view), FEW.map((post) => post.id));
+    test('only the newest month arrives open, regardless of archive length', () => {
+        for (const posts of [MANY, FEW]) {
+            const view = archive(posts);
+            assert.deepEqual(folded(view), [false, true, true]);
+            assert.deepEqual(
+                reachable(view),
+                posts.filter((post) => post.id.startsWith('2026-03')).map((post) => post.id)
+            );
+        }
     });
 
     test('the newest letter is open inside its month either way', () => {
@@ -121,16 +113,13 @@ describe('what is folded when the page arrives', () => {
 });
 
 describe('folding a month by hand', () => {
-    const monthToggle = (view, name) =>
-        view.$$('.month__toggle').find((el) => el.textContent.startsWith(name));
-
     test('shutting a month takes its letters off the page', () => {
         const view = archive(FEW);
 
-        view.click(monthToggle(view, 'February 2026'));
+        view.click(monthToggle(view, 'March 2026'));
 
-        assert.deepEqual(folded(view), [false, true, false]);
-        assert.deepEqual(reachable(view), ['2026-03-25-A25', '2026-01-07-C07']);
+        assert.deepEqual(folded(view), [true, true, true]);
+        assert.deepEqual(reachable(view), []);
     });
 
     test('opening one puts them back, still shut', () => {
@@ -148,14 +137,14 @@ describe('folding a month by hand', () => {
         const view = archive(FEW);
         const february = monthToggle(view, 'February 2026');
 
-        assert.equal(february.getAttribute('aria-expanded'), 'true');
+        assert.equal(february.getAttribute('aria-expanded'), 'false');
         assert.equal(
             february.getAttribute('aria-controls'),
             view.$('.month:nth-child(2) .month__posts').id
         );
 
         view.click(february);
-        assert.equal(february.getAttribute('aria-expanded'), 'false');
+        assert.equal(february.getAttribute('aria-expanded'), 'true');
     });
 });
 
@@ -226,67 +215,62 @@ describe('what a month says while a search is running', () => {
 });
 
 describe('expand all', () => {
-    test('opens the months as well as the letters', () => {
+    test('the single control cycles through collapsed, months, and all letters', () => {
         const view = archive();
+        const folder = view.button('Collapse all');
 
-        view.click(view.button('Expand all'));
+        assert.equal(folder.textContent, '');
+        assert.equal(folder.title, 'Collapse all');
+        assert.equal(folder.querySelectorAll('path').length, 1);
 
+        view.click(folder);
+        assert.deepEqual(folded(view), [true, true, true]);
+        assert.equal(view.$$('.post--open').length, 0);
+        assert.equal(folder.getAttribute('aria-label'), 'Expand months');
+        assert.equal(folder.title, 'Expand months');
+        assert.equal(folder.querySelectorAll('path').length, 1);
+
+        view.click(folder);
         assert.deepEqual(folded(view), [false, false, false]);
+        assert.equal(view.$$('.post--open').length, 0);
+        assert.equal(folder.getAttribute('aria-label'), 'Expand all');
+        assert.equal(folder.title, 'Expand all');
+        assert.equal(folder.querySelectorAll('path').length, 2);
+
+        view.click(folder);
         assert.equal(view.$$('.post--open').length, MANY.length);
+        assert.deepEqual(folded(view), [false, false, false]);
+        assert.equal(folder.getAttribute('aria-label'), 'Collapse all');
+        assert.equal(folder.title, 'Collapse all');
+        assert.equal(folder.querySelectorAll('path').length, 1);
     });
 
-    test('and shuts them again on the way back', () => {
+    test('manual changes update the action instead of advancing a blind counter', () => {
         const view = archive();
+        const folder = view.button('Collapse all');
 
-        view.click(view.button('Expand all'));
-        view.click(view.button('Collapse all'));
+        view.click(folder);
+        view.click(monthToggle(view, 'February 2026'));
 
+        assert.equal(folder.getAttribute('aria-label'), 'Collapse all');
+        view.click(folder);
         assert.deepEqual(folded(view), [true, true, true]);
         assert.equal(view.$$('.post--open').length, 0);
     });
-});
 
-// The control beside it, which stops at the months. This is how an owner finds
-// the letters carrying no photographs: every date on one screen with its count
-// beside it, rather than every date buried under the letter it belongs to.
-describe('expand months', () => {
-    test('unfolds the months and leaves the letters shut', () => {
-        const view = archive();
-
-        view.click(view.button('Expand months'));
-
-        assert.deepEqual(folded(view), [false, false, false]);
-        assert.deepEqual(view.$$('.post--open').map((el) => el.dataset.post), ['2026-03-25-A25']);
-        assert.equal(reachable(view).length, MANY.length);
-    });
-
-    test('and folds them again, without touching the letters either', () => {
-        const view = archive();
-
-        view.click(view.button('Expand months'));
-        view.click(view.button('Collapse months'));
-
-        assert.deepEqual(folded(view), [true, true, true]);
-        assert.deepEqual(view.$$('.post--open').map((el) => el.dataset.post), ['2026-03-25-A25']);
-    });
-
-    test('it opens with the offer the list has not already taken', () => {
-        // A short archive arrives unfolded, so the useful press is the one
-        // that shuts it -- and a button named for what it will not do is a
-        // button pressed once to find out.
-        assert.equal(archive(FEW).button('Collapse months').textContent, '−');
-        assert.equal(archive(MANY).button('Expand months').textContent, '+');
-    });
-
-    test('there is none where there are no months to fold', () => {
-        // And with nothing beside it, the remaining control drops back to a
-        // single glyph rather than being a double of nothing.
+    test('an ungrouped archive skips the months-only state', () => {
         const view = archive([
             letter('2026-03-25-A25', '<p>One.</p>'),
             letter('2026-03-18-A18', '<p>Two.</p>')
         ]);
+        const folder = view.button('Collapse all');
 
-        assert.equal(view.button('Expand months'), undefined);
-        assert.equal(view.button('Expand all').textContent, '+');
+        view.click(folder);
+        assert.equal(folder.getAttribute('aria-label'), 'Expand all');
+        assert.equal(view.$$('.post--open').length, 0);
+
+        view.click(folder);
+        assert.equal(folder.getAttribute('aria-label'), 'Collapse all');
+        assert.equal(view.$$('.post--open').length, 2);
     });
 });

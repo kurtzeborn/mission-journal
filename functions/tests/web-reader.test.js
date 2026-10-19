@@ -62,18 +62,18 @@ describe('the shape of the page', () => {
         assert.deepEqual(expanded(view), ['true', 'false', 'false']);
     });
 
-    test('one control opens the whole archive and then closes it again', () => {
+    test('one control closes the archive and then opens it again', () => {
         const view = page();
         view.mount({ posts: THREE });
 
-        const all = view.button('Expand all');
-        view.click(all);
-        assert.deepEqual(expanded(view), ['true', 'true', 'true']);
-        assert.equal(all.getAttribute('aria-label'), 'Collapse all');
-
+        const all = view.button('Collapse all');
         view.click(all);
         assert.deepEqual(expanded(view), ['false', 'false', 'false']);
         assert.equal(all.getAttribute('aria-label'), 'Expand all');
+
+        view.click(all);
+        assert.deepEqual(expanded(view), ['true', 'true', 'true']);
+        assert.equal(all.getAttribute('aria-label'), 'Collapse all');
     });
 
     test('there is no expand-all on an archive with one letter in it', () => {
