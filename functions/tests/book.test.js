@@ -735,6 +735,100 @@ describe('giving selected photos featured space', () => {
         assert.ok(featured >= largestComparableOrdinary);
     });
 
+    test('treats a visually indistinguishable featured size as equal', () => {
+        const featured = { id: 'featured', width: 1024, height: 576 };
+        const ordinary = { id: 'ordinary', width: 1032, height: 581 };
+        const rows = albumPlan([featured, ordinary], {
+            height: usable,
+            featured: new Set([featured.id]),
+            preferLegibility: true
+        });
+
+        assert.deepEqual(rows.map((row) => row.photos.length), [1, 1]);
+        assert.ok(rows.every((row) => row.height > 240));
+    });
+
+    test('avoids a narrow full-page column when a legible arrangement exists', () => {
+        const photos = [
+            { id: 'square', width: 1500, height: 1476 },
+            { id: 'featured-portrait', width: 2340, height: 4160 },
+            { id: 'landscape', width: 3840, height: 2160 },
+            { id: 'portrait', width: 1200, height: 1600 },
+            { id: 'ordinary-landscape', width: 1600, height: 1200 }
+        ];
+        const rows = albumPlan(photos, {
+            height: usable,
+            featured: new Set(['square', 'featured-portrait']),
+            preferLegibility: true
+        });
+        const widths = rows.map(
+            (row) =>
+                row.photos.reduce(
+                    (sum, photo) => sum + row.height * (photo.width / photo.height),
+                    0
+                ) +
+                10 * (row.photos.length - 1)
+        );
+        const smallestShare =
+            Math.min(
+                ...rows.flatMap((row) =>
+                    row.photos.map(
+                        (photo) =>
+                            row.height ** 2 * (photo.width / photo.height)
+                    )
+                )
+            ) /
+            (COLUMN * usable);
+
+        assert.ok(Math.max(...widths) >= COLUMN / 2);
+        assert.ok(smallestShare >= 0.05);
+    });
+
+    test('groups similar shapes across leaves when that protects the smallest photo', () => {
+        const photos = [
+            { id: 'featured-wide', width: 1600, height: 1066 },
+            { id: 'featured-landscape', width: 2907, height: 1980 },
+            { id: 'featured-standard', width: 2048, height: 1536 },
+            { id: 'portrait', width: 1536, height: 2048 },
+            { id: 'panorama', width: 4128, height: 1908 },
+            { id: 'landscape', width: 4080, height: 2296 },
+            { id: 'narrow-portrait', width: 1884, height: 4080 },
+            { id: 'wide', width: 3520, height: 1980 }
+        ];
+        const leaves = albumLeaves(photos, {
+            pages: 2,
+            height: usable,
+            featured: new Set([
+                'featured-wide',
+                'featured-landscape',
+                'featured-standard'
+            ])
+        });
+        const smallestShare =
+            Math.min(
+                ...leaves.flatMap((leaf) =>
+                    leaf.rows.flatMap((row) =>
+                        row.photos.map(
+                            (photo) =>
+                                row.height ** 2 * (photo.width / photo.height)
+                        )
+                    )
+                )
+            ) /
+            (COLUMN * usable);
+
+        assert.ok(
+            leaves.every((leaf) =>
+                leaf.photos.some((photo) => photo.id.startsWith('featured-'))
+            )
+        );
+        // The 5% floor is deliberately soft: this extreme mix cannot quite
+        // reach it without making a featured landscape smaller than an
+        // ordinary one, but shape grouping still keeps the weakest picture
+        // far above the previous thumbnail-sized result.
+        assert.ok(smallestShare >= 0.04);
+    });
+
     test('keeps featured photos at least as large as comparable ordinary photos across leaves', () => {
         const dimensions = [
             [2040, 1530],
