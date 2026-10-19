@@ -18,7 +18,11 @@ const READER_FIELDS = [
     // Only present in the gap between ingest and render, or if a render never
     // succeeded. Carried so a letter is legible rather than blank in that case.
     'bodyText',
-    'photos'
+    'photos',
+    // Public presentation metadata: readers may eventually use it to group
+    // featured pictures, and the printed-book pipeline uses this same
+    // projection before laying out those pictures at their larger size.
+    'featuredPhotoIds'
 ];
 
 // The owner is the missionary's family member who runs the site. They see the
@@ -26,7 +30,6 @@ const READER_FIELDS = [
 // whether to publish it.
 const OWNER_FIELDS = [
     ...READER_FIELDS,
-    'featuredPhotoIds',
     'hidden',
     'heldReason',
     'editedBy',
