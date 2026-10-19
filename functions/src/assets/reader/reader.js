@@ -528,7 +528,7 @@ window.Reader = (function () {
         // An owner may still need this empty destination: a terminal burst of
         // emailed photos is moved into it below, where the feature controls
         // belong. If nothing moves in, renderPost removes it again.
-        if (!loose.length && !admin?.featurePhoto) return null;
+        if (!loose.length && !admin?.featurePhoto && !admin?.rotatePhoto) return null;
 
         const album = document.createElement('ul');
         album.className = 'album';
@@ -620,25 +620,40 @@ window.Reader = (function () {
         button.title = featureLabel(selected);
     }
 
-    function decorateAlbumFeatures(post, album, admin) {
-        if (!album || !admin?.featurePhoto) return;
+    function decorateAlbumControls(post, album, admin) {
+        if (!album) return;
 
         const selected = new Set(post.featuredPhotoIds ?? []);
         for (const item of album.querySelectorAll('li[data-photo]')) {
-            if (item.querySelector('.album__feature')) continue;
+            if (admin?.featurePhoto && !item.querySelector('.album__feature')) {
+                const feature = document.createElement('button');
+                feature.type = 'button';
+                feature.className = 'album__feature';
+                feature.dataset.photo = item.dataset.photo;
 
-            const feature = document.createElement('button');
-            feature.type = 'button';
-            feature.className = 'album__feature';
-            feature.dataset.photo = item.dataset.photo;
+                const star = document.createElement('i');
+                star.className = 'fa-solid fa-star';
+                star.setAttribute('aria-hidden', 'true');
+                feature.append(star);
 
-            const star = document.createElement('i');
-            star.className = 'fa-solid fa-star';
-            star.setAttribute('aria-hidden', 'true');
-            feature.append(star);
+                paintFeature(feature, selected.has(item.dataset.photo));
+                item.append(feature);
+            }
 
-            paintFeature(feature, selected.has(item.dataset.photo));
-            item.append(feature);
+            if (admin?.rotatePhoto && !item.querySelector('.album__rotate')) {
+                const rotate = document.createElement('button');
+                rotate.type = 'button';
+                rotate.className = 'album__rotate';
+                rotate.dataset.photo = item.dataset.photo;
+                rotate.title = 'Rotate this photograph clockwise';
+                rotate.setAttribute('aria-label', rotate.title);
+
+                const arrow = document.createElement('i');
+                arrow.className = 'fa-solid fa-rotate-right';
+                arrow.setAttribute('aria-hidden', 'true');
+                rotate.append(arrow);
+                item.append(rotate);
+            }
         }
     }
 
@@ -832,10 +847,10 @@ window.Reader = (function () {
             album.remove();
             album = null;
         }
-        decorateAlbumFeatures(post, album, admin);
+        decorateAlbumControls(post, album, admin);
 
         let featureStatus = null;
-        if (album && admin?.featurePhoto) {
+        if (album && (admin?.featurePhoto || admin?.rotatePhoto)) {
             featureStatus = document.createElement('p');
             featureStatus.className = 'album__status';
             featureStatus.setAttribute('role', 'status');
@@ -1180,6 +1195,45 @@ window.Reader = (function () {
                 return;
             }
 
+            const rotate = event.target.closest?.('.album__rotate');
+            if (rotate) {
+                const photoId = rotate.dataset.photo;
+                const turn = async () => {
+                    const controls = [
+                        ...album.querySelectorAll('.album__feature, .album__rotate')
+                    ];
+                    for (const control of controls) control.disabled = true;
+
+                    const failed = await admin.rotatePhoto(post.id, photoId);
+
+                    for (const control of controls) control.disabled = false;
+                    if (failed) return failed;
+
+                    const photo = (post.photos ?? []).find((entry) => entry.id === photoId);
+                    if (photo) {
+                        [photo.width, photo.height] = [photo.height, photo.width];
+                        photo.turns = ((Number(photo.turns) || 0) + 1) % 4;
+                        if (!photo.turns) delete photo.turns;
+                    }
+
+                    const token = `rotation=${Date.now()}`;
+                    const thumb = `${photoSrc(photoId, 'thumb')}?${token}`;
+                    const large = `${photoSrc(photoId, 'large')}?${token}`;
+                    const item = rotate.closest('li');
+                    const image = item.querySelector('img');
+                    if (image) setPhotoUrl(image, thumb);
+                    const frame = item.querySelector(`.${PHOTO_FRAME}`);
+                    if (frame) frame.dataset.large = large;
+                    const link = item.querySelector('a');
+                    if (link) link.href = large;
+
+                    return 'Photo rotated clockwise.';
+                };
+
+                runFeature('Rotating…', turn);
+                return;
+            }
+
             const drop = event.target.closest?.('.album__remove');
             if (!drop) return;
             dropped.add(drop.dataset.photo);
@@ -1245,7 +1299,7 @@ window.Reader = (function () {
             // letter is already open -- nothing is going to open it again.
             loadPhotos(body);
             mergeTrailingRun(body, album);
-            decorateAlbumFeatures(post, album, admin);
+            decorateAlbumControls(post, album, admin);
             close();
         };
 

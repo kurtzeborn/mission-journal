@@ -94,12 +94,25 @@ async function owner({ posts = LETTERS, chose = null, maxPhotos = 48, refuseAt =
     return {
         ...view,
         admin,
+        network: net.calls,
         uploads,
         /** Which letter each picture was posted to, in the order they went. */
         landings: () =>
             uploads().map((call) => decodeURIComponent(call.url.split('/').slice(-2)[0])),
         dates: () => uploads().map((call) => call.headers['X-Taken-At'] ?? null)
     };
+
+    test('rotating a photo uses the scoped owner endpoint without reloading', async () => {
+        const view = await owner();
+
+        const failed = await view.admin.rotatePhoto('b', 'p_example');
+
+        assert.equal(failed, null);
+        assert.ok(view.network.some((call) =>
+            call.method === 'PATCH' &&
+            call.url.endsWith('/posts/elder.example/b/photos/p_example/rotate')
+        ));
+    });
 }
 
 const said = [];

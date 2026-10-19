@@ -7,7 +7,7 @@
 
 import { extractOriginal } from './extract.js';
 import { redactAccessLinks, sanitizeBody, photoUrl } from './sanitize.js';
-import { storePhoto, isPhotoType, MAX_PHOTOS } from './photos.js';
+import { rotateStoredPhoto, storePhoto, isPhotoType, MAX_PHOTOS } from './photos.js';
 import { photoId } from './paths.js';
 import { stripAlbumLinks } from './album.js';
 
@@ -174,7 +174,24 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, restore, su
         // deliberately so: putting a letter back the way it arrived means back
         // to the pictures that arrived with it.
         const added = restore ? [] : (posts[index].photos ?? []).filter((photo) => photo.addedAt);
-        const all = [...photos, ...added];
+        const rotations = new Map(
+            posts
+                .flatMap((post) => post.photos ?? [])
+                .filter((photo) => photo.turns)
+                .map((photo) => [photo.id, photo.turns])
+        );
+        const all = await Promise.all([...photos, ...added].map(async (photo) => {
+            const turns = rotations.get(photo.id);
+            if (!turns) return photo;
+
+            const rotated = await rotateStoredPhoto({
+                store,
+                slug,
+                id: photo.id,
+                turns
+            });
+            return rotated ? { ...photo, ...rotated } : photo;
+        }));
 
         posts[index] = { ...posts[index], bodyHtml, photos: all };
 
