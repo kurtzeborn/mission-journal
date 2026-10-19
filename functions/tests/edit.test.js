@@ -157,6 +157,23 @@ describe('an edited body goes through the sanitizer', () => {
 
         assert.deepEqual(next.featuredPhotoIds, ['p_0eade5b54243']);
     });
+
+    test('editing a letter with ten attachments keeps three valid selections', () => {
+        const photos = Array.from({ length: 10 }, (_, index) => ({
+            id: `p_${index}`,
+            width: 800,
+            height: 600
+        }));
+        const target = post({
+            bodyHtml: '<p>hello</p>',
+            photos,
+            featuredPhotoIds: ['p_0', 'p_1', 'p_2']
+        });
+
+        const { post: next } = edit({ bodyHtml: '<p>hello again</p>' }, target);
+
+        assert.deepEqual(next.featuredPhotoIds, ['p_0', 'p_1', 'p_2']);
+    });
 });
 
 describe('committing the change', () => {

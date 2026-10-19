@@ -475,6 +475,23 @@ describe('choosing featured book photos', () => {
         );
     });
 
+    test('a letter with ten attached photos may feature a third', async () => {
+        const photos = Array.from({ length: 10 }, (_, index) => loose(`p_${index}`));
+        const store = await seeded(photos, { featuredPhotoIds: ['p_0', 'p_1'] });
+
+        const response = await featured(store, {
+            as: MUM,
+            photoId: 'p_2',
+            featured: true
+        });
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(
+            store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
+            ['p_0', 'p_1', 'p_2']
+        );
+    });
+
     test('a photo inside the letter cannot be featured', async () => {
         const store = await seeded(
             [loose('p_inline')],

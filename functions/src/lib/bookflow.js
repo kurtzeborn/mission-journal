@@ -292,3 +292,19 @@ export function trailingPhotoIds(blocks) {
 
     return ids;
 }
+
+export function featuredPhotoLimit(photoCount) {
+    return Math.max(2, Math.floor(Math.max(0, photoCount) / 5) + 1);
+}
+
+export function featureablePhotoIds(post, slug) {
+    const blocks = flowBody(post.bodyHtml ?? '', slug);
+    const trailing = new Set(trailingPhotoIds(blocks));
+    const inline = new Set(inlinePhotoIds(blocks));
+
+    return new Set(
+        (post.photos ?? [])
+            .filter((photo) => !inline.has(photo.id) || trailing.has(photo.id))
+            .map((photo) => photo.id)
+    );
+}

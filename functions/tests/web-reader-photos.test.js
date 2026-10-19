@@ -455,9 +455,11 @@ describe('pictures an owner adds', () => {
         }]);
         assert.equal(star.getAttribute('aria-pressed'), 'true');
         assert.equal(
-            view.$('.admin__status').textContent,
+            view.$('.album__status').textContent,
             'This photo will be larger in the printed book.'
         );
+        assert.equal(view.$('.album__status').nextElementSibling, view.$('.album'));
+        assert.equal(view.$('.admin__status').textContent, '');
     });
 
     test('an existing featured selection is drawn as selected', () => {
@@ -477,7 +479,29 @@ describe('pictures an owner adds', () => {
         await settled();
 
         assert.deepEqual(calls, []);
-        assert.match(view.$('.admin__status').textContent, /already has two featured photos/);
+        assert.equal(
+            view.$('.album__status').textContent,
+            'This letter can have up to 2 featured photos. Remove one before adding another.'
+        );
+    });
+
+    test('ten attached photos allow a third featured photo', async () => {
+        const photos = Array.from({ length: 10 }, (_, index) => ({ id: `a${index}` }));
+        const { view, calls } = owner({
+            photos,
+            featuredPhotoIds: ['a0', 'a1']
+        });
+
+        view.click(view.$$('.album__feature')[2]);
+        await settled();
+
+        assert.deepEqual(calls, [{
+            verb: 'feature',
+            id: '2026-03-25-9CRE',
+            photoId: 'a2',
+            selected: true
+        }]);
+        assert.equal(view.$$('.album__feature')[2].getAttribute('aria-pressed'), 'true');
     });
 
     test('only the ones an owner added can be taken back off', () => {

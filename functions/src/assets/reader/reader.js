@@ -610,6 +610,9 @@ window.Reader = (function () {
             ? 'Remove this photograph from the featured book photos'
             : 'Feature this photograph in the printed book';
 
+    const featuredPhotoLimit = (photoCount) =>
+        Math.max(2, Math.floor(Math.max(0, photoCount) / 5) + 1);
+
     function paintFeature(button, selected) {
         button.classList.toggle('is-featured', selected);
         button.setAttribute('aria-pressed', String(selected));
@@ -831,12 +834,29 @@ window.Reader = (function () {
         }
         decorateAlbumFeatures(post, album, admin);
 
+        let featureStatus = null;
+        if (album && admin?.featurePhoto) {
+            featureStatus = document.createElement('p');
+            featureStatus.className = 'album__status';
+            featureStatus.setAttribute('role', 'status');
+            featureStatus.hidden = true;
+            album.before(featureStatus);
+        }
+
         // Assembled before the owner controls are built, because those insert
         // the subject field next to the heading and `insertAdjacentElement`
         // needs the heading to already have a parent to insert alongside.
         item.append(subject, panel);
 
-        if (admin) panel.append(renderAdmin(post, admin, { subject, body, photoSrc, album }));
+        if (admin) {
+            panel.append(renderAdmin(post, admin, {
+                subject,
+                body,
+                photoSrc,
+                album,
+                featureStatus
+            }));
+        }
 
         const view = { id: post.id, item, toggle, panel, body, title, hits };
         toggle.addEventListener('click', () => {
@@ -870,7 +890,7 @@ window.Reader = (function () {
     // contenteditable scaffolds with are removed by the same pass that cleans
     // up after Outlook.
     function renderAdmin(post, admin, view) {
-        const { subject: heading, body, photoSrc, album } = view;
+        const { subject: heading, body, photoSrc, album, featureStatus } = view;
 
         // Wraps the row so that the rule separating the letter from its
         // controls sits above everything owner-only, the edited note included.
@@ -886,9 +906,8 @@ window.Reader = (function () {
         label.className = 'admin__label';
         label.textContent = 'Owner tools:';
 
-        // One status line for everything an owner does to this letter. Two of
-        // them -- one above the pictures and one below -- would be a message
-        // in whichever place the owner happened not to be looking.
+        // Editing and upload feedback stays with the owner toolbar. Featured
+        // photo feedback belongs above the photo strip where the action was.
         const status = document.createElement('span');
         status.className = 'admin__status';
         status.setAttribute('role', 'status');
@@ -948,6 +967,17 @@ window.Reader = (function () {
         const run = async (working, action) => {
             say(working);
             say((await action(say)) ?? '');
+        };
+
+        const sayFeature = (text) => {
+            if (!featureStatus) return;
+            featureStatus.textContent = text;
+            featureStatus.hidden = !text;
+        };
+
+        const runFeature = async (working, action) => {
+            sayFeature(working);
+            sayFeature((await action()) ?? '');
         };
 
         // Hiding and unhiding are one button and want two glyphs: a bar across
@@ -1115,9 +1145,14 @@ window.Reader = (function () {
                 const photoId = feature.dataset.photo;
                 const selected = (post.featuredPhotoIds ?? []).includes(photoId);
                 const current = post.featuredPhotoIds ?? [];
+                const attached = album.querySelectorAll('li[data-photo]').length;
+                const limit = featuredPhotoLimit(attached);
 
-                if (!selected && current.length >= 2) {
-                    say('This letter already has two featured photos. Remove one before adding another.');
+                if (!selected && current.length >= limit) {
+                    sayFeature(
+                        `This letter can have up to ${limit} featured photos. ` +
+                        'Remove one before adding another.'
+                    );
                     return;
                 }
 
@@ -1141,7 +1176,7 @@ window.Reader = (function () {
                         : 'This photo will be larger in the printed book.';
                 };
 
-                run('Saving…', choose);
+                runFeature('Saving…', choose);
                 return;
             }
 
