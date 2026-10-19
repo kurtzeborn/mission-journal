@@ -31,6 +31,7 @@ import {
     monthLabel,
     photoBox,
     printPhoto,
+    prioritizedEndingAlbum,
     reserve,
     runningHead,
 } from '../src/lib/book.js';
@@ -437,6 +438,24 @@ describe('sharing the end of a letter with its album', () => {
         assert.deepEqual([...ending.shared, ...ending.remaining], photos);
     });
 
+    test('uses partial-page room for ordinary photos before featured ones', () => {
+        const photos = Array.from({ length: 8 }, (_, id) => ({ id: `p${id}` }));
+        const featured = new Set(['p1', 'p2']);
+        const ending = prioritizedEndingAlbum(photos, {
+            featured,
+            remaining: usable,
+            usable
+        });
+
+        assert.equal(ending.shared.length, 3);
+        assert.ok(ending.shared.every((photo) => !featured.has(photo.id)));
+        assert.deepEqual(ending.remaining.slice(0, 2).map((photo) => photo.id), ['p1', 'p2']);
+        assert.deepEqual(
+            [...ending.shared, ...ending.remaining].map((photo) => photo.id).sort(),
+            photos.map((photo) => photo.id).sort()
+        );
+    });
+
     test('fills a leaf that chapter alignment would otherwise leave blank', () => {
         const photos = range(4);
         const ending = endingAlbum(photos, {
@@ -649,7 +668,7 @@ describe('giving selected photos featured space', () => {
                 }))
             );
 
-    test('keeps featured photos in the ordinary page budget and in album order', () => {
+    test('keeps featured photos in the ordinary page budget and distributes them across leaves', () => {
         const photos = Array.from({ length: 10 }, (_, index) => ({
             ...(index % 2 ? tall : wide),
             id: `p${index}`
@@ -663,10 +682,14 @@ describe('giving selected photos featured space', () => {
 
         assert.equal(leaves.length, pages);
         assert.ok(leaves.every((leaf) => leaf.photos.length > 0 && leaf.photos.length <= 6));
-        assert.deepEqual(leaves.flatMap((leaf) => leaf.photos), photos);
+        assert.deepEqual(
+            leaves.flatMap((leaf) => leaf.photos).map((photo) => photo.id).sort(),
+            photos.map((photo) => photo.id).sort()
+        );
+        assert.ok(leaves.every((leaf) => leaf.photos.some((photo) => ['p1', 'p7'].includes(photo.id))));
     });
 
-    test('keeps featured photos out of the smallest size tier when an efficient layout can', () => {
+    test('does not make a featured photo smaller than an ordinary photo of the same orientation', () => {
         const photos = [
             { ...wide, id: 'p0' },
             { ...tall, id: 'p1' },
@@ -683,11 +706,59 @@ describe('giving selected photos featured space', () => {
             })
         );
         const featured = laidOut.find((entry) => entry.id === 'p1').area;
-        const smallestOrdinary = Math.min(
-            ...laidOut.filter((entry) => entry.id !== 'p1').map((entry) => entry.area)
+        const largestComparableOrdinary = Math.max(
+            ...laidOut
+                .filter((entry) => ['p3', 'p5'].includes(entry.id))
+                .map((entry) => entry.area)
         );
 
-        assert.ok(featured >= smallestOrdinary * 1.05);
+        assert.ok(featured >= largestComparableOrdinary);
+    });
+
+    test('keeps featured photos at least as large as comparable ordinary photos across leaves', () => {
+        const dimensions = [
+            [2040, 1530],
+            [2448, 3264],
+            [3060, 4080],
+            [3096, 4128],
+            [3060, 4080],
+            [3060, 4080],
+            [3096, 4128],
+            [1377, 1836],
+            [1530, 2040],
+            [1530, 2040],
+            [1836, 1377],
+            [2048, 1536]
+        ];
+        const photos = dimensions.map(([width, height], index) => ({
+            id: `p${index}`,
+            width,
+            height
+        }));
+        const selected = new Set(['p0', 'p7', 'p10']);
+        const laidOut = areas(
+            albumLeaves(photos, {
+                pages: albumPageCount(photos.length),
+                height: usable,
+                featured: selected
+            })
+        );
+        const orientation = (photo) => {
+            const aspect = photo.width / photo.height;
+            if (aspect > 1.1) return 'landscape';
+            if (aspect < 0.9) return 'portrait';
+            return 'square';
+        };
+
+        for (const entry of laidOut.filter(({ id }) => selected.has(id))) {
+            const photo = photos.find(({ id }) => id === entry.id);
+            const comparable = laidOut.filter(({ id }) => {
+                const candidate = photos.find((item) => item.id === id);
+                return !selected.has(id) && orientation(candidate) === orientation(photo);
+            });
+
+            assert.ok(entry.area >= Math.max(...comparable.map(({ area }) => area)));
+        }
     });
 
     test('the allowance grows once for every five attached photos from ten onward', () => {

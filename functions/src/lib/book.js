@@ -1105,36 +1105,59 @@ const photoAreas = (rows) =>
         }))
     );
 
+const orientationOf = (photo) => {
+    const aspect = aspectOf(photo);
+    if (aspect > 1.1) return 'landscape';
+    if (aspect < 0.9) return 'portrait';
+    return 'square';
+};
+
+const prominenceOf = (entries, featured) => {
+    const ordinary = entries.filter((entry) => !featured.has(entry.photo.id));
+    const ratios = entries
+        .filter((entry) => featured.has(entry.photo.id))
+        .map((entry) => {
+            const comparable = ordinary.filter(
+                (candidate) => orientationOf(candidate.photo) === orientationOf(entry.photo)
+            );
+            if (!comparable.length) return Number.POSITIVE_INFINITY;
+            return entry.area / Math.max(...comparable.map((candidate) => candidate.area));
+        });
+
+    return ratios.length ? Math.min(...ratios) : 0;
+};
+
 const planMetrics = (rows, featured) => {
     const entries = photoAreas(rows);
     const areas = entries.map((entry) => entry.area);
     const featuredAreas = entries
         .filter((entry) => featured.has(entry.photo.id))
         .map((entry) => entry.area);
-    const ordinaryAreas = entries
-        .filter((entry) => !featured.has(entry.photo.id))
-        .map((entry) => entry.area);
-    const ordinaryLeast = ordinaryAreas.length ? Math.min(...ordinaryAreas) : 0;
+    const prominence = prominenceOf(entries, featured);
 
     return {
         rows,
         area: areas.reduce((sum, value) => sum + value, 0),
         least: areas.length ? Math.min(...areas) : 0,
         featuredLeast: featuredAreas.length ? Math.min(...featuredAreas) : 0,
-        prominent:
-            featuredAreas.length > 0 &&
-            (!ordinaryAreas.length ||
-                featuredAreas.every((area) => area + 0.01 >= ordinaryLeast * 1.05))
+        prominence,
+        prominent: featuredAreas.length > 0 && prominence + 0.0001 >= 1
     };
 };
 
 const chooseFeaturedPlan = (candidates) => {
-    const mostArea = Math.max(...candidates.map((candidate) => candidate.area));
-    const efficient = candidates.filter((candidate) => candidate.area >= mostArea * 0.95);
-    const prominent = efficient.filter((candidate) => candidate.prominent);
-    const pool = prominent.length ? prominent : efficient;
+    const prominent = candidates.filter((candidate) => candidate.prominent);
+    if (!prominent.length) {
+        return candidates.sort(
+            (a, b) =>
+                b.prominence - a.prominence ||
+                b.featuredLeast - a.featuredLeast ||
+                b.area - a.area ||
+                b.least - a.least
+        )[0];
+    }
 
-    return pool.sort(
+    return prominent.sort(
         (a, b) =>
             b.featuredLeast - a.featuredLeast ||
             b.area - a.area ||
@@ -1148,13 +1171,21 @@ export function albumPlan(
 ) {
     if (!photos.length) return [];
 
-    const selected = new Set(photos.filter((photo) => featured.has(photo.id)).map((photo) => photo.id));
+    const selected = new Set(
+        photos.filter((photo) => featured.has(photo.id)).map((photo) => photo.id)
+    );
+    const ordered = selected.size
+        ? [
+              ...photos.filter((photo) => selected.has(photo.id)),
+              ...photos.filter((photo) => !selected.has(photo.id))
+          ]
+        : photos;
     const candidates = [];
 
-    const partitions = selected.size && photos.length <= ALBUM_MOST
-        ? rowPartitions(photos)
-        : Array.from({ length: photos.length }, (_, index) =>
-              albumSpread(photos, { pages: index + 1 })
+    const partitions = selected.size && ordered.length <= ALBUM_MOST
+        ? rowPartitions(ordered)
+        : Array.from({ length: ordered.length }, (_, index) =>
+              albumSpread(ordered, { pages: index + 1 })
           );
 
     for (const bands of partitions) {
@@ -1216,6 +1247,26 @@ export function endingAlbum(photos, { remaining, usable, page = 0, fillChapterBl
         remaining: photos.slice(shared),
         pages
     };
+}
+
+export function prioritizedEndingAlbum(
+    photos,
+    { featured = new Set(), remaining, usable, page = 0, fillChapterBlank = false }
+) {
+    const ending = endingAlbum(photos, { remaining, usable, page, fillChapterBlank });
+    const sharedCount = ending.shared.length;
+    if (!featured.size || !sharedCount) return ending;
+
+    // Blank space below the letter is useful, but it is still partial-page
+    // space. Spend it on ordinary pictures first and keep selected pictures
+    // for the full album leaves whenever the count permits.
+    const selected = photos.filter((photo) => featured.has(photo.id));
+    const ordinary = photos.filter((photo) => !featured.has(photo.id));
+    const shared = [...ordinary, ...selected].slice(0, sharedCount);
+    const sharedIds = new Set(shared.map((photo) => photo.id));
+    const rest = [...selected, ...ordinary].filter((photo) => !sharedIds.has(photo.id));
+
+    return { ...ending, shared, remaining: rest };
 }
 
 /**
@@ -1282,16 +1333,50 @@ const leavesForSizes = (photos, sizes, { height, featured }) => {
     return leaves;
 };
 
+const dealtLeaves = (photos, sizes, { height, featured, matchOrientation = false }) => {
+    const leaves = sizes.map(() => []);
+    const selected = photos.filter((photo) => featured.has(photo.id));
+    const ordinary = photos.filter((photo) => !featured.has(photo.id));
+
+    const available = () =>
+        leaves
+            .map((leaf, index) => ({ index, fullness: leaf.length / sizes[index] }))
+            .filter(({ index }) => leaves[index].length < sizes[index]);
+    const place = (photo, choices = available()) => {
+        const [{ index }] = choices.sort(
+            (a, b) => a.fullness - b.fullness || a.index - b.index
+        );
+        leaves[index].push(photo);
+    };
+
+    for (const photo of selected) place(photo);
+    for (const photo of ordinary) {
+        const choices = available();
+        const comparable = matchOrientation
+            ? choices.filter(({ index }) =>
+                  leaves[index].some(
+                      (candidate) =>
+                          featured.has(candidate.id) &&
+                          orientationOf(candidate) === orientationOf(photo)
+                  )
+              )
+            : [];
+        place(photo, comparable.length ? comparable : choices);
+    }
+
+    return leaves.map((leaf) => ({
+        photos: leaf,
+        rows: albumPlan(leaf, { height, featured })
+    }));
+};
+
 const spreadMetrics = (leaves, featured) => {
     const entries = leaves.flatMap((leaf) => photoAreas(leaf.rows));
     const areas = entries.map((entry) => entry.area);
     const featuredAreas = entries
         .filter((entry) => featured.has(entry.photo.id))
         .map((entry) => entry.area);
-    const ordinaryAreas = entries
-        .filter((entry) => !featured.has(entry.photo.id))
-        .map((entry) => entry.area);
-    const ordinaryLeast = ordinaryAreas.length ? Math.min(...ordinaryAreas) : 0;
+    const prominence = prominenceOf(entries, featured);
     const counts = leaves.map((leaf) => leaf.photos.length);
 
     return {
@@ -1299,10 +1384,8 @@ const spreadMetrics = (leaves, featured) => {
         area: areas.reduce((sum, value) => sum + value, 0),
         least: areas.length ? Math.min(...areas) : 0,
         featuredLeast: featuredAreas.length ? Math.min(...featuredAreas) : 0,
-        prominent:
-            featuredAreas.length > 0 &&
-            (!ordinaryAreas.length ||
-                featuredAreas.every((area) => area + 0.01 >= ordinaryLeast * 1.05)),
+        prominence,
+        prominent: featuredAreas.length > 0 && prominence + 0.0001 >= 1,
         imbalance: Math.max(...counts) - Math.min(...counts)
     };
 };
@@ -1310,11 +1393,13 @@ const spreadMetrics = (leaves, featured) => {
 /**
  * Arrange an album inside its existing page budget.
  *
- * Featured pictures are a preference, not a second album. The page count is
- * fixed before this runs, every split remains contiguous, and no leaf holds
- * more than the ordinary six-photo limit. Within that budget, page breaks and
- * rows may shift so a selected picture avoids the smallest size tier whenever
- * an efficient arrangement permits it.
+ * Featured pictures are a preference, not a second album. The ordinary page
+ * count and six-photo limit stay fixed, but printed order may change. Bounded
+ * alternatives distribute featured anchors and their similarly oriented
+ * neighbours across the leaves. A featured picture must be at least as large
+ * as every ordinary picture of the same orientation whenever that is feasible;
+ * among those arrangements, make the smallest featured picture as large as
+ * possible before optimizing total coverage and balance.
  */
 export function albumLeaves(
     photos,
@@ -1326,7 +1411,9 @@ export function albumLeaves(
 ) {
     if (!photos.length || pages < 1) return [];
 
-    const selected = new Set(photos.filter((photo) => featured.has(photo.id)).map((photo) => photo.id));
+    const selected = new Set(
+        photos.filter((photo) => featured.has(photo.id)).map((photo) => photo.id)
+    );
     if (!selected.size) {
         return albumSpread(photos, { pages }).map((leaf) => ({
             photos: leaf,
@@ -1334,21 +1421,38 @@ export function albumLeaves(
         }));
     }
 
-    const candidates = pageSizePlans(photos.length, pages).map((sizes) =>
-        spreadMetrics(leavesForSizes(photos, sizes, { height, featured: selected }), selected)
-    );
-    const mostArea = candidates.reduce(
-        (maximum, candidate) => Math.max(maximum, candidate.area),
-        0
-    );
-    const efficient = candidates.filter((candidate) => candidate.area >= mostArea * 0.95);
-    const prominent = efficient.filter((candidate) => candidate.prominent);
-    const pool = prominent.length ? prominent : efficient;
+    const ordered = [
+        ...photos.filter((photo) => selected.has(photo.id)),
+        ...photos.filter((photo) => !selected.has(photo.id))
+    ];
+    const candidates = pageSizePlans(ordered.length, pages).flatMap((sizes) => [
+        spreadMetrics(
+            leavesForSizes(ordered, sizes, { height, featured: selected }),
+            selected
+        ),
+        spreadMetrics(
+            dealtLeaves(ordered, sizes, { height, featured: selected }),
+            selected
+        ),
+        spreadMetrics(
+            dealtLeaves(ordered, sizes, {
+                height,
+                featured: selected,
+                matchOrientation: true
+            }),
+            selected
+        )
+    ]);
+    const prominent = candidates.filter((candidate) => candidate.prominent);
+    const pool = prominent.length ? prominent : candidates;
 
     return pool.sort(
         (a, b) =>
-            b.featuredLeast - a.featuredLeast ||
-            b.area - a.area ||
+            (prominent.length
+                ? b.featuredLeast - a.featuredLeast
+                : b.prominence - a.prominence) ||
+            (prominent.length ? b.area - a.area : b.featuredLeast - a.featuredLeast) ||
+            (!prominent.length ? b.area - a.area : 0) ||
             b.least - a.least ||
             a.imbalance - b.imbalance
     )[0].leaves;
@@ -1597,7 +1701,8 @@ function setLetter(doc, { post, slug, images, state, fillChapterBlank = false })
     const pageUsable = TEXT_BOTTOM - MARGIN.top;
 
     const remaining = TEXT_BOTTOM - doc.y;
-    const ending = endingAlbum(album, {
+    const ending = prioritizedEndingAlbum(album, {
+        featured: requested,
         remaining,
         usable: pageUsable,
         page: state.page,
