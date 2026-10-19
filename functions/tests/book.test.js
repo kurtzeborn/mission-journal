@@ -546,6 +546,14 @@ describe('laying photographs out in an album', () => {
         assert.ok(last.height <= 120);
     });
 
+    test('allows four in a row only when all four are portraits', () => {
+        const portraits = albumRows([tall, tall, tall, tall], { target: 100 });
+        const mixed = albumRows([tall, tall, tall, wide], { target: 120 });
+
+        assert.equal(portraits[0].photos.length, 4);
+        assert.deepEqual(mixed.map((row) => row.photos.length), [3, 1]);
+    });
+
     test('keeps every photograph, in the order they arrived', () => {
         const photos = [wide, tall, wide, wide, tall, wide, wide];
         const flat = albumRows(photos, { target: 110 }).flatMap((row) => row.photos);
@@ -639,6 +647,18 @@ describe('filling a leaf that has nothing else on it', () => {
             assert.ok(Math.max(...widths(rows)) <= COLUMN + 0.01, `${count} overran the column`);
             assert.ok(stacked(rows) <= usable + 0.01, `${count} overran the page`);
         }
+    });
+
+    test('never puts four mixed-orientation photographs in one row', () => {
+        const rows = albumPlan([tall, tall, tall, wide], { height: usable });
+
+        assert.ok(
+            rows.every(
+                (row) =>
+                    row.photos.length <= 3 ||
+                    row.photos.every((photo) => photo.width / photo.height < 0.9)
+            )
+        );
     });
 
     test('keeps every photograph, in the order they arrived', () => {

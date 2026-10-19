@@ -176,6 +176,10 @@ const ALBUM_AFTER_TEXT = 18;
 const aspectOf = (photo) =>
     photo?.width > 0 && photo?.height > 0 ? photo.width / photo.height : 4 / 3;
 
+const portrait = (photo) => aspectOf(photo) < 0.9;
+const albumRowAllowed = (photos) =>
+    photos.length <= 3 || (photos.length === 4 && photos.every(portrait));
+
 const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 const SITE_NAME = 'PDayLetters.com';
@@ -984,11 +988,20 @@ export function albumRows(photos, { target, width = COLUMN, gap = ALBUM_GAP }) {
     let aspects = 0;
 
     for (const photo of photos) {
+        if (row.length && !albumRowAllowed([...row, photo])) {
+            rows.push({
+                photos: row,
+                height: (width - gap * (row.length - 1)) / aspects
+            });
+            row = [];
+            aspects = 0;
+        }
+
         row.push(photo);
         aspects += aspectOf(photo);
 
         const height = (width - gap * (row.length - 1)) / aspects;
-        if (height <= target) {
+        if (height <= target || row.length === 4) {
             rows.push({ photos: row, height });
             row = [];
             aspects = 0;
@@ -1077,8 +1090,9 @@ const rowPartitions = (photos) => {
             return;
         }
 
-        for (let end = at + 1; end <= photos.length; end += 1) {
-            visit(end, [...rows, photos.slice(at, end)]);
+        for (let end = at + 1; end <= Math.min(photos.length, at + 4); end += 1) {
+            const row = photos.slice(at, end);
+            if (albumRowAllowed(row)) visit(end, [...rows, row]);
         }
     };
 
@@ -1108,7 +1122,7 @@ const photoAreas = (rows) =>
 const orientationOf = (photo) => {
     const aspect = aspectOf(photo);
     if (aspect > 1.1) return 'landscape';
-    if (aspect < 0.9) return 'portrait';
+    if (portrait(photo)) return 'portrait';
     return 'square';
 };
 
@@ -1182,11 +1196,12 @@ export function albumPlan(
         : photos;
     const candidates = [];
 
-    const partitions = selected.size && ordered.length <= ALBUM_MOST
-        ? rowPartitions(ordered)
-        : Array.from({ length: ordered.length }, (_, index) =>
-              albumSpread(ordered, { pages: index + 1 })
-          );
+    const partitions =
+        selected.size && ordered.length <= ALBUM_MOST
+            ? rowPartitions(ordered)
+            : Array.from({ length: ordered.length }, (_, index) =>
+                  albumSpread(ordered, { pages: index + 1 })
+              ).filter((bands) => bands.every(albumRowAllowed));
 
     for (const bands of partitions) {
         const rows = plannedRows(bands, { height, width, gap });
