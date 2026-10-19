@@ -42,10 +42,15 @@ const request = ({ as, photoId = PHOTO, size = 'large', ifNoneMatch = null }) =>
 });
 
 /** An archive with one letter carrying one picture, and the blobs behind it. */
-async function seeded({ hidden = false } = {}) {
+async function seeded({ hidden = false, turns = 0 } = {}) {
     const store = memoryStore();
     store.acl(SLUG, MEMBERS);
-    const post = { id: POST, subject: 'Antigua at last', bodyHtml: '<p>Hola</p>', photos: [{ id: PHOTO }] };
+    const post = {
+        id: POST,
+        subject: 'Antigua at last',
+        bodyHtml: '<p>Hola</p>',
+        photos: [{ id: PHOTO, ...(turns ? { turns } : {}) }]
+    };
     if (hidden) post.hidden = true;
     await store.writeBlob('rendered', `${SLUG}/posts.json`, Buffer.from(JSON.stringify([post]), 'utf8'));
     for (const size of ['large', 'thumb']) {
@@ -64,7 +69,7 @@ describe('serving a picture', () => {
 
         assert.equal(response.status, 200);
         assert.equal(response.headers['Content-Type'], 'image/webp');
-        assert.equal(response.headers.ETag, `"${PHOTO}-large"`);
+        assert.equal(response.headers.ETag, `"${PHOTO}-large-r0"`);
         assert.equal(Buffer.from(response.body).toString('utf8'), 'large-bytes');
     });
 
@@ -75,6 +80,14 @@ describe('serving a picture', () => {
         const thumb = await fetched(store, { as: GRAN, size: 'thumb' });
 
         assert.notEqual(large.headers.ETag, thumb.headers.ETag);
+    });
+
+    test('rotating a picture changes its tag even though its URL stays the same', async () => {
+        const store = await seeded({ turns: 1 });
+
+        const response = await fetched(store, { as: GRAN });
+
+        assert.equal(response.headers.ETag, `"${PHOTO}-large-r1"`);
     });
 
     test('a stranger is refused', async () => {
@@ -98,10 +111,10 @@ describe('coming back for a picture already held', () => {
     test('the tag it was given earns a 304 with no picture', async () => {
         const store = await seeded();
 
-        const response = await fetched(store, { as: GRAN, ifNoneMatch: `"${PHOTO}-large"` });
+        const response = await fetched(store, { as: GRAN, ifNoneMatch: `"${PHOTO}-large-r0"` });
 
         assert.equal(response.status, 304);
-        assert.equal(response.headers.ETag, `"${PHOTO}-large"`);
+        assert.equal(response.headers.ETag, `"${PHOTO}-large-r0"`);
         assert.equal(response.body, undefined);
     });
 
@@ -113,7 +126,7 @@ describe('coming back for a picture already held', () => {
         const watched = { ...store, readBlob: (container, name) => (reads.push(name), store.readBlob(container, name)) };
 
         await servePhoto({
-            request: request({ as: GRAN, ifNoneMatch: `"${PHOTO}-large"` }),
+            request: request({ as: GRAN, ifNoneMatch: `"${PHOTO}-large-r0"` }),
             context: silent,
             store: watched
         });
@@ -124,7 +137,7 @@ describe('coming back for a picture already held', () => {
     test('a tag from another size is not a match', async () => {
         const store = await seeded();
 
-        const response = await fetched(store, { as: GRAN, ifNoneMatch: `"${PHOTO}-thumb"` });
+        const response = await fetched(store, { as: GRAN, ifNoneMatch: `"${PHOTO}-thumb-r0"` });
 
         assert.equal(response.status, 200);
         assert.equal(Buffer.from(response.body).toString('utf8'), 'large-bytes');
@@ -133,7 +146,7 @@ describe('coming back for a picture already held', () => {
     test('a held letter is refused even when the tag matches', async () => {
         const store = await seeded({ hidden: true });
 
-        const response = await fetched(store, { as: GRAN, ifNoneMatch: `"${PHOTO}-large"` });
+        const response = await fetched(store, { as: GRAN, ifNoneMatch: `"${PHOTO}-large-r0"` });
 
         assert.equal(response.status, 404);
     });

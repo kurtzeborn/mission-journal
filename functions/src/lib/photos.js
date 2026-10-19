@@ -215,3 +215,64 @@ export async function storePhoto({ store, slug, bytes }) {
 
     return { id, width: out.width, height: out.height };
 }
+
+const turnsOf = (value) => {
+    const turns = Number(value);
+    return Number.isInteger(turns) ? ((turns % 4) + 4) % 4 : 0;
+};
+
+/**
+ * Regenerate a photo's public renditions at one of its four quarter turns.
+ *
+ * The first rotation preserves the current large rendition as a canonical
+ * source. Every later turn starts there rather than recompressing the previous
+ * result, so four clicks return to the same image instead of accumulating
+ * WebP losses.
+ */
+export async function rotateStoredPhoto({ store, slug, id, turns }) {
+    const prefix = `${slug}/photos/${id}`;
+    const sourceName = `${prefix}/rotation-source.webp`;
+    let source = await store.readBlob('rendered', sourceName);
+
+    if (!source) {
+        const current = await store.readBlob('rendered', `${prefix}/large.webp`);
+        if (!current) return null;
+
+        try {
+            await store.writeBlob('rendered', sourceName, current.bytes, {
+                contentType: 'image/webp',
+                ifNoneMatch: '*'
+            });
+            source = { bytes: Buffer.from(current.bytes) };
+        } catch (err) {
+            if (![409, 412].includes(err?.statusCode)) throw err;
+            source = await store.readBlob('rendered', sourceName);
+            if (!source) throw err;
+        }
+    }
+
+    const quarterTurns = turnsOf(turns);
+    const input = Buffer.from(source.bytes);
+    const render = (edge) =>
+        sharp(input)
+            .rotate(quarterTurns * 90)
+            .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 82 })
+            .toBuffer({ resolveWithObject: true });
+
+    const [large, thumb] = await Promise.all([render(LARGE_EDGE), render(THUMB_EDGE)]);
+    await Promise.all([
+        store.writeBlob('rendered', `${prefix}/large.webp`, large.data, {
+            contentType: 'image/webp'
+        }),
+        store.writeBlob('rendered', `${prefix}/thumb.webp`, thumb.data, {
+            contentType: 'image/webp'
+        })
+    ]);
+
+    return {
+        turns: quarterTurns,
+        width: large.info.width,
+        height: large.info.height
+    };
+}

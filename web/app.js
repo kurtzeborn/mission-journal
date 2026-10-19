@@ -481,6 +481,18 @@
         return failed;
     }
 
+    async function rotatePhoto(postId, photoId) {
+        const failed = await call(
+            'PATCH',
+            postId,
+            `/photos/${encodeURIComponent(photoId)}/rotate`,
+            {},
+            false
+        );
+        if (!failed) loadedEtag = null;
+        return failed;
+    }
+
     // Chrome reads File.type out of the Windows registry, which carries no
     // entry for .heic, .webp or .avif -- so on Windows the browser reports
     // nothing at all for three formats this site accepts, and the upload was
@@ -1194,6 +1206,7 @@
                       addPhotos,
                       addFromGoogle,
                       featurePhoto: setFeaturedPhoto,
+                      rotatePhoto,
                       confirmDelete: (post) =>
                           Confirm.ask({
                               question: `Remove "${post.subject || 'Untitled'}" from the site?`,

@@ -25,16 +25,22 @@ export async function servePhoto({ request, context, store }) {
         return { status: 404, headers: hardened({ 'Cache-Control': 'no-store' }), body: '' };
     }
 
-    // `photoId` is a digest of the picture and `size` says which rendering of
-    // it this is, so the pair names these bytes and no others -- an ETag can be
-    // built without reading anything. Answering the revalidation above the
-    // read is the whole point: a browser coming back for a picture it already
-    // has costs no storage and sends no image.
+    const photo = posts
+        .flatMap((post) => post.photos ?? [])
+        .find((entry) => entry.id === photoId);
+    const turns = Number.isInteger(Number(photo?.turns))
+        ? ((Number(photo.turns) % 4) + 4) % 4
+        : 0;
+
+    // `photoId`, `size`, and the saved quarter-turn name these rendered bytes,
+    // so an ETag can be built without reading the image. Answering the
+    // revalidation above the read is the whole point: a browser coming back
+    // for a picture it already has costs no storage and sends no image.
     //
     // The visibility check still runs on every request, which is why the cache
     // stays short instead of being set to a year. Hiding a photo has to take
     // effect for someone who already looked at it.
-    const etag = `"${photoId}-${size}"`;
+    const etag = `"${photoId}-${size}-r${turns}"`;
     if (request.headers.get('if-none-match') === etag) {
         return { status: 304, headers: hardened({ ETag: etag }) };
     }

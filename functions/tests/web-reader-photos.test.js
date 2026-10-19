@@ -331,6 +331,7 @@ describe('pictures an owner adds', () => {
         featuredPhotoIds = [],
         patch = async () => undefined,
         feature = async () => undefined,
+        rotate = async () => undefined,
         add = async () => undefined,
         google = null
     } = {}) {
@@ -351,6 +352,10 @@ describe('pictures an owner adds', () => {
                 featurePhoto: (id, photoId, selected) => {
                     calls.push({ verb: 'feature', id, photoId, selected });
                     return feature(id, photoId, selected);
+                },
+                rotatePhoto: (id, photoId) => {
+                    calls.push({ verb: 'rotate', id, photoId });
+                    return rotate(id, photoId);
                 },
                 confirmDelete: () => true,
                 confirmRestore: () => true,
@@ -390,6 +395,7 @@ describe('pictures an owner adds', () => {
 
         assert.equal(view.$('.album__remove'), null);
         assert.equal(view.$('.album__feature'), null);
+        assert.equal(view.$('.album__rotate'), null);
         assert.equal(view.$('.admin'), null);
     });
 
@@ -436,6 +442,10 @@ describe('pictures an owner adds', () => {
 
         assert.deepEqual(
             view.$$('.album__feature').map((button) => button.dataset.photo),
+            ['tail-one', 'tail-two']
+        );
+        assert.deepEqual(
+            view.$$('.album__rotate').map((button) => button.dataset.photo),
             ['tail-one', 'tail-two']
         );
     });
@@ -502,6 +512,27 @@ describe('pictures an owner adds', () => {
             selected: true
         }]);
         assert.equal(view.$$('.album__feature')[2].getAttribute('aria-pressed'), 'true');
+    });
+
+    test('rotating a photo refreshes it in place and reports above the strip', async () => {
+        const { view, calls } = owner({
+            photos: [{ id: 'a1', width: 900, height: 600 }]
+        });
+        const rotate = view.$('.album__rotate');
+
+        view.click(rotate);
+        await settled();
+
+        assert.deepEqual(calls, [{
+            verb: 'rotate',
+            id: '2026-03-25-9CRE',
+            photoId: 'a1'
+        }]);
+        assert.equal(
+            view.$('.album__status').textContent,
+            'Photo rotated clockwise.'
+        );
+        assert.match(view.$('.album img').getAttribute('src'), /rotation=\d+/);
     });
 
     test('only the ones an owner added can be taken back off', () => {

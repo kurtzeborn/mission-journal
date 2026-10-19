@@ -15,7 +15,15 @@ import { runIngest } from '../src/lib/ingest.js';
 import { verifyEmbeddedDkim } from '../src/lib/dkim.js';
 import { runRender } from '../src/lib/render.js';
 import { sanitizeBody, photoUrl } from '../src/lib/sanitize.js';
-import { transcode, storePhoto, MIN_PHOTO_EDGE, LARGE_EDGE, THUMB_EDGE, MAX_PHOTOS } from '../src/lib/photos.js';
+import {
+    rotateStoredPhoto,
+    transcode,
+    storePhoto,
+    MIN_PHOTO_EDGE,
+    LARGE_EDGE,
+    THUMB_EDGE,
+    MAX_PHOTOS
+} from '../src/lib/photos.js';
 import { memoryStore } from './memory-store.js';
 
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'tests', 'fixtures');
@@ -419,6 +427,34 @@ test('an ordinary re-render does not touch the subject or the edit stamps', asyn
     const after = store.json('rendered', `${SLUG}/posts.json`)[0];
     assert.equal(after.subject, 'Trimmed for the family');
     assert.equal(after.editedBy, 'sarah@example.com');
+});
+
+test('an ordinary re-render preserves a corrected photo orientation', async () => {
+    const { store, message, post } = await pipeline('outlook-web-inline');
+    const target = post.photos[0];
+    const rotated = await rotateStoredPhoto({
+        store,
+        slug: SLUG,
+        id: target.id,
+        turns: 1
+    });
+    await editInPlace(store, {
+        photos: post.photos.map((photo) =>
+            photo.id === target.id ? { ...photo, ...rotated } : photo
+        )
+    });
+
+    await runRender({ message, store, log: silent });
+
+    const after = store.json('rendered', `${SLUG}/posts.json`)[0];
+    const photo = after.photos.find((entry) => entry.id === target.id);
+    const large = store.blobs.get(
+        `rendered/${SLUG}/photos/${target.id}/large.webp`
+    );
+    const metadata = await sharp(large.bytes).metadata();
+    assert.equal(photo.turns, 1);
+    assert.equal(photo.width, metadata.width);
+    assert.equal(photo.height, metadata.height);
 });
 
 // --- pictures an owner added -----------------------------------------------

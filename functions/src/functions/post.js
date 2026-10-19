@@ -5,7 +5,14 @@ import { ROLE } from '../lib/acl.js';
 import { deletionOf } from '../lib/deletion.js';
 import { sitesBySlug, siteFacts } from '../lib/sites.js';
 import { applyEdit, commitPosts } from '../lib/edit.js';
-import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES, MAX_PHOTOS, overSizeClaim } from '../lib/photos.js';
+import {
+    isPhotoType,
+    rotateStoredPhoto,
+    storePhoto,
+    MAX_UPLOAD_BYTES,
+    MAX_PHOTOS,
+    overSizeClaim
+} from '../lib/photos.js';
 import { photoId } from '../lib/paths.js';
 import { runRender } from '../lib/render.js';
 import { featureablePhotoIds, featuredPhotoLimit } from '../lib/bookflow.js';
@@ -293,7 +300,17 @@ export async function attachPhoto({ store, context, slug, postId, posts, bytes, 
     // Before `commitPosts`, never inside it: its `mutate` is called
     // synchronously and may be called more than once, so a transcode in there
     // would return a promise the error check would sail straight past.
-    const stored = await storePhoto({ store, slug, bytes });
+    const shared = (posts ?? [])
+        .flatMap((post) => post.photos ?? [])
+        .find((entry) => entry.id === id);
+    const stored = shared
+        ? {
+            id,
+            width: shared.width,
+            height: shared.height,
+            ...(shared.turns ? { turns: shared.turns } : {})
+        }
+        : await storePhoto({ store, slug, bytes });
     if (!stored) return problem(415, 'that picture could not be read');
 
     const photo = { ...stored, addedAt: new Date().toISOString(), ...(takenAt ? { takenAt } : {}) };
@@ -506,6 +523,83 @@ export async function featurePhoto({ request, context, store }) {
     return ok({ id: postId, photo: photoId, featured: body.featured, featuredPhotoIds });
 }
 
+const quarterTurns = (value) => {
+    const turns = Number(value);
+    return Number.isInteger(turns) ? ((turns % 4) + 4) % 4 : 0;
+};
+
+export async function rotatePhoto({ request, context, store }) {
+    const gated = await ownerOnly(request, context, store);
+    if (gated.denied) return gated.denied;
+
+    const { postId, photoId } = request.params;
+    const post = gated.posts.find((entry) => entry.id === postId);
+    const photo = post?.photos?.find((entry) => entry.id === photoId);
+    if (!post || !photo) return problem(404, !post ? 'no such post' : 'no such photo');
+
+    const expected = quarterTurns(photo.turns);
+    const nextTurns = (expected + 1) % 4;
+    const rotated = await rotateStoredPhoto({
+        store,
+        slug: gated.slug,
+        id: photoId,
+        turns: nextTurns
+    });
+    if (!rotated) return problem(404, 'no such photo');
+
+    const outcome = await commitPosts({
+        store,
+        slug: gated.slug,
+        log: context,
+        mutate: (posts) => {
+            const current = posts
+                .flatMap((entry) => entry.photos ?? [])
+                .find((entry) => entry.id === photoId);
+            if (!current) return { error: 'photo not found' };
+            if (quarterTurns(current.turns) !== expected) {
+                return { error: 'photo rotation changed' };
+            }
+
+            return {
+                posts: posts.map((entry) => ({
+                    ...entry,
+                    ...(entry.photos?.some((candidate) => candidate.id === photoId)
+                        ? {
+                            photos: entry.photos.map((candidate) => {
+                                if (candidate.id !== photoId) return candidate;
+                                const updated = {
+                                    ...candidate,
+                                    width: rotated.width,
+                                    height: rotated.height
+                                };
+                                if (rotated.turns) updated.turns = rotated.turns;
+                                else delete updated.turns;
+                                return updated;
+                            })
+                        }
+                        : {})
+                }))
+            };
+        }
+    });
+
+    if (outcome.error) {
+        if (outcome.error === 'photo not found') return problem(404, 'no such photo');
+        if (outcome.error === 'photo rotation changed') {
+            return problem(409, 'that photo was rotated somewhere else; reload and try again');
+        }
+        return problem(400, outcome.error);
+    }
+
+    context.log('post.photoRotated', {
+        slug: gated.slug,
+        postId,
+        photo: photoId,
+        turns: rotated.turns
+    });
+    return ok({ id: postId, photo: photoId, ...rotated });
+}
+
 app.http('editPost', {
     // As everywhere else, authorization is the ACL check inside the handler;
     // `anonymous` only means no Functions access key, which Static Web Apps
@@ -535,6 +629,13 @@ app.http('featurePostPhoto', {
     methods: ['PATCH'],
     route: 'posts/{slug}/{postId}/photos/{photoId}/featured',
     handler: (request, context) => featurePhoto({ request, context, store: blobStore() })
+});
+
+app.http('rotatePostPhoto', {
+    authLevel: 'anonymous',
+    methods: ['PATCH'],
+    route: 'posts/{slug}/{postId}/photos/{photoId}/rotate',
+    handler: (request, context) => rotatePhoto({ request, context, store: blobStore() })
 });
 
 app.http('deletePost', {

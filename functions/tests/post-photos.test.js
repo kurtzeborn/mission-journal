@@ -12,7 +12,7 @@ import test, { describe } from 'node:test';
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 
-import { addPhoto, featurePhoto, removePhoto } from '../src/functions/post.js';
+import { addPhoto, featurePhoto, removePhoto, rotatePhoto } from '../src/functions/post.js';
 import { memoryStore } from './memory-store.js';
 import { ROLE } from '../src/lib/acl.js';
 import { MAX_UPLOAD_BYTES, MAX_PHOTOS } from '../src/lib/photos.js';
@@ -86,6 +86,8 @@ const posted = (store, options) => addPhoto({ request: request(options), context
 const dropped = (store, options) => removePhoto({ request: request(options), context: silent, store });
 const featured = (store, options) =>
     featurePhoto({ request: request(options), context: silent, store });
+const rotated = (store, options) =>
+    rotatePhoto({ request: request(options), context: silent, store });
 
 const photosOf = (store) => store.json('rendered', `${SLUG}/posts.json`)[0].photos;
 
@@ -545,5 +547,67 @@ describe('choosing featured book photos', () => {
             store.json('rendered', `${SLUG}/posts.json`)[0].featuredPhotoIds,
             undefined
         );
+    });
+});
+
+describe('rotating a picture', () => {
+    test('an owner turns both renditions clockwise and swaps the recorded shape', async () => {
+        const store = await seeded();
+        const added = await posted(store, { as: MUM, bytes: await picture(900, 600) });
+        const photoId = added.jsonBody.photo;
+
+        const response = await rotated(store, { as: MUM, photoId });
+
+        assert.equal(response.status, 200);
+        assert.deepEqual(
+            photosOf(store).map(({ id, width, height, turns }) => ({ id, width, height, turns })),
+            [{ id: photoId, width: 600, height: 900, turns: 1 }]
+        );
+        assert.ok(
+            store.blobs.has(`rendered/${SLUG}/photos/${photoId}/rotation-source.webp`)
+        );
+
+        for (const size of ['large', 'thumb']) {
+            const blob = store.blobs.get(`rendered/${SLUG}/photos/${photoId}/${size}.webp`);
+            const metadata = await sharp(blob.bytes).metadata();
+            assert.ok(metadata.height > metadata.width);
+        }
+    });
+
+    test('four turns return to the canonical rendition without rotating it repeatedly', async () => {
+        const store = await seeded();
+        const added = await posted(store, { as: MUM, bytes: await picture(900, 600) });
+        const photoId = added.jsonBody.photo;
+
+        for (let turn = 0; turn < 4; turn += 1) {
+            const response = await rotated(store, { as: MUM, photoId });
+            assert.equal(response.status, 200);
+        }
+
+        assert.equal(photosOf(store)[0].turns, undefined);
+        assert.equal(photosOf(store)[0].width, 900);
+        assert.equal(photosOf(store)[0].height, 600);
+        const source = store.blobs.get(
+            `rendered/${SLUG}/photos/${photoId}/rotation-source.webp`
+        );
+        const large = store.blobs.get(`rendered/${SLUG}/photos/${photoId}/large.webp`);
+        const sourceMeta = await sharp(source.bytes).metadata();
+        const largeMeta = await sharp(large.bytes).metadata();
+        assert.deepEqual(
+            [largeMeta.width, largeMeta.height],
+            [sourceMeta.width, sourceMeta.height]
+        );
+    });
+
+    test('a reader cannot rotate a picture', async () => {
+        const store = await seeded();
+        const added = await posted(store, { as: MUM, bytes: await picture() });
+
+        const response = await rotated(store, {
+            as: GRAN,
+            photoId: added.jsonBody.photo
+        });
+
+        assert.equal(response.status, 403);
     });
 });
