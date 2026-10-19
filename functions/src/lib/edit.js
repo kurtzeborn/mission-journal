@@ -7,7 +7,7 @@
 
 import { sanitizeBody, PHOTO_PREFIX } from './sanitize.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
-import { flowBody, inlinePhotoIds, trailingPhotoIds } from './bookflow.js';
+import { featureablePhotoIds, featuredPhotoLimit } from './bookflow.js';
 
 // Everything an owner is allowed to change. Anything absent is either derived
 // from the source message or internal bookkeeping.
@@ -41,13 +41,10 @@ const sameList = (a, b) =>
     a.length === b.length && a.every((value, index) => value === b[index]);
 
 const validFeaturedPhotoIds = (post, slug, bodyHtml = post.bodyHtml ?? '') => {
-    const photos = new Set((post.photos ?? []).map((photo) => photo.id));
-    const blocks = flowBody(bodyHtml, slug);
-    const trailing = new Set(trailingPhotoIds(blocks));
-    const inline = new Set(inlinePhotoIds(blocks));
+    const eligible = featureablePhotoIds({ ...post, bodyHtml }, slug);
     return [...new Set(post.featuredPhotoIds ?? [])]
-        .filter((id) => photos.has(id) && (!inline.has(id) || trailing.has(id)))
-        .slice(0, 2);
+        .filter((id) => eligible.has(id))
+        .slice(0, featuredPhotoLimit(eligible.size));
 };
 
 /**

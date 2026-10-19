@@ -28,7 +28,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 
 import sharp from 'sharp';
-import { flowBody, inlinePhotoIds, trailingPhotoIds } from './bookflow.js';
+import { featuredPhotoLimit, flowBody, inlinePhotoIds, trailingPhotoIds } from './bookflow.js';
 import { clothOf } from './cover.js';
 import { fillLine, segments } from './typeset.js';
 import { layoutCloud } from './cloud.js';
@@ -1457,32 +1457,38 @@ function setLetter(doc, { post, slug, images, state, fillChapterBlank = false })
     // for the first few pictures rather than following an almost
     // blank text page with an album page.
     const album = (post.photos ?? []).filter((photo) => !placed.has(photo.id));
-    const requested = new Set((post.featuredPhotoIds ?? []).slice(0, 2));
+    const requested = new Set(
+        (post.featuredPhotoIds ?? []).slice(0, featuredPhotoLimit(album.length))
+    );
     const featured = album.filter((photo) => requested.has(photo.id));
     const ordinary = album.filter((photo) => !featured.includes(photo));
     const pageUsable = TEXT_BOTTOM - MARGIN.top;
 
     if (featured.length) {
-        const top = doc.y + ALBUM_AFTER_TEXT;
-        const available = TEXT_BOTTOM - top;
-        const plan = available > 0
-            ? featuredPlan(featured, { height: available, pageHeight: pageUsable })
-            : null;
-
         setBox(doc, state, 0);
-        if (plan && plan.least >= plan.minimum) {
-            setLeaf(doc, {
-                photos: featured,
-                images,
-                top,
-                usable: available,
-                rows: plan.rows
-            });
-        } else {
+        for (let index = 0; index < featured.length; index += 2) {
+            const group = featured.slice(index, index + 2);
+            const top = doc.y + ALBUM_AFTER_TEXT;
+            const available = TEXT_BOTTOM - top;
+            const plan = index === 0 && available > 0
+                ? featuredPlan(group, { height: available, pageHeight: pageUsable })
+                : null;
+
+            if (plan && plan.least >= plan.minimum) {
+                setLeaf(doc, {
+                    photos: group,
+                    images,
+                    top,
+                    usable: available,
+                    rows: plan.rows
+                });
+                continue;
+            }
+
             doc.addPage();
-            const full = featuredPlan(featured, { height: pageUsable, pageHeight: pageUsable });
+            const full = featuredPlan(group, { height: pageUsable, pageHeight: pageUsable });
             setLeaf(doc, {
-                photos: featured,
+                photos: group,
                 images,
                 usable: pageUsable,
                 rows: full.rows

@@ -34,7 +34,7 @@ import {
     reserve,
     runningHead,
 } from '../src/lib/book.js';
-import { trailingPhotoIds } from '../src/lib/bookflow.js';
+import { featuredPhotoLimit, trailingPhotoIds } from '../src/lib/bookflow.js';
 import { memoryStore } from './memory-store.js';
 
 // Reading the finished PDF back is the only honest check here. The layout is
@@ -648,6 +648,13 @@ describe('giving selected photos featured space', () => {
         const plan = featuredPlan([wide, tall], { height: usable });
         assert.ok(plan.least >= plan.minimum);
     });
+
+    test('the allowance grows once for every five attached photos from ten onward', () => {
+        assert.deepEqual(
+            [0, 9, 10, 14, 15, 19, 20].map(featuredPhotoLimit),
+            [2, 2, 3, 3, 4, 4, 5]
+        );
+    });
 });
 
 describe('the room a line has beside a picture', () => {
@@ -972,7 +979,7 @@ describe('setting a whole book', () => {
         // came back from the printer.
         const withPhotos = posts.map((entry) =>
             entry.id === 'b'
-                ? { ...entry, photos: range(3), featuredPhotoIds: ['p0', 'p1'] }
+                ? { ...entry, photos: range(10), featuredPhotoIds: ['p0', 'p1', 'p2'] }
                 : entry
         );
 
@@ -990,7 +997,7 @@ describe('setting a whole book', () => {
         const filled = memoryStore();
         const image = await pixels(2400, 1600);
         await Promise.all(
-            range(3).map(({ id }) =>
+            range(10).map(({ id }) =>
                 filled.writeBlob('rendered', `isaac.backman/photos/${id}/large.webp`, image)
             )
         );

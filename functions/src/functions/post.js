@@ -8,7 +8,7 @@ import { applyEdit, commitPosts } from '../lib/edit.js';
 import { isPhotoType, storePhoto, MAX_UPLOAD_BYTES, MAX_PHOTOS, overSizeClaim } from '../lib/photos.js';
 import { photoId } from '../lib/paths.js';
 import { runRender } from '../lib/render.js';
-import { flowBody, inlinePhotoIds, trailingPhotoIds } from '../lib/bookflow.js';
+import { featureablePhotoIds, featuredPhotoLimit } from '../lib/bookflow.js';
 
 const problem = (status, error) => ({
     status,
@@ -426,21 +426,8 @@ export async function removePhoto({ request, context, store }) {
     return ok({ id: postId, photo: photoId, removed });
 }
 
-const FEATURE_LIMIT = 2;
-const FEATURE_FULL = `a letter can have ${FEATURE_LIMIT} featured pictures`;
 const FEATURE_INLINE = 'only pictures attached after the letter can be featured';
-
-const featureablePhotoIds = (post, slug) => {
-    const blocks = flowBody(post.bodyHtml ?? '', slug);
-    const trailing = new Set(trailingPhotoIds(blocks));
-    const inline = new Set(inlinePhotoIds(blocks));
-
-    return new Set(
-        (post.photos ?? [])
-            .filter((photo) => !inline.has(photo.id) || trailing.has(photo.id))
-            .map((photo) => photo.id)
-    );
-};
+const FEATURE_FULL = 'featured picture limit reached';
 
 export async function featurePhoto({ request, context, store }) {
     const gated = await ownerOnly(request, context, store);
@@ -473,12 +460,20 @@ export async function featurePhoto({ request, context, store }) {
             }
             const eligible = featureablePhotoIds(post, gated.slug);
             if (!eligible.has(photoId)) return { error: FEATURE_INLINE };
+            const limit = featuredPhotoLimit(eligible.size);
             featuredPhotoIds = [...new Set(post.featuredPhotoIds ?? [])]
                 .filter((id) => eligible.has(id));
 
             const already = featuredPhotoIds.includes(photoId);
             if (body.featured && !already) {
-                if (featuredPhotoIds.length >= FEATURE_LIMIT) return { error: FEATURE_FULL };
+                if (featuredPhotoIds.length >= limit) {
+                    return {
+                        error: FEATURE_FULL,
+                        message:
+                            `a letter with ${eligible.size} attached pictures ` +
+                            `can have ${limit} featured pictures`
+                    };
+                }
                 featuredPhotoIds.push(photoId);
             } else if (!body.featured && already) {
                 featuredPhotoIds = featuredPhotoIds.filter((id) => id !== photoId);
@@ -497,7 +492,7 @@ export async function featurePhoto({ request, context, store }) {
             return problem(404, outcome.error === 'post not found' ? 'no such post' : 'no such photo');
         }
         if (outcome.error === FEATURE_INLINE || outcome.error === FEATURE_FULL) {
-            return problem(409, outcome.error);
+            return problem(409, outcome.message ?? outcome.error);
         }
         return problem(400, outcome.error);
     }

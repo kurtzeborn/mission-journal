@@ -1228,6 +1228,20 @@ select:focus-visible {
     list-style: none;
 }
 
+.album__status {
+    margin: 1.25rem 0 0.4rem;
+    padding: 0.55rem 0.7rem;
+    color: var(--ink);
+    background: #f5f5f4;
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 0.85rem;
+}
+
+.album__status + .album {
+    margin-top: 0;
+}
+
 .photo-row {
     /* A run can follow a floated photo from earlier in the letter, and a
        scrolling row overlapping one would be unusable. */
