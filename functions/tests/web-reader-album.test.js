@@ -49,14 +49,14 @@ describe('getting to the album', () => {
         assert.deepEqual(labels(archive({ withAlbum: false })), [
             'Word cloud',
             'Search',
-            'Expand all'
+            'Collapse all'
         ]);
     });
 
     test('an archive with no photographs in it does not offer one either', () => {
         const view = archive({ posts: [POSTS[1], letter('2026-03-09-R32V', para(400))] });
 
-        assert.deepEqual(labels(view), ['Word cloud', 'Search', 'Expand all']);
+        assert.deepEqual(labels(view), ['Word cloud', 'Search', 'Collapse all']);
     });
 
     test('one photograph in the whole archive is not an album', () => {
@@ -71,7 +71,7 @@ describe('getting to the album', () => {
             ]
         });
 
-        assert.deepEqual(labels(view), ['Word cloud', 'Search', 'Expand all']);
+        assert.deepEqual(labels(view), ['Word cloud', 'Search', 'Collapse all']);
     });
 
     test('a single letter carrying pictures still gets one', () => {

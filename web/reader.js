@@ -762,6 +762,7 @@ window.Reader = (function () {
         // one from the outside -- a digest link, a search hit, Expand all --
         // goes through here, so this is the only place that has to know.
         if (open && view.group) setFolded(view.group, false);
+        view.onFoldChange?.();
     }
 
     function renderPost(post, photoSrc, admin) {
@@ -1709,11 +1710,6 @@ window.Reader = (function () {
     // Nothing is grouped until there are two months to tell apart. A single
     // heading over the whole archive is a row that says nothing.
 
-    // Above this many letters the months arrive folded. Below it the archive
-    // is already a screen or two of dates, and folding it would be hiding a
-    // short list in order to save scrolling past a short list.
-    const FOLD_ABOVE = 12;
-
     const monthName = (key) => {
         const [year, month] = key.split('-');
         return new Date(Date.UTC(+year, +month - 1, 1)).toLocaleDateString(undefined, {
@@ -1729,6 +1725,7 @@ window.Reader = (function () {
         group.item.classList.toggle('month--folded', folded);
         group.toggle.setAttribute('aria-expanded', String(!folded));
         group.inner.hidden = folded;
+        group.onFoldChange?.();
     }
 
     // Returns the groups, or an empty list when the archive is not worth
@@ -1795,7 +1792,7 @@ window.Reader = (function () {
     // clearing a search puts the page back where it started rather than
     // leaving every letter the reader happened to visit hanging open.
     function collapseToNewest(views, groups = []) {
-        for (const group of groups) setFolded(group, views.size > FOLD_ABOVE);
+        for (const group of groups) setFolded(group, true);
 
         // The newest letter is opened last on purpose: opening it unfolds the
         // month it is in, which is the one month that should not be shut.
@@ -1848,7 +1845,7 @@ window.Reader = (function () {
     // from a digest email, and the album -- and both want the page left in the
     // same state afterwards: exactly one month open, and it is this one's.
     function revealPost(views, groups, wanted, scroll = {}) {
-        for (const group of groups) setFolded(group, views.size > FOLD_ABOVE);
+        for (const group of groups) setFolded(group, true);
         for (const view of views.values()) setExpanded(view, view === wanted);
         wanted.item.scrollIntoView(scroll);
     }
@@ -1987,6 +1984,37 @@ window.Reader = (function () {
         words.setAttribute('d', 'M8 11h3.1M13.2 11H16M8 14h2M12 14h4');
 
         svg.append(cloud, words);
+        return svg;
+    }
+
+    function foldingIcon(direction, doubled = false) {
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('fill', 'none');
+        svg.setAttribute('stroke', 'currentColor');
+        svg.setAttribute('stroke-width', '2');
+        svg.setAttribute('stroke-linecap', 'round');
+        svg.setAttribute('stroke-linejoin', 'round');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.classList.add('folding__icon');
+
+        const path = (d) => {
+            const line = document.createElementNS(SVG_NS, 'path');
+            line.setAttribute('d', d);
+            return line;
+        };
+
+        if (direction === 'up') {
+            svg.append(path('M6.5 15 12 9.5 17.5 15'));
+        } else if (doubled) {
+            svg.append(
+                path('M6.5 7 12 12.5 17.5 7'),
+                path('M6.5 13 12 18.5 17.5 13')
+            );
+        } else {
+            svg.append(path('M6.5 9 12 14.5 17.5 9'));
+        }
+
         return svg;
     }
 
@@ -2420,71 +2448,66 @@ window.Reader = (function () {
             let folding = null;
 
             if (many) {
-                // A control that alternates between opening and shutting, and
-                // whose name is what the next press will do rather than what
-                // the list currently is.
-                const folder = ({ open, shut, opening, act }) => {
-                    const el = document.createElement('button');
-                    el.type = 'button';
-                    el.className = 'button button--quiet button--compact button--glyph';
-
-                    const draw = () => {
-                        const { glyph, hint } = opening ? open : shut;
-                        el.textContent = glyph;
-                        el.title = hint;
-                        el.setAttribute('aria-label', hint);
-                    };
-
-                    el.addEventListener('click', () => {
-                        act(opening);
-                        opening = !opening;
-                        draw();
-                    });
-
-                    draw();
-                    return el;
-                };
-
-                // Two controls, because they answer different questions.
-                // Unfolding the months and leaving the letters shut gives a
-                // list of every date with its photo count beside it, which is
-                // how you find the letters carrying none; opening every letter
-                // to get there buries that list under a screenful of prose
-                // apiece. Doubling the glyph is what says the second one is
-                // the first one taken further.
                 folding = document.createElement('div');
                 folding.className = 'toolbar__group';
 
-                if (groups.length) {
-                    folding.append(
-                        folder({
-                            open: { glyph: '+', hint: 'Expand months' },
-                            shut: { glyph: '−', hint: 'Collapse months' },
-                            opening: groups.some((group) => group.inner.hidden),
-                            act: (opening) => {
-                                for (const group of groups) setFolded(group, !opening);
-                            }
-                        })
-                    );
-                }
+                // One control moves through the archive's useful zoom levels:
+                // nothing, every subject line, then every letter. Its action
+                // is derived from the page rather than a click counter because
+                // month headings, letter headings, search and digest links can
+                // all change the same state independently.
+                const folder = document.createElement('button');
+                folder.type = 'button';
+                folder.className = 'button button--quiet button--compact button--glyph';
 
-                // Singular where there are no months to be the other one, so
-                // a doubled glyph is never the only glyph on the row.
-                const both = groups.length;
-                folding.append(
-                    folder({
-                        open: { glyph: both ? '++' : '+', hint: 'Expand all' },
-                        shut: { glyph: both ? '−−' : '−', hint: 'Collapse all' },
-                        opening: true,
-                        act: (opening) => {
-                            // Folded first when shutting, because opening a
-                            // letter unfolds its month and doing the two in the
-                            // other order would undo half the work as it went.
-                            for (const group of groups) setFolded(group, !opening);
-                            for (const view of views.values()) setExpanded(view, opening);
-                        }
-                    })
-                );
+                const nextFoldAction = () => {
+                    const noLettersOpen = [...views.values()].every(
+                        (view) => view.toggle.getAttribute('aria-expanded') !== 'true'
+                    );
+
+                    if (!groups.length) return noLettersOpen ? 'Expand all' : 'Collapse all';
+
+                    const allMonthsClosed = groups.every((group) => group.inner.hidden);
+                    const allMonthsOpen = groups.every((group) => !group.inner.hidden);
+
+                    if (allMonthsClosed && noLettersOpen) return 'Expand months';
+                    if (allMonthsOpen && noLettersOpen) return 'Expand all';
+                    return 'Collapse all';
+                };
+
+                const syncFolder = () => {
+                    const action = nextFoldAction();
+                    folder.title = action;
+                    folder.setAttribute('aria-label', action);
+                    folder.replaceChildren(
+                        foldingIcon(
+                            action === 'Collapse all' ? 'up' : 'down',
+                            action === 'Expand all' && Boolean(groups.length)
+                        )
+                    );
+                };
+
+                folder.addEventListener('click', () => {
+                    const action = nextFoldAction();
+
+                    if (action === 'Collapse all') {
+                        for (const group of groups) setFolded(group, true);
+                        for (const view of views.values()) setExpanded(view, false);
+                    } else if (action === 'Expand months') {
+                        for (const view of views.values()) setExpanded(view, false);
+                        for (const group of groups) setFolded(group, false);
+                    } else {
+                        for (const group of groups) setFolded(group, false);
+                        for (const view of views.values()) setExpanded(view, true);
+                    }
+
+                    syncFolder();
+                });
+
+                for (const group of groups) group.onFoldChange = syncFolder;
+                for (const view of views.values()) view.onFoldChange = syncFolder;
+                syncFolder();
+                folding.append(folder);
 
                 // The far end of the row from the folding controls, which sit
                 // over on the right above the Expand buttons they work on. One

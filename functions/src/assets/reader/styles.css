@@ -266,14 +266,16 @@ a {
     line-height: 1.2;
 }
 
-/* A button whose label is one glyph or two. Fixed width because it swaps
-   between them on every press, and a control that changes size under the
-   finger moves the one next to it out from under the next press. */
+/* The archive folding control changes between one and two chevrons. Fixed
+   width keeps that change from moving the controls beside it under a finger. */
 .button--glyph {
     justify-content: center;
     min-width: 2.75rem;
-    font-size: 1rem;
-    letter-spacing: 0.08em;
+}
+
+.folding__icon {
+    width: 1.15rem;
+    height: 1.15rem;
 }
 
 /* --- the masthead menu --- */
@@ -2846,9 +2848,6 @@ h3:target {
         display: none;
     }
 
-    .toolbar .button--glyph {
-        letter-spacing: 0;
-    }
 }
 
 /* Every match, marked. The plain one is a highlighter; the current one is
