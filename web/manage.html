@@ -9,6 +9,8 @@
     <link rel="icon" href="/logo.png">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/fontawesome.min.css">
+    <link rel="stylesheet" href="/vendor/fontawesome/css/solid.min.css">
     <script src="/deploy-version.js" defer></script>
     <script src="/manager-strip.js" defer></script>
 </head>
@@ -84,14 +86,7 @@
                 nothing missing from any family's page, which means no owner
                 has anything to report.
             -->
-            <h2>Letters arriving</h2>
-
-            <p class="note">
-                Every archive in the service, most recently active first. <strong>Last
-                received</strong> is when a letter landed here; <strong>newest letter</strong> is
-                the date the letter itself carries. A gap between them is a family working
-                through a backlog rather than an archive gone quiet.
-            </p>
+            <h2>Archives</h2>
 
             <div id="flow-state" class="state"><span class="waiting">Loading</span></div>
 
@@ -109,9 +104,8 @@
                 <thead>
                     <tr>
                         <th scope="col">Archive</th>
-                        <th scope="col">State</th>
+                        <th scope="col" class="archive-state" aria-label="State"></th>
                         <th scope="col">Last received</th>
-                        <th scope="col">Newest letter</th>
                         <th scope="col">Waiting</th>
                         <th scope="col" class="count">Letters</th>
                         <th scope="col" class="count">Photos</th>

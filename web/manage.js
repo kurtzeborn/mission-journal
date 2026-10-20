@@ -104,6 +104,34 @@
         return td;
     };
 
+    const ARCHIVE_STATES = {
+        live: { icon: 'fa-square-check', label: 'Live archive' },
+        pending: { icon: 'fa-hourglass-half', label: 'Pending archive' },
+        deleted: { icon: 'fa-trash-can', label: 'Deleted archive' }
+    };
+
+    const stateCell = (row, state) => {
+        const td = cell(row, '');
+        td.className = 'archive-state';
+
+        const known = ARCHIVE_STATES[state];
+        const status = known ?? {
+            icon: 'fa-circle-question',
+            label: state ? `Unknown archive state: ${state}` : 'Unknown archive state'
+        };
+        const marker = document.createElement('span');
+        marker.className = `archive-state__marker archive-state__marker--${known ? state : 'unknown'}`;
+        marker.title = status.label;
+        marker.setAttribute('aria-label', status.label);
+
+        const icon = document.createElement('i');
+        icon.className = `fa-solid ${status.icon}`;
+        icon.setAttribute('aria-hidden', 'true');
+        marker.appendChild(icon);
+        td.appendChild(marker);
+        return td;
+    };
+
     async function restore(slug, button) {
         // The archive is being handed back to a family who cannot see this
         // page, so there is nobody on the other end to notice a double click.
@@ -188,9 +216,8 @@
         for (const archive of archives) {
             const row = document.createElement('tr');
             slugCell(row, archive.slug);
-            cell(row, archive.state);
+            stateCell(row, archive.state);
             cell(row, archive.lastReceivedAt ? day(archive.lastReceivedAt) : '\u2014');
-            cell(row, archive.lastPostAt ? day(archive.lastPostAt) : '\u2014');
             cell(row, waiting(archive));
 
             // Filled by the stats route, which is still in flight. Held by
