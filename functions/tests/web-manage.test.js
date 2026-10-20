@@ -148,20 +148,34 @@ describe('the other table, which is every archive there is', () => {
 
     const arriving = async (flow) => manage({ answer: serving({ flow }) });
 
-    test('one row per archive, with both dates kept apart', async () => {
-        // They are different questions. `lastPostAt` is the date the letter
-        // carries; `lastReceivedAt` is the moment it landed here.
+    test('one compact row per archive with its latest arrival', async () => {
         const view = await arriving({ lastReceivedAt: ARCHIVES[0].lastReceivedAt, archives: ARCHIVES });
 
         assert.equal(flowRows(view).length, 2);
         assert.equal(view.el('flow').hidden, false);
 
-        const [slug, state, received, posted] = cells(flowRows(view)[0]);
+        const [slug, state, received] = cells(flowRows(view)[0]);
         assert.equal(slug, 'elder.recent');
-        assert.equal(state, 'live');
+        assert.equal(state, '');
         assert.match(received, /26/);
-        assert.match(posted, /26/);
         assert.doesNotMatch(received, /T\d\d:/);
+        assert.equal(cells(flowRows(view)[0]).length, 9);
+    });
+
+    test('archive states are labeled icons rather than another text column', async () => {
+        const view = await arriving({
+            lastReceivedAt: ARCHIVES[0].lastReceivedAt,
+            archives: [...ARCHIVES, { ...ARCHIVES[0], slug: 'elder.deleted', state: 'deleted' }]
+        });
+        const [live, pending, deleted] = flowRows(view).map((row) => row.children[1].children[0]);
+
+        assert.match(live.children[0].className, /fa-square-check/);
+        assert.equal(live.title, 'Live archive');
+        assert.equal(live.getAttribute('aria-label'), 'Live archive');
+        assert.match(pending.children[0].className, /fa-hourglass-half/);
+        assert.equal(pending.title, 'Pending archive');
+        assert.match(deleted.children[0].className, /fa-trash-can/);
+        assert.equal(deleted.title, 'Deleted archive');
     });
 
     test('the headline says when anything last arrived anywhere', async () => {
@@ -180,7 +194,7 @@ describe('the other table, which is every archive there is', () => {
         });
         const values = cells(flowRows(empty)[0]);
         assert.equal(values[0], 'elder.new');
-        assert.equal(values[1], 'live');
+        assert.equal(values[1], '');
         assert.ok(values.slice(2).every((value) => value && !/undefined|Invalid Date/.test(value)));
         assert.match(empty.text('flow-state'), /No letters have arrived/i);
     });
@@ -188,7 +202,7 @@ describe('the other table, which is every archive there is', () => {
     test('letters waiting say how many and until when', async () => {
         const view = await arriving({ lastReceivedAt: ARCHIVES[0].lastReceivedAt, archives: ARCHIVES });
 
-        assert.match(cells(flowRows(view)[1])[4], /^3 letters, until /);
+        assert.match(cells(flowRows(view)[1])[3], /^3 letters, until /);
     });
 
     test('letters stuck on a live archive say so without a date', async () => {
@@ -199,7 +213,7 @@ describe('the other table, which is every archive there is', () => {
             archives: [{ ...ARCHIVES[0], held: 1 }]
         });
 
-        assert.equal(cells(flowRows(view)[0])[4], '1 letter');
+        assert.equal(cells(flowRows(view)[0])[3], '1 letter');
     });
 
     test('and a failure here does not take the deletions down with it', async () => {
@@ -719,7 +733,7 @@ describe('how big the service is', () => {
         // The last five cells of each arrivals row, in the order the header
         // names them.
         assert.deepEqual(
-            view.el('flow-rows').children.map((row) => row.children.slice(5).map((c) => c.textContent)),
+            view.el('flow-rows').children.map((row) => row.children.slice(4).map((c) => c.textContent)),
             [
                 ['9', '31', '5', '2', '4'],
                 ['3', '9', '2', '0', '2']
