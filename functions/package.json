@@ -25,7 +25,7 @@
     "mailauth": "^5.0.3",
     "pdfkit": "^0.20.2",
     "postal-mime": "^4.0.0",
-    "sanitize-html": "^2.17.7",
+    "sanitize-html": "^2.18.0",
     "sharp": "^0.35.5",
     "yazl": "^3.3.1"
   },
