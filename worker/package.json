@@ -1,6 +1,7 @@
 {
   "name": "mj-ingest-worker",
   "private": true,
+  "license": "PolyForm-Strict-1.0.0",
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
