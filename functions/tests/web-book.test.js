@@ -122,6 +122,15 @@ describe('the finished book actions', () => {
     const open = async ({
         operator = false,
         cover = null,
+        profile = {
+            displayName: 'Elder Example',
+            mission: 'Example Mission',
+            startDate: '2024-07-01',
+            returnDate: '2026-01-15'
+        },
+        sections = { foreword: null, afterword: null },
+        posts = [],
+        build = { id: 'book-2', state: 'building', missing: [] },
         checkout = null,
         sale = null,
         book = {},
@@ -132,7 +141,13 @@ describe('the finished book actions', () => {
         view.context.setTimeout = () => 1;
         view.context.clearTimeout = () => {};
         const net = fetching(async (url, init) => {
+            if (url.includes('/api/profile/')) return { body: profile };
+            if (url.endsWith('/sections')) return { body: sections };
+            if (url.includes('/posts.json')) return { body: { posts } };
             if (url.endsWith('/cover')) return cover ? { body: cover } : { status: 404 };
+            if (init.method === 'POST' && url.endsWith('/api/book/elder.example')) {
+                return { status: 202, body: build };
+            }
             if (init.method === 'POST' && url.includes('/api/print/')) return { body: order };
             if (init.method === 'PUT' && url.includes('/api/print/')) {
                 return {
@@ -192,6 +207,132 @@ describe('the finished book actions', () => {
 
         assert.equal(view.text('board-dates'), 'July 1, 2024 \u2013 January 15, 2026');
         assert.equal(view.el('board-dates').hidden, false);
+    });
+
+    test('starts a build without prompting when every finishing touch is present', async () => {
+        const view = await open({
+            cover: {
+                title: 'Elder Example',
+                mission: 'Example Mission',
+                dates: 'July 1, 2024 \u2013 January 15, 2026',
+                cloth: 'navy',
+                picture: 'p_123456789abc',
+                cloths: []
+            },
+            sections: { foreword: '<p>Welcome.</p>', afterword: '<p>Home.</p>' },
+            posts: [
+                {
+                    photos: [{ id: 'p_123456789abc' }],
+                    featuredPhotoIds: ['p_123456789abc']
+                }
+            ]
+        });
+
+        await view.el('make').dispatch('click');
+        await settled();
+
+        assert.notEqual(view.el('book-checklist').open, true);
+        assert.ok(
+            view.net.calls.some(
+                (call) => call.method === 'POST' && call.url.endsWith('/api/book/elder.example')
+            )
+        );
+    });
+
+    test('offers missing optional finishing touches before starting the build', async () => {
+        const view = await open({
+            cover: {
+                title: 'Elder Example',
+                mission: 'Example Mission',
+                dates: '',
+                cloth: 'navy',
+                picture: '',
+                cloths: []
+            },
+            profile: {
+                displayName: 'Elder Example',
+                mission: 'Example Mission',
+                startDate: '',
+                returnDate: ''
+            },
+            posts: [{ photos: [{ id: 'p_123456789abc' }] }]
+        });
+
+        await view.el('make').dispatch('click');
+        await settled();
+
+        assert.equal(view.el('book-checklist').open, true);
+        assert.equal(view.el('check-name').className.includes('is-complete'), true);
+        assert.equal(view.el('check-dates').className.includes('is-complete'), false);
+        assert.equal(view.el('check-cover-action').hidden, false);
+        assert.equal(view.el('check-featured').hidden, false);
+        assert.match(view.el('check-dates-action').href, /\/settings\/elder\.example#startDate$/);
+        assert.equal(view.el('book-checklist-anyway').disabled, false);
+        assert.equal(
+            view.net.calls.some(
+                (call) => call.method === 'POST' && call.url.endsWith('/api/book/elder.example')
+            ),
+            false
+        );
+
+        await view.el('book-checklist-anyway').dispatch('click');
+        await settled();
+
+        assert.ok(
+            view.net.calls.some(
+                (call) => call.method === 'POST' && call.url.endsWith('/api/book/elder.example')
+            )
+        );
+    });
+
+    test('requires the missionary name but does not require featured photos when there are no pictures', async () => {
+        const missingName = await open({
+            cover: {
+                title: 'elder.example',
+                mission: 'Example Mission',
+                dates: 'July 1, 2024 \u2013 January 15, 2026',
+                cloth: 'navy',
+                picture: 'p_123456789abc',
+                cloths: []
+            },
+            profile: {
+                displayName: '',
+                mission: 'Example Mission',
+                startDate: '2024-07-01',
+                returnDate: '2026-01-15'
+            },
+            sections: { foreword: '<p>Welcome.</p>', afterword: '<p>Home.</p>' }
+        });
+
+        await missingName.el('make').dispatch('click');
+        await settled();
+
+        assert.equal(missingName.el('book-checklist').open, true);
+        assert.equal(missingName.el('book-checklist-anyway').disabled, true);
+        assert.equal(missingName.el('book-checklist-required').hidden, false);
+        assert.equal(missingName.el('check-featured').hidden, true);
+    });
+
+    test('opens a missing book-only section directly from the checklist', async () => {
+        const view = await open({
+            cover: {
+                title: 'Elder Example',
+                mission: 'Example Mission',
+                dates: 'July 1, 2024 \u2013 January 15, 2026',
+                cloth: 'navy',
+                picture: '',
+                cloths: []
+            }
+        });
+
+        await view.el('make').dispatch('click');
+        await settled();
+        await view.el('check-foreword-action').dispatch('click');
+
+        assert.equal(view.el('book-checklist').open, false);
+        assert.equal(view.el('book-part-dialog').open, true);
+        assert.equal(view.el('book-part-title').textContent, 'Foreword');
+        assert.equal(view.el('book-part-editor').getAttribute('contenteditable'), 'true');
     });
 
     test('shows an active checkout immediately with its expiration', async () => {

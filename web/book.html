@@ -267,6 +267,82 @@
         </div>
     </dialog>
 
+    <dialog class="book-checklist" id="book-checklist" aria-labelledby="book-checklist-title">
+        <h2 id="book-checklist-title">Before making your book</h2>
+        <p>
+            These finishing touches are still available. Add the ones you want before making
+            the proof, or continue without the optional ones.
+        </p>
+        <ul class="book-checklist__items">
+            <li class="book-checklist__item" id="check-name">
+                <span class="book-checklist__mark" id="check-name-mark" aria-hidden="true"></span>
+                <span class="book-checklist__label">Missionary name <strong>Required</strong></span>
+                <span class="visually-hidden" id="check-name-state"></span>
+                <a id="check-name-action" href="/">Set it</a>
+                <a class="book-checklist__help" href="/faq#book-profile"
+                    aria-label="What is the missionary name used for?">?</a>
+            </li>
+            <li class="book-checklist__item" id="check-mission">
+                <span class="book-checklist__mark" id="check-mission-mark" aria-hidden="true"></span>
+                <span class="book-checklist__label">Mission name</span>
+                <span class="visually-hidden" id="check-mission-state"></span>
+                <a id="check-mission-action" href="/">Set it</a>
+                <a class="book-checklist__help" href="/faq#book-profile"
+                    aria-label="What is the mission name used for?">?</a>
+            </li>
+            <li class="book-checklist__item" id="check-dates">
+                <span class="book-checklist__mark" id="check-dates-mark" aria-hidden="true"></span>
+                <span class="book-checklist__label">Start and end dates</span>
+                <span class="visually-hidden" id="check-dates-state"></span>
+                <a id="check-dates-action" href="/">Set them</a>
+                <a class="book-checklist__help" href="/faq#book-profile"
+                    aria-label="What are the mission dates used for?">?</a>
+            </li>
+            <li class="book-checklist__item" id="check-cover">
+                <span class="book-checklist__mark" id="check-cover-mark" aria-hidden="true"></span>
+                <span class="book-checklist__label">Cover picture</span>
+                <span class="visually-hidden" id="check-cover-state"></span>
+                <button class="book-checklist__action" type="button" id="check-cover-action">Choose one</button>
+                <a class="book-checklist__help" href="/faq#book-cover"
+                    aria-label="What is the cover picture used for?">?</a>
+            </li>
+            <li class="book-checklist__item" id="check-foreword">
+                <span class="book-checklist__mark" id="check-foreword-mark" aria-hidden="true"></span>
+                <span class="book-checklist__label">Foreword</span>
+                <span class="visually-hidden" id="check-foreword-state"></span>
+                <button class="book-checklist__action" type="button" id="check-foreword-action">Write it</button>
+                <a class="book-checklist__help" href="/faq#book-foreword"
+                    aria-label="What is a foreword?">?</a>
+            </li>
+            <li class="book-checklist__item" id="check-afterword">
+                <span class="book-checklist__mark" id="check-afterword-mark" aria-hidden="true"></span>
+                <span class="book-checklist__label">Afterword</span>
+                <span class="visually-hidden" id="check-afterword-state"></span>
+                <button class="book-checklist__action" type="button" id="check-afterword-action">Write it</button>
+                <a class="book-checklist__help" href="/faq#book-afterword"
+                    aria-label="What is an afterword?">?</a>
+            </li>
+            <li class="book-checklist__item" id="check-featured">
+                <span class="book-checklist__mark" id="check-featured-mark" aria-hidden="true"></span>
+                <span class="book-checklist__label">Featured photos</span>
+                <span class="visually-hidden" id="check-featured-state"></span>
+                <a id="check-featured-action" href="/">Choose them</a>
+                <a class="book-checklist__help" href="/faq#book-featured"
+                    aria-label="What are featured photos?">?</a>
+            </li>
+        </ul>
+        <p class="note" id="book-checklist-required" hidden>
+            Set the missionary name before making the book. The other finishing touches are
+            optional.
+        </p>
+        <div class="book-checklist__actions">
+            <button class="button" type="button" id="book-checklist-close">Keep editing</button>
+            <button class="button button--quiet button--danger" type="button" id="book-checklist-anyway">
+                Make the book anyway
+            </button>
+        </div>
+    </dialog>
+
     <script src="/confirm.js"></script>
     <script src="/user-profile.js"></script>
     <script src="/book.js"></script>

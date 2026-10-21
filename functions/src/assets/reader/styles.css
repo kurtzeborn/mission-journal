@@ -1747,6 +1747,92 @@ select:focus-visible {
     background: rgba(28, 25, 23, 0.6);
 }
 
+.book-checklist {
+    width: min(42rem, 92vw);
+    max-height: 86vh;
+    margin: auto;
+    padding: 1.25rem;
+    overflow: auto;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    border-radius: var(--radius);
+}
+
+.book-checklist::backdrop {
+    background: rgba(28, 25, 23, 0.6);
+}
+
+.book-checklist > :first-child {
+    margin-top: 0;
+}
+
+.book-checklist__items {
+    margin: 1rem 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--rule);
+}
+
+.book-checklist__item {
+    display: grid;
+    grid-template-columns: 1.4rem minmax(0, 1fr) auto 1.5rem;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 2.6rem;
+    border-bottom: 1px solid var(--rule);
+}
+
+.book-checklist__item.is-complete {
+    color: var(--ink-soft);
+}
+
+.book-checklist__mark {
+    color: #47784f;
+    font-size: 1.1rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.book-checklist__label strong {
+    margin-left: 0.4rem;
+    color: #b91c1c;
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.book-checklist__action {
+    padding: 0;
+    color: var(--accent);
+    background: none;
+    border: 0;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.book-checklist__help {
+    width: 1.35rem;
+    height: 1.35rem;
+    border: 1px solid var(--rule);
+    border-radius: 50%;
+    color: var(--ink-soft);
+    font-family: system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.2rem;
+    text-align: center;
+    text-decoration: none;
+}
+
+.book-checklist__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
 .book-part-editor {
     min-height: 14rem;
     max-height: 60vh;
