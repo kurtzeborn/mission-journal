@@ -95,6 +95,8 @@
 
     const url = `/api/book/${encodeURIComponent(slug)}`;
     const sectionsUrl = `${url}/sections`;
+    const profileUrl = `/api/profile/${encodeURIComponent(slug)}`;
+    const postsUrl = `/api/content/${encodeURIComponent(slug)}/posts.json`;
 
     // Every refusal this page can meet, handled once, exactly as on the
     // settings page. Shared by the load, the request and the polling so they
@@ -651,7 +653,7 @@
         $('cover').hidden = false;
     }
 
-    async function make() {
+    async function startBuild() {
         const button = $('make');
         button.disabled = true;
         said.textContent = 'Asking\u2026';
@@ -684,6 +686,91 @@
         watchingSince = Date.now();
         draw(body);
         watch();
+    }
+
+    const CHECKLIST_ITEMS = ['name', 'mission', 'dates', 'cover', 'foreword', 'afterword', 'featured'];
+
+    function paintChecklistItem(name, complete) {
+        const row = $(`check-${name}`);
+        row.className = `book-checklist__item${complete ? ' is-complete' : ''}`;
+        $(`check-${name}-mark`).textContent = complete ? '\u2713' : '';
+        $(`check-${name}-state`).textContent = complete ? 'Complete.' : 'Not complete.';
+        $(`check-${name}-action`).hidden = complete;
+    }
+
+    async function checklist() {
+        const responses = await Promise.all([
+            fetch(profileUrl, { cache: 'no-store' }),
+            fetch(coverUrl, { cache: 'no-store' }),
+            fetch(sectionsUrl, { cache: 'no-store' }),
+            fetch(postsUrl, { cache: 'no-store' })
+        ]);
+
+        for (const response of responses) {
+            if (refused(response)) return null;
+            if (!response.ok) throw new Error('preparation unavailable');
+        }
+
+        const [profile, cover, parts, content] = await Promise.all(
+            responses.map((response) => response.json())
+        );
+        const visible = (content.posts ?? []).filter((post) => !post.hidden);
+        const photos = visible.reduce((count, post) => count + (post.photos ?? []).length, 0);
+        const featured = visible.reduce(
+            (count, post) => count + (post.featuredPhotoIds ?? []).length,
+            0
+        );
+
+        return {
+            name: Boolean(profile.displayName?.trim()),
+            mission: Boolean(profile.mission?.trim()),
+            dates: Boolean(profile.startDate && profile.returnDate),
+            cover: Boolean(cover.picture),
+            foreword: Boolean(parts.foreword),
+            afterword: Boolean(parts.afterword),
+            featured: featured > 0,
+            featuredAvailable: photos > 0
+        };
+    }
+
+    function showChecklist(prepared) {
+        for (const name of CHECKLIST_ITEMS) paintChecklistItem(name, prepared[name]);
+        $('check-featured').hidden = !prepared.featuredAvailable;
+
+        const missing = CHECKLIST_ITEMS.some(
+            (name) => (name !== 'featured' || prepared.featuredAvailable) && !prepared[name]
+        );
+        if (!missing) return false;
+
+        $('check-name-action').href = `/settings/${encodeURIComponent(slug)}#displayName`;
+        $('check-mission-action').href = `/settings/${encodeURIComponent(slug)}#mission`;
+        $('check-dates-action').href = `/settings/${encodeURIComponent(slug)}#startDate`;
+        $('check-featured-action').href = `/${encodeURIComponent(slug)}/`;
+        $('book-checklist-required').hidden = prepared.name;
+        $('book-checklist-anyway').disabled = !prepared.name;
+        $('book-checklist').showModal();
+        return true;
+    }
+
+    async function make() {
+        const button = $('make');
+        button.disabled = true;
+        said.textContent = 'Checking the finishing touches\u2026';
+
+        let prepared;
+        try {
+            prepared = await checklist();
+        } catch {
+            button.disabled = false;
+            said.textContent = 'Could not check the book details. Nothing has been started.';
+            return;
+        }
+        if (!prepared) return;
+
+        button.disabled = false;
+        said.textContent = '';
+        if (showChecklist(prepared)) return;
+        await startBuild();
     }
 
     /**
@@ -821,6 +908,24 @@
     });
 
     $('make').addEventListener('click', make);
+    $('book-checklist-close').addEventListener('click', () => $('book-checklist').close());
+    $('book-checklist-anyway').addEventListener('click', async () => {
+        $('book-checklist').close();
+        await startBuild();
+    });
+    $('check-cover-action').addEventListener('click', () => {
+        $('book-checklist').close();
+        $('cover').scrollIntoView?.({ block: 'start' });
+        $('pick').focus?.();
+    });
+    $('check-foreword-action').addEventListener('click', () => {
+        $('book-checklist').close();
+        openSection('foreword', true);
+    });
+    $('check-afterword-action').addEventListener('click', () => {
+        $('book-checklist').close();
+        openSection('afterword', true);
+    });
     $('order').addEventListener('click', orderOne);
     $('close-checkout').addEventListener('click', () => changeCheckoutVisibility(false));
     $('restore-checkout').addEventListener('click', () => changeCheckoutVisibility(true));
