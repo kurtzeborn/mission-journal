@@ -285,7 +285,7 @@ describe('the shape of the search bar', () => {
     test('a focused field cannot remain in the compact layout', () => {
         const view = archive();
 
-        view.elements.searchInput.focus();
+        view.elements.searchInput.dispatchEvent(new view.window.FocusEvent('focus'));
 
         assert.equal(view.elements.searchForm.classList.contains('search--collapsed'), false);
         assert.equal(view.$('.search__toggle').hidden, true);
@@ -335,8 +335,9 @@ describe('the shape of the search bar', () => {
 
     test('escape hands focus back to the page', () => {
         const view = archive();
-        view.elements.searchInput.focus();
         view.search('Antigua');
+        view.elements.searchInput.focus();
+        assert.equal(view.document.activeElement, view.elements.searchInput);
 
         view.key(view.elements.searchInput, 'Escape');
 
