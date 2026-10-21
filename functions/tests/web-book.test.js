@@ -335,6 +335,42 @@ describe('the finished book actions', () => {
         assert.equal(view.el('book-part-editor').getAttribute('contenteditable'), 'true');
     });
 
+    test('opens the checklist on demand with a single Close button even when everything is complete', async () => {
+        const view = await open({
+            cover: {
+                title: 'Elder Example',
+                mission: 'Example Mission',
+                dates: 'July 1, 2024 \u2013 January 15, 2026',
+                cloth: 'navy',
+                picture: 'p_123456789abc',
+                cloths: []
+            },
+            sections: { foreword: '<p>Welcome.</p>', afterword: '<p>Home.</p>' },
+            posts: [
+                {
+                    photos: [{ id: 'p_123456789abc' }],
+                    featuredPhotoIds: ['p_123456789abc']
+                }
+            ]
+        });
+
+        await view.el('review-checklist').dispatch('click');
+        await settled();
+
+        assert.equal(
+            view.net.calls.some(
+                (call) => call.method === 'POST' && call.url.endsWith('/api/book/elder.example')
+            ),
+            false
+        );
+        assert.equal(view.el('book-checklist').open, true);
+        assert.equal(view.text('book-checklist-close'), 'Close');
+        assert.equal(view.el('book-checklist-anyway').hidden, true);
+
+        await view.el('book-checklist-close').dispatch('click');
+        assert.equal(view.el('book-checklist').open, false);
+    });
+
     test('shows an active checkout immediately with its expiration', async () => {
         const listedUntil = '2099-04-03T23:54:54.009Z';
         const checkout = {

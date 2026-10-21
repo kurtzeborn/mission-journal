@@ -142,8 +142,11 @@
                 <p class="note" id="parts-said" role="status" aria-live="polite"></p>
             </section>
 
-            <p>
+            <p class="book-make-actions">
                 <button class="button" type="button" id="make">Make the book</button>
+                <button class="book-checklist__action" type="button" id="review-checklist">
+                    Book content checklist
+                </button>
             </p>
             <p class="note" id="make-note" hidden>
                 This creates a separate draft. The checkout continues to sell the version shown
@@ -269,7 +272,7 @@
 
     <dialog class="book-checklist" id="book-checklist" aria-labelledby="book-checklist-title">
         <h2 id="book-checklist-title">Before making your book</h2>
-        <p>
+        <p id="book-checklist-intro">
             These finishing touches are still available. Add the ones you want before making
             the proof, or continue without the optional ones.
         </p>
