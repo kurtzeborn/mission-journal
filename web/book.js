@@ -733,23 +733,53 @@
         };
     }
 
-    function showChecklist(prepared) {
+    function showChecklist(prepared, { reviewOnly = false } = {}) {
         for (const name of CHECKLIST_ITEMS) paintChecklistItem(name, prepared[name]);
         $('check-featured').hidden = !prepared.featuredAvailable;
 
         const missing = CHECKLIST_ITEMS.some(
             (name) => (name !== 'featured' || prepared.featuredAvailable) && !prepared[name]
         );
-        if (!missing) return false;
+        if (!reviewOnly && !missing) return false;
 
+        $('book-checklist-title').textContent = reviewOnly
+            ? 'Book content checklist'
+            : 'Before making your book';
+        $('book-checklist-intro').textContent = reviewOnly
+            ? missing
+                ? 'These finishing touches are still available for your book.'
+                : 'Everything below is ready for your next proof.'
+            : 'These finishing touches are still available. Add the ones you want before making the proof, or continue without the optional ones.';
         $('check-name-action').href = `/settings/${encodeURIComponent(slug)}#displayName`;
         $('check-mission-action').href = `/settings/${encodeURIComponent(slug)}#mission`;
         $('check-dates-action').href = `/settings/${encodeURIComponent(slug)}#startDate`;
         $('check-featured-action').href = `/${encodeURIComponent(slug)}/`;
         $('book-checklist-required').hidden = prepared.name;
+        $('book-checklist-close').textContent = reviewOnly ? 'Close' : 'Keep editing';
+        $('book-checklist-anyway').hidden = reviewOnly;
         $('book-checklist-anyway').disabled = !prepared.name;
         $('book-checklist').showModal();
         return true;
+    }
+
+    async function reviewChecklist() {
+        const trigger = $('review-checklist');
+        trigger.disabled = true;
+        said.textContent = 'Checking the finishing touches\u2026';
+
+        let prepared;
+        try {
+            prepared = await checklist();
+        } catch {
+            trigger.disabled = false;
+            said.textContent = 'Could not check the book details.';
+            return;
+        }
+        if (!prepared) return;
+
+        trigger.disabled = false;
+        said.textContent = '';
+        showChecklist(prepared, { reviewOnly: true });
     }
 
     async function make() {
@@ -908,6 +938,7 @@
     });
 
     $('make').addEventListener('click', make);
+    $('review-checklist').addEventListener('click', reviewChecklist);
     $('book-checklist-close').addEventListener('click', () => $('book-checklist').close());
     $('book-checklist-anyway').addEventListener('click', async () => {
         $('book-checklist').close();
