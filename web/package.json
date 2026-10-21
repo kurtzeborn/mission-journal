@@ -2,6 +2,7 @@
   "name": "mission-journal-web",
   "version": "1.0.0",
   "private": true,
+  "license": "PolyForm-Strict-1.0.0",
   "type": "module",
   "scripts": {
     "vendor": "node ../tools/vendor-web.js",

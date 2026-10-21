@@ -2,6 +2,7 @@
   "name": "mission-journal-functions",
   "version": "1.0.0",
   "private": true,
+  "license": "PolyForm-Strict-1.0.0",
   "type": "module",
   "main": "src/functions/*.js",
   "engines": {
