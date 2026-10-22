@@ -15,3 +15,8 @@ A missionary BCCs one shared address on their weekly email home — or a family 
 - [docs/plan.md](docs/plan.md) — full technical design.
 - [docs/architecture.md](docs/architecture.md) — deployed architecture, data stores, and request flows.
 - [docs/todos.md](docs/todos.md) — maintenance, and everything that expires.
+
+---
+
+Copyright © 2026 Scott Kurtzeborn. Licensed under the [PolyForm Strict License 1.0.0](LICENSE).
+
