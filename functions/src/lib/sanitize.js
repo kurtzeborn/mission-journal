@@ -61,7 +61,8 @@ export const PHOTO_PREFIX = '/api/photo/';
 // part before the wrap is the base64url payload, so removing it leaves a
 // remainder that cannot be verified and is not reassemblable from what
 // survives. Redacting the beginning of a token destroys the token.
-const ACCESS_LINK = /https?:\/\/[^\s"'<>]*\/(?:claim|invite)#[^\s"'<>]*/gi;
+const ACCESS_LINK =
+    /https?:\/\/[^\s"'<>]*\/(?:(?:claim|invite|join|optout|ask)#|api\/optout\?t=)[^\s"'<>]*/gi;
 
 // No angle brackets, quotes or ampersand, so this is inert wherever it lands
 // -- including inside an unquoted href, where it splits into junk attributes

@@ -10,8 +10,8 @@ import { redactAccessLinks, sanitizeBody, photoUrl } from './sanitize.js';
 import { rotateStoredPhoto, storePhoto, isPhotoType, MAX_PHOTOS } from './photos.js';
 import { photoId } from './paths.js';
 import { stripAlbumLinks } from './album.js';
+import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 
-const CONFLICT_RETRIES = 8;
 const utf8 = (value) => Buffer.from(JSON.stringify(value, null, 2), 'utf8');
 
 const escapeHtml = (text) =>
@@ -229,9 +229,3 @@ async function commitRender({ store, slug, postId, bodyHtml, photos, restore, su
 
     throw new Error(`posts.json contention for ${slug} after ${CONFLICT_RETRIES} attempts`);
 }
-
-const isConflict = (err) =>
-    err?.statusCode === 412 ||
-    err?.statusCode === 409 ||
-    err?.code === 'ConditionNotMet' ||
-    err?.code === 'BlobAlreadyExists';

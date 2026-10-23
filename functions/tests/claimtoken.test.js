@@ -5,7 +5,13 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { issueClaimToken, verifyClaimToken, claimTokenHash } from '../src/lib/claimtoken.js';
+import {
+    issueClaimToken,
+    verifyClaimToken,
+    claimTokenHash,
+    signPayload,
+    PURPOSE
+} from '../src/lib/claimtoken.js';
 
 const KEY = 'a-signing-key-from-key-vault';
 const LATER = '2026-10-02T12:00:00.000Z';
@@ -128,5 +134,19 @@ describe('verifying a claim token', () => {
     test('gives back the hash so the caller can check it was not already spent', () => {
         const { token, hash } = fresh();
         assert.equal(verifyClaimToken({ token, key: KEY, now: NOW }).hash, hash);
+    });
+
+    test('rejects a validly signed payload with a numeric or unparseable expiry instead of treating NaN as non-expired', () => {
+        const numericExp = signPayload({ slug: 'elder.example', exp: 1792694903, p: PURPOSE.claim }, KEY);
+        assert.deepEqual(verifyClaimToken({ token: numericExp, key: KEY, now: NOW }), {
+            valid: false,
+            reason: 'malformed'
+        });
+
+        const invalidExp = signPayload({ slug: 'elder.example', exp: 'not-a-date', p: PURPOSE.claim }, KEY);
+        assert.deepEqual(verifyClaimToken({ token: invalidExp, key: KEY, now: NOW }), {
+            valid: false,
+            reason: 'malformed'
+        });
     });
 });

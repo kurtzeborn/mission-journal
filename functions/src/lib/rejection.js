@@ -32,7 +32,7 @@
 
 import { TABLES } from './tables.js';
 import { POST_ADDRESS } from './offer.js';
-import { escapeHtml as escape, mailFrom } from './mail.js';
+import { escapeHtml as escape, wrapEmailHtml, mailFrom } from './mail.js';
 
 const SIGNATURE = 'Pday Letters';
 
@@ -93,15 +93,13 @@ export function rejectionEmail({ reason, author = '', baseUrl = '' }) {
         `${SIGNATURE} \u2014 ${home}`
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         '<p>You forwarded a letter to Pday Letters and it was not added to the archive. Here is why, so you can send it again.</p>',
         ...cause.html,
         '<p>Nothing was lost and nothing else was affected. The archive is exactly as it was, and you can forward the same letter as many times as you like &mdash; we recognize one we already have, so a second try can only help.</p>',
         `<p><a href="${escape(faq)}">More about forwards that do not arrive</a></p>`,
-        `<p>${SIGNATURE} &mdash; <a href="${escape(home)}">${escape(home)}</a></p>`,
-        '</div>'
-    ].join('');
+        `<p>${SIGNATURE} &mdash; <a href="${escape(home)}">${escape(home)}</a></p>`
+    ]);
 
     return { subject, text, html };
 }

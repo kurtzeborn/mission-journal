@@ -278,6 +278,21 @@ describe('our own access links never reach the archive', () => {
         assert.match(out, /\[link removed\]/);
     });
 
+    test('redacts qr join, opt-out, missionary relay, and list-unsubscribe links too', () => {
+        const tok = token();
+        const links = [
+            `https://pdayletters.com/join#${tok}`,
+            `https://pdayletters.com/optout#${tok}`,
+            `https://pdayletters.com/ask#${tok}`,
+            `https://pdayletters.com/api/optout?t=${encodeURIComponent(tok)}`
+        ];
+        for (const link of links) {
+            const out = sanitizeBody(`<p>See <a href="${link}">${link}</a></p>`);
+            assert.equal(out.includes(head(tok)), false, `must redact token in ${link}`);
+            assert.match(out, /\[link removed\]/);
+        }
+    });
+
     test('a link wrapped across lines is still destroyed', () => {
         // A token is far longer than a mail client's wrap column, so this is
         // the shape a plain-text forward actually produces. Only the first

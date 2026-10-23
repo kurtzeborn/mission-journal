@@ -33,7 +33,7 @@
 
 import { TABLES } from './tables.js';
 import { POST_ADDRESS } from './offer.js';
-import { escapeHtml as escape, mailFrom } from './mail.js';
+import { escapeHtml as escape, wrapEmailHtml, mailFrom } from './mail.js';
 
 const SIGNATURE = 'Pday Letters';
 
@@ -183,8 +183,7 @@ function attachEmail({ author, faq, askUrl, requester }) {
     // Deliberately the same words as the plain-text part. A client that shows
     // one and a client that shows the other should not be able to disagree
     // about what was said, and nothing in the send path checks that they match.
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         `<p>Thanks for forwarding a letter from <strong>${escape(author)}</strong> to ${SIGNATURE}.</p>`,
         '<p>Unfortunately, the manner in which you forwarded it to us is not secure enough to start an archive. We need you to do it again in a more secure way, and there are two ways to do that.</p>',
         '<p><strong>1. Forward the letter again as an attachment.</strong></p>',
@@ -198,9 +197,8 @@ function attachEmail({ author, faq, askUrl, requester }) {
         ...route2.html,
         '<p>Either way, this is only needed for the first letter.</p>',
         `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,
-        `<p>${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        `<p>${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html };
 }
@@ -258,8 +256,7 @@ function rebuiltEmail({ author, faq, askUrl, requester }) {
         SIGNATURE
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         `<p>Thanks for forwarding a letter from <strong>${escape(author)}</strong> to ${SIGNATURE}.</p>`,
         '<p>You attached it, which is exactly right. The problem is not something you did. Your mail program rebuilt the letter as it sent it, and that erases the proof that the missionary wrote it. We cannot start an archive without that proof, and forwarding it the same way again will not work.</p>',
         '<p>This happens with the classic Outlook app on Windows and with the Outlook app on Android. There are two ways around it.</p>',
@@ -268,9 +265,8 @@ function rebuiltEmail({ author, faq, askUrl, requester }) {
         ...route2.html,
         '<p>Either way, this is only needed for the first letter.</p>',
         `<p>For further information, consult <a href="${escape(faq)}">our FAQ</a>.</p>`,
-        `<p>${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        `<p>${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html };
 }

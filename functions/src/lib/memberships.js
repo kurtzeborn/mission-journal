@@ -107,22 +107,24 @@ export async function rebuildMemberships({ tables, slug, acl, now }) {
     const members = acl?.members ?? [];
     const wanted = new Set(members.map((m) => lower(m.email)));
 
-    for (const member of members) {
-        await recordMembership({
-            tables,
-            email: member.email,
-            slug,
-            role: member.role,
-            now
-        });
-    }
+    await Promise.all(
+        members.map((member) =>
+            recordMembership({
+                tables,
+                email: member.email,
+                slug,
+                role: member.role,
+                now
+            })
+        )
+    );
 
     // Cross-partition scan. Acceptable only because this is a repair path run
     // for one slug at a time, never on a request.
     const all = await tables.listEntities(TABLES.memberships);
-    for (const row of all) {
-        if (row.rowKey === slug && !wanted.has(row.partitionKey)) {
-            await tables.deleteEntity(TABLES.memberships, row.partitionKey, slug);
-        }
-    }
+    await Promise.all(
+        all
+            .filter((row) => row.rowKey === slug && !wanted.has(row.partitionKey))
+            .map((row) => tables.deleteEntity(TABLES.memberships, row.partitionKey, slug))
+    );
 }

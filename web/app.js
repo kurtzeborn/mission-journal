@@ -411,6 +411,11 @@
         const failed = await explain(response);
         if (failed) return failed;
 
+        if (!reload && loadedEtag) {
+            const detail = await response.json().catch(() => null);
+            loadedEtag = advanceEtag(loadedEtag, detail?.etag);
+        }
+
         // Re-reading is what keeps the page honest: the server decides what a
         // letter now says, including what its sanitizer removed from an edit.
         //
@@ -418,6 +423,17 @@
         // and that is the one action with no letter left to come back to.
         if (reload) reloadAt(method === 'DELETE' && !suffix ? null : postId);
         return null;
+    }
+
+    // Replace the blob-ETag prefix of a contentEtag validator when an in-place
+    // write moves posts.json without changing role, operator, or site salt.
+    function advanceEtag(current, nextBlobEtag) {
+        if (!current || !nextBlobEtag) return null;
+        const token = String(nextBlobEtag).replace(/[^A-Za-z0-9]/g, '');
+        if (!token) return null;
+        return current.includes('.')
+            ? current.replace(/^(W\/")?[A-Za-z0-9]+(?=\.)/, `$1${token}`)
+            : String(nextBlobEtag);
     }
 
     // Saving an edit: the letter, then the pictures crossed off during it.
@@ -464,7 +480,7 @@
     }
 
     async function setFeaturedPhoto(postId, photoId, featured) {
-        const failed = await call(
+        return call(
             'PATCH',
             postId,
             `/photos/${encodeURIComponent(photoId)}/featured`,
@@ -474,23 +490,16 @@
             },
             false
         );
-        // This scoped write cannot make the letter text stale, but it does
-        // move posts.json. Stop asserting the old whole-archive validator on
-        // a later text edit composed from the still-current text on screen.
-        if (!failed) loadedEtag = null;
-        return failed;
     }
 
     async function rotatePhoto(postId, photoId) {
-        const failed = await call(
+        return call(
             'PATCH',
             postId,
             `/photos/${encodeURIComponent(photoId)}/rotate`,
             {},
             false
         );
-        if (!failed) loadedEtag = null;
-        return failed;
     }
 
     // Chrome reads File.type out of the Windows registry, which carries no

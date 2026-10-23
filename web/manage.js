@@ -89,17 +89,12 @@
     // The slug, and a way into the archive it names. Every table here starts
     // with one, and what an operator does after reading a row is usually go
     // and look at the thing -- which otherwise means retyping it by hand.
-    //
-    // A new tab because the page is four tables filled by four separate calls,
-    // and coming back to it means loading all of them again. On a deleted or
-    // an unclaimed archive the link is a 404, which is the truth about it.
+    // On a pending archive the link is a 404, which is the truth about it.
     const slugCell = (row, slug) => {
         const td = cell(row, '');
         const link = document.createElement('a');
         link.href = `/${encodeURIComponent(slug)}`;
         link.textContent = slug;
-        link.target = '_blank';
-        link.rel = 'noopener';
         td.appendChild(link);
         return td;
     };

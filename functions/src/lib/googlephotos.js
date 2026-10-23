@@ -18,7 +18,8 @@
 // four REST calls. What it deliberately does not do is decide who is allowed
 // to ask; that stays in the handler, next to the gate every other write uses.
 
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { PURPOSE, signPayload, verifyPayload } from './claimtoken.js';
 
 const AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN = 'https://oauth2.googleapis.com/token';
@@ -51,27 +52,49 @@ export const STATE_SECONDS = 15 * 60;
 const b64url = (buffer) => Buffer.from(buffer).toString('base64url');
 const unb64url = (text) => Buffer.from(String(text ?? ''), 'base64url');
 
-const sign = (text, key) => createHmac('sha256', key).update(text, 'utf8').digest();
+const cipherKey = (key) => createHash('sha256').update(`mj-gphotos-token:${key}`, 'utf8').digest();
+
+function encryptSecret(secret, key) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', cipherKey(key), iv);
+    const encrypted = Buffer.concat([cipher.update(String(secret), 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return `${b64url(iv)}.${b64url(encrypted)}.${b64url(tag)}`;
+}
+
+function decryptSecret(encoded, key) {
+    const parts = String(encoded ?? '').split('.');
+    if (parts.length !== 3) return null;
+    try {
+        const [iv, ciphertext, tag] = parts.map(unb64url);
+        if (iv.length !== 12 || tag.length !== 16) return null;
+        const decipher = createDecipheriv('aes-256-gcm', cipherKey(key), iv);
+        decipher.setAuthTag(tag);
+        return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Wrap a small object so it can be handed to somebody else and still trusted.
  *
- * Signed and not encrypted, which is the honest description of what is needed:
- * the contents are the owner's own session and their own archive, so there is
- * nothing here to hide from them. What must not happen is somebody else
- * *writing* one -- pointing a session at an archive that is not theirs, or
- * planting their own Google token in another person's browser so that the next
- * import pulls in a stranger's photographs.
+ * Stamped with `PURPOSE.googlePhotos` so a sealed OAuth state or session cookie
+ * can never be verified as an archive claim link, and encrypts `token` with
+ * AES-256-GCM so a live Google OAuth access token is never carried in plaintext
+ * inside the browser cookie.
  */
 export function seal(payload, key, lifetimeSeconds) {
+    const { token, ...rest } = payload ?? {};
     const body = {
-        ...payload,
+        ...rest,
+        ...(token !== undefined ? { encToken: encryptSecret(token, key) } : {}),
+        p: PURPOSE.googlePhotos,
         exp: Math.floor(Date.now() / 1000) + lifetimeSeconds,
         n: b64url(randomBytes(9))
     };
 
-    const text = b64url(Buffer.from(JSON.stringify(body), 'utf8'));
-    return `${text}.${b64url(sign(text, key))}`;
+    return signPayload(body, key);
 }
 
 /**
@@ -80,29 +103,21 @@ export function seal(payload, key, lifetimeSeconds) {
  * @returns {{valid: true, payload: object}|{valid: false, reason: string}}
  */
 export function unseal(sealed, key) {
-    const text = String(sealed ?? '');
-    const dot = text.indexOf('.');
-    if (dot <= 0 || dot === text.length - 1) return { valid: false, reason: 'malformed' };
+    const opened = verifyPayload(sealed, key);
+    if (!opened.valid) return opened;
 
-    const head = text.slice(0, dot);
-    const provided = unb64url(text.slice(dot + 1));
-    const expected = sign(head, key);
-
-    // Length first: `timingSafeEqual` throws rather than returning false when
-    // the two buffers differ in size, and a forged signature is the ordinary
-    // way for that to happen.
-    if (provided.length !== expected.length) return { valid: false, reason: 'bad-signature' };
-    if (!timingSafeEqual(provided, expected)) return { valid: false, reason: 'bad-signature' };
-
-    let payload;
-    try {
-        payload = JSON.parse(unb64url(head).toString('utf8'));
-    } catch {
-        return { valid: false, reason: 'malformed' };
+    const { payload } = opened;
+    if (payload.p !== PURPOSE.googlePhotos) return { valid: false, reason: 'wrong-purpose' };
+    if (!(typeof payload.exp === 'number' && payload.exp > Math.floor(Date.now() / 1000))) {
+        return { valid: false, reason: 'expired' };
     }
 
-    if (!payload || typeof payload !== 'object') return { valid: false, reason: 'malformed' };
-    if (!(payload.exp > Math.floor(Date.now() / 1000))) return { valid: false, reason: 'expired' };
+    if (payload.encToken !== undefined) {
+        const token = decryptSecret(payload.encToken, key);
+        if (token === null) return { valid: false, reason: 'malformed' };
+        const { encToken, ...rest } = payload;
+        return { valid: true, payload: { ...rest, token } };
+    }
 
     return { valid: true, payload };
 }

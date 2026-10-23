@@ -26,6 +26,35 @@ export const ROLE = {
     reader: 'reader'
 };
 
+const lower = (email) => String(email ?? '').trim().toLowerCase();
+
+/**
+ * Whether `email` holds the owner role in `members`.
+ */
+export function isOwner(members, email) {
+    const target = lower(email);
+    return Boolean(
+        target &&
+        Array.isArray(members) &&
+        members.some((m) => lower(m.email) === target && m.role === ROLE.owner)
+    );
+}
+
+/**
+ * Load a site's ACL and confirm `actor` is an owner on it.
+ *
+ * @returns {Promise<{email: string, members: Array}|{error: string}>}
+ */
+export async function requireOwner({ store, slug, actor }) {
+    const members = await readAcl(store, slug);
+    if (!members) return { error: 'no such site' };
+
+    const email = lower(actor);
+    if (!isOwner(members, email)) return { error: 'owners only' };
+
+    return { email, members };
+}
+
 const NOBODY = { role: null, viaOperator: false };
 
 /**

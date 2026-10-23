@@ -47,7 +47,7 @@
 
 import { POST_ADDRESS } from './offer.js';
 import { CLAIM_ADDRESS } from './claimverb.js';
-import { escapeHtml as escape, mailFrom } from './mail.js';
+import { escapeHtml as escape, wrapEmailHtml, mailFrom } from './mail.js';
 import { PURPOSE, verifyClaimToken, issueClaimToken } from './claimtoken.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { validSlug } from './paths.js';
@@ -123,8 +123,7 @@ export function relayEmail({ requester, link, baseUrl }) {
         `${SIGNATURE} \u2014 ${home}`
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         `<p><strong>${escape(requester)}</strong> is trying to save your letters home in one place, so nobody in the family misses one.</p>`,
         '<p>We cannot let them start without asking you first, and you are the only person who can say whether they should. So we are asking.</p>',
         `<p><strong>If you know ${escape(requester)}, forward this message to them.</strong></p>`,
@@ -132,9 +131,8 @@ export function relayEmail({ requester, link, baseUrl }) {
         `<p>Whoever opens that link sets up the archive and looks after it. It works once and stops working in ${RELAY_TTL_DAYS} days, so please send it to them rather than posting it anywhere.</p>`,
         `<p>If you do not know ${escape(requester)}, delete this message. Nothing happens unless somebody opens the link. Nothing has been saved yet on our servers and nothing will be saved if you delete this message.</p>`,
         `<p>You do not need to sign in or reply to us. If you would like your own access to the archive later, email <strong>${CLAIM_ADDRESS}</strong> from this address and we will send you a link of your own.</p>`,
-        `<p>${SIGNATURE} &mdash; <a href="${escape(home)}">${escape(home)}</a></p>`,
-        '</div>'
-    ].join('');
+        `<p>${SIGNATURE} &mdash; <a href="${escape(home)}">${escape(home)}</a></p>`
+    ]);
 
     return { subject, text, html };
 }

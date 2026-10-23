@@ -379,6 +379,14 @@ describe('waiting for the picking to finish', () => {
 
         assert.equal(response.status, 410);
     });
+
+    test('refuses to poll a session for an unauthenticated caller or a different signed-in user', async () => {
+        const anon = await pollGoogle({ request: request({ as: null, cookie: session() }), context: silent });
+        assert.equal(anon.status, 401);
+
+        const wrongUser = await pollGoogle({ request: request({ as: GRAN, cookie: session() }), context: silent });
+        assert.equal(wrongUser.status, 409);
+    });
 });
 
 describe('importing one picture', () => {

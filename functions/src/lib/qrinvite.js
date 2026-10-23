@@ -13,7 +13,7 @@
 // others; an owner can promote a known reader afterwards from the People page.
 
 import { randomBytes } from 'node:crypto';
-import { ROLE, readAcl } from './acl.js';
+import { ROLE, readAcl, isOwner, requireOwner } from './acl.js';
 import { claimTokenHash, issueClaimToken, PURPOSE, verifyClaimToken } from './claimtoken.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { recordMembership } from './memberships.js';
@@ -34,15 +34,6 @@ export const QR_TICKET_MINUTES = 10;
 export const QR_CLOSE_GRACE_SECONDS = 20;
 
 const after = (at, milliseconds) => new Date(at.getTime() + milliseconds).toISOString();
-
-async function owner({ store, slug, actor }) {
-    const members = await readAcl(store, slug);
-    if (!members) return { error: 'no such site' };
-
-    const email = lower(actor);
-    const member = members.find((candidate) => lower(candidate.email) === email);
-    return member?.role === ROLE.owner ? { email } : { error: 'owners only' };
-}
 
 function live(row, id, at) {
     return Boolean(
@@ -82,7 +73,7 @@ export async function startQrInvite({ store, tables, slug, actor, key, baseUrl, 
     const safe = validSlug(slug);
     if (!safe) return { error: 'no such site' };
 
-    const mine = await owner({ store, slug: safe, actor });
+    const mine = await requireOwner({ store, slug: safe, actor });
     if (mine.error) return mine;
 
     const at = now();
@@ -113,7 +104,7 @@ export async function rotateQrInvite({
     const safe = validSlug(slug);
     if (!safe) return { error: 'no such session' };
 
-    const mine = await owner({ store, slug: safe, actor });
+    const mine = await requireOwner({ store, slug: safe, actor });
     if (mine.error) return mine;
 
     const at = now();
@@ -135,7 +126,7 @@ export async function closeQrInvite({ store, tables, slug, actor, id, now = () =
     const safe = validSlug(slug);
     if (!safe) return { error: 'no such session' };
 
-    const mine = await owner({ store, slug: safe, actor });
+    const mine = await requireOwner({ store, slug: safe, actor });
     if (mine.error) return mine;
 
     const row = await activeRow(tables, safe);
@@ -249,9 +240,7 @@ export async function acceptQrInvite({
 
         const acl = JSON.parse(Buffer.from(current.bytes).toString('utf8'));
         const currentMembers = Array.isArray(acl.members) ? acl.members : [];
-        if (!currentMembers.some(
-            (member) => lower(member.email) === lower(session.invitedBy) && member.role === ROLE.owner
-        )) {
+        if (!isOwner(currentMembers, session.invitedBy)) {
             return { status: 'closed' };
         }
         if (currentMembers.some((member) => lower(member.email) === email)) break;

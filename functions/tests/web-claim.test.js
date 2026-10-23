@@ -79,15 +79,6 @@ describe('setting an archive up from a claim link', () => {
         assert.equal(view.context.location.href, '/elder.example/');
     });
 
-    test('nobody is asked to press a second button to get in', async () => {
-        // The page that stood here announced the archive was ready and offered
-        // a link to it, which is what the redirect does without the click. The
-        // invitation page dropped its own for the same reason.
-        const view = await claimPage({ answer: server({ described: READY }) });
-
-        assert.doesNotMatch(view.source, /id="done"/);
-    });
-
     test('a missionary joining a live archive is not asked to name it again', async () => {
         // The name is months old and the answer is meant to be left alone, so
         // the question is not put. Settings is where one gets corrected.

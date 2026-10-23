@@ -161,11 +161,11 @@ export async function commitPosts({ store, slug, mutate, log = console }) {
         if (outcome.error) return outcome;
 
         try {
-            await store.writeBlob('rendered', name, utf8(outcome.posts), {
+            const written = await store.writeBlob('rendered', name, utf8(outcome.posts), {
                 contentType: 'application/json',
                 ifMatch: current.etag
             });
-            return outcome;
+            return { ...outcome, etag: written?.etag ?? null };
         } catch (err) {
             if (!isConflict(err)) throw err;
             log.info?.('edit: posts.json conflict, retrying', { slug, attempt });

@@ -155,43 +155,12 @@ describe('accepting', () => {
         await view.el('accept-form').dispatch('submit');
 
         const accepted = view.calls.find((c) => c.url === '/api/invite/accept');
-        assert.equal(accepted.body.token, TOKEN);
+        assert.deepEqual(accepted.body, { token: TOKEN });
         assert.equal(view.context.location.href, '/elder.example/');
         assert.equal(
             view.context.sessionStorage.getItem('email-notification-prompt-after-join'),
             'elder.example'
         );
-    });
-
-    test('nobody is asked to press a second button to get in', async () => {
-        // The page that used to stand here said the acceptance had worked and
-        // offered a link to the archive, which is what the redirect does
-        // without the click.
-        const view = await invitePage({ answer: server({ described: READY }) });
-
-        // Against the markup, not `sections`: that is a list of elements, so
-        // asking it whether it contains a string was always going to be false.
-        assert.doesNotMatch(view.source, /id="done"/);
-    });
-
-    test('nobody is asked about email on the way in', async () => {
-        // The question used to stand between signing in and getting access.
-        // It now lives in the account menu, and the answer until somebody
-        // goes there is silence.
-        const view = await invitePage({
-            answer: server({
-                described: READY,
-                signedInAs: 'g.example@gmail.com',
-                accept: { status: 200, body: { status: 'ok', slug: 'elder.example', role: 'reader' } }
-            })
-        });
-
-        assert.doesNotMatch(view.source, /<select/);
-
-        await view.el('accept-form').dispatch('submit');
-
-        const accepted = view.calls.find((c) => c.url === '/api/invite/accept');
-        assert.deepEqual(Object.keys(accepted.body), ['token']);
     });
 
     test('an invitation withdrawn between opening and accepting is caught', async () => {

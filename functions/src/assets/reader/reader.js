@@ -1471,16 +1471,16 @@ window.Reader = (function () {
         `a aboard about above absent across after against all along alongside
          also am amid amidst among amongst an and any are around as astride at
          atop be because been before behind being below beneath beside besides
-         between beyond but by can circa concerning considering could did
+         between beyond but by can circa come concerning considering could did
          despite do does doing done down during each even ever every except few
-         following for from get given got had has have having he her here hers
-         him his how i if in inside into is it its just like me minus more most
-         much my near no nor not now of off on once one only onto opposite or
-         other our out outside over own past pending per plus round said same
-         sans save she should since so some such than that the their them then
-         there these they thing things this those though through till to too
-         toward towards under until unto up upon us very versus via was we week
-         well were what when where which while
+         following for from get getting given got had has have having he her here
+         hers him his how i if in inside into is it its just like little lots me
+         minus more most much my near no nor not now of off on once one only onto
+         opposite or other our out outside over own past pending per plus read
+         really round said same sans save she should since so some such than that
+         the their them then there these they thing things this those though
+         through till to too toward towards under until unto up upon us very
+         versus via was we week well were what when where which while
          who why will with within without worth would yet you your
          cant didnt dont hes im isnt its ive id ill shes thats theres theyre
          wasnt weve wont youre`
@@ -1529,15 +1529,19 @@ window.Reader = (function () {
 
     // Logarithmic. A word that came up four times as often is not four times as
     // interesting, and on a linear scale one runaway word flattens the other
-    // fifty-nine into a single illegible size.
-    function scale(words, box) {
+    // fifty-nine into a single illegible size. Accepts either a DOM element
+    // (`clientWidth`/`clientHeight`) or a print box (`width`/`height`).
+    function cloudScale(words, box) {
         const counts = words.map(([, n]) => n);
         const most = Math.max(...counts);
         const least = Math.min(...counts);
 
+        const width = box.width ?? box.clientWidth;
+        const height = box.height ?? box.clientHeight;
+
         // Tied to the box rather than fixed, because the same type that reads
         // as a cloud on a laptop is a wall of headlines on a phone.
-        const top = Math.max(20, Math.min(box.clientWidth, box.clientHeight) * 0.19);
+        const top = Math.max(20, Math.min(width, height) * 0.19);
         const floor = Math.max(11, top * 0.24);
 
         return (n) => {
@@ -1569,7 +1573,7 @@ window.Reader = (function () {
     function draw(view) {
         if (!view.words.length) return;
 
-        const weight = scale(view.words, view.box);
+        const weight = cloudScale(view.words, view.box);
         view.box.textContent = '';
 
         window.WordCloud(view.box, {
@@ -2578,5 +2582,5 @@ window.Reader = (function () {
         state.hidden = true;
     }
 
-    return { mount, formatDate };
+    return { mount, formatDate, wordsIn, cloudScale, toneOf, NOISE, LINKS, MOST, TONES };
 })();

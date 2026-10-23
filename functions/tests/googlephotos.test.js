@@ -19,6 +19,7 @@ import {
     sessionState,
     unseal
 } from '../src/lib/googlephotos.js';
+import { issueClaimToken, verifyClaimToken } from '../src/lib/claimtoken.js';
 
 const KEY = 'a-signing-key-for-tests';
 
@@ -88,6 +89,26 @@ describe('the sealed envelope', () => {
         const facts = { slug: 'elder.example', postId: 'p1' };
 
         assert.notEqual(seal(facts, KEY, 60), seal(facts, KEY, 60));
+    });
+
+    test('encrypts the OAuth access token in the envelope and blocks cross-purpose token confusion', () => {
+        const secret = 'ya29.a0AfH6SMBx-super-secret-oauth-token';
+        const sealed = seal({ slug: 'elder.example', postId: 'p1', token: secret }, KEY, 60);
+        const decodedHead = Buffer.from(sealed.split('.')[0], 'base64url').toString('utf8');
+
+        assert.equal(decodedHead.includes(secret), false, 'raw OAuth token must not appear in base64 payload');
+        const opened = unseal(sealed, KEY);
+        assert.equal(opened.valid, true);
+        assert.equal(opened.payload.token, secret);
+
+        // Neither a Google Photos envelope nor a claim token may be accepted by the other verifier.
+        assert.equal(verifyClaimToken({ token: sealed, key: KEY }).valid, false);
+        const claim = issueClaimToken({
+            slug: 'elder.example',
+            key: KEY,
+            expiresAt: '2099-01-01T00:00:00.000Z'
+        });
+        assert.equal(unseal(claim.token, KEY).valid, false);
     });
 });
 

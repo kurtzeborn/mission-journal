@@ -21,19 +21,13 @@
 //   visible on a lock screen and in every mail server between here and the
 //   recipient; the body is at least behind a login.
 
-import { escapeHtml as escape } from './mail.js';
-
-const SIGNATURE = 'Pday Letters';
-
-// Written as a date the recipient can act on. Deliberately not localised:
-// a month name cannot be misread the way 03/08 can.
-const readableDate = (iso) =>
-    new Date(iso).toLocaleDateString('en-US', {
-        timeZone: 'UTC',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+import {
+    escapeHtml as escape,
+    wrapEmailHtml,
+    emailButtonHtml,
+    readableEmailDate as readableDate,
+    SENDER_NAME as SIGNATURE
+} from './mail.js';
 
 /**
  * @param {object} input
@@ -116,22 +110,20 @@ export function claimEmail({ baseUrl, token, messageCount, sender, expiresAt, fo
         SIGNATURE
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         forwarded
             ? `<p>You forwarded ${single ? 'a letter' : `${messageCount} letters`} from <strong>${escape(sender)}</strong> to ${SIGNATURE}.</p>`
             : `<p>${escape(opening)}</p>`,
         `<p>${held.join(' ')}</p>`,
-        `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Set up the archive</a></p>`,
+        emailButtonHtml(link, 'Set up the archive'),
         forwarded ? '' : `<p>${handoff.join(' ')}</p>`,
         `<p>Please use a <strong>personal</strong> account rather than ${forwarded
             ? 'a work or school one. This archive is meant to outlast the job you have today.'
             : 'your official missionary one. That address stops working after you come home, and the archive is meant to outlast it.'}</p>`,
         `<p>If nobody sets it up by <strong>${escape(deadline)}</strong>, ${single ? 'the letter stops' : 'the letters stop'} being held. Every new letter that arrives extends that date.</p>`,
         '<p>If you were not expecting this, you can ignore it. The link only works once, and only for whoever uses it first.</p>',
-        `<p>&mdash; ${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        `<p>&mdash; ${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html, link };
 }
@@ -205,16 +197,14 @@ export function missionaryClaimEmail({ baseUrl, token, expiresAt, alreadyOwned =
         SIGNATURE
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
-        `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Open your archive</a></p>`,
+    const html = wrapEmailHtml([
+        emailButtonHtml(link, 'Open your archive'),
         `<p>${escape(situation.join(' '))}</p>`,
         `<p>Use a <strong>personal</strong> Google or Microsoft account, not your official missionary one. That address stops working 60 days after you come home, and the archive is meant to outlast it.</p>`,
         `<p>The link stops working on <strong>${escape(deadline)}</strong>. Email claim@pdayletters.com again for a new one.</p>`,
         '<p>If you did not ask for this, ignore it &mdash; the link does nothing until someone signs in with it.</p>',
-        `<p>&mdash; ${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        `<p>&mdash; ${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html, link };
 }

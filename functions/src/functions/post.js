@@ -520,7 +520,13 @@ export async function featurePhoto({ request, context, store }) {
         photo: photoId,
         featured: body.featured
     });
-    return ok({ id: postId, photo: photoId, featured: body.featured, featuredPhotoIds });
+    return ok({
+        id: postId,
+        photo: photoId,
+        featured: body.featured,
+        featuredPhotoIds,
+        ...(outcome.etag ? { etag: outcome.etag } : {})
+    });
 }
 
 const quarterTurns = (value) => {
@@ -597,7 +603,12 @@ export async function rotatePhoto({ request, context, store }) {
         photo: photoId,
         turns: rotated.turns
     });
-    return ok({ id: postId, photo: photoId, ...rotated });
+    return ok({
+        id: postId,
+        photo: photoId,
+        ...rotated,
+        ...(outcome.etag ? { etag: outcome.etag } : {})
+    });
 }
 
 app.http('editPost', {

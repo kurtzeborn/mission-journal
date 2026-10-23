@@ -27,17 +27,13 @@
 //   invitation is not yet entitled to anything, and forwarded mail is how
 //   they most often come to hold one.
 
-import { escapeHtml as escape } from './mail.js';
-
-const SIGNATURE = 'Pday Letters';
-
-const readableDate = (iso) =>
-    new Date(iso).toLocaleDateString('en-US', {
-        timeZone: 'UTC',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
+import {
+    escapeHtml as escape,
+    wrapEmailHtml,
+    emailButtonHtml,
+    readableEmailDate as readableDate,
+    SENDER_NAME as SIGNATURE
+} from './mail.js';
 
 
 /**
@@ -130,23 +126,21 @@ export function inviteEmail({
         SIGNATURE
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         again
             ? `<p style="padding:12px;background:#faf8f4;border-radius:4px">${escape(invitedBy)} asked us to send this again. If you still have the earlier email, use the button below instead &mdash; the older link has stopped working.</p>`
             : '',
         `<p><strong>${escape(invitedBy)}</strong> has invited you to read ${escape(whose)} on ${SIGNATURE}.</p>`,
         '<p>You have been invited as a <strong>reader</strong>, so you will be able to read letters and download them.</p>',
-        `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Accept the invitation</a></p>`,
+        emailButtonHtml(link, 'Accept the invitation'),
         '<p>Please use a <strong>personal</strong> account rather than a work or school one. The account you sign in with is the one that gets access &mdash; it does not have to be the address this email arrived at.</p>',
         `<p>This invitation stops working on <strong>${escape(deadline)}</strong>.</p>`,
         `<p>If you do not know ${escape(invitedBy)}, ignore this. Nothing happens until somebody follows the link.</p>`,
         optOut
             ? `<p style="color:#666;font-size:14px">Would rather we did not write to you? <a href="${escape(optOut)}">Stop all email to this address.</a></p>`
             : '',
-        `<p>&mdash; ${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        `<p>&mdash; ${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html, link, optOut };
 }
