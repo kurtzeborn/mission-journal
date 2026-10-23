@@ -28,6 +28,7 @@ export const wordsIn = reader.wordsIn;
 export const MOST = reader.MOST;
 export const cloudScale = reader.cloudScale;
 export const TONES = reader.TONES;
+export const CLOUD_TONES = reader.CLOUD_TONES;
 export const toneOf = reader.toneOf;
 
 /**

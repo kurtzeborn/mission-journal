@@ -1583,12 +1583,18 @@ select:focus-visible {
    11px, and anything pale enough to look like sugar at that size cannot be
    read. Every one of these clears 5:1 against the paper. The first is the
    site's own accent, so the cloud belongs to the same page as the buttons. */
-.cloud__word--0 { color: #2f5d50; } /* sea green, the accent */
-.cloud__word--1 { color: #3a5c72; } /* slate blue */
-.cloud__word--2 { color: #5a4a72; } /* muted plum */
-.cloud__word--3 { color: #7b4a5c; } /* dusty rose */
-.cloud__word--4 { color: #8a5a3c; } /* clay */
-.cloud__word--5 { color: #6b6234; } /* olive */
+.cloud__word--0  { color: #2f5d50; } /* sea green, the accent */
+.cloud__word--1  { color: #2b5d68; } /* deep teal */
+.cloud__word--2  { color: #3a5c72; } /* slate blue */
+.cloud__word--3  { color: #3f4d73; } /* indigo */
+.cloud__word--4  { color: #5a4a72; } /* muted plum */
+.cloud__word--5  { color: #6d3f64; } /* mulberry */
+.cloud__word--6  { color: #7b4a5c; } /* dusty rose */
+.cloud__word--7  { color: #824642; } /* terracotta */
+.cloud__word--8  { color: #8a5a3c; } /* clay */
+.cloud__word--9  { color: #7c5c2e; } /* ochre */
+.cloud__word--10 { color: #6b6234; } /* olive */
+.cloud__word--11 { color: #46633f; } /* moss */
 
 /* Darkening to the ink rather than moving to some seventh color, because the
    word under the pointer has to look picked whichever of the six it started
