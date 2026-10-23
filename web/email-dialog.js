@@ -57,7 +57,7 @@ window.EmailDialog = (() => {
                 : 'Choose when we should check for new letters. We will send an email only when something new has arrived.';
             byId('email-dialog-dismiss').textContent = automatic ? 'Not now' : 'Close';
             byId('email-dialog-status').textContent = '';
-            schedule.set(preferences, { preferWeekly: automatic });
+            schedule.set(preferences);
             dialog.showModal();
             sessionStorage.setItem(SHOWN_KEY, '1');
         };
