@@ -59,12 +59,12 @@ async function archive({ prompt = {}, joined = false } = {}) {
 }
 
 describe('email notifications on an archive', () => {
-    test('a new reader is offered a weekly schedule without leaving the archive', async () => {
+    test('a new reader is offered email notifications without leaving the archive', async () => {
         const { window, dialog } = await archive({ joined: true });
 
         assert.equal(dialog.open, true);
         assert.equal(window.document.getElementById('email-dialog-title').textContent, 'Don\u2019t miss a letter');
-        assert.equal(window.document.getElementById('email-dialog-weekly').checked, true);
+        assert.equal(window.document.getElementById('email-dialog-off').checked, true);
         assert.equal(window.location.pathname, '/elder.example/');
         assert.equal(
             window.sessionStorage.getItem('email-notification-prompt-after-join'),

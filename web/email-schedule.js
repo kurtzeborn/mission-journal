@@ -50,11 +50,8 @@ window.EmailSchedule = (() => {
                 `We\u2019ll check ${when}. If no new letters have arrived, we won\u2019t send anything.`;
         };
 
-        const set = (values, { preferWeekly = false } = {}) => {
-            const frequency =
-                preferWeekly && (values.digestFrequency ?? 'off') === 'off'
-                    ? 'weekly'
-                    : values.digestFrequency ?? 'off';
+        const set = (values) => {
+            const frequency = values.digestFrequency ?? 'off';
             elements.weekly.checked = frequency === 'weekly';
             elements.monthly.checked = frequency === 'monthly';
             elements.off.checked = frequency === 'off';
