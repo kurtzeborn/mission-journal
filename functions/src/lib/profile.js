@@ -17,8 +17,10 @@
 // has already gone wrong.
 //
 // **`alternateSenders` is carried through untouched and is not editable
-// here.** It is in the file, seeded empty, and nothing reads it: routing keys
-// on `@missionary.org` alone. Offering the field before ingest honors it
+// here.** It is in the file, seeded empty, and nothing reads it yet: routing
+// currently keys on `@missionary.org` alone, with future support planned for
+// `@myldsmail.net` (the Gmail-backed domain missionaries used before the
+// switch to `@missionary.org`). Offering the field before ingest honors it
 // would put a control on the page that appears to decide who may publish into
 // an archive and in fact decides nothing -- a lie with the shape of a security
 // setting. It stays in the document so an editor does not delete it, and it

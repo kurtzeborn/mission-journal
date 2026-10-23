@@ -306,6 +306,36 @@ describe('changing a letter from the archive', () => {
         assert.equal(view.context.location.hash, '');
     });
 
+    test('an in-place photo action advances the validator for a later letter edit', async () => {
+        const view = await archive({
+            answer: async (url) => {
+                if (url === '/.auth/me') return signedIn('mum@example.com');
+                if (url === '/api/memberships') return { status: 200, body: { memberships: [] } };
+                if (url.endsWith('/featured')) {
+                    return { status: 200, body: { etag: '"0x8DD2"' } };
+                }
+                if (url.startsWith('/api/posts/')) return { status: 200, body: {} };
+                return {
+                    status: 200,
+                    headers: { ETag: 'W/"0x8DD1.owner.a1b2c3d4"' },
+                    body: {
+                        slug: SLUG,
+                        role: 'owner',
+                        posts: [{ id: 'letter one', subject: 'Before' }]
+                    }
+                };
+            }
+        });
+
+        await view.context.mounted.admin.featurePhoto('letter one', 'p_one', true);
+        await view.context.mounted.admin.patch('letter one', { subject: 'After' }, []);
+
+        const write = view.calls.find(
+            (call) => call.method === 'PATCH' && call.url === `/api/posts/${SLUG}/letter%20one`
+        );
+        assert.equal(write.headers['If-Match'], 'W/"0x8DD2.owner.a1b2c3d4"');
+    });
+
     test('a network failure says nothing changed and leaves the page in place', async () => {
         const view = await owner(() => new Error('offline'));
 

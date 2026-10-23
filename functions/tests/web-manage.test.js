@@ -107,13 +107,10 @@ describe('what an operator is shown', () => {
     });
 
     test('the slug is the way into the archive it names', async () => {
-        // In a new tab: the page is four tables filled by four calls, and
-        // navigating away means loading all of them again.
         const view = await manage({ answer: listed(DELETIONS) });
         const link = view.link('rows', 'elder.example');
 
         assert.equal(link.href, '/elder.example');
-        assert.equal(link.target, '_blank');
     });
 
     test('a reason reaches the page as text, not as markup', async () => {

@@ -34,6 +34,7 @@ import { app } from '@azure/functions';
 import { blobStore, signingKey } from '../lib/clients.js';
 import { setting } from '../lib/settings.js';
 import { hardened } from '../lib/api.js';
+import { readPrincipal } from '../lib/principal.js';
 import { validSlug } from '../lib/paths.js';
 import { attachPhoto, ownerOnly } from './post.js';
 import { MAX_UPLOAD_BYTES } from '../lib/photos.js';
@@ -231,8 +232,15 @@ export async function returnGoogle({ request, context }) {
 // --- step three: are they done? -------------------------------------------
 
 export async function pollGoogle({ request, context }) {
+    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
+    if (!principal) return problem(401, 'sign in required');
+
     const { error, session } = envelope(request, context);
     if (error) return error;
+
+    if (session.who && session.who.toLowerCase() !== principal.email) {
+        return problem(409, 'that Google Photos session belongs to somebody else');
+    }
 
     const state = await sessionState({ token: session.token, sessionId: session.sessionId });
     if (!state.ok) {
@@ -346,11 +354,14 @@ export async function importGoogle({ request, context, store }) {
 // --- and putting it down --------------------------------------------------
 
 export async function finishGoogle({ request, context }) {
+    const principal = readPrincipal(request.headers.get('x-ms-client-principal'));
     const { error, session } = envelope(request, context);
 
     // Nothing to give back, and nothing to apologise for -- the cookie is
     // cleared either way, which is the only part of this the caller needs.
-    if (!error) await endSession({ token: session.token, sessionId: session.sessionId });
+    if (!error && principal && (!session.who || session.who.toLowerCase() === principal.email)) {
+        await endSession({ token: session.token, sessionId: session.sessionId });
+    }
 
     return ok({ done: true }, { 'Set-Cookie': clearCookie() });
 }

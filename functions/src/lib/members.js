@@ -33,7 +33,7 @@
 // That is not ceremony: two owners removing each other at the same moment is
 // a real sequence, and on the retry the loser may no longer be an owner.
 
-import { readAcl, ROLE } from './acl.js';
+import { readAcl, ROLE, isOwner } from './acl.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { deliveryTrouble } from './delivery.js';
 import { forgetMembership, recordMembership } from './memberships.js';
@@ -121,8 +121,7 @@ function refuse({ members, actor, subject, role }) {
     const me = lower(actor);
     const them = lower(subject);
 
-    const mine = members.find((m) => lower(m.email) === me);
-    if (!mine || mine.role !== ROLE.owner) return 'owners only';
+    if (!isOwner(members, me)) return 'owners only';
 
     if (me === them) return 'you cannot change your own membership';
 

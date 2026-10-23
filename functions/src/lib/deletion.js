@@ -130,9 +130,7 @@ export async function deleteSite({
     // again on arrival -- so leaving them a moment longer costs a redirect
     // into a refusal, while removing them first would leave an archive that
     // is still readable and no longer reachable.
-    for (const member of acl) {
-        await forgetMembership({ tables, email: member.email, slug });
-    }
+    await Promise.all(acl.map((member) => forgetMembership({ tables, email: member.email, slug })));
 
     log?.warn?.('site.deleted', {
         slug,

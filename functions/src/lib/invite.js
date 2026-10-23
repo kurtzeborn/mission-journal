@@ -24,7 +24,7 @@
 // invitation is not access and must never be somewhere `resolveRole` can see
 // it. The ACL is only written when somebody accepts.
 
-import { ROLE, readAcl } from './acl.js';
+import { ROLE, readAcl, isOwner, requireOwner } from './acl.js';
 import { claimTokenHash, issueClaimToken, PURPOSE, verifyClaimToken } from './claimtoken.js';
 import { CONFLICT_RETRIES, isConflict } from './conflict.js';
 import { inviteEmail } from './invitemail.js';
@@ -103,12 +103,9 @@ export async function inviteMember({
     if (!safe) return { error: 'no such site' };
     if (!them) return { error: 'not an email address' };
 
-    const members = await readAcl(store, safe);
-    if (!members) return { error: 'no such site' };
-
-    const me = lower(actor);
-    const mine = members.find((m) => lower(m.email) === me);
-    if (!mine || mine.role !== ROLE.owner) return { error: 'owners only' };
+    const ownerCheck = await requireOwner({ store, slug: safe, actor });
+    if (ownerCheck.error) return ownerCheck;
+    const { email: me, members } = ownerCheck;
 
     // Not a hard error dressed up as one: the person asking wanted this
     // address to have access, and it does. Saying so is more useful than

@@ -152,22 +152,26 @@ export async function recordAlbumUrls({ tables, slug, urls }) {
  *   missionReturnDate: string, photoAlbumUrls: string[]}>>}
  */
 export async function sitesBySlug({ tables, slugs }) {
-    const found = new Map();
+    const unique = [...new Set(slugs)];
+    const entries = await Promise.all(
+        unique.map(async (slug) => {
+            const row = await tables.getEntity(TABLES.sites, slug, ROW);
+            return [
+                slug,
+                {
+                    lastPostAt: row?.lastPostAt ?? '',
+                    lastReceivedAt: row?.lastReceivedAt ?? '',
+                    missionaryDisplayName: row?.missionaryDisplayName ?? '',
+                    missionName: row?.missionName ?? '',
+                    missionStartDate: row?.missionStartDate ?? '',
+                    missionReturnDate: row?.missionReturnDate ?? '',
+                    photoAlbumUrls: albumUrlsOf(row)
+                }
+            ];
+        })
+    );
 
-    for (const slug of new Set(slugs)) {
-        const row = await tables.getEntity(TABLES.sites, slug, ROW);
-        found.set(slug, {
-            lastPostAt: row?.lastPostAt ?? '',
-            lastReceivedAt: row?.lastReceivedAt ?? '',
-            missionaryDisplayName: row?.missionaryDisplayName ?? '',
-            missionName: row?.missionName ?? '',
-            missionStartDate: row?.missionStartDate ?? '',
-            missionReturnDate: row?.missionReturnDate ?? '',
-            photoAlbumUrls: albumUrlsOf(row)
-        });
-    }
-
-    return found;
+    return new Map(entries);
 }
 
 /**

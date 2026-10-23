@@ -133,6 +133,24 @@ export const escapeHtml = (text) =>
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
 
+export const wrapEmailHtml = (parts) =>
+    [
+        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+        ...(Array.isArray(parts) ? parts : [parts]),
+        '</div>'
+    ].join('');
+
+export const emailButtonHtml = (href, label) =>
+    `<p><a href="${escapeHtml(href)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">${escapeHtml(label)}</a></p>`;
+
+export const readableEmailDate = (iso) =>
+    new Date(iso).toLocaleDateString('en-US', {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+
 /**
  * A mailer.
  *

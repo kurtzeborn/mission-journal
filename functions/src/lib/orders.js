@@ -19,6 +19,7 @@
 // key.
 
 import { BOOKS, bookFolder } from './publish.js';
+import { isConflict } from './conflict.js';
 
 export const orderName = (slug, id) => `${bookFolder(slug, id)}/order.json`;
 
@@ -136,7 +137,7 @@ export async function noteOrder({ store, slug, id, patch, log }) {
             });
             return { order: next };
         } catch (err) {
-            if (err?.statusCode !== 412 && err?.statusCode !== 409) throw err;
+            if (!isConflict(err)) throw err;
             log?.warn?.('order.raced', { slug, id, attempt });
         }
     }

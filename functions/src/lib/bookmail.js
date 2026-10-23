@@ -37,9 +37,7 @@
 //   still honored by the caller, because a person who has asked us to stop
 //   writing to them has asked exactly that.
 
-import { escapeHtml as escape } from './mail.js';
-
-const SIGNATURE = 'Pday Letters';
+import { escapeHtml as escape, wrapEmailHtml, emailButtonHtml, SENDER_NAME as SIGNATURE } from './mail.js';
 
 
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
@@ -92,15 +90,13 @@ export function bookReadyEmail({ baseUrl, slug, missionary = '', pages = 0, lett
         SIGNATURE
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         `<p>The book of ${escape(whose)} has finished printing to a file. It came to ${escape(size)}.</p>`,
-        `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Look it over</a></p>`,
+        emailButtonHtml(link, 'Look it over'),
         '<p>You will find a review copy to read on screen, marked on every page, and the print file itself. Nothing has been sent to a printer and nothing will be until you say so.</p>',
         '<p>If letters arrive after today, make the book again &mdash; it is built fresh each time from whatever the archive holds.</p>',
-        `<p>&mdash; ${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        `<p>&mdash; ${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html, link };
 }
@@ -138,15 +134,13 @@ export function bookFailedEmail({ baseUrl, slug, missionary = '', reason = '' })
         SIGNATURE
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         `<p>The book of ${escape(whose)} did not finish.</p>`,
         ...(reason ? [`<p>What stopped it: ${escape(reason)}</p>`] : []),
         `<p>${nothingLost}</p>`,
-        `<p><a href="${escape(link)}" style="display:inline-block;padding:12px 20px;background:#1f4e79;color:#fff;text-decoration:none;border-radius:4px">Try it again</a></p>`,
-        `<p>&mdash; ${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        emailButtonHtml(link, 'Try it again'),
+        `<p>&mdash; ${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html, link };
 }

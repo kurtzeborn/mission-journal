@@ -65,7 +65,8 @@ export const PURPOSE = {
     qrTicket: 'qr-ticket',
     optout: 'optout',
     relay: 'relay',
-    print: 'print'
+    print: 'print',
+    googlePhotos: 'gphotos'
 };
 
 /**
@@ -81,6 +82,48 @@ export function claimTokenHash(token) {
 
 const sign = (payloadText, key) =>
     createHmac('sha256', key).update(payloadText, 'utf8').digest();
+
+/**
+ * Sign a JSON-serializable payload as `<base64url(json)>.<base64url(hmac)>`.
+ */
+export function signPayload(payload, key) {
+    const payloadText = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
+    return `${payloadText}.${b64url(sign(payloadText, key))}`;
+}
+
+/**
+ * Verify a signed `<base64url(json)>.<base64url(hmac)>` token and parse its JSON payload.
+ *
+ * @returns {{valid: true, payload: object, text: string}|{valid: false, reason: string}}
+ */
+export function verifyPayload(token, key) {
+    const text = String(token ?? '');
+    const dot = text.indexOf('.');
+    if (dot <= 0 || dot === text.length - 1) return { valid: false, reason: 'malformed' };
+
+    const payloadText = text.slice(0, dot);
+    const provided = unb64url(text.slice(dot + 1));
+    const expected = sign(payloadText, key);
+
+    // Compare before parsing. `timingSafeEqual` throws on a length mismatch,
+    // which is itself a length oracle, so the lengths are checked first and
+    // both paths return the same undifferentiated answer.
+    if (provided.length !== expected.length) return { valid: false, reason: 'bad-signature' };
+    if (!timingSafeEqual(provided, expected)) return { valid: false, reason: 'bad-signature' };
+
+    // Only now is the payload trusted enough to parse. Reaching here means
+    // the bytes are ours, so a parse failure is a bug on our side rather than
+    // an attack, but it still must not throw into the request handler.
+    let payload;
+    try {
+        payload = JSON.parse(unb64url(payloadText).toString('utf8'));
+    } catch {
+        return { valid: false, reason: 'malformed' };
+    }
+
+    if (!payload || typeof payload !== 'object') return { valid: false, reason: 'malformed' };
+    return { valid: true, payload, text };
+}
 
 /**
  * Mint a token for a pending site.
@@ -121,8 +164,7 @@ export function issueClaimToken({
     if (subject) payload.s = subject;
     if (recipient) payload.r = recipient;
 
-    const payloadText = b64url(Buffer.from(JSON.stringify(payload), 'utf8'));
-    const token = `${payloadText}.${b64url(sign(payloadText, key))}`;
+    const token = signPayload(payload, key);
 
     return { token, hash: claimTokenHash(token), expiresAt };
 }
@@ -138,38 +180,23 @@ export function issueClaimToken({
  * @returns {{valid: boolean, slug?: string, expiresAt?: string, hash?: string, reason?: string}}
  */
 export function verifyClaimToken({ token, key, purpose = PURPOSE.claim, now = () => new Date() }) {
-    const text = String(token ?? '');
-    const dot = text.indexOf('.');
-    if (dot <= 0 || dot === text.length - 1) return { valid: false, reason: 'malformed' };
+    const opened = verifyPayload(token, key);
+    if (!opened.valid) return opened;
 
-    const payloadText = text.slice(0, dot);
-    const provided = unb64url(text.slice(dot + 1));
-    const expected = sign(payloadText, key);
-
-    // Compare before parsing. `timingSafeEqual` throws on a length mismatch,
-    // which is itself a length oracle, so the lengths are checked first and
-    // both paths return the same undifferentiated answer.
-    if (provided.length !== expected.length) return { valid: false, reason: 'bad-signature' };
-    if (!timingSafeEqual(provided, expected)) return { valid: false, reason: 'bad-signature' };
-
-    // Only now is the payload trusted enough to parse. Reaching here means
-    // the bytes are ours, so a parse failure is a bug on our side rather than
-    // an attack, but it still must not throw into the request handler.
-    let payload;
-    try {
-        payload = JSON.parse(unb64url(payloadText).toString('utf8'));
-    } catch {
+    const { payload, text } = opened;
+    if (!payload?.slug || typeof payload.exp !== 'string' || !payload.exp) {
         return { valid: false, reason: 'malformed' };
     }
-
-    if (!payload?.slug || !payload?.exp) return { valid: false, reason: 'malformed' };
 
     // Checked before expiry. A link used at the wrong endpoint is the wrong
     // link whether or not it has run out, and "expired" would send its holder
     // off to ask for a fresh one of the kind they are already holding.
     if ((payload.p ?? PURPOSE.claim) !== purpose) return { valid: false, reason: 'wrong-purpose' };
 
-    if (Date.parse(payload.exp) <= now().getTime()) {
+    const expMs = Date.parse(payload.exp);
+    if (!Number.isFinite(expMs)) return { valid: false, reason: 'malformed' };
+
+    if (expMs <= now().getTime()) {
         // The slug comes back anyway. An expired link is a real link that was
         // sent to a real person, and the page they land on should be able to
         // offer them a fresh one.

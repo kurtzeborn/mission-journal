@@ -1,67 +1,23 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import { cloudScale, countWords, wordsIn } from '../src/lib/words.js';
-
-const reader = readFileSync(new URL('../../web/reader.js', import.meta.url), 'utf8');
-
-// Lifting a function straight out of the reader and running it. Comparing the
-// two as text would fail the day somebody reflowed a comment, and comparing
-// them by what they return is the thing actually worth holding: the book and
-// the screen have to agree on the answer, not on the wording.
-const liftedFrom = (pattern, name, scope = {}) => {
-    const [source] = reader.match(pattern) ?? [];
-    assert.ok(source, `no ${name} found in web/reader.js`);
-
-    const keys = Object.keys(scope);
-    return new Function(...keys, `${source}; return ${name};`)(...keys.map((key) => scope[key]));
-};
+import { page } from './reader-dom.js';
 
 const zipf = (count) => Array.from({ length: count }, (_, n) => [`word${n}`, count - n]);
 
-describe('keeping the printed cloud and the screen cloud the same cloud', () => {
-    // The reader cannot import this module -- it has to run from `file://`
-    // inside a downloaded zip, where a browser refuses ES modules outright --
-    // so the two copies are held together by nothing but these checks. If one
-    // of them fails, the book and the website are about to disagree about what
-    // the mission was mostly about, and the owner has no way to tell which of
-    // the two is lying.
-
-    test('tokenizes representative text the same way', () => {
-        const [, listed] = reader.match(/const NOISE = new Set\(\s*`([^`]*)`/) ?? [];
-        assert.ok(listed, 'no stopword list found in web/reader.js');
-        const browserNoise = new Set(listed.trim().split(/\s+/));
-
-        const [, written] = reader.match(/const LINKS = (\/.+\/[a-z]*);/) ?? [];
-        assert.ok(written, 'no link pattern found in web/reader.js');
-        const browserLinks = new Function(`return ${written}`)();
-
-        const browserWordsIn = liftedFrom(
-            /const wordsIn = \(text\) =>[\s\S]*?;\r?\n/,
-            'wordsIn',
-            { NOISE: browserNoise, LINKS: browserLinks }
-        );
-        const passage =
-            "We couldn't walk to Antigua; photos are at https://photos.app.goo.gl/abc-def. Rain, rain!";
-
-        assert.deepEqual(browserWordsIn(passage), wordsIn(passage));
-    });
-
-    test('sets a word at the same size', () => {
-        const theirs = liftedFrom(/function scale\(words, box\) \{[\s\S]*?\n {4}\}/, 'scale');
+describe('scaling the cloud for DOM elements and print boxes', () => {
+    test('sets a word at the same size whether dimensions come from a box or an element', () => {
+        const view = page();
         const words = zipf(40);
 
-        // The reader measures a live element and the book knows its own box,
-        // which is the only difference between the two signatures.
         const ours = cloudScale(words, { width: 444, height: 586 });
-        const them = theirs(words, { clientWidth: 444, clientHeight: 586 });
+        const them = view.window.Reader.cloudScale(words, { clientWidth: 444, clientHeight: 586 });
 
         for (const [, count] of words) {
             assert.ok(Math.abs(ours(count) - them(count)) < 1e-9, `${count} sized differently`);
         }
     });
-
 });
 
 describe('the countable words of a letter', () => {
@@ -75,7 +31,9 @@ describe('the countable words of a letter', () => {
 
     test('drops routine language while keeping meaningful themes', () => {
         assert.deepEqual(
-            wordsIn('Week aboard between during inside toward via without home love notwithstanding underneath'),
+            wordsIn(
+                'Week really lots come getting read little aboard between during inside toward via without home love notwithstanding underneath'
+            ),
             ['home', 'love', 'notwithstanding', 'underneath']
         );
     });

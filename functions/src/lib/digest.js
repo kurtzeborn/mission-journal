@@ -36,7 +36,7 @@
 
 import { ROLE } from './acl.js';
 import { flowBody } from './bookflow.js';
-import { escapeHtml as escape, HUMAN_ADDRESS, mailFrom } from './mail.js';
+import { escapeHtml as escape, wrapEmailHtml, HUMAN_ADDRESS, mailFrom } from './mail.js';
 import { membershipsFor } from './memberships.js';
 import { issueOptOut, optedOut, unsubscribeHeaders } from './optout.js';
 import { presentPosts } from './present.js';
@@ -137,26 +137,26 @@ export async function lettersSince({ store, slug, since }) {
  */
 export async function newFor({ store, tables, email, since }) {
     const memberships = await membershipsFor({ tables, email });
-    const archives = [];
+    const results = await Promise.all(
+        memberships.map(async (membership) => {
+            // The site row already knows when this archive last received
+            // anything, so an archive that has been quiet all month costs a map
+            // lookup instead of reading and parsing its whole `posts.json`. It is
+            // only ever a skip: a blank or stale value falls through to the read.
+            if (membership.lastReceivedAt && membership.lastReceivedAt <= since) return null;
 
-    for (const membership of memberships) {
-        // The site row already knows when this archive last received
-        // anything, so an archive that has been quiet all month costs a map
-        // lookup instead of reading and parsing its whole `posts.json`. It is
-        // only ever a skip: a blank or stale value falls through to the read.
-        if (membership.lastReceivedAt && membership.lastReceivedAt <= since) continue;
+            const letters = await lettersSince({ store, slug: membership.slug, since });
+            if (!letters.length) return null;
 
-        const letters = await lettersSince({ store, slug: membership.slug, since });
-        if (!letters.length) continue;
+            return {
+                slug: membership.slug,
+                name: membership.missionaryDisplayName || membership.slug,
+                letters
+            };
+        })
+    );
 
-        archives.push({
-            slug: membership.slug,
-            name: membership.missionaryDisplayName || membership.slug,
-            letters
-        });
-    }
-
-    return archives;
+    return results.filter(Boolean);
 }
 
 /**
@@ -224,8 +224,7 @@ export function digestEmail({ baseUrl, archives, optOutToken = '' }) {
         SIGNATURE
     ].join('\n');
 
-    const html = [
-        '<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:16px;line-height:1.5">',
+    const html = wrapEmailHtml([
         '<p style="margin:0 0 8px;color:#1f4e79;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em">PdayLetters.com</p>',
         `<p style="margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.45">${arrivalHtml}</p>`,
         ...archives.map((archive) =>
@@ -258,9 +257,8 @@ export function digestEmail({ baseUrl, archives, optOutToken = '' }) {
         optOut
             ? `<p style="color:#666;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5">Or <a href="${escape(optOut)}">stop all of our email to this address</a>.</p>`
             : '',
-        `<p style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5">&mdash; ${SIGNATURE}</p>`,
-        '</div>'
-    ].join('');
+        `<p style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5">&mdash; ${SIGNATURE}</p>`
+    ]);
 
     return { subject, text, html, count };
 }
