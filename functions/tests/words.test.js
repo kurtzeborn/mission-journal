@@ -32,7 +32,7 @@ describe('the countable words of a letter', () => {
     test('drops routine language while keeping meaningful themes', () => {
         assert.deepEqual(
             wordsIn(
-                'Week really lots come getting read little aboard between during inside toward via without home love notwithstanding underneath'
+                'Week really lots come getting read little something many going aboard between during inside toward via without home love notwithstanding underneath'
             ),
             ['home', 'love', 'notwithstanding', 'underneath']
         );

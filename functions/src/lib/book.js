@@ -47,7 +47,7 @@ import {
 import { clothOf } from './cover.js';
 import { fillLine, segments } from './typeset.js';
 import { layoutCloud } from './cloud.js';
-import { countWords, cloudScale, toneOf } from './words.js';
+import { countWords, cloudScale, toneOf, CLOUD_TONES } from './words.js';
 
 export {
     albumRows,
@@ -193,15 +193,6 @@ const BLACK = '#1a1a1a';
 const QUIET = '#666666';
 const SITE_NAME = 'PDayLetters.com';
 const SITE_LOGO_SIZE = 30;
-
-// The word cloud on the back of the title page. These are the reader's own six
-// tones, lifted from `web/styles.css`, so a word is the same color in the book
-// as it is on the screen -- which is the whole point of the page. They are
-// pastels pulled toward the ink rather than true pastels: the smallest word on
-// the page is eleven points, and anything pale enough to look like sugar at
-// that size cannot be read. Peecho prints the interior in RGB at 300 dpi, so
-// color here costs nothing the photographs were not already costing.
-const CLOUD_TONES = ['#2f5d50', '#3a5c72', '#5a4a72', '#7b4a5c', '#8a5a3c', '#6b6234'];
 
 // Below this the page is left blank instead. A dozen words do not pack into
 // anything that reads as a cloud -- they land as a dozen words scattered over

@@ -1473,14 +1473,15 @@ window.Reader = (function () {
          atop be because been before behind being below beneath beside besides
          between beyond but by can circa come concerning considering could did
          despite do does doing done down during each even ever every except few
-         following for from get getting given got had has have having he her here
-         hers him his how i if in inside into is it its just like little lots me
-         minus more most much my near no nor not now of off on once one only onto
-         opposite or other our out outside over own past pending per plus read
-         really round said same sans save she should since so some such than that
-         the their them then there these they thing things this those though
-         through till to too toward towards under until unto up upon us very
-         versus via was we week well were what when where which while
+         following for from get getting given going got had has have having he
+         her here hers him his how i if in inside into is it its just like
+         little lots many me minus more most much my near no nor not now of off
+         on once one only onto opposite or other our out outside over own past
+         pending per plus read really round said same sans save she should since
+         so some something such than that the their them then there these they
+         thing things this those though through till to too toward towards under
+         until unto up upon us very versus via was we week well were what when
+         where which while
          who why will with within without worth would yet you your
          cant didnt dont hes im isnt its ive id ill shes thats theres theyre
          wasnt weve wont youre`
@@ -1551,9 +1552,25 @@ window.Reader = (function () {
         };
     }
 
-    // How many tones the stylesheet defines. Six is enough that a word rarely
-    // sits next to its own color and few enough that they still read as a set.
-    const TONES = 6;
+    // Twelve mineral tones around the hue wheel, all clearing 5:1 against the
+    // paper. Defined here as well as in `web/styles.css` so the printed book
+    // and `TONES` stay in lockstep with the stylesheet.
+    const CLOUD_TONES = [
+        '#2f5d50', // sea green, the accent
+        '#2b5d68', // deep teal
+        '#3a5c72', // slate blue
+        '#3f4d73', // indigo
+        '#5a4a72', // muted plum
+        '#6d3f64', // mulberry
+        '#7b4a5c', // dusty rose
+        '#824642', // terracotta
+        '#8a5a3c', // clay
+        '#7c5c2e', // ochre
+        '#6b6234', // olive
+        '#46633f'  // moss
+    ];
+
+    const TONES = CLOUD_TONES.length;
 
     // Off the word rather than off its position, so a word keeps its color when
     // a resize repacks the cloud and lands it somewhere else entirely.
@@ -2582,5 +2599,5 @@ window.Reader = (function () {
         state.hidden = true;
     }
 
-    return { mount, formatDate, wordsIn, cloudScale, toneOf, NOISE, LINKS, MOST, TONES };
+    return { mount, formatDate, wordsIn, cloudScale, toneOf, NOISE, LINKS, MOST, TONES, CLOUD_TONES };
 })();
