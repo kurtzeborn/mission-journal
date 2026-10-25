@@ -318,3 +318,31 @@ test('a consumer-mailbox forwarder is accepted on the same terms', async () => {
     assert.equal(result.slug, 'elder.example');
     assert.equal(result.disposition, DISPOSITION.publish);
 });
+
+test('a Gmail emoji reaction from a missionary is rejected rather than starting or posting to an archive', async () => {
+    const raw = [
+        'Authentication-Results: mx.cloudflare.net; dkim=pass header.d=missionary.org; dmarc=pass header.from=missionary.org; spf=pass smtp.mailfrom=sbriggs@missionary.org',
+        'From: Samuel Briggs <sbriggs@missionary.org>',
+        'To: tristan.thomasson@missionary.org',
+        'Cc: post@pdayletters.com',
+        'Subject: Re: Personal note',
+        'MIME-Version: 1.0',
+        'Content-Type: multipart/alternative; boundary="b"',
+        '',
+        '--b',
+        'Content-Type: text/plain; charset="UTF-8"',
+        '',
+        'Samuel reacted via Gmail',
+        '--b',
+        'Content-Type: text/vnd.google.email-reaction+json; charset="UTF-8"',
+        '',
+        '{"emoji":"💚","version":1}',
+        '--b--'
+    ].join('\r\n');
+    const extracted = await extractOriginal(Buffer.from(raw, 'utf8'));
+    const result = classify({ extracted, headers: extracted.headers, config, lookupAcl: () => null });
+
+    assert.equal(result.class, CLASS.rejected);
+    assert.equal(result.reason, 'email-reaction');
+});
+

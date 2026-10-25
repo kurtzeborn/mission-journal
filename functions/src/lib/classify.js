@@ -42,6 +42,8 @@ const reject = (reason, extra = {}) => ({
     ...extra
 });
 
+const REACTION_MIME = 'text/vnd.google.email-reaction+json';
+
 // Which slug's ACL the classifier is going to need. A direct send needs none —
 // DMARC has already authenticated the author — so this returns null and the
 // caller skips the lookup entirely. Exposed because the ACL lives in blob
@@ -87,6 +89,15 @@ export function classify({ extracted, headers, config, lookupAcl, dkimVerified =
     const senderDomain = domainOf(sender);
     const dmarc = dmarcAligned(auth, senderDomain);
     if (!dmarc.pass) return reject(dmarc.reason, { sender });
+
+    // Gmail sends emoji reactions as reply-all messages carrying a
+    // `text/vnd.google.email-reaction+json` part. When a missionary CC's
+    // `post@` on a note to a fellow missionary and the recipient taps a
+    // reaction, the reaction arrives directly from that recipient's
+    // `@missionary.org` address and would otherwise start a pending archive.
+    if ((extracted.attachments ?? []).some((a) => String(a.mimeType ?? '').toLowerCase() === REACTION_MIME)) {
+        return reject('email-reaction', { sender });
+    }
 
     // --- direct -----------------------------------------------------------
     // The missionary sent it themselves. The From: local-part is the slug, so
