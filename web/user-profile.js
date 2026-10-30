@@ -76,7 +76,7 @@
                 const response = await fetch('/.auth/me', { cache: 'no-store' });
                 if (!response.ok) return null;
                 const principal = (await response.json()).clientPrincipal ?? null;
-                if (principal) await sync(principal);
+                if (principal) void sync(principal);
                 return principal;
             } catch {
                 return null;

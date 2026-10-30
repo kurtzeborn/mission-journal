@@ -61,4 +61,25 @@ describe('copying provider names into the application profile', () => {
         });
         assert.equal(net.calls.some((call) => call.url === '/api/profile'), false);
     });
+
+    test('the masthead account menu appears without waiting for a cold profile sync', async () => {
+        const view = page({ html: 'index.html', path: '/' });
+        let finishProfile;
+        const fetch = async (url) => {
+            if (url === '/.auth/me') {
+                return { ok: true, status: 200, json: async () => ({ clientPrincipal: GOOGLE }) };
+            }
+            if (url === '/api/profile') {
+                return new Promise((resolve) => { finishProfile = resolve; });
+            }
+            return { ok: true, status: 200, json: async () => ({ memberships: [] }) };
+        };
+        run(['user-profile.js', 'account.js'], { context: view.context, fetch });
+        await settled();
+
+        assert.equal(view.context.document.getElementById('signed-out').hidden, true);
+        assert.equal(view.context.document.getElementById('menu').hidden, false);
+        assert.equal(view.context.document.getElementById('account-email').textContent, 'Ana Example');
+        finishProfile?.({ ok: true, status: 200, json: async () => ({}) });
+    });
 });
