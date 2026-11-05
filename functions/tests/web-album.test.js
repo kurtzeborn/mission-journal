@@ -73,6 +73,39 @@ test('the album opens with the newest letter first', () => {
     assert.equal(view.gallery().querySelector('.gallery__order').value, 'newest');
 });
 
+test('thumbnail cells mark themselves loaded or failed when their image settles', () => {
+    const view = archive();
+    const [first, second] = view.gallery().querySelectorAll('.gallery__cell');
+
+    assert.equal(first.classList.contains('is-loaded'), false);
+    assert.equal(second.classList.contains('is-failed'), false);
+
+    first.querySelector('img').dispatchEvent(new view.window.Event('load'));
+    second.querySelector('img').dispatchEvent(new view.window.Event('error'));
+
+    assert.equal(first.classList.contains('is-loaded'), true);
+    assert.equal(second.classList.contains('is-failed'), true);
+});
+
+test('playing arms the countdown fill once the photograph is ready and clears it on pause', () => {
+    const view = archive();
+    view.click(view.gallery().querySelector('.gallery__cell'));
+
+    const play = view.viewer().querySelector('.viewer__play');
+    assert.equal(play.classList.contains('is-counting'), false);
+
+    view.click(play);
+    const current = view.viewer().querySelector('.viewer__image.is-up')
+        ?? view.viewer().querySelector('.viewer__image');
+    if (!play.classList.contains('is-counting')) {
+        current.dispatchEvent(new view.window.Event('load'));
+    }
+    assert.equal(play.classList.contains('is-counting'), true);
+
+    view.click(play);
+    assert.equal(play.classList.contains('is-counting'), false);
+});
+
 describe('getting out of the photo album', () => {
     test('opening it is somewhere to come back from', () => {
         const view = archive();

@@ -168,6 +168,7 @@
    recognised rather than looked at, and a wall of ragged letterboxed rectangles
    is much harder to scan than a wall of even squares. */
 .gallery__cell {
+    position: relative;
     display: block;
     width: 100%;
     aspect-ratio: 1;
@@ -179,15 +180,48 @@
     cursor: pointer;
 }
 
+/* A spinning ring while the lazy thumbnail is still on the wire, switched off
+   once `load` or `error` lands so six hundred cells do not sit animating
+   underneath their photographs. */
+.gallery__cell::before {
+    content: '';
+    position: absolute;
+    top: calc(50% - 0.875rem);
+    left: calc(50% - 0.875rem);
+    width: 1.75rem;
+    height: 1.75rem;
+    box-sizing: border-box;
+    border: 2px solid rgba(214, 211, 209, 0.22);
+    border-top-color: #a8a29e;
+    border-radius: 50%;
+    animation: gallery-spin 0.8s linear infinite;
+    pointer-events: none;
+}
+
+.gallery__cell.is-loaded::before,
+.gallery__cell.is-failed::before {
+    display: none;
+}
+
+@keyframes gallery-spin {
+    to { transform: rotate(360deg); }
+}
+
 .gallery__cell img {
+    position: relative;
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    opacity: 0;
     transition: opacity 150ms ease, transform 150ms ease;
 }
 
-.gallery__cell:hover img {
+.gallery__cell.is-loaded img {
+    opacity: 1;
+}
+
+.gallery__cell.is-loaded:hover img {
     opacity: 0.85;
     transform: scale(1.04);
 }
@@ -324,6 +358,13 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* The countdown to the next photograph, drawn as a fill across the button that
+   stops it. A bar of its own would be one more thing in a footer whose job is
+   to stay out of the way, and the button is already where you look when you
+   want to know what the slideshow is about to do.
+
+   Painted as a background image rather than a pseudo-element so it sits behind
+   the label without the label needing a wrapper to be lifted above it. */
 .viewer__play {
     flex: none;
     /* Wide enough for "Pause" as well as "Play", so the row does not shuffle
@@ -331,7 +372,19 @@
     min-width: 5rem;
     color: #f5f5f4;
     background-color: transparent;
+    background-image: linear-gradient(#44403c, #44403c);
+    background-repeat: no-repeat;
+    background-size: 0% 100%;
     border-color: #57534e;
+}
+
+.viewer__play.is-counting {
+    animation: viewer-play-fill 4000ms linear forwards;
+}
+
+@keyframes viewer-play-fill {
+    from { background-size: 0% 100%; }
+    to { background-size: 100% 100%; }
 }
 
 .viewer__play:hover {
