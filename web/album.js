@@ -327,6 +327,9 @@ window.Album = (function () {
 
         const start = () => {
             if (pass !== viewer.pass || !viewer.playing) return;
+            viewer.play.classList.remove('is-counting');
+            void viewer.play.offsetWidth;
+            viewer.play.classList.add('is-counting');
             viewer.timer = setTimeout(() => step(1), DWELL);
         };
 
@@ -347,6 +350,7 @@ window.Album = (function () {
         const frame = viewer.frames[at];
 
         clearTimeout(viewer.timer);
+        viewer.play.classList.remove('is-counting');
         viewer.at = at;
         viewer.pass += 1;
         const pass = viewer.pass;
@@ -406,6 +410,7 @@ window.Album = (function () {
 
     function setPlaying(on) {
         clearTimeout(viewer.timer);
+        viewer.play.classList.remove('is-counting');
         viewer.playing = on;
         viewer.play.textContent = on ? 'Pause' : 'Play';
         if (on) arm(viewer.pass);
@@ -511,6 +516,14 @@ window.Album = (function () {
             grid.className = 'gallery__grid';
 
             for (const frame of block.frames) {
+                // A button rather than a bare image, so it is reachable by
+                // keyboard and announces itself as something that opens.
+                const cell = document.createElement('button');
+                cell.type = 'button';
+                cell.className = 'gallery__cell';
+                cell.dataset.at = String(frame.at);
+                cell.setAttribute('aria-label', `Photograph ${frame.at + 1}`);
+
                 const img = document.createElement('img');
                 img.src = frame.thumb;
                 img.alt = '';
@@ -521,13 +534,13 @@ window.Album = (function () {
                 img.loading = 'lazy';
                 img.decoding = 'async';
 
-                // A button rather than a bare image, so it is reachable by
-                // keyboard and announces itself as something that opens.
-                const cell = document.createElement('button');
-                cell.type = 'button';
-                cell.className = 'gallery__cell';
-                cell.dataset.at = String(frame.at);
-                cell.setAttribute('aria-label', `Photograph ${frame.at + 1}`);
+                if (img.complete && img.naturalWidth > 0) {
+                    cell.classList.add('is-loaded');
+                } else {
+                    img.addEventListener('load', () => cell.classList.add('is-loaded'), { once: true });
+                    img.addEventListener('error', () => cell.classList.add('is-failed'), { once: true });
+                }
+
                 cell.append(img);
 
                 const item = document.createElement('li');
@@ -553,6 +566,7 @@ window.Album = (function () {
         // somebody who clicked a thumbnail wanted that thumbnail.
         view.playing = false;
         view.play.textContent = 'Play';
+        view.play.classList.remove('is-counting');
 
         enter(view.dialog);
         view.dialog.showModal();
