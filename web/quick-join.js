@@ -18,7 +18,6 @@
         if (!slug || !trigger || !dialog || !image || !loading || !status) return;
 
         let session = '';
-        let timer = null;
         let open = false;
 
         const api = (path, init) =>
@@ -44,8 +43,6 @@
 
         async function closeSession() {
             open = false;
-            if (timer) clearInterval(timer);
-            timer = null;
 
             const id = session;
             session = '';
@@ -57,26 +54,8 @@
                     keepalive: true
                 });
             } catch {
-                // The server expires an abandoned session after ninety seconds.
+                // The server expires an abandoned session automatically.
             }
-        }
-
-        async function refresh() {
-            const path = session ? `/qr/${encodeURIComponent(session)}` : '/qr';
-            const response = await api(path, { method: 'POST' });
-            const body = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(body.error ?? 'could not create the code');
-
-            if (!open) {
-                session = body.id;
-                await closeSession();
-                return;
-            }
-
-            session = body.id;
-            draw(body.url);
-            status.textContent =
-                'The code refreshes every 30 seconds. Closing this window ends the invitation.';
         }
 
         async function show() {
@@ -91,16 +70,20 @@
             dialog.showModal();
 
             try {
-                await refresh();
-                timer = setInterval(async () => {
-                    try {
-                        await refresh();
-                    } catch {
-                        clearCode();
-                        status.textContent =
-                            'The code could not be refreshed. Close this window and try again.';
-                    }
-                }, 25000);
+                const response = await api('/qr', { method: 'POST' });
+                const body = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(body.error ?? 'could not create the code');
+
+                if (!open) {
+                    session = body.id;
+                    await closeSession();
+                    return;
+                }
+
+                session = body.id;
+                draw(body.url);
+                status.textContent =
+                    'Keep this window open while people join. Closing it ends the invitation.';
             } catch {
                 clearCode();
                 status.textContent =

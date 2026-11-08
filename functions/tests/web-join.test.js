@@ -20,13 +20,14 @@ async function join({ answer, hash = '#display-code', storedReady, joinAfterSign
 
 const ready = {
     status: 'ready',
-    ticket: 'one-time-ticket',
+    token: 'display-code',
+    ticket: 'display-code',
     invitedBy: 'parent@example.com',
     missionary: 'Elder Example'
 };
 
 describe('opening a scanned invitation', () => {
-    test('exchanges the display code before asking for sign-in', async () => {
+    test('checks the scanned code before asking for sign-in', async () => {
         const view = await join({
             answer: async (url) =>
                 url === '/api/qr-invite/exchange'
@@ -43,7 +44,7 @@ describe('opening a scanned invitation', () => {
         assert.equal(view.el('signin-google').hidden, false);
     });
 
-    test('a refreshed code tells the person to scan the current one', async () => {
+    test('an expired code asks the person to have Quick join reopened', async () => {
         const view = await join({
             answer: async (url) =>
                 url === '/api/qr-invite/exchange'
@@ -51,11 +52,11 @@ describe('opening a scanned invitation', () => {
                     : { body: {} }
         });
 
-        assert.equal(view.text('failed-title'), 'This QR code has refreshed');
-        assert.match(view.text('failed-help'), /Scan the current code/);
+        assert.equal(view.text('failed-title'), 'This QR code has expired');
+        assert.match(view.text('failed-help'), /reopen Quick join/);
     });
 
-    test('stores the exchanged ticket across the sign-in round trip', async () => {
+    test('stores the checked invitation across the sign-in round trip', async () => {
         const first = await join({
             answer: async (url) =>
                 url === '/api/qr-invite/exchange'
@@ -64,6 +65,21 @@ describe('opening a scanned invitation', () => {
         });
 
         assert.ok(first.context.sessionStorage.getItem('qr-invite-ready'));
+    });
+
+    test('scanning a new QR code in the same tab replaces any earlier stored invitation', async () => {
+        const view = await join({
+            hash: '#fresh-code',
+            storedReady: { ...ready, token: 'stale-code', ticket: 'stale-code' },
+            joinAfterSignIn: 'stale-code',
+            answer: async (url) =>
+                url === '/api/qr-invite/exchange'
+                    ? { body: { ...ready, token: 'fresh-code', ticket: 'fresh-code' } }
+                    : { body: { clientPrincipal: null } }
+        });
+
+        assert.equal(view.calls[0].url, '/api/qr-invite/exchange');
+        assert.deepEqual(view.calls[0].body, { token: 'fresh-code' });
     });
 
     test('clicking a join provider records consent for the return from sign-in', async () => {
@@ -78,7 +94,7 @@ describe('opening a scanned invitation', () => {
 
         assert.equal(
             view.context.sessionStorage.getItem('qr-invite-join-after-signin'),
-            ready.ticket
+            ready.token
         );
     });
 });
@@ -98,7 +114,7 @@ describe('accepting the invitation', () => {
         await settled();
 
         const accepted = view.calls.find((call) => call.url === '/api/qr-invite/accept');
-        assert.deepEqual(accepted.body, { ticket: 'one-time-ticket' });
+        assert.deepEqual(accepted.body, { token: 'display-code', ticket: 'display-code' });
         assert.equal(view.context.location.href, '/elder.example/');
         assert.equal(
             view.context.sessionStorage.getItem('email-notification-prompt-after-join'),
@@ -110,7 +126,7 @@ describe('accepting the invitation', () => {
         const view = await join({
             hash: '',
             storedReady: ready,
-            joinAfterSignIn: ready.ticket,
+            joinAfterSignIn: ready.token,
             answer: async (url) => {
                 if (url === '/.auth/me') return { body: { clientPrincipal: { userDetails: 'reader@example.com' } } };
                 if (url === '/api/qr-invite/accept') return { body: { status: 'ok', slug: 'elder.example' } };
@@ -119,7 +135,7 @@ describe('accepting the invitation', () => {
         });
 
         const accepted = view.calls.find((call) => call.url === '/api/qr-invite/accept');
-        assert.deepEqual(accepted.body, { ticket: 'one-time-ticket' });
+        assert.deepEqual(accepted.body, { token: 'display-code', ticket: 'display-code' });
         assert.equal(view.context.location.href, '/elder.example/');
         assert.equal(view.context.sessionStorage.getItem('qr-invite-join-after-signin'), null);
         assert.equal(

@@ -33,14 +33,10 @@ export const TABLES = {
     // token: an owner listing invitations is shown the hash, which is a handle
     // for revoking one and not a credential for accepting it.
     invites: 'invites',
-    // One active row per archive. The rotating QR code names the session id
-    // inside this row; replacing it invalidates every code from the previous
-    // gathering without retaining bearer credentials in storage.
+    // One active row per archive (`PartitionKey = slug, RowKey = 'active'`)
+    // plus a lookup row (`PartitionKey = 'code', RowKey = code`) for each
+    // Quick Join session code.
     qrInvites: 'qrInvites',
-    // PartitionKey = '{slug}:{sessionId}', RowKey = the one-time ticket hash.
-    // Insert-only redemption rows make each ticket single-use under concurrent
-    // requests and provide the successful-join count for the session cap.
-    qrRedemptions: 'qrRedemptions',
     // PartitionKey = '{slug}:{YYYY-MM-DD}', RowKey = the message's ULID. One
     // row per letter that arrived, partitioned by the day it arrived on, so
     // counting a day's traffic for one archive is a single-partition list

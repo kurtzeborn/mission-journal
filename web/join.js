@@ -1,8 +1,8 @@
 // The landing page for an in-person QR invitation.
 //
-// The thirty-second QR credential is exchanged immediately for a one-time,
-// tab-scoped ticket. That ticket survives the sign-in round trip but remains
-// useless if the owner closes the gathering session.
+// The scanned code is checked immediately while the owner's Quick Join window
+// is open, then kept in `sessionStorage` across the sign-in round trip so a
+// visitor already in flight can finish even if the owner closes the window.
 
 /* global Page */
 
@@ -12,6 +12,8 @@ const JOIN_AFTER_SIGNIN_KEY = 'qr-invite-join-after-signin';
 const EMAIL_PROMPT_AFTER_JOIN_KEY = 'email-notification-prompt-after-join';
 
 const { $, show, takeToken, aimSignIn } = Page;
+
+const codeOf = (ready) => ready?.token || ready?.ticket || '';
 
 const post = async (path, payload) => {
     const response = await fetch(path, {
@@ -36,22 +38,17 @@ const FAILURES = {
     invalid: {
         title: 'This QR code cannot be used',
         detail: 'The code is incomplete or was not created by Pday Letters.',
-        help: 'Ask the archive owner to reopen the QR invitation.'
+        help: 'Ask the archive owner to reopen Quick join.'
     },
     expired: {
-        title: 'This QR code has refreshed',
-        detail: 'The code you scanned is no longer the one on the owner\u2019s screen.',
-        help: 'Scan the current code.'
+        title: 'This QR code has expired',
+        detail: 'The temporary invitation window has timed out.',
+        help: 'Ask the archive owner to reopen Quick join and scan the new code.'
     },
     closed: {
         title: 'These invitations have ended',
-        detail: 'The archive owner closed the QR invitation or left it idle.',
-        help: 'Ask them to open it again.'
-    },
-    accepted: {
-        title: 'This invitation has already been used',
-        detail: 'The sign-in ticket was already accepted by another account.',
-        help: 'Scan the current QR code again.'
+        detail: 'The archive owner closed the QR invitation or opened a new one.',
+        help: 'Ask them to open Quick join again.'
     },
     gone: {
         title: 'That archive is no longer there',
@@ -82,6 +79,7 @@ function fail(status) {
 }
 
 function renderReady(ready, principal) {
+    const code = codeOf(ready);
     const whose = ready.missionary
         ? `${ready.missionary}'s letters`
         : 'a missionary\u2019s letters';
@@ -89,7 +87,7 @@ function renderReady(ready, principal) {
         `${ready.invitedByName || ready.invitedBy || 'An archive owner'} is inviting people here to read ${whose}.`;
 
     if (principal) {
-        if (sessionStorage.getItem(JOIN_AFTER_SIGNIN_KEY) === ready.ticket) {
+        if (code && sessionStorage.getItem(JOIN_AFTER_SIGNIN_KEY) === code) {
             void accept(null, ready);
             return;
         }
@@ -99,7 +97,7 @@ function renderReady(ready, principal) {
         aimSignIn();
         for (const id of ['signin-aad', 'signin-google']) {
             $(id).addEventListener('click', () => {
-                sessionStorage.setItem(JOIN_AFTER_SIGNIN_KEY, ready.ticket);
+                sessionStorage.setItem(JOIN_AFTER_SIGNIN_KEY, code);
             });
         }
         $('signin-block').hidden = false;
@@ -112,10 +110,11 @@ async function accept(event, ready) {
     $('accept-submit').disabled = true;
     show('working');
 
-    const result = await post('/api/qr-invite/accept', { ticket: ready.ticket });
+    const code = codeOf(ready);
+    const result = await post('/api/qr-invite/accept', { token: code, ticket: code });
     if (!result.ok || result.body.status !== 'ok') {
         if (result.status === 401) {
-            sessionStorage.setItem(JOIN_AFTER_SIGNIN_KEY, ready.ticket);
+            sessionStorage.setItem(JOIN_AFTER_SIGNIN_KEY, code);
             location.href = `/login.html?post_login_redirect_uri=${encodeURIComponent(location.pathname)}`;
             return;
         }
@@ -130,6 +129,11 @@ async function accept(event, ready) {
 }
 
 async function start() {
+    if (location.hash.startsWith('#') && location.hash.length > 1) {
+        sessionStorage.removeItem(READY_KEY);
+        sessionStorage.removeItem(JOIN_AFTER_SIGNIN_KEY);
+    }
+
     let ready;
     const stored = sessionStorage.getItem(READY_KEY);
     if (stored) {
@@ -148,7 +152,7 @@ async function start() {
         if (!exchanged.ok || exchanged.body.status !== 'ready') {
             return fail(exchanged.body.status ?? 'unavailable');
         }
-        ready = exchanged.body;
+        ready = { token, ...exchanged.body };
         sessionStorage.removeItem(CODE_KEY);
         sessionStorage.setItem(READY_KEY, JSON.stringify(ready));
     }
