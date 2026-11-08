@@ -254,24 +254,18 @@ erDiagram
 ```mermaid
 erDiagram
     qrInvites {
-        string PartitionKey "slug"
-        string RowKey "active"
-        string sessionId
+        string PartitionKey "slug or 'code'"
+        string RowKey "'active' or 16-char code"
+        string sessionId "on slug/active"
+        string slug "on code/{code}"
         string invitedBy "lowercased owner email"
         string createdAt "ISO timestamp"
         string expiresAt "ISO timestamp"
         string closedAt "empty or ISO timestamp"
     }
-    qrRedemptions {
-        string PartitionKey "slug:sessionId"
-        string RowKey "ticket-{token hash}"
-        string acceptedBy "lowercased email"
-        string acceptedAt "ISO timestamp"
-        string completedAt "empty or ISO timestamp"
-    }
 ```
 
-The displayed QR code is multi-use: every scan exchanges it for a new random ticket, so several people can scan the same code and join independently. A `qrRedemptions` row binds one browser's ticket to the first signed-in account that accepts it, lets that account retry safely, and prevents a copied ticket from adding a different account. After the owner closes Quick Join, the server rejects any later exchange attempt made from an old screenshot or a camera view still holding the code. Tickets issued before closure retain 20 seconds to finish sign-in.
+Opening Quick Join creates a short random 16-character code in `qrInvites` (`https://pdayletters.com/join#<code>`), valid while the owner keeps the window open (up to 15 minutes). The displayed QR code is multi-use so several people in the room can scan it and join independently as readers. After the owner closes Quick Join, new scans are rejected immediately while anyone already partway through provider sign-in retains a short grace period to finish.
 
 ### Archive metadata and reminders
 

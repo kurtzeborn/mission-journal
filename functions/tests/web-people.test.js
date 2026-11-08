@@ -471,26 +471,15 @@ describe('inviting people in person', () => {
         }
     });
 
-    test('opens a reader-only QR invitation and refreshes it before expiry', async () => {
-        let generation = 0;
+    test('opens a reader-only QR invitation for the gathering', async () => {
         const view = await people({
             qrcode: qr,
             answer: async (url, init) => {
                 if (url.endsWith('/qr') && init?.method === 'POST') {
-                    generation++;
                     return {
                         body: {
                             id: 'gathering',
-                            url: `https://pdayletters.com/join#code-${generation}`
-                        }
-                    };
-                }
-                if (url.endsWith('/qr/gathering') && init?.method === 'POST') {
-                    generation++;
-                    return {
-                        body: {
-                            id: 'gathering',
-                            url: `https://pdayletters.com/join#code-${generation}`
+                            url: 'https://pdayletters.com/join#code-1'
                         }
                     };
                 }
@@ -503,12 +492,6 @@ describe('inviting people in person', () => {
 
         assert.equal(view.el('qr-dialog').open, true);
         assert.match(view.el('qr-image').getAttribute('src'), /code-1/);
-        assert.equal(view.context.timers[0].every, 25000);
-
-        await view.context.timers[0].handler();
-        await settled();
-
-        assert.match(view.el('qr-image').getAttribute('src'), /code-2/);
     });
 
     test('shows a spinner instead of an empty image while a cold function starts', async () => {
@@ -563,7 +546,6 @@ describe('inviting people in person', () => {
         assert.ok(view.calls.some(
             (call) => call.url.endsWith('/qr/gathering') && call.method === 'DELETE'
         ));
-        assert.equal(view.context.timers[0].cleared, true);
     });
 });
 
